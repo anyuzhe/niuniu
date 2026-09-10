@@ -1,0 +1,7 @@
+{
+  "inputs": {
+    "momentum": {"factor_id": "BASE.MOMENTUM", "version": "1.0.0", "parameters": {"lookback": 20}},
+    "efficiency": {"factor_id": "BASE.DIRECTIONAL_EFFICIENCY", "version": "1.0.0", "parameters": {"lookback": 20}}
+  },
+  "weights": {"momentum": 2.0, "efficiency": 0.5}
+}

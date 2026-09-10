@@ -1,0 +1,353 @@
+"""Validated research submissions and one local worker; never executes shell input."""
+
+import fcntl
+import json
+import re
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, timezone
+from pathlib import Path
+from threading import RLock,Event
+from uuid import UUID
+
+from quantlab.data.universe import UniverseConfig
+from quantlab.execution.backtest import ExecutionConfig
+from quantlab.execution.portfolio import PortfolioConfig
+from quantlab.experiments.execution import ExecutionStudy
+from quantlab.experiments.theory_study import TheoryStudyPlan, TheoryStudyRunner
+from quantlab.app import build_runner, default_registry
+from quantlab.data.base import DataRequest
+from quantlab.domain import FactorType, Timeframe
+from quantlab.experiments.ablation import AblationRunner
+from quantlab.experiments.config import ExperimentConfig
+from quantlab.experiments.holdout import ChronologicalSplit, HoldoutRunner
+from quantlab.experiments.sweep import ParameterGrid, SweepRunner
+from quantlab.experiments.walkforward import WalkForwardConfig, WalkForwardRunner
+from quantlab.multitimeframe.config import DailyContextConfig
+from quantlab.processing.cross_section import CrossSectionConfig
+from quantlab.processing.pipeline import PipelineConfig
+from quantlab.regime.config import RegimeConfig, RegimeFilter
+from quantlab.statistics.bootstrap import BootstrapConfig
+from quantlab.statistics.permutation import PermutationConfig
+from quantlab.storage.codec import encode
+from quantlab.theory.templates import resolve_template
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+@dataclass(frozen=True)
+class Submission:
+    config: ExperimentConfig
+    mode: str
+    adjustment: str
+    split: ChronologicalSplit | None
+    schedule: WalkForwardConfig | None
+    grid: ParameterGrid | None
+    universe: UniverseConfig = UniverseConfig()
+    execution: ExecutionConfig | None = None
+    theory_study: TheoryStudyPlan | None = None
+    portfolio: PortfolioConfig | None = None
+    execution_backend: str = "open"
+    market_rules: list | None = None
+    correlation: dict | None = None
+
+    def preview(self):
+        return json.loads(encode(asdict(self)))
+
+
+def prepare(spec):
+    """Validate before enqueueing, using the existing factor/config contracts."""
+    allowed = {'question', 'symbols', 'timeframe', 'start', 'end', 'factor', 'version',
+        'parameters', 'theory', 'theory_version', 'horizons', 'quantiles', 'seed',
+        'adjustment', 'mode', 'split', 'schedule', 'grid', 'sequence_audit',
+        'regime', 'regime_filter', 'context', 'processor', 'bootstrap', 'permutation', 'incremental_test', 'universe', 'replay', 'execution', 'theory_study', 'portfolio', 'execution_backend', 'market_rules', 'correlation'}
+    if not isinstance(spec, dict) or set(spec) - allowed:
+        raise ValueError('配置包含不支持的字段')
+    symbols = spec.get('symbols')
+    if not isinstance(symbols, list) or not symbols or any(
+            not isinstance(s, str) or not re.fullmatch(r'(sh|sz|bj)\.\d{6}', s) for s in symbols):
+        raise ValueError('symbols 必须是股票代码列表，例如 ["sh.600519", "sz.000001"]')
+    request = DataRequest(tuple(symbols), Timeframe(spec.get('timeframe', '1d')),
+        date.fromisoformat(spec['start']), date.fromisoformat(spec['end']))
+    mode = spec.get('mode', 'single')
+    if mode not in {'single', 'holdout', 'walkforward', 'ablation', 'sweep', 'execution', 'theory_study', 'correlation'}:
+        raise ValueError('不支持的实验类型')
+    if spec.get('incremental_test') and mode != 'ablation':
+        raise ValueError('incremental_test 仅用于逐输入消融')
+    adjustment = spec.get('adjustment', 'qfq')
+    if adjustment not in {'raw', 'qfq'}:
+        raise ValueError('复权口径必须为 raw 或 qfq')
+    universe=UniverseConfig(**spec.get('universe',{}))
+    execution=ExecutionConfig(**spec.get('execution',{})) if mode=='execution' else None
+    if 'execution' in spec and mode!='execution':raise ValueError('execution 配置仅用于独立回测')
+    registry = default_registry()
+    origin = None
+    if spec.get('theory'):
+        if any(k in spec for k in ('factor', 'version', 'parameters', 'grid')):
+            raise ValueError('固定研究模板不能同时覆盖因子、参数或网格')
+        parameters, origin = resolve_template(spec['theory'], registry, spec.get('theory_version', '1.0.0'))
+        factor_id, version = 'COMB.CONDITION', '1.0.0'
+    else:
+        if 'theory_version' in spec:
+            raise ValueError('theory_version 需要 theory')
+        factor_id, version = spec.get('factor', 'BASE.MOMENTUM'), spec.get('version', '1.0.0')
+        parameters = spec.get('parameters', {})
+    if not isinstance(parameters, dict):
+        raise ValueError('因子参数必须为 JSON 对象')
+    factor = registry.get(factor_id, version)
+    parameters = factor.parameters(parameters)
+    if request.timeframe not in factor.definition.timeframes:
+        raise ValueError('因子不支持所选周期')
+    processor = (PipelineConfig(**spec['processor']) if isinstance(spec.get('processor'),dict) else CrossSectionConfig(spec['processor'])) if spec.get('processor') else None
+    if processor and factor.definition.factor_type != FactorType.SCALAR:
+        raise ValueError('截面预处理仅支持标量因子')
+    context = spec.get('context')
+    if context is not None:
+        context = DailyContextConfig(**{**context, 'start': date.fromisoformat(context['start'])})
+        background = registry.get(context.factor_id, context.version)
+        background.parameters(context.parameters)
+        if context.request(request).timeframe not in background.definition.timeframes:
+            raise ValueError('背景因子不支持所选高周期')
+    regime = RegimeConfig(**spec['regime']) if spec.get('regime') is not None else None
+    selection = RegimeFilter(**spec['regime_filter']) if spec.get('regime_filter') is not None else None
+    if selection and regime is None:
+        regime = RegimeConfig()
+    config = ExperimentConfig(spec.get('question', '工作台因子研究'), request, factor_id, version,
+        parameters, tuple(spec.get('horizons', [1, 5, 20])), spec.get('quantiles', 5), spec.get('seed', 0),
+        regime=regime, regime_filter=selection, context=context, processor=processor,
+        bootstrap=BootstrapConfig(**spec['bootstrap']) if spec.get('bootstrap') is not None else None,
+        permutation=PermutationConfig(**spec['permutation']) if spec.get('permutation') is not None else None,
+        incremental_test=spec.get('incremental_test',False),
+        replay=spec.get('replay',False) or mode=='execution',
+        theory_origin=origin, sequence_audit=spec.get('sequence_audit', False))
+    split = schedule = grid = None
+    if spec.get('split') is not None:
+        split = ChronologicalSplit(**{k: date.fromisoformat(v) for k, v in spec['split'].items()})
+        split.periods(request)
+    if spec.get('schedule') is not None:
+        schedule = WalkForwardConfig(**spec['schedule'])
+        schedule.windows(request)
+    if split and schedule:
+        raise ValueError('分段日期和滚动窗口不能同时设置')
+    if mode == 'holdout' and not split:
+        raise ValueError('留出验证需要 split.train_end 和 split.valid_end')
+    if mode == 'walkforward' and not schedule:
+        raise ValueError('滚动验证需要 schedule 的 train_days、valid_days、test_days')
+    if split and mode not in {'holdout', 'sweep', 'correlation'} or schedule and mode not in {'walkforward', 'sweep', 'correlation'}:
+        raise ValueError('分段或滚动配置与实验类型不一致')
+    if mode == 'sweep':
+        grid = ParameterGrid(spec.get('grid'))
+        grid.variants(factor, parameters)
+    elif 'grid' in spec:
+        raise ValueError('grid 仅用于参数扫描')
+    if mode == 'ablation' and (factor_id not in {'COMB.CONDITION', 'COMB.SCORE'} or len(parameters['inputs']) < 2):
+        raise ValueError('消融需要至少两个输入的条件或评分组合')
+    study=TheoryStudyPlan.parse(spec.get('theory_study',{})) if mode=='theory_study' else None
+    if 'theory_study' in spec and mode!='theory_study':raise ValueError('theory_study 配置需要理论全流程模式')
+    if study:study.variants(config,registry)
+    portfolio=PortfolioConfig(**spec.get('portfolio',{})) if mode=='execution' else None
+    if 'portfolio' in spec and mode!='execution':raise ValueError('portfolio 仅用于独立回测')
+    backend=spec.get('execution_backend','open')
+    if backend not in ('open','vnpy_open','vnpy_rules') or (mode!='execution' and 'execution_backend' in spec):
+        raise ValueError('execution_backend requires execution mode and open/vnpy_open/vnpy_rules')
+    market_rules=spec.get('market_rules')
+    if market_rules is not None:
+        if mode!='execution' or backend=='vnpy_open':raise ValueError('market_rules requires execution and open/vnpy_rules')
+        from quantlab.execution.rules import MarketRules
+        MarketRules(market_rules)
+    if backend=='vnpy_open':
+        from quantlab.adapters.vnpy import validate_config
+        validate_config(execution)
+    if execution:execution.validate_price_inputs(MarketRules(market_rules) if market_rules is not None else None)
+    correlation=None
+    if mode=='correlation':
+        from quantlab.statistics.correlation import complete_link_groups
+        if factor_id!='COMB.SCORE' or len(parameters['inputs'])<2:raise ValueError('相关性研究请选择 COMB.SCORE 并提供至少两个输入，权重不参与相关计算')
+        if isinstance(processor,PipelineConfig) or config.permutation is not None:raise ValueError('相关性研究使用截面预处理和 Bootstrap，不支持拟合管道或收益置换')
+        correlation={'min_symbols':3,'min_periods':5,'cluster_threshold':.8,**spec.get('correlation',{})}
+        if set(correlation)!={'min_symbols','min_periods','cluster_threshold'}:raise ValueError('未知相关性设置')
+        if type(correlation['min_symbols']) is not int or correlation['min_symbols']<3 or type(correlation['min_periods']) is not int or correlation['min_periods']<1:raise ValueError('相关研究至少 3 证券、1 个时间点')
+        complete_link_groups([],[],correlation['cluster_threshold'])
+    elif 'correlation' in spec:raise ValueError('correlation 配置需要相关性研究模式')
+    return Submission(config, mode, adjustment, split, schedule, grid, universe, execution, study, portfolio, backend, market_rules, correlation)
+
+
+def execute(submission, data_root, artifact_root):
+    config = submission.config
+    runner = build_runner(data_root, artifact_root, config.data.symbols, submission.adjustment, submission.universe)
+    if submission.mode == 'correlation':
+        from quantlab.experiments.correlation import CorrelationConfig,CorrelationRunner
+        from quantlab.experiments.correlation_holdout import CorrelationHoldoutRunner
+        from quantlab.experiments.correlation_walkforward import CorrelationWalkForwardRunner
+        cfg=CorrelationConfig(config.research_question,config.data,config.parameters['inputs'],**submission.correlation,
+            processor=config.processor,regime=config.regime,regime_filter=config.regime_filter,context=config.context,
+            bootstrap=config.bootstrap,random_seed=config.random_seed)
+        if submission.split:return CorrelationHoldoutRunner(runner).run(cfg,submission.split)
+        if submission.schedule:return CorrelationWalkForwardRunner(runner).run(cfg,submission.schedule)
+        return CorrelationRunner(runner).run(cfg)
+    if submission.mode == 'theory_study':
+        return TheoryStudyRunner(runner).run(config,submission.theory_study)
+    if submission.mode == 'execution':
+        from quantlab.execution.rules import MarketRules
+        return ExecutionStudy(runner).run(config, submission.execution, submission.portfolio, submission.execution_backend, MarketRules(submission.market_rules) if submission.market_rules is not None else None)
+    if submission.mode == 'sweep':
+        return SweepRunner(runner).run(config, submission.grid, split=submission.split, schedule=submission.schedule)
+    if submission.mode == 'holdout':
+        return HoldoutRunner(runner).run(config, submission.split)
+    if submission.mode == 'walkforward':
+        return WalkForwardRunner(runner).run(config, submission.schedule)
+    if submission.mode == 'ablation':
+        return AblationRunner(runner).run(config)
+    return runner.run(config)
+
+
+class JobQueue:
+    """Journal submissions across restarts; interrupted work is never auto-replayed."""
+
+    def __init__(self, artifact_root, data_root):
+        self.root = Path(artifact_root).resolve()
+        self.data_root = Path(data_root).resolve()
+        if not self.data_root.is_dir():
+            raise ValueError('行情数据目录不存在')
+        self.directory = self.root / '_jobs'
+        if self.directory.is_symlink():
+            raise ValueError('任务目录不能是符号链接')
+        self.directory.mkdir(exist_ok=True)
+        if (self.directory / 'worker.lock').is_symlink():
+            raise ValueError('任务锁不能是符号链接')
+        self.lockfile = (self.directory / 'worker.lock').open('a')
+        try:
+            fcntl.flock(self.lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.lockfile.close()
+            raise ValueError('同一产物目录已有实验工作台在执行任务') from None
+        self.lock = RLock()
+        self.jobs = {}
+        self.cancellations = {}
+        self.closed = False
+        try:
+            for path in self.directory.glob('*.json'):
+                record = json.loads(path.read_text(encoding='utf-8'))
+                if str(UUID(path.stem)) != path.stem or record['job_id'] != path.stem:
+                    raise ValueError('任务日志标识不一致')
+                if record['status'] in {'queued', 'running'}:
+                    record.update(status='interrupted', finished_at=now(), error='上次服务中断；可恢复任务，通过校验的计算断点会继续使用。')
+                    self._save(record)
+                self.jobs[path.stem] = record
+            self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='quantlab-research')
+        except Exception:
+            self.lockfile.close()
+            raise
+
+    def _save(self, record):
+        path = self.directory / (record['job_id'] + '.json')
+        temporary = path.with_suffix('.tmp')
+        if temporary.is_symlink():
+            raise ValueError('任务临时文件不能是符号链接')
+        temporary.write_text(encode(record), encoding='utf-8')
+        temporary.replace(path)
+
+    def list(self):
+        with self.lock:
+            return json.loads(encode(sorted(self.jobs.values(), key=lambda j: (j['created_at'], j['job_id']), reverse=True)))
+
+    def submit(self, job_id, spec):
+        if not isinstance(job_id, str) or str(UUID(job_id)) != job_id:
+            raise ValueError('job_id 必须为规范 UUID')
+        # Round-trip also rejects non-JSON and non-finite inputs before persistence.
+        spec = json.loads(encode(spec))
+        with self.lock:
+            if self.closed:
+                raise ValueError('服务正在关闭，不再接收任务')
+            if job_id in self.jobs:
+                if self.jobs[job_id]['spec'] != spec:
+                    raise ValueError('同一 job_id 不可用于不同配置')
+                return json.loads(encode(self.jobs[job_id]))
+            submission = prepare(spec)
+            record = {'job_id': job_id, 'status': 'queued', 'created_at': now(),
+                'started_at': None, 'finished_at': None, 'spec': spec,
+                'resolved': submission.preview(), 'run_id': None, 'error': None, 'attempt': 1}
+            self._save(record)
+            self.jobs[job_id] = record
+            self.cancellations[job_id]=Event()
+            self.executor.submit(self._run, job_id, submission, 1)
+            return json.loads(encode(record))
+
+    def resume(self, job_id):
+        """Explicitly retry the original specification; only verified state is reused."""
+        with self.lock:
+            if self.closed:raise ValueError('服务正在关闭，不再接收任务')
+            record=self.jobs.get(job_id)
+            if record is None:raise ValueError('未知任务')
+            if record['status'] not in ('interrupted','cancelled','failed'):
+                raise ValueError('只有中断、取消或失败的任务可以恢复')
+            submission=prepare(record['spec'])
+            if submission.preview()!=record['resolved']:
+                raise ValueError('当前解析规则与原任务不一致，请新建研究并核对配置')
+            attempt=record.get('attempt',1)+1
+            updated={**record,'attempt':attempt,'attempts':[*record.get('attempts',[]),
+                {k:record.get(k) for k in ('attempt','status','started_at','finished_at','error','progress')}],
+                'status':'queued','started_at':None,'finished_at':None,'error':None,
+                'cancel_requested':False,'run_id':None,'progress':{'stage':'等待恢复；仅复用通过校验的断点','completed':None,'total':None,'updated_at':now()}}
+            self._save(updated);self.jobs[job_id]=updated
+            self.cancellations[job_id]=Event()
+            self.executor.submit(self._run,job_id,submission,attempt)
+            return json.loads(encode(updated))
+
+    def cancel(self,job_id):
+        with self.lock:
+            record=self.jobs.get(job_id)
+            if record is None:raise ValueError('未知任务')
+            if record['status'] not in ('queued','running'):return {'status':record['status']}
+            self.cancellations[job_id].set();record['cancel_requested']=True
+            if record['status']=='queued':
+                record.update(status='cancelled',finished_at=now(),error='用户取消排队任务；未开始计算')
+                self._save(record)
+                return {'status':'cancelled'}
+            self._save(record)
+            return {'status':'cancel_requested'}
+
+    def _run(self, job_id, submission, attempt):
+        try:
+            with self.lock:
+                record = self.jobs[job_id]
+                # A cancelled queued attempt can still be present in the executor.
+                # It must not execute, or consume the cancellation token of a retry.
+                if record.get('attempt',1)!=attempt:return
+                if record['status']=='cancelled':
+                    self.cancellations.pop(job_id,None)
+                    return
+                record.update(status='running', started_at=now())
+                self._save(record)
+            from quantlab.progress import research_progress,ResearchCancelled
+            def progress(stage,completed,total):
+                if self.cancellations[job_id].is_set():raise ResearchCancelled('用户取消；已完成的子实验与缓存保留')
+                if stage is not None:
+                    with self.lock:
+                        record['progress']={'stage':stage,'completed':completed,'total':total,'updated_at':now()}
+                        self._save(record)
+            with research_progress(progress):
+                progress('准备执行',None,None)
+                result = execute(submission, self.data_root, self.root)
+                with self.lock:record['progress']={'stage':'已完成','completed':None,'total':None,'updated_at':now()}
+            outcome = {'status': 'completed', 'run_id': result.run_id, 'experiment_id': result.experiment_id}
+        except Exception as error:
+            from quantlab.progress import ResearchCancelled
+            outcome = {'status': 'cancelled' if isinstance(error,ResearchCancelled) else 'failed', 'error': f'{type(error).__name__}: {error}'}
+        with self.lock:
+            self.cancellations.pop(job_id,None)
+            record.update(**outcome, finished_at=now())
+            try:
+                self._save(record)
+            except (OSError, ValueError) as error:
+                record.update(status='failed', error=f'任务状态无法持久化：{error}；{record.get("error") or "请检查已保存的实验结果"}')
+
+    def close(self):
+        with self.lock:
+            self.closed = True
+        try:
+            self.executor.shutdown(wait=True)
+        finally:
+            self.lockfile.close()

@@ -1,0 +1,7 @@
+{
+  "momentum_5": {"factor_id": "BASE.MOMENTUM", "parameters": {"lookback": 5}},
+  "momentum_20": {"factor_id": "BASE.MOMENTUM", "parameters": {"lookback": 20}},
+  "efficiency_20": {"factor_id": "BASE.DIRECTIONAL_EFFICIENCY", "parameters": {"lookback": 20}},
+  "volatility_20": {"factor_id": "BASE.RETURN_VOLATILITY", "parameters": {"lookback": 20}},
+  "close_location": {"factor_id": "BASE.CLOSE_LOCATION"}
+}

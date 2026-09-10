@@ -1,0 +1,6 @@
+{
+  "weighting": "equal",
+  "max_position": 0.25,
+  "max_exposure": 0.8,
+  "max_turnover": 0.5
+}

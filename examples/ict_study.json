@@ -1,0 +1,6 @@
+{
+  "split": {"train_end": "2026-08-14", "valid_end": "2026-08-21"},
+  "schedule": {"train_days": 14, "valid_days": 7, "test_days": 7},
+  "input": "mss",
+  "grid": {"atr_multiple": [1.0, 1.5, 2.0]}
+}

@@ -1,0 +1,11 @@
+{
+  "initial_cash": 1000000,
+  "top_n": 5,
+  "commission_bps": 3,
+  "minimum_commission": 0,
+  "sell_tax_bps": 5,
+  "slippage_bps": 0,
+  "limit_pct": 0.1,
+  "t_plus_one": true,
+  "lot_size": 100
+}

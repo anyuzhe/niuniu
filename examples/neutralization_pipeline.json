@@ -1,0 +1,9 @@
+{
+  "steps": [
+    {"method": "replace_inf"},
+    {"method": "winsorize", "lower": 0.01, "upper": 0.99},
+    {"method": "neutralization"}
+  ],
+  "industry_events": [],
+  "size_events": []
+}

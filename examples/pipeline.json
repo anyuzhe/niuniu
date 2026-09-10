@@ -1,0 +1,10 @@
+{
+  "steps": [
+    {"method": "replace_inf"},
+    {"method": "fill_na"},
+    {"method": "winsorize", "lower": 0.01, "upper": 0.99},
+    {"method": "robust_zscore"},
+    {"method": "clip", "lower": -5, "upper": 5},
+    {"method": "cs_rank"}
+  ]
+}

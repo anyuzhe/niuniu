@@ -1,0 +1,7 @@
+{
+  "initial_cash": 1000000,
+  "top_n": 5,
+  "exposure": 0.8,
+  "max_actual_position": 0.25,
+  "max_volume_participation": 0.01
+}

@@ -1,0 +1,156 @@
+{
+  "repository": "https://github.com/Vespa314/chan.py",
+  "commit": "429d6ed3043e27c93a003ba2b10e70a05575e1f5",
+  "license": "MIT",
+  "modifications": "Namespace-qualified internal imports; Seg/Seg.py adds FULL_AREA matching-sign MACD integration for recursive segments. Other algorithms unchanged.",
+  "files": {
+    "ChanConfig.py": {
+      "upstream_sha256": "bff01933dae1420548e4b5b9f65e8aa385c69d01d09aea6a6caa545f0564b2e2",
+      "local_sha256": "0dda92cf55289123246be8d3f915ba4f66e03fb38f89535ad588348563829084"
+    },
+    "ZS/ZSConfig.py": {
+      "upstream_sha256": "592c3a1c22a4f873e25270a22e28d11bd0b42a42bdefc24d7dc114d03ae2984e",
+      "local_sha256": "592c3a1c22a4f873e25270a22e28d11bd0b42a42bdefc24d7dc114d03ae2984e"
+    },
+    "Seg/SegConfig.py": {
+      "upstream_sha256": "4ffa9974f01c4801c6083784205b3ef973e3d88cbf34d236fa327d4f7ddac94e",
+      "local_sha256": "0fe1d79002846786507a26768deb3d099e41e609c705a7301b0d6943a08c51ac"
+    },
+    "Common/ChanException.py": {
+      "upstream_sha256": "a135bf74a795ca59f342f5793771dab3abe977c2ada9ef56c0b3c1fa0dad59bd",
+      "local_sha256": "a135bf74a795ca59f342f5793771dab3abe977c2ada9ef56c0b3c1fa0dad59bd"
+    },
+    "Common/CEnum.py": {
+      "upstream_sha256": "f08c6a321c6b52b9156761f7aac59b287f800a5094b32a416f1d50ad419afbab",
+      "local_sha256": "f08c6a321c6b52b9156761f7aac59b287f800a5094b32a416f1d50ad419afbab"
+    },
+    "Math/TrendModel.py": {
+      "upstream_sha256": "10dd50d7a552a57a72ada55fb0a8a8c35356a1b73d2eb58517724b48387f4c88",
+      "local_sha256": "2c54be97a2fad2323b30c680742b39b681d00ed110f39e03471dc1086f997d47"
+    },
+    "Math/RSI.py": {
+      "upstream_sha256": "8f0aaa54634ebcd2e3d24f1aace04d9221dfa28e07391865e64bf2b975ac12bc",
+      "local_sha256": "8f0aaa54634ebcd2e3d24f1aace04d9221dfa28e07391865e64bf2b975ac12bc"
+    },
+    "Math/MACD.py": {
+      "upstream_sha256": "7f303f2b686deaa1d7f0d0bbbf3593f817ea355e2427d569fc43b2bdccddf268",
+      "local_sha256": "7f303f2b686deaa1d7f0d0bbbf3593f817ea355e2427d569fc43b2bdccddf268"
+    },
+    "Math/KDJ.py": {
+      "upstream_sha256": "e80574b46986861de8ca3bc047f9cc163b575fde67a0025a314d2b20fcbf8df6",
+      "local_sha256": "e80574b46986861de8ca3bc047f9cc163b575fde67a0025a314d2b20fcbf8df6"
+    },
+    "Math/Demark.py": {
+      "upstream_sha256": "7c042c2d18de68866f3629d622f517c4d8cc87e474e7c12d7a0dd0f79a821d88",
+      "local_sha256": "a07c4cebbb038436525b4e2e69f93a53ed9d3101af72eaaed94fa528767facaf"
+    },
+    "Math/BOLL.py": {
+      "upstream_sha256": "79cbdf1fe94ec04c012edebacc37dd2ac8a841fc827b6a6e2358fe9f9ddce57d",
+      "local_sha256": "79cbdf1fe94ec04c012edebacc37dd2ac8a841fc827b6a6e2358fe9f9ddce57d"
+    },
+    "Common/func_util.py": {
+      "upstream_sha256": "a3440f16ce8e1ded8e973f568a331969c8e54922e411fd8928425e0949d30740",
+      "local_sha256": "a3440f16ce8e1ded8e973f568a331969c8e54922e411fd8928425e0949d30740"
+    },
+    "BuySellPoint/BSPointConfig.py": {
+      "upstream_sha256": "d30580f5aefa8b2abe9f7a92ce73bbbf914e2338317ec9cf13ddd2ef5b75e824",
+      "local_sha256": "67066f9843f699eae488b9ba8ff45c9c30e6885f36f377893ebf5f82ff2ff034"
+    },
+    "Bi/BiConfig.py": {
+      "upstream_sha256": "14ac8f13578207acf2681d0ccf5c1a3deb4bc230332cba2db8cfc9e4c72c18ca",
+      "local_sha256": "37c3c0d6adc7e79047c9c964f6993eaa59e75349cb0d4e2d961f06c7213d08ab"
+    },
+    "KLine/KLine_Unit.py": {
+      "upstream_sha256": "b46ee1e61286059696b13d09cdae2a78d6ff563a113a64e01a890a4688fe9838",
+      "local_sha256": "6cb5df7a1ac019caa7871f08f06f15c838fea3c332aaebc36018e68e06c44c63"
+    },
+    "KLine/KLine.py": {
+      "upstream_sha256": "ff2be1d0311d33154efac817facdb1f6e9eb864afb42b0ec048169019417d93e",
+      "local_sha256": "11ff27547ed543d213cfcea22a328102023adf360bfc575dd41373848690c1d2"
+    },
+    "Combiner/KLine_Combiner.py": {
+      "upstream_sha256": "260b1ca210a81fbd0cf1acd9cbbf3eb14be7972652bbfe0c19a4eda3e0895bbb",
+      "local_sha256": "23b2229233305dfdea18bc59b65f46303d0bb6b48e48c706cd3a4c48d2fe302e"
+    },
+    "Combiner/Combine_Item.py": {
+      "upstream_sha256": "d25ae4ca8fc6545ef457a0aeb0597915e818981f818e6bb149eccdd6f69d70b9",
+      "local_sha256": "12976f69b9bd3c3404e2d6b0e7b2d295fd1d8ff284849b728e3c5c357eade24e"
+    },
+    "Seg/Seg.py": {
+      "upstream_sha256": "d54059efdc64e29baea9bfee6e2dbac6057d93e87d2fc6bbdf4c4a6a475b28ef",
+      "local_sha256": "f3a5bc6807eb8b6b9de0658f43a67e88ced7a256f1615f52836eb18631c282cf"
+    },
+    "BuySellPoint/BS_Point.py": {
+      "upstream_sha256": "7b9eb6e6c0ab3a2a6f2e862a37cfdea0d862713371950c968406d16d5ba811a7",
+      "local_sha256": "ad2ce652dcd6b898f72ca6a0aaeaa760e80802dd247d0a8987457279bece0834"
+    },
+    "ChanModel/Features.py": {
+      "upstream_sha256": "457ed7e581b36b8be7ba497143ba41c973d15f199456e5a16f642681896f71bf",
+      "local_sha256": "457ed7e581b36b8be7ba497143ba41c973d15f199456e5a16f642681896f71bf"
+    },
+    "Bi/Bi.py": {
+      "upstream_sha256": "9e7231c7376df8c29edd9616b1fde99928064b24031cda84daaa7329dcc70ad4",
+      "local_sha256": "4885da44e220c200ac605393d108a53efe406dc519a1e54de329633186f091b2"
+    },
+    "Common/cache.py": {
+      "upstream_sha256": "608e151adfebaa5a6c75439be0d0a0f169100c72b7ee4aebfefb2e68666431bf",
+      "local_sha256": "608e151adfebaa5a6c75439be0d0a0f169100c72b7ee4aebfefb2e68666431bf"
+    },
+    "ZS/ZS.py": {
+      "upstream_sha256": "c08a6c1f1be038c8f77703678dd5c62f0e91a3c66ba210c7e3e4d8c6fe2d7e9b",
+      "local_sha256": "791f69d3510825be6fabc5be4549baf7e0a82dc8eec2913521eaea22fa2c75f5"
+    },
+    "Seg/EigenFX.py": {
+      "upstream_sha256": "f98f87f8cdf5ce59b059e7a8ed6406f6f5be5e68fd9f4b66fca9c6f860ede06f",
+      "local_sha256": "1de5184a9f5b81ac56f81b536a541e05d7d4e56ed4497f28bc30e19c51d3e388"
+    },
+    "Seg/Eigen.py": {
+      "upstream_sha256": "3b45589347fe1e4369597dde9919df059a4ee3b0b90eeb126179caf015fb595d",
+      "local_sha256": "7e593988b44daff8f00712f3be34e54a671e1bc159f671e1ef55001a8709ba4c"
+    },
+    "Bi/BiList.py": {
+      "upstream_sha256": "d8386099f71a27fb86b4ee17a5f6b4f6dd805a9f4ad4ec29e9fcc76594114a65",
+      "local_sha256": "5201a279362bbe02cb4ae6008cae5299183dc7a4321b90b9e7f30c6c56d7678e"
+    },
+    "Math/TrendLine.py": {
+      "upstream_sha256": "8b862ef26eaf29796b1076c82e553e60b0b8265be49b22e490e447b8fde62235",
+      "local_sha256": "331db89dffc42234834e32b592ddb163e822ec3950d87e6fe303584ee5683fd9"
+    },
+    "KLine/TradeInfo.py": {
+      "upstream_sha256": "bd0bf8015d3369a6021c5f00c419f29708f0b53a88a695931b1304802cc85325",
+      "local_sha256": "2aa12b1b9b8b6b8edcead5329284830111ba9ea6d2df6b1bd70a71913aa6d2cc"
+    },
+    "Common/CTime.py": {
+      "upstream_sha256": "1219b484bf269d70fd9ce612dd2dc5f7553745cac6af044e3113c934f548955a",
+      "local_sha256": "1219b484bf269d70fd9ce612dd2dc5f7553745cac6af044e3113c934f548955a"
+    },
+    "KLine/KLine_List.py": {
+      "upstream_sha256": "ab518c1664e2dc8f3e359ac344eac3fc7c5d0758f13976d7b337fb4275d7d0fc",
+      "local_sha256": "07d9bec479ab94b782a93ddde17d39eac0cba18e2285efaee115a514a7d0b92e"
+    },
+    "Seg/SegListDef.py": {
+      "upstream_sha256": "1cf3f8e5aabc24e459b24eadd0f1ac62057b4f283d53fc3e6ba9c6fa9eafb991",
+      "local_sha256": "2a202968a274000737dd7e008c7f155a85de127bb5cc20061558b3dc47db6db6"
+    },
+    "Seg/SegListComm.py": {
+      "upstream_sha256": "fa89e9f9f1161192c9adce4b76b4103f12e7ffbdaf029a5ca247394666b7e482",
+      "local_sha256": "4f4acba5243c7e9921bac23984e3310165a3ff0f69840418069540d38ed94977"
+    },
+    "Seg/SegListDYH.py": {
+      "upstream_sha256": "688cf070b38d76e89dd428b8d2c5cbeaf0985102c8faa3741b6571e14b3bed1d",
+      "local_sha256": "dc0cc60a731512353068fd738bf5cb509baea1375ecd07bda490231868021d37"
+    },
+    "Seg/SegListChan.py": {
+      "upstream_sha256": "49719e6843d424768ae6295c87617c2c72f22c478deac74067ef40aaf531c5c9",
+      "local_sha256": "cb2a5a566f6087a047ae564c2e75a669593a83cd8928ab1e28108b0100cf49b0"
+    },
+    "ZS/ZSList.py": {
+      "upstream_sha256": "e0cba975e6a3b73c2e09102c80d8daca26adb3c8f0bc742f6c0fc526703a86ee",
+      "local_sha256": "3a584bba1595b34eb412252419a463125f0d0d83de66b6c013c95b244c05db66"
+    },
+    "BuySellPoint/BSPointList.py": {
+      "upstream_sha256": "71a7047ada743f91493c6d6f71eeda6fbc275099dc4cb01d29531b4abdc2461e",
+      "local_sha256": "4c5b9a81728577ba968e9d9833b05614746a675cbd8fa845c4171306b981031a"
+    }
+  }
+}

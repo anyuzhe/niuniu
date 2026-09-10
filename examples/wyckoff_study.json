@@ -1,0 +1,6 @@
+{
+  "split": {"train_end": "2026-08-14", "valid_end": "2026-08-21"},
+  "schedule": {"train_days": 14, "valid_days": 7, "test_days": 7},
+  "input": "sos",
+  "grid": {"lookback": [10, 20, 30]}
+}

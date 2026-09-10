@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantlab-research"
+version = "0.1.0"
+description = "Unified technical factor research core"
+requires-python = ">=3.11"
+dependencies = ["polars>=1.0,<2", "pyarrow>=15", "duckdb>=1.0,<2"]
+
+[project.optional-dependencies]
+desktop = ["PyQt6>=6.7,<7"]
+market_data = ["baostock==0.9.3"]
+vnpy = ["vnpy==4.4.0", "alphalens-reloaded==0.4.6"]
+
+[project.scripts]
+quantlab = "quantlab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"quantlab.factors" = ["alpha_expressions.json", "ALPHA_PROVENANCE.md", "ALPHA_LICENSE"]
+"quantlab._vendor.chanpy" = ["LICENSE", "PROVENANCE.json"]
+"quantlab.desktop" = ["assets/*.png"]
+"quantlab.workbench" = ["static/*.html", "static/*.css", "static/*.js", "static/assets/*.png"]

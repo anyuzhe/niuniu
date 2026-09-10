@@ -1,0 +1,8 @@
+{
+  "start": "2026-07-01",
+  "factor_id": "BASE.MOMENTUM",
+  "version": "1.0.0",
+  "parameters": {"lookback": 20},
+  "op": "gt",
+  "value": 0
+}

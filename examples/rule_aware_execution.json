@@ -1,0 +1,13 @@
+{
+  "initial_cash": 1000000,
+  "top_n": 5,
+  "commission_bps": 3,
+  "minimum_commission": 5,
+  "sell_tax_bps": 5,
+  "transfer_bps": 0.1,
+  "slippage_bps": 2,
+  "fee_decimals": 2,
+  "max_actual_position": 0.3,
+  "max_actual_exposure": 0.8,
+  "allow_st": false
+}

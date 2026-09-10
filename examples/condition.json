@@ -1,0 +1,12 @@
+{
+  "inputs": {
+    "momentum": {"factor_id": "BASE.MOMENTUM", "version": "1.0.0", "parameters": {"lookback": 20}},
+    "breakout": {"factor_id": "EVT.BREAKOUT_HIGH", "version": "1.0.0", "parameters": {"lookback": 20}}
+  },
+  "rule": {
+    "all": [
+      {"input": "momentum", "op": "gt", "value": 0},
+      {"input": "breakout", "op": "eq", "value": 1}
+    ]
+  }
+}
