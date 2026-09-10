@@ -22,6 +22,7 @@ from quantlab.factors.wyckoff import WyckoffComponent
 from quantlab.factors.wyckoff_phases import WyckoffPhaseComponent,COMPONENTS as WYCKOFF_PHASE_COMPONENTS
 from quantlab.factors.chan_inclusion import ChanInclusionComponent
 from quantlab.factors.order_block import OrderBlockComponent
+from quantlab.factors.liquidity_pool import LiquidityPoolFactor,COMPONENTS as POOL_COMPONENTS
 from quantlab.factors.chan_progression import ChanProgressionComponent,COMPONENTS as CHAN_PROGRESSION_COMPONENTS
 from quantlab.multitimeframe.source import with_context_source
 from quantlab.statistics.permutation import inference_family
@@ -111,6 +112,8 @@ def component_specs(params, registry):
             components=[WyckoffPhaseComponent(c) for c in WYCKOFF_PHASE_COMPONENTS]
         if isinstance(candidate,ChanInclusionComponent):
             components=[ChanInclusionComponent(c) for c in ('bar','pivot_high','pivot_low','bi','center','active_center','center_extended','center_exit_up','center_exit_down')]
+        if isinstance(candidate,LiquidityPoolFactor):
+            components=[LiquidityPoolFactor(c,candidate.direction) for c in POOL_COMPONENTS]
         if isinstance(candidate,OrderBlockComponent):
             components=[OrderBlockComponent(c,candidate.direction) for c in ('created','touched','invalidated','expired')]
         if isinstance(candidate,ChanProgressionComponent):

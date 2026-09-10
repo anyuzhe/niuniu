@@ -84,7 +84,8 @@ class SequenceBuilder(QWidget):
             check=QCheckBox('取消：'+name);check.setChecked(source=='EVT.FAILED_BREAKOUT_HIGH');settings.add(check);self.invalidators[source]=check;check.toggled.connect(self.preview)
         settings.body.addStretch();panels.layout().addWidget(library);panels.layout().addWidget(center,1);panels.layout().addWidget(settings);box.addWidget(panels,2)
         self.status=label('','muted',True);box.addWidget(self.status)
-        self.details=raw({});self.details.setMaximumHeight(190);box.addWidget(self.details)
+        from .business_view import BusinessDetails
+        self.details=BusinessDetails({});self.details.setMaximumHeight(220);box.addWidget(self.details)
         box.addWidget(row(button('编辑步骤与嵌套组',self.edit_steps_form),button('高级 JSON',self.edit_steps),button('校验序列',self.validate),button('保存草稿',self.save),button('载入草稿',self.load),button('新建序列实验',self.research,True)))
         box.addWidget(label('2–12 个展开步骤；首尾必选。通过步骤编辑器设置嵌套组、独立超时和失效事件；画布按展开步骤展示。','note',True))
         self.lookback.valueChanged.connect(self.preview);self.gap.valueChanged.connect(self.preview);self.set_steps(self.steps)

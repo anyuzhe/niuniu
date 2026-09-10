@@ -129,7 +129,7 @@ class ExtensionIntegrationTests(unittest.TestCase):
             pl.read_parquet(raw).slice(1).write_parquet(raw)
             spec={'question':'复权时间对齐','symbols':list(fixture.symbols),
                 'start':'2025-01-01','end':'2025-01-10','factor':'BASE.MOMENTUM',
-                'parameters':{'lookback':2},'horizons':[1],'mode':'execution'}
+                'parameters':{'lookback':2},'horizons':[1],'mode':'execution','execution':{'price_mode':'account'}}
             with self.assertRaisesRegex(ValueError,'可用时间不一致'):
                 execute(prepare(spec),fixture.root,fixture.root/'artifacts')
         finally:fixture.tearDown()
@@ -149,7 +149,7 @@ class ExtensionIntegrationTests(unittest.TestCase):
             pl.DataFrame({'code':fixture.symbols,'ipoDate':['2025-01-03']*5,'outDate':['']*5}).write_parquet(basic/'stock_basic.parquet')
             spec={'question':'成交全链路','symbols':list(fixture.symbols),'start':'2025-01-01','end':'2025-01-10',
                 'factor':'BASE.MOMENTUM','parameters':{'lookback':2},'horizons':[1],
-                'mode':'execution','universe':{'mode':'listing'},'execution':{'initial_cash':100000.,'lot_size':100}}
+                'mode':'execution','universe':{'mode':'listing'},'execution':{'initial_cash':100000.,'lot_size':100,'price_mode':'account'}}
             result=execute(prepare(spec),fixture.root,fixture.root/'artifacts')
             record=json.loads((result.artifact_path/'experiment.json').read_text())
             self.assertEqual(record['status'],'completed')

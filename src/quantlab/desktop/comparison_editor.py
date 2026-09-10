@@ -25,8 +25,12 @@ class ComparisonEditor(QWidget):
         for name,control in [('研究名称',self.name),('候选归档',self.candidate),('基准归档',self.baseline),('比较开始日期',self.start)]:form.addRow(name,control)
         if kind=='stability':
             self.comparison_kind=QComboBox()
-            for title,value in [('参数差异','parameter_change'),('股票子样本等效性','subsample_equivalence'),('沪深跨市场等效性','cross_market_equivalence')]:self.comparison_kind.addItem(title,value)
+            for title,value in [('参数差异','parameter_change'),('股票子样本等效性','subsample_equivalence'),('沪深跨市场等效性','cross_market_equivalence'),('不同时段子样本等效性','temporal_subsample_equivalence')]:self.comparison_kind.addItem(title,value)
             form.addRow('检验目的',self.comparison_kind)
+            self.baseline_start=QDateEdit(self.start.date());self.baseline_end=QDateEdit(self.end.date())
+            for title,control in [('基准时段开始（时间子样本）',self.baseline_start),('基准时段结束（时间子样本）',self.baseline_end)]:
+                control.setCalendarPopup(True);control.setDisplayFormat('yyyy-MM-dd');control.setEnabled(False);form.addRow(title,control)
+            self.comparison_kind.currentIndexChanged.connect(lambda:[c.setEnabled(self.comparison_kind.currentData()=='temporal_subsample_equivalence') for c in (self.baseline_start,self.baseline_end)])
             self.candidate_symbols=QLineEdit();self.baseline_symbols=QLineEdit()
             for control in (self.candidate_symbols,self.baseline_symbols):control.setPlaceholderText('填写预先选定的证券代码，空格或逗号分隔')
             self.margin=QDoubleSpinBox();self.margin.setRange(.000001,2);self.margin.setDecimals(6);self.margin.setValue(.05)
@@ -51,6 +55,7 @@ class ComparisonEditor(QWidget):
     def add(self):
         a=self.candidate.currentData();b=self.baseline.currentData()
         cohorts=self.kind=='stability' and self.comparison_kind.currentData()!='parameter_change'
+        temporal=self.kind=='stability' and self.comparison_kind.currentData()=='temporal_subsample_equivalence'
         if not a or not b or (a==b and not cohorts):self.status.setText('请选择两个不同的已完成归档；不同证券子样本可以使用同一归档。');return
         start=self.start.date().toString('yyyy-MM-dd');end=self.end.date().toString('yyyy-MM-dd')
         if self.kind=='stability' and start>end:self.status.setText('开始日期不能晚于结束日期。');return
@@ -59,10 +64,14 @@ class ComparisonEditor(QWidget):
         if cohorts:
             import re
             selections=[[s for s in re.split(r'[\s,，]+',c.text().strip()) if s] for c in (self.candidate_symbols,self.baseline_symbols)]
-            if any(len(v)<3 or len(v)!=len(set(v)) for v in selections) or set(selections[0])&set(selections[1]):self.status.setText('每组至少三只不同证券，两组不能重叠。');return
+            if any(len(v)<3 or len(v)!=len(set(v)) for v in selections) or (not temporal and set(selections[0])&set(selections[1])):self.status.setText('每组至少三只不同证券；同日期证券分组不能重叠。');return
+            if temporal:
+                bs=self.baseline_start.date().toString('yyyy-MM-dd');be=self.baseline_end.date().toString('yyyy-MM-dd')
+                if bs>be or max(start,bs)<=min(end,be):self.status.setText('候选和基准时段必须有效且不重叠。');return
+                item.update(baseline_start=bs,baseline_end=be)
             item.update(candidate_symbols=selections[0],baseline_symbols=selections[1],equivalence_margin=self.margin.value())
         if any({k:v for k,v in old.items() if k not in ('name','id')}==item or
-               (old['candidate']==item['baseline'] and old['baseline']==item['candidate'] and old['start']==start and old.get('end')==item.get('end') and old.get('horizon')==item.get('horizon') and old.get('candidate_symbols')==item.get('baseline_symbols') and old.get('baseline_symbols')==item.get('candidate_symbols')) for old in self.entries):
+               (old['candidate']==item['baseline'] and old['baseline']==item['candidate'] and old['start']==start and old.get('end')==item.get('end') and old.get('horizon')==item.get('horizon') and old.get('candidate_symbols')==item.get('baseline_symbols') and old.get('baseline_symbols')==item.get('candidate_symbols') and old.get('baseline_start')==item.get('baseline_start') and old.get('baseline_end')==item.get('baseline_end')) for old in self.entries):
             self.status.setText('清单已有此比较或反向比较。');return
         self.entries.append(item);i=self.table.rowCount();self.table.insertRow(i)
         for j,value in enumerate([self.candidate.currentText(),self.baseline.currentText(),start,end+' / '+str(self.horizon.value()) if self.kind=='stability' else '归档共同区间']):self.table.setItem(i,j,QTableWidgetItem(value))
@@ -81,6 +90,9 @@ class ComparisonEditor(QWidget):
         if self.kind=='stability':
             plan.update(permutation={'alpha':self.alpha.value(),'block_days':self.block.value(),'resamples':self.resamples.value()},bootstrap={'confidence':1-self.alpha.value(),'block_days':self.block.value(),'resamples':self.resamples.value()})
             if self.comparison_kind.currentData()!='parameter_change':plan['comparison_kind']=self.comparison_kind.currentData()
+            if self.comparison_kind.currentData()=='temporal_subsample_equivalence':
+                for item in plan['comparisons']:
+                    item['candidate_start']=item.pop('start');item['candidate_end']=item.pop('end')
         else:plan['alpha']=self.alpha.value()
         return plan
 

@@ -6,6 +6,7 @@ from PyQt6.QtCore import QDate,Qt
 from PyQt6.QtWidgets import (QDialog,QVBoxLayout,QFormLayout,QComboBox,QListWidget,QListWidgetItem,
     QDateEdit,QSpinBox,QLineEdit,QFileDialog,QTabWidget,QWidget,QPushButton,QScrollArea,QDoubleSpinBox)
 from .widgets import label,button,row,raw
+from .business_view import BusinessDetails
 
 class ResearchToolsDialog(QDialog):
     def __init__(self,window):
@@ -35,14 +36,14 @@ class ResearchToolsDialog(QDialog):
         self.registry_label=label('尚未选择登记','muted',True);layout.addWidget(self.registry_label)
         self.trial_id=QComboBox();self.run=QComboBox()
         for record in window.catalog.list(limit=10000)['runs']:self.run.addItem(display(record),record['run_id'])
-        layout.addWidget(label('计划中的 trial_id','muted'));layout.addWidget(self.trial_id);layout.addWidget(label('待绑定实验归档','muted'));layout.addWidget(self.run)
+        layout.addWidget(label('计划项编号','muted'));layout.addWidget(self.trial_id);layout.addWidget(label('待绑定实验归档','muted'));layout.addWidget(self.run)
         self.bind_button=button('绑定选定结果',self.bind);self.report_button=button('生成固定族 Holm 报告',self.report)
         layout.addWidget(button('刷新可绑定归档',self.refresh_runs))
         layout.addWidget(row(self.bind_button,self.report_button));layout.addWidget(label('本地登记不证明数据未被查看；不可检验和未运行项保留名额。绑定后不能改绑其他结果。','note',True));layout.addStretch()
         stability=QWidget();stable_box=QVBoxLayout(stability);tabs.addTab(stability,'参数与子样本验证')
         from .comparison_editor import ComparisonEditor
         self.stability_editor=ComparisonEditor(window,'stability',self.run_stability_plan);stable_box.addWidget(self.stability_editor)
-        stable_box.addWidget(label('参数差异使用共同证券／日期；子样本与沪深验证使用不重叠证券组和相同日期。预先设定容许差异，校正后的完整区间落在范围内才支持等效；未拒绝差异不等于等效。','note',True))
+        stable_box.addWidget(label('参数差异使用共同证券／日期；证券子样本与沪深验证使用不重叠证券组和相同日期；时间子样本分别填写两个不重叠时段，可以使用相同证券，截短标签自动剔除。预先设定容许差异，校正后的完整区间落在范围内才支持等效；未拒绝差异不等于等效。','note',True))
         stable_box.addWidget(button('导入并运行稳定性计划',self.stability));stable_box.addStretch()
         returns=QWidget();return_box=QVBoxLayout(returns);tabs.addTab(returns,'净收益固定检验族')
         self.return_editor=ComparisonEditor(window,'returns',self.run_return_plan);return_box.addWidget(self.return_editor)
@@ -51,7 +52,7 @@ class ResearchToolsDialog(QDialog):
         for index in (2,3):
             page=tabs.widget(index);title=tabs.tabText(index);tabs.removeTab(index)
             scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(page);tabs.insertTab(index,scroll,title)
-        self.output=raw({});box.addWidget(self.output,1)
+        self.output=BusinessDetails({});box.addWidget(self.output,1)
         # Enter while choosing an archive must not launch the first file dialog.
         for control in self.findChildren(QPushButton):control.setAutoDefault(False)
     def perform(self,work,done=None):

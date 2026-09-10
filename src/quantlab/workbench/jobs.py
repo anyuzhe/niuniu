@@ -328,9 +328,13 @@ class JobQueue:
                     with self.lock:
                         record['progress']={'stage':stage,'completed':completed,'total':total,'updated_at':now()}
                         self._save(record)
-            with research_progress(progress):
+            from quantlab.experiments.child_checkpoints import child_checkpoint_scope
+            with research_progress(progress),child_checkpoint_scope(self.root,job_id,record['spec']) as children:
                 progress('准备执行',None,None)
-                result = execute(submission, self.data_root, self.root)
+                try:
+                    result = execute(submission, self.data_root, self.root)
+                finally:
+                    with self.lock:record['checkpoint_summary']=children.summary()
                 with self.lock:record['progress']={'stage':'已完成','completed':None,'total':None,'updated_at':now()}
             outcome = {'status': 'completed', 'run_id': result.run_id, 'experiment_id': result.experiment_id}
         except Exception as error:

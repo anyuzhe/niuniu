@@ -51,7 +51,19 @@ class ParameterDialog(QDialog):
         for key,v in {**defaults,**value}.items():
             if isinstance(v,(dict,list)) or v is None:continue
             control,getter=control_for(key,v);self.controls[key]=control;self.getters[key]=getter;form.addRow(NAMES.get(key,key),control)
-        if any(isinstance(v,(dict,list)) for v in {**defaults,**value}.values()):
+        if 'steps' in defaults:
+            from quantlab.app import default_registry
+            from .sequence_builder import NAMES as EVENT_NAMES
+            self.sequence_sources=default_registry().get(d['factor_id'],d['version']).SOURCES
+            self.original={**deepcopy(defaults),**self.original}
+            form.addRow(button('编辑事件步骤与嵌套组',self.edit_sequence))
+            invalidators=[]
+            for source in self.sequence_sources:
+                control=QCheckBox('取消序列：'+EVENT_NAMES.get(source,source));control.setChecked(source in self.original.get('invalidators',[]));form.addRow(control);invalidators.append((source,control))
+            self.getters['invalidators']=lambda:[source for source,control in invalidators if control.isChecked()]
+            self.sequence_period_form=QFormLayout();form.addRow(self.sequence_period_form)
+            self.sequence_period_controls=[];self.refresh_sequence_periods()
+        elif any(isinstance(v,(dict,list)) for v in {**defaults,**value}.values()):
             box.addWidget(label('组合输入、条件和事件步骤沿用已有编排器；此处保留其内容，仅修改数值参数。','note',True))
         if not self.controls:form.addRow(label('此因子没有独立数值参数。'))
         self.status=label('参数含义及取值范围由所选因子的规则校验。','muted',True);box.addWidget(self.status)
@@ -59,10 +71,40 @@ class ParameterDialog(QDialog):
         for control in self.findChildren(QComboBox):control.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.factor_id=d.get('factor_id');self.version=d.get('version','1.0.0')
 
+    def edit_sequence(self):
+        from .sequence_editor import SequenceEditor
+        from .sequence_builder import NAMES as EVENT_NAMES
+        dialog=SequenceEditor(self,self.original['steps'],self.sequence_sources,EVENT_NAMES)
+        if dialog.exec():
+            if dialog.result_steps==self.original['steps'] and self.sequence_period_controls:
+                self.original['step_timeframes']=[c.currentData() for c in self.sequence_period_controls]
+            else:self.original.pop('step_timeframes',None)
+            self.original['steps']=dialog.result_steps;self.refresh_sequence_periods()
+            self.status.setText('步骤已更新，请核对失效事件和逐步骤周期后保存。')
+
+    def refresh_sequence_periods(self):
+        from quantlab.sequence.specification import normalize_steps
+        from .sequence_builder import NAMES as EVENT_NAMES
+        while self.sequence_period_form.rowCount():self.sequence_period_form.removeRow(0)
+        self.sequence_period_controls=[]
+        if self.sequence_sources[0].startswith('CHAN.'):return
+        steps,_=normalize_steps(self.original['steps'],self.sequence_sources)
+        supplied=self.original.get('step_timeframes',[])
+        for i,source in enumerate(steps):
+            control=QComboBox()
+            for title,period in [('沿用研究周期',''),('1 分钟','1m'),('5 分钟','5m'),('15 分钟','15m'),('30 分钟','30m'),('60 分钟','60m'),('日线','1d')]:control.addItem(title,period)
+            control.setCurrentIndex(control.findData(supplied[i]) if i<len(supplied) else 0);control.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            title=f'步骤 {i+1} 周期：'+EVENT_NAMES.get(source,source);control.setAccessibleName(title);self.sequence_period_form.addRow(title,control);self.sequence_period_controls.append(control)
+
     def finish(self):
         from quantlab.app import default_registry
         try:
             value={**self.original,**{k:g() for k,g in self.getters.items()}}
+            if getattr(self,'sequence_period_controls',None):
+                periods=[c.currentData() for c in self.sequence_period_controls]
+                if any(periods) and not all(periods):raise ValueError('请为每个步骤指定周期，或全部沿用研究周期。')
+                if all(periods):value['step_timeframes']=periods
+                else:value.pop('step_timeframes',None)
             value=default_registry().get(self.factor_id,self.version).parameters(value)
         except (ValueError,TypeError,KeyError) as error:self.status.setText('参数未通过：'+str(error));return
         self.result_value=value;self.accept()
@@ -94,11 +136,19 @@ class ResearchConfigDialog(QDialog):
             self.backend=self.choice('execution','成交引擎',[('平台开盘成交引擎','open'),('vn.py 开盘成交引擎','vnpy_open'),('vn.py 历史规则引擎','vnpy_rules')],value.get('execution_backend','open'))
             self.section('portfolio','组合约束',{k:v for k,v in asdict(PortfolioConfig()).items() if k not in {'industry_events','weighting'}},optional=False)
             self.weighting=self.choice('portfolio','资金分配',[('等权','equal'),('按分数','score'),('波动率倒数','inverse_volatility')],value.get('portfolio',{}).get('weighting','equal'))
+            for key in ('execution','portfolio'):
+                self.sections[key][2].addRow(button('配置'+('实际持仓' if key=='execution' else '目标组合')+'历史行业资料',lambda k=key:self.edit_industry(k)))
         box.addWidget(button('设置因子预处理与历史中性化资料',self.edit_processor))
         box.addWidget(button('设置高周期背景条件',self.edit_context))
         self.status=label('只修改本页支持的设置；导入配置中的其他研究内容完整保留。比例 0.05 表示 5%，费用 1 表示万分之一。','muted',True);box.addWidget(self.status)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);buttons.accepted.connect(self.finish);buttons.rejected.connect(self.reject);box.addWidget(buttons)
         for control in self.findChildren(QComboBox):control.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def edit_industry(self,key):
+        from .action_editor import RecordsDialog
+        from quantlab.data.industry import IndustryHistory
+        dialog=RecordsDialog(self,'industry_events',self.original.get(key,{}).get('industry_events'),'历史行业归属',IndustryHistory)
+        if dialog.exec():self.original.setdefault(key,{})['industry_events']=dialog.result_value or None
 
     def edit_context(self):
         from .context_editor import ContextDialog

@@ -26,6 +26,9 @@ def run_stability(plan, output, *, source_paths=None):
     End dates must match the artifact's existing label boundary: archived future
     labels must not be silently reused across a newly chosen earlier endpoint.
     """
+    if plan.get('comparison_kind') == 'temporal_subsample_equivalence':
+        from quantlab.experiments.temporal_stability import run_temporal_stability
+        return run_temporal_stability(plan, output, source_paths=source_paths)
     required={'name','comparisons','permutation','bootstrap'}
     if set(plan)-required-{'comparison_kind'} or not required<=set(plan) or not plan['name'] or not plan['comparisons']:raise ValueError('Require name, comparisons, permutation, bootstrap')
     kind=plan.get('comparison_kind','parameter_change')

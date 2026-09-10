@@ -10,11 +10,15 @@ from quantlab.storage.codec import digest
 
 
 class CaptureData:
-    def __init__(self, source):
+    def __init__(self, source, *, memoize=False):
         self.source=source
         self.loads=[]
+        self.memoize=memoize
 
     def load(self, request):
+        if self.memoize:
+            for expected,previous in self.loads:
+                if request==expected:return previous
         batch=self.source.load(request)
         self.loads.append((request,batch))
         return batch

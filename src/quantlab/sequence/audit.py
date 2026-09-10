@@ -17,6 +17,7 @@ from quantlab.factors.chan_classic import ClassicChanFactor
 from quantlab.factors.chan_multiscale import ClassicChanNestFactor
 from quantlab.factors.chan_inclusion import ChanInclusionComponent
 from quantlab.factors.order_block import OrderBlockComponent
+from quantlab.factors.liquidity_pool import LiquidityPoolFactor
 from quantlab.factors.chan_progression import ChanProgressionComponent
 from quantlab.factors.combinations import CombinationFactor
 from quantlab.factors.sequences import RepeatedBreakout, FailedLowThenBreakout, CustomOrderedSequence
@@ -31,7 +32,7 @@ def collect_sequence_audit(factor, bars, parameters, registry, observations):
     eligible = set(observations.filter(pl.col('value').is_not_null()).select('symbol','available_at').iter_rows())
     sequences = []
     for alias, candidate, params in candidates:
-        if not isinstance(candidate,(RepeatedBreakout,FailedLowThenBreakout,CustomOrderedSequence,ChanOrderedSequence,ClassicChanFactor,ClassicChanNestFactor,Breaker,BrooksComponent,BrooksBreakoutComponent,BrooksContextComponent,BrooksWedgeComponent,ICTComponent,WyckoffComponent,ClassicWyckoffFactor,WyckoffPhaseComponent,ChanComponent,ChanInclusionComponent,OrderBlockComponent,ChanProgressionComponent)):
+        if not isinstance(candidate,(RepeatedBreakout,FailedLowThenBreakout,CustomOrderedSequence,ChanOrderedSequence,ClassicChanFactor,ClassicChanNestFactor,Breaker,BrooksComponent,BrooksBreakoutComponent,BrooksContextComponent,BrooksWedgeComponent,ICTComponent,WyckoffComponent,ClassicWyckoffFactor,WyckoffPhaseComponent,ChanComponent,ChanInclusionComponent,OrderBlockComponent,LiquidityPoolFactor,ChanProgressionComponent)):
             continue
         _, transitions, events = candidate.trace(bars,params)
         records, last_status = [], {}

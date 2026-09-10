@@ -16,6 +16,7 @@ from quantlab.factors.engine import compute_factor
 from quantlab.factors.combinations import CombinationFactor
 from quantlab.factors.chan_classic import ClassicChanFactor
 from quantlab.factors.chan_multiscale import ClassicChanNestFactor
+from quantlab.factors.liquidity_pool import LiquidityPoolFactor
 from quantlab.factors.wyckoff_classic import ClassicWyckoffFactor
 from quantlab.factors.registry import FactorRegistry
 from quantlab.regime.engine import compute_regime, filter_mask
@@ -96,11 +97,14 @@ class ExperimentRunner:
             if isinstance(config.processor, PipelineConfig) and (config.processor.fit_start is None or not config.data.start<=config.processor.fit_start<=config.processor.fit_end<=config.data.end):
                 raise ValueError('Pipeline fit period must lie inside the requested data range')
             from quantlab.storage.frozen_inputs import CaptureData, freeze_inputs
-            captured = CaptureData(self.data)
+            from quantlab.experiments.child_checkpoints import checkpoint_active,prepare_child,publish_child
+            captured = CaptureData(self.data,memoize=checkpoint_active())
             batch = captured.load(config.data)
             manifest.update({"parameters": parameters, "factor": asdict(factor.definition), "factor_code_hash": self.registry.code_hash(factor), "data_snapshot": asdict(batch.snapshot)})
+            child_ticket,reused,precomputed_mask = prepare_child(self,config,manifest,captured,batch)
+            if reused is not None:return reused
             values = compute_factor(factor, batch.bars, parameters)
-            mask = self.universe.mask(batch.bars).sort("symbol", "datetime")
+            mask = precomputed_mask if precomputed_mask is not None else self.universe.mask(batch.bars).sort("symbol", "datetime")
             # Hash the actual mask, not just the provider's human-readable name.
             manifest["universe"]["mask_hash"] = hashlib.sha256(mask.write_json().encode()).hexdigest()
             raw_values = None
@@ -177,10 +181,12 @@ class ExperimentRunner:
                 record['replay'] = ({'version':'classic_snapshots_v1','overlay_rules':{'chan':'classic snapshots at observation time'},
                     'scope':'Classic Chan object revisions are reconstructed from sequence_audit; no generic substitute overlays.'}
                     if isinstance(factor,ClassicChanFactor) else {'version':'wyckoff_ae_v1','overlay_rules':{'wyckoff':'frozen ranges and A–E events at observation close'},'scope':'Wyckoff A–E ranges and phase chain from sequence audit'} if wyckoff is not None else replay_evidence(batch.bars, parameters))
+                if isinstance(factor,LiquidityPoolFactor):
+                    record['replay']={'version':'equal_extreme_pool_v1','overlay_rules':{'liquidity_pool':factor.definition.formula}}
                 if isinstance(factor,ClassicChanNestFactor):
                     record['replay']={'version':'chan_multiscale_v1','overlay_rules':{'chan_multiscale':factor.definition.formula},
                         'scope':'Confirmed actual-timeframe segment links, reconstructed only from events already available.'}
-            if config.sequence_audit or (config.replay and (isinstance(factor,(ClassicChanFactor,ClassicChanNestFactor)) or wyckoff is not None)):
+            if config.sequence_audit or (config.replay and (isinstance(factor,(ClassicChanFactor,ClassicChanNestFactor,LiquidityPoolFactor)) or wyckoff is not None)):
                 record['sequence_audit'] = collect_sequence_audit(factor, batch.bars, parameters, self.registry, observations)
             if config.bootstrap is not None:
                 intervals = bootstrap_statistics(observations, config.horizons, config.bootstrap, config.random_seed,
@@ -208,5 +214,9 @@ class ExperimentRunner:
             except Exception as storage_error:
                 error.add_note(f"Failure record could not be saved: {storage_error}")
             raise
+        if child_ticket is not None:
+            record.update(checkpoint_input_hash=child_ticket[3],checkpoint_slot=child_ticket[4])
         path = self.store.save(run_id, record, observations, **({'bars':batch.bars,'inputs':frozen} if config.replay else {}))
-        return ExperimentResult(record["experiment_id"], run_id, path, metrics)
+        result = ExperimentResult(record["experiment_id"], run_id, path, metrics)
+        publish_child(child_ticket,result)
+        return result

@@ -15,6 +15,7 @@ from quantlab.factors.wyckoff_phases import wyckoff_phase_pack
 from quantlab.factors.chan import chan_pack
 from quantlab.factors.chan_inclusion import chan_inclusion_pack
 from quantlab.factors.order_block import order_block_pack
+from quantlab.factors.liquidity_pool import liquidity_pool_pack
 from quantlab.factors.chan_progression import chan_progression_pack
 from quantlab.data.mqc import MQCParquetProvider
 from quantlab.experiments.runner import ExperimentRunner
@@ -49,6 +50,7 @@ def default_registry() -> FactorRegistry:
     registry.register_pack(chan_pack())
     registry.register_pack(chan_inclusion_pack())
     registry.register_pack(order_block_pack())
+    registry.register_pack(liquidity_pool_pack())
     registry.register_pack(chan_progression_pack())
     registry.register_pack(ict_context_pack())
     registry.register_pack(sequence_pack())

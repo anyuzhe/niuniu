@@ -6,6 +6,7 @@ from quantlab.execution.backtest import ExecutionConfig
 from quantlab.execution.rules import MarketRules
 from quantlab.storage.codec import encode
 from .widgets import label,button,row,table,raw
+from .action_editor import RecordsEditor,SCHEMAS
 
 
 def configure_actions(parent):
@@ -24,12 +25,15 @@ def configure_actions(parent):
     for key,title in [('corporate_actions','现金分红／送转及持有期税'),('stock_splits','拆并股及待上市权益'),('rights_issues','配股认购／配售／退款'),('rights_trading','可转让配股权'),('market_rules','历史交易费用与规则')]:
         if execution['price_mode']=='research' and key!='market_rules':continue
         page=QWidget();box=QVBoxLayout(page)
-        box.addWidget(label('每条事件使用一个对象，整页为数组。原有实验 JSON 可通过主表单导入；此处只修改对应模块字段。','muted',True))
-        editor=QPlainTextEdit();editor.setAccessibleName(title+'配置');editor.setPlainText(encode(original.get(key,[]) if key=='market_rules' else execution.get(key,[]) or []));box.addWidget(editor,1);editors[key]=editor;tabs.addTab(page,title)
+        box.addWidget(label('通过新增、编辑和删除维护记录；可选安排展开后填写。导入的其他实验配置保持不变。','muted',True))
+        symbols=parent.symbols.text().replace(',',' ').replace('，',' ').split()
+        editor=RecordsEditor(SCHEMAS[key],original.get(key,[]) if key=='market_rules' else execution.get(key,[]) or [],title,page,symbols[0] if symbols else '',parent.start.date())
+        editor.setAccessibleName(title+'配置');box.addWidget(editor,1);editors[key]=editor;tabs.addTab(page,title)
     status=label('修改后先校验；取消不会改变原实验。','muted',True);layout.addWidget(status)
     mode=QComboBox();mode.addItem('严格历史可用时间','strict');mode.addItem('回顾性资料（不能证明当时可知）','retrospective');mode.setCurrentIndex(mode.findData(execution.get('corporate_action_mode','strict')))
     tax_rate=QDoubleSpinBox();tax_rate.setRange(0.,1.);tax_rate.setDecimals(4);tax_rate.setSingleStep(.01);tax_rate.setAccessibleName('导入分红固定税率')
-    import_report=QPlainTextEdit();import_report.setReadOnly(True);import_report.setAccessibleName('公司行动导入检查')
+    from .business_view import BusinessDetails
+    import_report=BusinessDetails({});import_report.setAccessibleName('公司行动导入检查')
     if execution['price_mode']=='account':tabs.addTab(import_report,'导入来源／未解析记录')
     def import_history():
         from quantlab.data.dividends import import_cash_dividends
@@ -71,14 +75,16 @@ def configure_actions(parent):
     def apply():
         if validate():parent.advanced.setPlainText(encode(collect()));dialog.accept()
     layout.addWidget(row(button('校验公司行动与费用' if account_mode else '校验费用规则',validate),button('应用到本次实验',apply,True),button('取消',dialog.reject)))
-    dialog.exec()
+    try:dialog.exec()
+    finally:parent.raise_();parent.activateWindow()
 
 
 def action_ledger(execution,preview=False,load_full=None):
     page=QWidget();layout=QVBoxLayout(page)
     notice=label('金额单位：元；股份单位：股。应收尚未到账，应付税款尚未扣收。选择流水查看完整数量、时点与来源。','note',True);layout.addWidget(notice)
     status=label('','muted',True);layout.addWidget(status)
-    holder={'events':[],'offset':0,'table':None};details=raw({});details.setAccessibleName('公司行动明细')
+    from .business_view import BusinessDetails
+    holder={'events':[],'offset':0,'table':None};details=BusinessDetails({});details.setAccessibleName('公司行动明细')
     controls=row();layout.addWidget(controls)
     grid=QWidget();grid_layout=QVBoxLayout(grid);grid_layout.setContentsMargins(0,0,0,0);layout.addWidget(grid,3);layout.addWidget(details,2)
     names={'dividend_accrual':'分红应收确认','dividend_payment':'分红到账','stock_accrual':'送转待上市','stock_listing':'送转上市','fractional_accrual':'零碎股应收确认','fractional_payment':'零碎股款到账',

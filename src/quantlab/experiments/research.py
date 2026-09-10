@@ -31,12 +31,13 @@ class FactorResearchEngine:
         for horizon in horizons:
             # Rolling [t+1, t+h], excluding the signal bar. Full window only.
             labels = labels.with_columns(
+                pl.col('datetime').shift(-horizon).over('symbol').alias(f'label_end_{horizon}'),
                 (pl.col('close').shift(-horizon).over('symbol') / pl.col('close').shift(-(horizon-1)).over('symbol') - 1).alias(f'decay_{horizon}'),
                 (pl.col("close").shift(-horizon).over("symbol") / pl.col("close") - 1).alias(f"forward_{horizon}"),
                 (pl.col("high").rolling_max(horizon).shift(-horizon).over("symbol") / pl.col("close") - 1).clip(lower_bound=0).alias(f"mfe_{horizon}"),
                 (pl.col("low").rolling_min(horizon).shift(-horizon).over("symbol") / pl.col("close") - 1).clip(upper_bound=0).alias(f"mae_{horizon}"),
             )
-        frame = values.join(labels.select("symbol", "datetime", *[f"{name}_{h}" for h in horizons for name in ("forward", "mfe", "mae", "decay")]), on=["symbol", "datetime"], validate="1:1")
+        frame = values.join(labels.select("symbol", "datetime", *[f"{name}_{h}" for h in horizons for name in ("forward", "mfe", "mae", "decay", "label_end")]), on=["symbol", "datetime"], validate="1:1")
         frame = frame.join(mask, on=["symbol", "datetime"], how="left", validate="1:1")
         if frame["eligible"].null_count():
             raise ValueError("Universe mask must cover every input bar")

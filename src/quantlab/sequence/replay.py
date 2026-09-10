@@ -38,6 +38,8 @@ def replay_page(bars, record, symbol, at=0, limit=100):
     for sequence in record.get('sequence_audit',{}).get('sequences',[]):
         events.extend(known(sequence.get('events',[])))
     events=list({e['event_id']:e for e in events}.values())
+    from quantlab.sequence.pool_replay import pool_replay_zones
+    zones.extend(pool_replay_zones(events,visible))
     structures=known(evidence.get('structures',[]))
     # Each nesting definition maintains its own last visible chain. The node
     # clocks belong to actual periods; map them to the displayed candle grid.

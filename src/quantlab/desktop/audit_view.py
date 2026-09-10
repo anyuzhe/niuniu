@@ -23,7 +23,8 @@ class AuditView(QWidget):
         box.addWidget(row(self.previous,self.page_label,self.next))
         self.records=QVBoxLayout();box.addLayout(self.records,1)
         box.addWidget(label('单击状态记录查看事件 ID 与可用时间；完整事件内容保留在“完整记录”。','muted',True))
-        self.detail=raw({});self.detail.setMaximumHeight(150);box.addWidget(self.detail)
+        from .business_view import BusinessDetails
+        self.detail=BusinessDetails({});self.detail.setMaximumHeight(220);box.addWidget(self.detail)
         def select():
             sequence=sequences[self.selector.currentIndex()];counts=sequence.get('status_record_counts',{})
             while self.summary.count():self.summary.takeAt(0).widget().deleteLater()

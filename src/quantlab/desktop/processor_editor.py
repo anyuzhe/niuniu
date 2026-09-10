@@ -30,6 +30,7 @@ class ProcessorDialog(QDialog):
         form.addRow(self.auto_fit);form.addRow('训练开始',self.start);form.addRow('训练结束',self.end)
         self.auto_fit.toggled.connect(self.fit_controls);self.fit_controls()
         box.addWidget(row(button('载入历史行业资料',lambda:self.load_records('industry_events')),button('载入每日市值资料',lambda:self.load_records('size_events'))))
+        box.addWidget(row(button('编辑历史行业记录',lambda:self.edit_records('industry_events')),button('编辑每日市值记录',lambda:self.edit_records('size_events'))))
         self.status=label('处理顺序由上到下；行业、市值资料须包含生效时间、可用时间与来源。缺资料的样本不会补成已知。','note',True);box.addWidget(self.status)
         if isinstance(value,dict):self.records={k:deepcopy(value[k]) for k in ('industry_events','size_events') if k in value}
         self.list.currentRowChanged.connect(self.select);self.method.currentIndexChanged.connect(self.method_controls);self.render();self.method_controls()
@@ -65,6 +66,16 @@ class ProcessorDialog(QDialog):
     def move(self,delta):
         i=self.list.currentRow()
         if 0<=i+delta<len(self.steps):self.steps[i],self.steps[i+delta]=self.steps[i+delta],self.steps[i];self.render();self.list.setCurrentRow(i+delta)
+    def edit_records(self,key):
+        from .action_editor import RecordsDialog
+        from quantlab.data.industry import IndustryHistory
+        from quantlab.processing.neutralization import SizeHistory
+        dialog=RecordsDialog(self,key,self.records.get(key),'历史行业归属' if key=='industry_events' else '每日市值',IndustryHistory if key=='industry_events' else SizeHistory)
+        if dialog.exec():
+            if dialog.result_value:self.records[key]=dialog.result_value
+            else:self.records.pop(key,None)
+            self.status.setText(f'已更新 {len(dialog.result_value)} 条；保存预处理时应用。')
+
     def load_records(self,key):
         path,_=QFileDialog.getOpenFileName(self,'选择历史行业资料' if key=='industry_events' else '选择每日市值资料','','JSON (*.json);;Parquet (*.parquet)')
         if not path:return

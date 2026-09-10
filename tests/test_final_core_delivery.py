@@ -63,7 +63,7 @@ class DeliveryTests(unittest.TestCase):
             f.write_parquet(directory/source.name)
         rules=[{'symbol':s,'effective_at':'2025-01-01T00:00:00+08:00','available_at':'2025-01-01T00:00:00+08:00','expires_at':'2025-02-01T00:00:00+08:00','suspended':False,'st':False,'limit_up':None,'limit_down':None,'commission_bps':0,'minimum_commission':0,'sell_tax_bps':0,'transfer_bps':0,'source':'synthetic fixture'} for s in fixture.symbols]
         rules_path=fixture.root/'rules.json';rules_path.write_text(encode(rules));account=fixture.root/'paper.json'
-        feed=MQCPaperFeed(fixture.root,account,fixture.symbols,Timeframe.DAILY,fixture.start,'BASE.MOMENTUM',{'lookback':2},ExecutionConfig())
+        feed=MQCPaperFeed(fixture.root,account,fixture.symbols,Timeframe.DAILY,fixture.start,'BASE.MOMENTUM',{'lookback':2},ExecutionConfig(price_mode='account'))
         with patch('quantlab.execution.feed.compute_factor',wraps=compute_factor) as calculation:
             result=feed.poll(rules_path,datetime(2025,1,8,16,tzinfo=ZoneInfo('Asia/Shanghai')))
             signal=calculation.call_args.args[1]

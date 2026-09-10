@@ -20,6 +20,7 @@ from quantlab.workbench.server import ArtifactCatalog
 from quantlab.workbench.jobs import JobQueue, prepare
 from .widgets import ASSETS, STYLE, Card, Chart, Flow, label, button, row, hero, kpis, table, raw, fmt, execution_table
 from .boss_key import BossKey
+from .business_view import BusinessDetails
 
 NAV = ['研究工作台','数据中心','因子库','市场状态','结构与事件','序列构建器',
        '理论实验室','实验中心','组合与模型','策略回测','结果对比','系统设置']
@@ -148,10 +149,10 @@ class MainWindow(QMainWindow):
         if kind=='factor':
             definitions=[v['definition'] for v in values]
             box.addWidget(kpis([('注册因子',len(definitions),'当前注册版本'),('标量因子',sum(d['factor_type']=='scalar' for d in definitions),'数值输出'),('布尔因子',sum(d['factor_type']=='boolean' for d in definitions),'事件 / 状态等输出'),('结构类',sum(d['category']=='structure' for d in definitions),'注册分类'),('序列类',sum(d['category']=='sequence' for d in definitions),'明确规则'),('理论模板',len(self.theories),'固定组合')]))
-        if kind=='sequence':box.addWidget(label('已接入现有序列规则及参数研究；设计稿中的通用拖拽编辑功能尚未实现。','note',True))
+        if kind=='sequence':box.addWidget(label('可通过序列构建器编辑步骤、嵌套组、超时和失效条件，并提交研究。','note',True))
         search=QLineEdit(query);search.setPlaceholderText('检索名称、ID、理论或规则');box.addWidget(search)
         split=QSplitter();listing=Card('注册目录');inspector=Card('定义 / 参数 / 因果语义')
-        description=label('','muted',True);inspector.add(description);info=raw({});inspector.add(info,1)
+        description=label('','muted',True);inspector.add(description);info=BusinessDetails({});inspector.add(info,1)
         selected={'value':None}
         inspector.add(button('使用该定义新建实验',lambda:self.new_experiment(selected['value']),True))
         inspector.add(button('查看关联实验',lambda:self.experiments(query=(selected['value'] or {}).get('definition',selected['value'] or {}).get('factor_id',(selected['value'] or {}).get('template_id','')))))
@@ -164,14 +165,16 @@ class MainWindow(QMainWindow):
             matched=[v for v in values if search.text().casefold() in encode(v).casefold()]
             defs=[v.get('definition',v) for v in matched]
             t=table(['名称','ID / 版本','对象类型','时间可用性'],[[d.get('name_cn',d.get('name')),d.get('factor_id',d.get('template_id'))+' @'+d['version'],d.get('factor_type','theory'),d.get('available_at_rule','按输入因子对齐')] for d in defs])
-            def choose():
-                i=t.currentRow()
+            def choose(index=None):
+                i=t.currentRow() if index is None else index
                 selected['value']=matched[i] if i>=0 else None
                 d=(selected['value'] or {}).get('definition',selected['value'] or {})
                 description.setText(d.get('name_cn',d.get('name',''))+'\n'+d.get('description',d.get('scope','')))
                 info.setPlainText(json.dumps(selected['value'] or {},ensure_ascii=False,indent=2))
             t.itemSelectionChanged.connect(choose);listing.add(t,1)
-            if matched:t.selectRow(0)
+            # Populate the inspector without a selection accessibility event
+            # before the newly created table has been laid out on macOS.
+            if matched:choose(0)
             else:selected['value']=None;description.setText('');info.setPlainText('没有匹配项。')
         search.textChanged.connect(render);render()
 
@@ -217,7 +220,7 @@ class MainWindow(QMainWindow):
         for alias,spec in selected['parameters']['inputs'].items():
             card=Card(alias);card.add(label(spec['factor_id'],'gold',True));card.add(label(selected.get('concepts',{}).get(alias,''),'muted',True));card.add(label('版本 '+spec['version'],'muted'));components.layout().addWidget(card)
         graph.add(components);graph.add(label(selected['scope'],'note',True))
-        mapping=Card('组合规则 / Theory Mapping');mapping.add(raw(selected['parameters']['rule']),1)
+        mapping=Card('组合规则');mapping.add(BusinessDetails(selected['parameters']['rule']),1)
         panels=row(graph,mapping);panels.layout().setStretch(0,2);panels.layout().setStretch(1,1);box.addWidget(panels)
         box.addWidget(label('下方只列出该模板的实际归档。组件 Alpha、消融和增量结论在各实验报告中保留原始口径。','muted',True))
         self.run_list(box,query=selected['template_id'])
@@ -492,7 +495,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(table(['序列 A','序列 B','A 独立链数','B 独立链数','相同链数','完整链 Jaccard'],[[p.get(k) for k in ('left','right','left_unique_chains','right_unique_chains','intersection','jaccard')] for p in overlap.get('pairs',[])]))
             tabs.addTab(page,'完整序列去重')
         from .audit_view import AuditView
-        tabs.addTab(raw(record['manifest']),'配置 / 数据快照')
+        tabs.addTab(BusinessDetails(record['manifest']),'配置 / 数据快照')
         if record.get('_display_summary'):
             audit_holder=QWidget();audit_box=QVBoxLayout(audit_holder)
             audit_status=label('完整审计按需读取；大型记录可能需要等待。','muted',True);audit_box.addWidget(audit_status)
@@ -516,7 +519,7 @@ class MainWindow(QMainWindow):
                     with path.open(encoding='utf-8') as stream:return stream.read(200000)
                 self.async_call(read,lambda data,error:text.setPlainText(error or data),guarded=False)
             preview_box.addWidget(button('读取原始记录预览',load_preview));preview_box.addWidget(text,1);tabs.addTab(preview,'完整记录')
-        else:tabs.addTab(raw(record),'完整记录')
+        else:tabs.addTab(BusinessDetails(record),'完整记录')
         if execution and any(execution.get(key) for key in ('corporate_action_ledger','split_ledger','rights_ledger','rights_trading_ledger','dividend_tax_ledger')):
             from .corporate_actions import action_ledger
             def load_actions(done):
@@ -530,7 +533,7 @@ class MainWindow(QMainWindow):
                 self.async_call(lambda:load_record_fields(self.catalog.file(record['run_id'],'experiment.json'),{'fills','rejections','backend_comparison'}),done,guarded=False)
             tabs.addTab(TradeLedger(record,load_trades),'成交账本与拒单')
             if record.get('backend_comparison'):
-                tabs.addTab(raw(record['backend_comparison']),'vn.py 核对详情')
+                tabs.addTab(BusinessDetails(record['backend_comparison']),'vn.py 核对详情')
         return tabs
 
     def open_run(self,run_id):
@@ -560,7 +563,7 @@ class MainWindow(QMainWindow):
             reproduce_button.setToolTip('支持因子、成交、样本外、滚动、扫描、消融、理论、相关性及衍生比较；需完整冻结输入及匹配源码和依赖。复算会核对全部子实验，失败原因在此显示。')
             layout.addWidget(row(export_button,reproduce_button,export_status))
             if 'reproduction.json' in data['files']:
-                verification=QPlainTextEdit();verification.setReadOnly(True);verification.setPlainText('正在读取复算核对记录…');tabs.addTab(verification,'复算核对')
+                verification=BusinessDetails({});verification.setPlainText('正在读取复算核对记录…');tabs.addTab(verification,'复算核对')
                 verification_path=self.catalog.file(run_id,'reproduction.json')
                 self.async_call(lambda:verification_path.read_text(),lambda text,error:verification.setPlainText(error or text),guarded=False)
             if 'report.md' in data['files']:
