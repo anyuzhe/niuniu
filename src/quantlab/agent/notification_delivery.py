@@ -99,7 +99,8 @@ def notification_text(events):
     names = {'snapshot_updated':'跟踪已更新', 'historical_input_revision':'历史输入修订',
         'insufficient_mature_dates':'成熟样本不足', 'missing_or_ineligible':'缺数或资格提醒',
         'reauthorization_required':'需要重新授权', 'failed':'研究失败',
-        'cancelled':'任务取消', 'interrupted':'任务中断', 'blocked':'跟踪受阻', 'lost_job':'任务记录缺失'}
+        'cancelled':'任务取消', 'interrupted':'任务中断', 'blocked':'跟踪受阻', 'lost_job':'任务记录缺失',
+        'data_series_updated':'数据通道已更新','data_update_failed':'数据下载失败','data_revision_review':'数据修订待确认'}
     counts = {}
     for event in events:
         name = names.get(event['kind'],'其他跟踪提醒'); counts[name] = counts.get(name,0)+1

@@ -159,3 +159,19 @@ class TrackingSchedulerTests(unittest.TestCase):
                 release.set();first.result(timeout=20)
         finally:release.set();queue.close()
         self.assertEqual(len(queue.list()),1)
+
+    def test_tick_reports_new_download_attempts(self):
+        self.grant();engine=TrackingScheduler(self.output,self.data,lambda:(_ for _ in ()).throw(AssertionError('no queue')))
+        def fake_advance(state,stamp):
+            state.setdefault('data_updates',[]).append({'status':'downloading'})
+            state['status']='fixture_download'
+        with patch.object(engine,'advance',side_effect=fake_advance):
+            result=engine.tick(now=NOW)
+        self.assertEqual(result['network_requests'],1)
+        self.assertEqual(result['controls'][0]['status'],'fixture_download')
+
+    def test_auto_download_requires_fixed_series(self):
+        with self.assertRaisesRegex(ValueError,'固定更新通道'):
+            preview_control(self.output,self.data,self.watch,self.fixture.identifier,'2025-01-10',
+                (NOW+timedelta(days=7)).isoformat(),auto_download=True,now=NOW)
+        self.assertIsNone(self.store.get(self.watch))

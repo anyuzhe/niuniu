@@ -27,20 +27,19 @@ def latest_nominal_session(calendar,as_of,adjustment,buffer_minutes=30):
     return max(candidates) if candidates else None
 
 
-def watch_readiness(output,watch_id,import_id,as_of):
-    directory,source=load_import(output,import_id)
-    manifest,_=dataset_manifest(directory/'dataset')
-    if source.get('status') not in ('completed','completed_with_errors'):
-        raise ValueError('只接受已完成的数据批次日历；取消或失败批次需重新导入')
-    if not manifest['calendar_ready']:raise ValueError('本批未取得完整交易日历')
-    calendar=read_table(directory/'dataset','calendar')
+def watch_readiness_calendar(output,watch_id,calendar,as_of,calendar_ref):
     watch=WatchService(output).get(watch_id);definition=watch['definition']
     cfg=definition['rule']['config']
     if cfg['data']['timeframe']!='1d':raise ValueError('此到期检查目前只处理日线跟踪')
-    target=latest_nominal_session(calendar,datetime.fromisoformat(as_of),definition['rule']['adjustment'])
+    stamp=datetime.fromisoformat(as_of)
+    if calendar_ref.get('mode')=='series':
+        local=stamp.astimezone(ZoneInfo('Asia/Shanghai'))
+        last=date.fromisoformat(calendar['calendar_date'].max())
+        if local.date()>last:
+            stamp=datetime.combine(last,time(23,59),local.tzinfo)
+    target=latest_nominal_session(calendar,stamp,definition['rule']['adjustment'])
     known={};latest=watch['latest']
-    if latest:
-        known={s:row['data_at'] for s,row in latest['preview']['watermarks'].items()}
+    if latest:known={s:row['data_at'] for s,row in latest['preview']['watermarks'].items()}
     behind=[s for s in cfg['data']['symbols'] if target is not None and
         (not known.get(s) or datetime.fromisoformat(known[s]).astimezone(ZoneInfo('Asia/Shanghai')).date()<target)]
     from quantlab.experiments.runner import runtime_fingerprint
@@ -49,10 +48,23 @@ def watch_readiness(output,watch_id,import_id,as_of):
         definition['tracking_algorithm']==tracking_fingerprint())
     status='paused' if not watch['active'] else 'source_unverified' if watch['source_integrity']!='verified' else 'baseline_rebuild_required' if not compatible else (
         'no_nominally_released_session' if target is None else 'candidate_for_refresh' if behind else 'up_to_date')
-    return {'watch_id':watch_id,'calendar_import_id':import_id,'calendar_fingerprint':manifest['checksum'],
-        'as_of':as_of,'status':status,'proposed_end':target.isoformat() if target else None,
-        'symbols_behind':behind,'data_watermarks':known,'new_research_jobs':0,'automatic_execution':False,
+    return {'watch_id':watch_id,'calendar_ref':calendar_ref,'as_of':as_of,'status':status,
+        'proposed_end':target.isoformat() if target else None,'symbols_behind':behind,
+        'data_watermarks':known,'new_research_jobs':0,'automatic_execution':False,
         'policy':'Current vendor schedule raw17:30/qfq18:00 Asia/Shanghai plus30min; actual delivery is unverified.',
         'limitations':['这是到期候选判断，不表示上游已更新或本地行情已下载。',
-            '需先下载或导入新行情，再生成原跟踪刷新提案并人工批准。',
-            '未启用常驻调度、自动批准、实盘或连续显著性判断。']}
+            '自动下载仅在宿主明确授权的固定通道中允许；历史修订会停止自动发布。',
+            '未启用实盘或连续显著性判断。']}
+
+
+def watch_readiness(output,watch_id,import_id,as_of):
+    directory,source=load_import(output,import_id)
+    manifest,_=dataset_manifest(directory/'dataset')
+    if source.get('status') not in ('completed','completed_with_errors'):
+        raise ValueError('只接受已完成的数据批次日历；取消或失败批次需重新导入')
+    if not manifest['calendar_ready']:raise ValueError('本批未取得完整交易日历')
+    calendar=read_table(directory/'dataset','calendar')
+    value=watch_readiness_calendar(output,watch_id,calendar,as_of,
+        {'mode':'import','import_id':import_id,'checksum':manifest['checksum']})
+    value.update(calendar_import_id=import_id,calendar_fingerprint=manifest['checksum'])
+    return value

@@ -7,6 +7,7 @@ from quantlab.agent.watchlist import WatchService
 from quantlab.agent.refresh_readiness import latest_nominal_session
 from quantlab.data.baostock_ingest import load_import
 from quantlab.data.baostock_dataset import dataset_manifest, read_table
+from quantlab.data.baostock_series import read_series
 from quantlab.agent.tracking_control_store import ControlStore
 from quantlab.experiments.campaign_state import write_checked
 from quantlab.storage.codec import digest
@@ -20,7 +21,7 @@ def utc(value=None):
 
 
 def preview_control(output,data_root,watch_id,import_id,end,expires_at,
-                    max_jobs=3,interval_minutes=60,*,now=None):
+                    max_jobs=3,interval_minutes=60,auto_download=False,max_downloads=3,*,now=None):
     stamp=utc(now);expiry=utc(datetime.fromisoformat(expires_at))
     if not timedelta(minutes=5)<=expiry-stamp<=timedelta(days=30):
         raise ValueError('授权有效期须为5分钟至30天')
@@ -28,6 +29,8 @@ def preview_control(output,data_root,watch_id,import_id,end,expires_at,
         raise ValueError('一次授权最多1–10个研究任务')
     if type(interval_minutes) is not int or not 60<=interval_minutes<=1440:
         raise ValueError('检查间隔须为60–1440分钟')
+    if type(auto_download) is not bool or type(max_downloads) is not int or not 1<=max_downloads<=10:
+        raise ValueError('自动下载开关或下载预算无效')
     service=WatchService(output,data_root);definition,state=service.store.read(watch_id)
     if not state['active']:raise ValueError('跟踪已暂停')
     if definition['rule']['config']['data']['timeframe']!='1d':
@@ -35,21 +38,38 @@ def preview_control(output,data_root,watch_id,import_id,end,expires_at,
     spec=service.refresh_spec(watch_id,end)
     spec['question']=definition['name']+' · 受控授权刷新'
     preview=ProposalService(output,data_root).preview(spec)
+    data_root=Path(data_root).resolve();series_marker=data_root/'baostock-series.json'
+    series=None
+    current=None
+    if series_marker.exists() or series_marker.is_symlink():
+        series=read_series(data_root);current=series['history'][-1]['delivery']
+        if auto_download and import_id!=current['import_id']:raise ValueError('自动下载授权须使用固定通道当前发布所对应的日历批次')
+    series_current=bool(series and current and import_id==current['import_id'])
+    if auto_download and not series_current:
+        raise ValueError('自动下载只允许固定更新通道当前发布的数据源')
     directory,receipt=load_import(output,import_id)
     manifest,_=dataset_manifest(directory/'dataset')
     if receipt['status'] not in ('completed','completed_with_errors') or not manifest['calendar_ready']:
         raise ValueError('授权需要已完成且完整的日历批次')
     calendar=read_table(directory/'dataset','calendar')
-    latest_nominal_session(calendar,stamp,spec['adjustment'])
-    if not manifest['plan']['start']<=end<=manifest['plan']['end']:
-        raise ValueError('允许刷新截止须在所选日历覆盖内')
-    return {'version':1,'watch_id':watch_id,'import_id':import_id,'end':end,
+    if manifest['plan']['start']<=stamp.astimezone(timezone.utc).date().isoformat()<=manifest['plan']['end']:
+        latest_nominal_session(calendar,stamp,spec['adjustment'])
+    if end<manifest['plan']['start']:
+        raise ValueError('允许刷新截止早于数据历史起点')
+    if end>manifest['plan']['end'] and not (series and auto_download):
+        raise ValueError('截止超出当前日历；只有固定更新通道的显式自动下载授权可以延长')
+    return {'version':2,'watch_id':watch_id,'import_id':import_id,'end':end,
         'expires_at':expiry.isoformat(),'prepared_at':stamp.isoformat(),
         'max_jobs':max_jobs,'interval_minutes':interval_minutes,
         'watch_hash':digest(definition),'calendar_hash':manifest['checksum'],
+        'calendar_mode':'series_current' if series_current else 'fixed_import',
+        'series_id':series['series_id'] if series_current else None,
+        'series_publication_id':series['history'][-1]['publication_id'] if series_current else None,
+        'series_generation':series['generation'] if series_current else None,
+        'auto_download':{'enabled':auto_download,'max_downloads':max_downloads},
         'spec':spec,'binding':preview['binding'],'budget':preview['budget'],
         'max_total_bar_evaluations':max_jobs*preview['estimate']['bar_evaluations_upper_estimate'],
-        'scope':'本机已下载行情、固定规则与起点；仅截止日期可延长。无下载、模型调用或交易。'}
+        'scope':('固定更新通道内允许有限联网下载、无历史修订时自动发布；研究仍受本授权限制。' if auto_download else '本机已下载行情、固定规则与起点；仅截止日期可延长。无自动下载、模型调用或交易。')}
 
 
 def authorize_control(output,data_root,plan,expected_digest,*,confirmed=False,now=None):
@@ -59,7 +79,8 @@ def authorize_control(output,data_root,plan,expected_digest,*,confirmed=False,no
     if not timedelta(0)<=stamp-prepared<=timedelta(minutes=30):
         raise ValueError('预览已过期或时钟回退，请重新核对')
     current=preview_control(output,data_root,plan['watch_id'],plan['import_id'],plan['end'],
-        plan['expires_at'],plan['max_jobs'],plan['interval_minutes'],now=prepared)
+        plan['expires_at'],plan['max_jobs'],plan['interval_minutes'],
+        plan.get('auto_download',{}).get('enabled',False),plan.get('auto_download',{}).get('max_downloads',3),now=prepared)
     if current!=plan or stamp>=utc(datetime.fromisoformat(plan['expires_at'])):
         raise ValueError('规则、代码、目录、日历或授权期限变化')
     store=ControlStore(output)
@@ -75,6 +96,7 @@ def authorize_control(output,data_root,plan,expected_digest,*,confirmed=False,no
             if archived.exists():raise ValueError('旧授权已经归档，需核对状态')
             write_checked(archived,old)
         state={'watch_id':plan['watch_id'],'grant_id':str(uuid4()),'grant':plan,
+            'accepted_publication_id':plan.get('series_publication_id'),
             'enabled':True,'status':'authorized','authorized_at':stamp.isoformat(),
             'next_check':stamp.isoformat(),'last_check':None,'cycles':[],
             'notices':{},'authorization_source':'explicit_host_confirmation'}

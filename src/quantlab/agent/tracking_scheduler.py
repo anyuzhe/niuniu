@@ -8,7 +8,9 @@ from uuid import UUID,uuid5
 from quantlab.agent.tracking_authorization import utc
 from quantlab.agent.tracking_control_store import ControlStore,notify
 from quantlab.agent.watchlist import WatchService
-from quantlab.agent.refresh_readiness import watch_readiness
+from quantlab.agent.refresh_readiness import watch_readiness,watch_readiness_calendar
+from quantlab.agent.series_auto_update import maybe_update_series
+from quantlab.data.baostock_series import read_series
 from quantlab.agent.proposals import workspace_identity
 from quantlab.agent.planning import ResearchBudget,preview_experiment
 from quantlab.data.baostock_ingest import load_import
@@ -38,21 +40,46 @@ class TrackingScheduler:
             'runtime':runtime_fingerprint()}
         if actual!=grant['binding'] or digest(definition)!=grant['watch_hash']:
             raise ValueError('代码、目录或跟踪定义变化，需要重新授权')
-        directory,receipt=load_import(self.output,grant['import_id'])
-        manifest,_=dataset_manifest(directory/'dataset')
-        if manifest['checksum']!=grant['calendar_hash']:
-            raise ValueError('授权日历变化，需要重新授权')
+        if grant.get('calendar_mode')=='series_current':
+            series=read_series(self.data_root)
+            if series['series_id']!=grant.get('series_id'):
+                raise ValueError('固定更新通道身份变化，需要重新授权')
+            if grant['import_id'] not in [p['delivery']['import_id'] for p in series['history']]:
+                raise ValueError('授权起始数据批次不在当前发布链中')
+            expected=state.get('accepted_publication_id') or grant.get('series_publication_id')
+            current=series['history'][-1];latest_update=(state.get('data_updates') or [None])[-1]
+            recovering=bool(latest_update and latest_update.get('status')=='downloading' and
+                latest_update.get('import_id')==current['delivery']['import_id'])
+            if expected and current['publication_id']!=expected and not recovering:
+                raise ValueError('固定通道发布版本由其他操作改变，需要重新授权')
+            if grant.get('auto_download',{}).get('enabled') and not (self.data_root/'baostock-series.json').is_file():
+                raise ValueError('自动下载只允许固定更新通道')
+        else:
+            directory,receipt=load_import(self.output,grant['import_id'])
+            manifest,_=dataset_manifest(directory/'dataset')
+            if manifest['checksum']!=grant['calendar_hash']:
+                raise ValueError('授权日历变化，需要重新授权')
     def queue(self):
         queue=self.get_queue()
         if workspace_identity(queue.root)!=workspace_identity(self.output) or workspace_identity(queue.data_root)!=workspace_identity(self.data_root):
             raise ValueError('调度队列与授权工作空间不一致')
         return queue
-    def calendar(self,state):
-        grant=state['grant'];directory,receipt=load_import(self.output,grant['import_id'])
-        manifest,_=dataset_manifest(directory/'dataset')
+    def calendar_source(self,state):
+        grant=state['grant']
+        if grant.get('calendar_mode')=='series_current':
+            series=read_series(self.data_root);current=series['history'][-1]
+            directory,receipt=load_import(self.output,current['delivery']['import_id'])
+            manifest,_=dataset_manifest(directory/'dataset')
+            if receipt.get('status') not in ('completed','completed_with_errors') or not manifest['calendar_ready']:
+                raise ValueError('固定通道当前发布没有可用完整日历')
+            return read_table(directory/'dataset','calendar'),{'mode':'series','series_id':series['series_id'],
+                'generation':series['generation'],'publication_id':current['publication_id'],
+                'import_id':current['delivery']['import_id'],'checksum':manifest['checksum']}
+        directory,receipt=load_import(self.output,grant['import_id']);manifest,_=dataset_manifest(directory/'dataset')
         if receipt.get('status') not in ('completed','completed_with_errors') or manifest['checksum']!=grant['calendar_hash']:
             raise ValueError('授权日历批次状态或校验值变化')
-        return read_table(directory/'dataset','calendar')
+        return read_table(directory/'dataset','calendar'),{'mode':'import','import_id':grant['import_id'],'checksum':manifest['checksum']}
+    def calendar(self,state):return self.calendar_source(state)[0]
     def data_signature(self,spec,target,stamp,control):
         config=prepare(spec).config
         if config.data.end!=date.fromisoformat(target):raise ValueError('任务与目标日期不一致')
@@ -114,12 +141,29 @@ class TrackingScheduler:
         state['next_check']=(stamp+timedelta(minutes=grant['interval_minutes'])).isoformat()
         if len(state['cycles'])>=grant['max_jobs']:
             state.update(enabled=False,status='budget_exhausted');return
-        readiness=watch_readiness(self.output,state['watch_id'],grant['import_id'],stamp.isoformat())
-        state['readiness']=readiness['status']
+        if grant.get('calendar_mode')=='series_current' and grant.get('auto_download',{}).get('enabled'):
+            update=maybe_update_series(self.output,self.data_root,grant,state,stamp,lambda:self.store.save(state))
+            state['last_data_update']=update;state['last_data_update_at']=stamp.isoformat()
+            if update['status']=='published':
+                state['accepted_publication_id']=update['publication_id']
+                self.store.save(state)
+                notify(state,'data_publication:'+str(update.get('publication_id')),'data_series_updated',update,stamp)
+            if update['status'] in ('failed','revision_review','cooldown','downloading','budget_exhausted'):
+                names={'failed':'data_update_failed','revision_review':'data_revision_review',
+                    'cooldown':'data_update_cooldown','downloading':'data_update_in_progress',
+                    'budget_exhausted':'data_download_budget_exhausted'}
+                state['status']=names[update['status']]
+                if update['status']=='budget_exhausted':state['enabled']=False
+                notify(state,'data_update',state['status'],update,stamp)
+                return update.get('network_requests',0)
+        calendar,calendar_ref=self.calendar_source(state)
+        readiness=(watch_readiness_calendar(self.output,state['watch_id'],calendar,stamp.isoformat(),calendar_ref)
+            if grant.get('calendar_mode')=='series_current' else watch_readiness(self.output,state['watch_id'],grant['import_id'],stamp.isoformat()))
+        state['readiness']=readiness['status'];state['calendar_ref']=calendar_ref
         if readiness['status'] not in ('candidate_for_refresh','up_to_date'):
             state['status']=readiness['status'];return
         if readiness['proposed_end'] is None:return
-        start=date.fromisoformat(grant['spec']['start']);calendar=self.calendar(state)
+        start=date.fromisoformat(grant['spec']['start'])
         cap_sessions=calendar_sessions(calendar,start,date.fromisoformat(grant['end']))
         candidates=[d for d in cap_sessions if str(d)<=readiness['proposed_end']]
         if not candidates:
@@ -143,7 +187,7 @@ class TrackingScheduler:
         self.store.save(state)  # Durable before queue submission, including on lost acknowledgement.
         self.dispatch(state,cycle,stamp);state['status']='submitted'
     def tick(self,*,now=None):
-        stamp=utc(now);listing=self.store.list();results=[]
+        stamp=utc(now);listing=self.store.list();results=[];network_requests=0
         for item in listing['controls']:
             watch_id=item['watch_id']
             if not item['enabled'] and not any(c['status'] in PENDING for c in item['cycles']):
@@ -157,6 +201,7 @@ class TrackingScheduler:
                         except (ValueError,OSError,KeyError,TypeError) as error:
                             state.update(enabled=False,status='reauthorization_required')
                             notify(state,'authorization','reauthorization_required',str(error)[:240],stamp)
+                    before_updates=len(state.get('data_updates',[]))
                     try:
                         self.settle(state,stamp)
                         self.advance(state,stamp)
@@ -164,11 +209,12 @@ class TrackingScheduler:
                         state['status']='blocked'
                         state['next_check']=(stamp+timedelta(minutes=state['grant']['interval_minutes'])).isoformat()
                         notify(state,'blocked','blocked',str(error)[:240],stamp)
+                    network_requests+=max(0,len(state.get('data_updates',[]))-before_updates)
                     self.store.save(state)
                     results.append({'watch_id':watch_id,'status':state['status'],
                         'enabled':state['enabled'],'tasks_reserved':len(state['cycles'])})
             except BlockingIOError:results.append({'watch_id':watch_id,'status':'busy'})
-        return {'controls':results,'errors':listing['errors'],'network_requests':0}
+        return {'controls':results,'errors':listing['errors'],'network_requests':network_requests}
 
     def reconcile_completed(self,watch_id,*,now=None):
         """Host action: adopt a manually recovered original job, never submit/resume."""

@@ -1,5 +1,6 @@
 """Explicit finite authorization and local inbox; no model can enable this UI."""
 from datetime import datetime,timedelta,timezone
+from pathlib import Path
 from PyQt6 import sip
 from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import (QDialog,QVBoxLayout,QFormLayout,QComboBox,QDateEdit,
@@ -25,10 +26,13 @@ class TrackingControlDialog(QDialog):
         self.jobs=QSpinBox();self.jobs.setRange(1,10);self.jobs.setValue(3)
         self.days=QSpinBox();self.days.setRange(1,30);self.days.setValue(7)
         self.interval=QSpinBox();self.interval.setRange(60,1440);self.interval.setValue(60)
+        self.auto_download=QCheckBox('允许在固定更新通道内自动下载并接入无历史修订的新批次')
+        self.downloads=QSpinBox();self.downloads.setRange(1,10);self.downloads.setValue(3)
         for title,control in [('固定跟踪',self.watches),('已导入完整日历',self.calendars),
             ('允许延长到',self.end),('本次最多任务',self.jobs),('授权有效天数',self.days),
-            ('检查间隔（分钟）',self.interval)]:form.addRow(title,control)
-        box.addWidget(label('仅在牛牛打开时运行。使用当前目录已下载行情，不联网下载、不改因子、不实盘。休眠后合并检查最新可用日期，不逐小时补建任务。','note',True))
+            ('检查间隔（分钟）',self.interval),('本次最多自动下载',self.downloads)]:form.addRow(title,control)
+        box.addWidget(self.auto_download)
+        box.addWidget(label('默认只使用本地数据。仅当当前数据源是固定更新通道并显式勾选时，才允许有限联网下载；历史修订不会自动发布。','note',True))
         self.preview_button=button('预览固定授权计划',self.preview)
         self.enable_button=button('按选中计划授权并启用',self.enable,True)
         self.revoke_button=button('撤销新任务授权',self.revoke)
@@ -43,7 +47,8 @@ class TrackingControlDialog(QDialog):
         self.confirm.toggled.connect(self.buttons)
         for control in (self.watches,self.calendars):control.currentIndexChanged.connect(self.dirty)
         self.end.dateChanged.connect(self.dirty)
-        for control in (self.jobs,self.days,self.interval):control.valueChanged.connect(self.dirty)
+        for control in (self.jobs,self.days,self.interval,self.downloads):control.valueChanged.connect(self.dirty)
+        self.auto_download.toggled.connect(self.dirty)
         self.selected_id=selected_id;self.buttons();self.reload()
     def buttons(self):
         self.enable_button.setEnabled(not self.busy and self.plan is not None and self.confirm.isChecked())
@@ -53,7 +58,7 @@ class TrackingControlDialog(QDialog):
         if self.busy:return
         self.busy=True
         controls=[*self.findChildren(QPushButton),self.watches,self.calendars,self.end,
-            self.jobs,self.days,self.interval,self.confirm]
+            self.jobs,self.days,self.interval,self.downloads,self.auto_download,self.confirm]
         for control in controls:control.setEnabled(False)
         def finished(value,error):
             if sip.isdeleted(self):return
@@ -69,25 +74,36 @@ class TrackingControlDialog(QDialog):
             watches=WatchService(self.output).store.list()['watches']
             imports=MarketDataResearchAPI(self.output).call('list_baostock_imports',{'offset':0,'limit':20})
             if not imports['ok']:raise ValueError(imports['error']['message'])
-            return watches,imports['data']['imports']
+            current_import=None
+            marker=Path(self.data_root)/'baostock-series.json' if self.data_root else None
+            if marker and (marker.exists() or marker.is_symlink()):
+                from quantlab.data.baostock_series import read_series
+                current_import=read_series(Path(self.data_root))['history'][-1]['delivery']['import_id']
+            return watches,imports['data']['imports'],current_import
         def show(value):
-            watches,imports=value;self.watches.clear();self.calendars.clear()
+            watches,imports,current_import=value;self.watches.clear();self.calendars.clear()
             for item in watches:self.watches.addItem(item['name'],item['watch_id'])
             for item in imports:
                 if (item.get('dataset') or {}).get('calendar_ready'):
                     self.calendars.addItem(item['import_id'][:8],item['import_id'])
             if selected:self.watches.setCurrentIndex(self.watches.findData(selected))
-            self.status.setText('已读取列表；日历只列最近20批，缺少时请先导入。')
+            self.auto_download.setEnabled(current_import is not None)
+            if current_import:
+                index=self.calendars.findData(current_import)
+                if index>=0:self.calendars.setCurrentIndex(index)
+            else:self.auto_download.setChecked(False)
+            self.status.setText('已读取列表；自动下载仅对固定更新通道可用。')
         self.work(load,show)
     def preview(self):
         watch=self.watches.currentData();calendar=self.calendars.currentData()
         if not watch or not calendar:self.status.setText('请选择跟踪与完整日历。');return
         end=self.end.date().toString('yyyy-MM-dd');jobs=self.jobs.value();interval=self.interval.value()
+        auto_download=self.auto_download.isChecked();downloads=self.downloads.value()
         expiry=(datetime.now(timezone.utc)+timedelta(days=self.days.value())).isoformat()
         def show(value):
             self.plan=value;self.confirm.setChecked(False);self.details.setPlainText(encode(value))
             self.status.setText('预览已固定。核对后勾选并授权；当前尚未启用。')
-        self.work(lambda:preview_control(self.output,self.data_root,watch,calendar,end,expiry,jobs,interval),show)
+        self.work(lambda:preview_control(self.output,self.data_root,watch,calendar,end,expiry,jobs,interval,auto_download,downloads),show)
     def enable(self):
         if self.plan is None or not self.confirm.isChecked():return
         plan=self.plan

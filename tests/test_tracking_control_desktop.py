@@ -64,3 +64,11 @@ class TrackingControlDesktopTests(unittest.TestCase):
         self.assertIn('已同步 1 个原任务',dialog.status.text())
         self.assertFalse(dialog.confirm.isChecked())
         self.assertFalse(dialog.enable_button.isEnabled())
+
+    def test_auto_download_is_default_off_and_unavailable_without_series(self):
+        dialog=self.dialog()
+        self.assertFalse(dialog.auto_download.isChecked())
+        self.assertFalse(dialog.auto_download.isEnabled())
+        dialog.plan={'fixture':True};dialog.confirm.setChecked(True)
+        dialog.downloads.setValue(dialog.downloads.value()+1)
+        self.assertIsNone(dialog.plan);self.assertFalse(dialog.confirm.isChecked())

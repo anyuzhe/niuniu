@@ -101,16 +101,27 @@ def collect(spec, directory, sdk=None, *, interval=.25, max_seconds=240):
     flush();return manifest
 
 
-def run_import(output,spec,*,stop=None,timeout=300):
+def run_import(output,spec,*,stop=None,timeout=300,identifier=None):
     """Host-only downloader. A dedicated subprocess isolates SDK global sessions."""
     plan,_=import_plan(spec)
     if type(timeout) not in (int,float) or not 1<=timeout<=600:
         raise ValueError('数据导入时限必须为1–600秒')
     if stop is not None and stop.is_set():
         raise ValueError('数据导入已取消，未启动下载进程')
-    root=import_root(output);identifier=str(uuid4())
-    request=root/(identifier+'.request.json');write_json(request,plan)
-    destination=root/identifier
+    root=import_root(output);identifier=str(uuid4()) if identifier is None else identifier
+    if not isinstance(identifier,str) or str(UUID(identifier))!=identifier:raise ValueError('无效预留批次编号')
+    request=root/(identifier+'.request.json');destination=root/identifier
+    if request.exists():
+        if request.is_symlink() or json.loads(request.read_text())!=plan:raise ValueError('预留批次请求与当前配置冲突')
+    else:write_json(request,plan)
+    if destination.exists():
+        receipt=destination/'manifest.json'
+        if receipt.is_symlink():raise ValueError('预留批次回执路径异常')
+        if not receipt.is_file():raise ValueError('预留批次目录已存在但没有可核验回执')
+        existing=json.loads(receipt.read_text())
+        if existing.get('format')!='baostock-import-v1' or existing.get('import_id')!=identifier or existing.get('plan')!=plan:
+            raise ValueError('预留批次已有冲突回执')
+        return existing
     with (root/(identifier+'.log')).open('w') as log:
         process=subprocess.Popen([sys.executable,'-m','quantlab.data.baostock_ingest',
             '--worker',str(request),str(destination)],stdout=log,stderr=subprocess.STDOUT)
