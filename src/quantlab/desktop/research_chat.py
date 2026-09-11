@@ -119,7 +119,7 @@ class ResearchChatDialog(QDialog):
                     key=digest(ref)
                     if key in self.references:continue
                     self.references[key]=ref
-                    identifier=ref.get('memory_id',ref.get('run_id',ref.get('proposal_id',ref.get('factor_id',ref.get('job_id','')))))
+                    identifier=next((ref[k] for k in ('run_id','proposal_id','factor_id','job_id','memory_id','watch_id') if ref.get(k)), '')
                     entry=QListWidgetItem(ref['kind']+' · '+identifier)
                     entry.setData(Qt.ItemDataRole.UserRole,ref);self.evidence.addItem(entry)
 
@@ -195,6 +195,7 @@ class ResearchChatDialog(QDialog):
                 self.hide();self.window.open_run(ref['run_id'])
             elif ref['kind']=='factor':
                 self.hide();self.window.registry_page('factor',query=ref['factor_id'])
+            elif ref['kind']=='watch':self.window.factor_watches(ref['watch_id'])
             elif ref['kind']=='job':self.hide();self.window.show_jobs()
         except Exception as error:self.status.setText('引用未打开：'+str(error))
 

@@ -31,7 +31,7 @@ class ResearchCampaignAPI:
         if definition is None:
             result = self.base.call(name,arguments)
             if name=='get_capabilities' and result.get('ok'):
-                result['data'].update(version='1.3',campaigns_available=bool(self.data_root),campaign_reproduction_available=False,tools=[t['name'] for t in self.schemas()])
+                result['data'].update(version='1.3',campaigns_available=bool(self.data_root),campaign_reproduction_available=True,campaign_artifact_tree_integrity=True,tools=[t['name'] for t in self.schemas()])
                 result['data']['limitations'].append('固定研究包须人工批准；执行成功不等于统计支持，失败/跳过项保留。')
             return result
         try:
@@ -46,7 +46,7 @@ class ResearchCampaignAPI:
                 folder = self.output/'_campaigns'/proposal['job_id']; path = folder/'state.json'
                 if folder.is_symlink() or not path.resolve().is_relative_to(self.output): raise ValueError('Invalid campaign receipt path')
                 if path.exists():
-                    state = read_checked(path); data['nodes'] = state['nodes']; data['attempts'] = state['attempts'][-20:]; data['total_attempts'] = len(state['attempts'])
+                    state = read_checked(path); data['nodes'] = {k:{f:v for f,v in r.items() if f!='artifact_tree'} for k,r in state['nodes'].items()}; data['attempts'] = state['attempts'][-20:]; data['total_attempts'] = len(state['attempts'])
                     if state['final']:
                         record = verify_receipt(self.output,state['final']);summary = record['summary'];family=summary.get('family') or {}
                         data['result'] = {k:record[k] for k in ('run_id','experiment_id','kind','status')}

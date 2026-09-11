@@ -9,6 +9,7 @@ from quantlab.experiments.runner import runtime_fingerprint
 from quantlab.experiments.trial_registry import create_registry, _load_registry, bind_result, report_registry
 from quantlab.experiments.campaign_state import campaign_directory, read_checked, write_checked, input_signature, canonical_id
 from quantlab.storage.codec import digest
+from quantlab.storage.artifact_integrity import snapshot_tree, verify_tree
 from quantlab.storage.experiments import LocalExperimentStore, load_record_fields
 from quantlab.progress import checkpoint, ResearchCancelled
 
@@ -36,14 +37,20 @@ def source_record(output,run_id):
 def result_receipt(output,result):
     record = source_record(output,result.run_id)
     if record['status'] != 'completed': raise ValueError('Node did not produce a completed artifact')
+    if record['experiment_id']!=result.experiment_id: raise ValueError('Node result identity differs')
     return {'status':'completed','run_id':result.run_id,'experiment_id':result.experiment_id,
-        'record_digest':digest(record)}
+        'record_digest':digest(record),'artifact_tree':snapshot_tree(output,result.run_id)}
 
 
 def verify_receipt(output,receipt):
     record = source_record(output,receipt['run_id'])
     if record['status']!='completed' or digest(record)!=receipt['record_digest']:
         raise ProposalError('CHANGED_ARTIFACT','已完成节点的归档身份或数值记录变化；拒绝静默复用。')
+    try:
+        if (receipt.get('artifact_tree') or {}).get('root_run_id')!=receipt['run_id']: raise ValueError('Wrong receipt root')
+        verify_tree(output,receipt.get('artifact_tree'))
+    except (OSError,ValueError,KeyError,TypeError) as error:
+        raise ProposalError('CHANGED_ARTIFACT','已完成节点的完整归档树缺失或变化，拒绝复用：'+str(error)) from error
     return record
 
 
@@ -82,6 +89,10 @@ def run_campaign(submission,data_root,output,job_id=None):
             state = {'job_id':job_id,'identity':identity,'nodes':{},'attempts':[], 'final':None}
             write_checked(path,state)
         family = initialize_family(folder,preview['registry_plan'])
+        registry = _load_registry(family)
+        if 'registry_snapshot' in state and state['registry_snapshot']!=registry:
+            raise ProposalError('CHANGED_ARTIFACT','固定检验族登记快照发生变化。')
+        state['registry_snapshot'] = registry
         registered = {t['trial_id'] for t in preview['registry_plan']['trials']}
         for receipt in state['nodes'].values():
             if receipt['status']=='completed': verify_receipt(output,receipt)
@@ -143,8 +154,8 @@ def summarize(preview,state,report):
     return {'workflow_status':'unfinished' if counts['not_run'] else 'completed_with_failures' if counts['failed'] or counts['skipped'] else 'completed',
         'nodes':nodes,'counts':counts,'family':report,'planned_tests':preview['estimate']['planned_tests'],
         'limitations':preview['warnings']+['执行失败和跳过项仍在原固定族中，未绑定项的原始p为空；具体原因见节点表。',
-            '节点回执核对根归档身份与数值记录，不是全部子目录/Parquet字节的完整性认证；完整归档树校验尚未接入。',
-            '支持原节点独立复算；研究包聚合归档的一键复算入口尚未实现。',
+            '节点回执流式校验全部子研究、归档和数据字节；可重建的显示缓存与复算诊断文件不作为证据身份。',
+            '全成功研究包可由冻结归档整包复算；缺失、失败或跳过节点不会自动补跑。',
             '中断节点复用原有叶子研究断点；已终止失败不自动重试，诊断节点未做IC族显著性推断。']}
 
 
@@ -156,6 +167,7 @@ def make_record(run_id,preview,state,summary,status):
     return {'run_id':run_id,'experiment_id':digest(manifest),'created_at':datetime.now(timezone.utc).isoformat(),
         'kind':'campaign','status':status,'manifest':manifest,'summary':summary,
         'campaign_job_id':state['job_id'],'registry_plan':preview['registry_plan'],
+        'registry_snapshot':state['registry_snapshot'],
         'children':[{'name':n['node_id'],'run_id':n['run_id'],'artifact_path':str(Path(preview.get('output',''))/n['run_id'])}
             for n in summary['nodes'] if n.get('run_id')],
         'limitations':summary['limitations']}

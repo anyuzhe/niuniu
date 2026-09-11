@@ -19,6 +19,8 @@ class AgentCatalogDialog(QDialog):
         box.addWidget(button('打开内置研究助手',lambda:self.window.research_chat(),True))
         proposal_button=button('研究提案与人工批准',self.open_proposals)
         proposal_button.setEnabled(bool(getattr(window,'data_root',None)));box.addWidget(proposal_button)
+        box.addWidget(button('因子跟踪池：手动刷新与历史快照',lambda:window.factor_watches()))
+        box.addWidget(button('因子追踪：标签成熟预览',lambda:window.tracking_preview()))
         self.tools = QComboBox(); box.addWidget(self.tools)
         self.definitions = self.api.schemas()
         for item in self.definitions: self.tools.addItem(item['name']+' · '+item['description'], item['name'])

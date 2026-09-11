@@ -96,6 +96,14 @@ class MainWindow(QMainWindow):
         from .research_campaign import CampaignDialog
         self.show_dialog(CampaignDialog(self))
 
+    def tracking_preview(self):
+        from .tracking_preview import TrackingPreviewDialog
+        self.show_dialog(TrackingPreviewDialog(self))
+
+    def factor_watches(self, selected_id=None):
+        from .factor_watches import FactorWatchDialog
+        self.show_dialog(FactorWatchDialog(self,selected_id))
+
     def agent_catalog(self):
         from .agent_catalog import AgentCatalogDialog
         self.show_dialog(AgentCatalogDialog(self))
@@ -597,9 +605,9 @@ class MainWindow(QMainWindow):
                     reproduce_button.setEnabled(True);export_status.setText(error or ('已核对可复算结果；失败或未运行项仍保留：' if result['status']=='available_results_matched' else '归档复算逐项核对一致：')+result['run_id'])
                 self.async_call(lambda:reproduce_artifact(self.output/run_id,self.output),reproduced,guarded=False)
             export_button=button('导出实验复现包',export);reproduce_button=button('使用归档 K 线复算并核对',reproduce)
-            can_reproduce=data['record'].get('kind','factor') in ('factor','execution','holdout','walkforward','sweep','ablation','theory_study','correlation','correlation_holdout','correlation_walkforward','residual_alpha','return_increment','stability','return_family','trial_registry') and data['record'].get('status')=='completed'
+            can_reproduce=data['record'].get('kind','factor') in ('campaign','factor','execution','holdout','walkforward','sweep','ablation','theory_study','correlation','correlation_holdout','correlation_walkforward','residual_alpha','return_increment','stability','return_family','trial_registry') and data['record'].get('status')=='completed'
             reproduce_button.setEnabled(can_reproduce)
-            reproduce_button.setToolTip('支持因子、成交、样本外、滚动、扫描、消融、理论、相关性及衍生比较；需完整冻结输入及匹配源码和依赖。复算会核对全部子实验，失败原因在此显示。')
+            reproduce_button.setToolTip('支持全成功固定研究包、因子、成交、样本外、滚动、扫描、消融、理论、相关性及衍生比较；需完整冻结输入及匹配源码和依赖。复算会核对全部子实验，失败原因在此显示。')
             layout.addWidget(row(export_button,reproduce_button,export_status))
             if 'reproduction.json' in data['files']:
                 verification=BusinessDetails({});verification.setPlainText('正在读取复算核对记录…');tabs.addTab(verification,'复算核对')

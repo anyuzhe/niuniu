@@ -56,3 +56,15 @@ class BusinessDetails(QWidget):
     def expand(self,node):
         if hasattr(node,'_pending'):
             value=node._pending;del node._pending;node.takeChildren();self.populate(node,value)
+
+
+LABELS.update({'watch_id':'跟踪编号','snapshot_id':'快照编号','snapshot_count':'快照数量',
+    'source_integrity':'当前来源校验','watermarks':'进度水位','data_at':'行情水位',
+    'factor_at':'因子水位','labels':'成熟标签水位','baseline_differences':'相对基准变化',
+    'historical_revision':'历史输入修订','refresh_requests':'刷新提案','active':'已启用',
+    'latest':'最新快照','history':'历史快照','preview':'窗口统计','pending_observations':'未成熟样本',
+    'mature_observations':'成熟样本','valid_ic_sessions':'有效 IC 日期数','as_of':'评价截止',
+    'automatic_tracking':'自动调度','claim_verified':'结论已认证','tracking_algorithm':'统计代码指纹'})
+VALUES.update({'verified':'来源校验一致','source_changed':'来源已变化','unavailable':'不可用',
+    'advanced':'水位推进','no_new_data':'没有新数据','historical_revision':'历史输入修订',
+    'insufficient_mature_dates':'成熟样本日期不足','descriptive':'仅描述性比较'})

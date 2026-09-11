@@ -68,4 +68,3 @@ def input_signature(spec,data_root):
     except (ResearchCancelled,TimeoutError): raise
     except (OSError,ValueError,KeyError) as error:
         return {'status':'unavailable','error_type':type(error).__name__,'reason':str(error)[:500]}
-

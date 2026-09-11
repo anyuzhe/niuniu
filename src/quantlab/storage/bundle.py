@@ -284,6 +284,9 @@ def reproduce_execution(artifact, output):
 def reproduce_artifact(artifact, output):
     from quantlab.storage.experiments import load_record_fields
     kind=load_record_fields(Path(artifact)/'experiment.json',{'kind'}).get('kind','factor')
+    if kind=='campaign':
+        from quantlab.storage.campaign_reproduction import reproduce_campaign
+        return reproduce_campaign(artifact,output)
     if kind=='factor':return reproduce_factor(artifact,output)
     if kind=='execution':return reproduce_execution(artifact,output)
     from quantlab.storage.reproduction import KINDS, reproduce_research
