@@ -211,8 +211,11 @@ def execute(submission, data_root, artifact_root, *, campaign_job_id=None):
 
 def validate_execution_guard(guard):
     if guard is None: return
-    if not isinstance(guard,dict) or set(guard)!={'runtime','cooperative_seconds','max_active_jobs'}:
+    base={'runtime','cooperative_seconds','max_active_jobs'}
+    if not isinstance(guard,dict) or set(guard) not in (base,base|{'input_signature'}):
         raise ValueError('Invalid approved execution guard')
+    if 'input_signature' in guard and (not isinstance(guard['input_signature'],str) or not re.fullmatch(r'[0-9a-f]{64}',guard['input_signature'])):
+        raise ValueError('Invalid approved input signature')
     if type(guard['max_active_jobs']) is not int or guard['max_active_jobs'] < 1:
         raise ValueError('Invalid approved active-job budget')
     seconds = guard['cooperative_seconds']
@@ -351,6 +354,12 @@ class JobQueue:
             import time
             guard = record.get('execution_guard'); validate_execution_guard(guard)
             deadline = time.monotonic()+guard['cooperative_seconds'] if guard else None
+            def check_inputs():
+                if guard and 'input_signature' in guard:
+                    from quantlab.experiments.campaign_state import input_signature
+                    from quantlab.storage.codec import digest
+                    if digest(input_signature(record['spec'],self.data_root))!=guard['input_signature']:
+                        raise ValueError('受控任务的行情或资格输入已变化；停止自动纳入跟踪')
             def progress(stage,completed,total):
                 if self.cancellations[job_id].is_set():raise ResearchCancelled('用户取消；已完成的子实验与缓存保留')
                 if deadline is not None and time.monotonic() >= deadline:
@@ -362,8 +371,10 @@ class JobQueue:
             from quantlab.experiments.child_checkpoints import child_checkpoint_scope
             with research_progress(progress),child_checkpoint_scope(self.root,job_id,record['spec']) as children:
                 progress('准备执行',None,None)
+                check_inputs()
                 try:
                     result = execute(submission, self.data_root, self.root, **({"campaign_job_id":job_id} if submission.mode=="campaign" else {}))
+                    check_inputs()
                 finally:
                     with self.lock:record['checkpoint_summary']=children.summary()
                 with self.lock:record['progress']={'stage':'已完成','completed':None,'total':None,'updated_at':now()}

@@ -47,7 +47,7 @@ class WatchResearchAPI(TrackingResearchAPI):
                 if data['latest'] and data['source_integrity']=='verified':
                     refs.append({'kind':'experiment','run_id':data['latest']['source_run_id']})
             reply = {'ok':True,'tool':name,'data':compact(data),'evidence':refs,
-                'warnings':['手动跟踪快照；未启动调度，也不认证 Alpha 或衰减显著性。'],'error':None}
+                'warnings':['调度授权状态见返回记录；仅牛牛打开时处理已授权计划，不认证 Alpha 或衰减显著性。'],'error':None}
             if len(encode(reply))>24000:
                 reply['data']={'omitted':True,'reason':'result_size_limit'}
             return json.loads(encode(reply))

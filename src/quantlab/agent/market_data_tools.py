@@ -10,6 +10,7 @@ from quantlab.agent.refresh_readiness import watch_readiness
 from quantlab.storage.codec import encode
 
 TOOLS=[
+    schema('get_tracking_control','只读查询宿主预授权的自动跟踪状态、预算和应用内提醒；不启用、修改、撤销或执行任务。',{'watch_id':TEXT}),
     schema('list_baostock_imports','查询实际Baostock导入批次；失败和空响应不隐藏。不联网下载。',{'offset':OFFSET,'limit':LIMIT}),
     schema('get_baostock_import','核对一个批次的响应校验值和数据覆盖。抓取成功不等于PIT或真实交易规则认证。',{'import_id':TEXT}),
     schema('read_baostock_table','分页读取已归档数据表。table名称来自get_baostock_import，symbol留空不筛选。财报原始比例单位保持供应商口径；空值不填零。',{'import_id':TEXT,'table':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
@@ -25,7 +26,8 @@ class MarketDataResearchAPI(WatchResearchAPI):
             result=super().call(name,arguments)
             if name=='get_capabilities' and result.get('ok'):
                 result['data'].update(imported_market_data_available=True,data_download_tool=False,
-                    calendar_readiness_available=True,tools=[t['name'] for t in self.schemas()])
+                    calendar_readiness_available=True,controlled_tracking_available=True,
+                    tracking_authorization_host_only=True,tools=[t['name'] for t in self.schemas()])
             return result
         try:
             props=definition['parameters']['properties']
@@ -36,7 +38,11 @@ class MarketDataResearchAPI(WatchResearchAPI):
                     type(value) is int and prop['minimum']<=value<=prop['maximum'])
                 if not valid:raise ValueError('参数类型或范围错误：'+key)
             refs=[]
-            if name=='list_baostock_imports':
+            if name=='get_tracking_control':
+                from quantlab.agent.tracking_control_store import ControlStore,control_summary
+                data=control_summary(ControlStore(self.output).get(arguments['watch_id']))
+                refs=[{'kind':'watch','watch_id':arguments['watch_id']}]
+            elif name=='list_baostock_imports':
                 rows=[];unreadable=0;root=self.output/'_market_data'/'baostock'
                 for path in root.glob('*/manifest.json'):
                     try:

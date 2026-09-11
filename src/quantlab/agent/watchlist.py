@@ -120,15 +120,18 @@ class WatchService:
                 integrity = 'verified' if current==latest['preview']['source_fingerprint'] else 'source_changed'
             except (OSError,ValueError,KeyError,TypeError): integrity = 'unavailable'
         history = [self.store.snapshot(watch_id,key) for key in state['history'][-20:]]
+        from quantlab.agent.tracking_control_store import ControlStore,control_summary
+        control=control_summary(ControlStore(self.output).get(watch_id))
         return {'definition':definition,'active':state['active'],'latest':latest,
+            'tracking_control':control,
             'source_integrity':integrity,'snapshot_count':len(state['history']),
             'history':[{'snapshot_id':r['snapshot_id'],'source_run_id':r['source_run_id'],
                 'as_of':r['preview']['as_of'],'change':r['change']['kind']} for r in history],
             'history_omitted':max(0,len(state['history'])-20),
             'refresh_requests':state['refresh_requests'][-20:],
-            'automatic_tracking':False,'claim_verified':False}
-    def propose_refresh(self, watch_id, end, request_id):
-        from quantlab.agent.proposals import ProposalService
+            'automatic_tracking':bool(control['enabled']),'claim_verified':False}
+    def refresh_spec(self, watch_id, end):
+        """Validate a fixed refresh without saving a proposal or starting work."""
         if self.data_root is None: raise ValueError('A data directory is required for refresh proposals')
         if self.store.read(watch_id)[0]['rule']['source_runtime'] != runtime_fingerprint():
             raise ValueError('Baseline source runtime differs; recompute a baseline with current code and create a new watch')
@@ -154,6 +157,10 @@ class WatchService:
         spec.update(cfg['data']); spec.update(end=end,mode='single',replay=True,
             question=definition['name']+' · 人工刷新',
             adjustment=record['manifest']['data_snapshot']['adjustment'])
+        return spec
+    def propose_refresh(self, watch_id, end, request_id):
+        from quantlab.agent.proposals import ProposalService
+        spec = self.refresh_spec(watch_id,end)
         proposal = ProposalService(self.output,self.data_root).propose(request_id,spec)
         self.store.add_request(watch_id,{'proposal_id':proposal['proposal_id'],
             'job_id':proposal['job_id'],'end':end})

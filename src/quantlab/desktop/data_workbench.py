@@ -34,6 +34,12 @@ class DataConnectedWorkbench(MainWindow):
         menu.addAction('导入、查看和选择数据集',self.open_baostock_data)
         menu.addAction('日历驱动的跟踪到期检查',self.open_readiness)
         menu.addAction('打开带数据工具的研究助手',self.research_chat)
+        from .tracking_controller import TrackingController
+        action=menu.addAction('受控自动跟踪与提醒',self.open_tracking_control)
+        self.tracking_controller=TrackingController(self,action)
+    def open_tracking_control(self):
+        from .tracking_control import TrackingControlDialog
+        self.show_dialog(TrackingControlDialog(self))
     def open_baostock_data(self):
         from .baostock_data import BaostockDataDialog
         self.show_dialog(BaostockDataDialog(self))
