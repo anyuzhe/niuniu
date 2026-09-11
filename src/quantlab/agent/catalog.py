@@ -20,7 +20,7 @@ OFFSET = {'type': 'integer', 'minimum': 0, 'maximum': 100000}
 TOOLS = [
     schema('get_capabilities', '查询当前只读研究接口的能力和限制。', {}),
     schema('search_factors', '搜索实际注册因子，空关键词列出全部。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
-    schema('describe_factor', '读取指定版本的真实因子定义和默认参数。', {'factor_id': TEXT, 'version': TEXT}),
+    schema('describe_factor', '先用 search_factors 获取真实版本，再读取定义和默认参数；version 不支持 latest 或空字符串，不能猜测。', {'factor_id': TEXT, 'version': TEXT}),
     schema('list_experiments', '检索当前目录实际实验，包含失败记录。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_experiment', '读取指定实验的统计摘要和实际证据引用。', {'run_id': TEXT}),
     schema('get_job', '读取现有任务状态，不提交或取消任务。', {'job_id': TEXT}),
@@ -90,7 +90,9 @@ class ReadOnlyResearchAPI:
                 {'kind': 'factor', 'factor_id': r['factor_id'], 'version': r['version']} for r in rows]
         if name == 'describe_factor':
             from dataclasses import asdict
-            factor = self.registry.get(args['factor_id'], args['version'])
+            try: factor = self.registry.get(args['factor_id'], args['version'])
+            except ValueError:
+                raise ValueError('INVALID_ARGUMENT：找不到精确因子版本；请先调用 search_factors 获取实际版本，不接受 latest 或空版本。') from None
             return json.loads(encode({'definition': asdict(factor.definition), 'defaults': factor.parameters({})})), [
                 {'kind': 'factor', 'factor_id': args['factor_id'], 'version': args['version']}]
         if name == 'list_experiments':

@@ -78,3 +78,15 @@ class TrialRegistryTests(unittest.TestCase):
             bind_result(reg,'a',p);report=report_registry(reg,root/'report')
             self.assertEqual(report['available_tests'],1)
             self.assertIsNone(report['tests'][0]['reject_holm'])
+
+    def test_binding_does_not_require_filesystem_hardlinks(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);plan=self.plan();reg=root/'registry';create_registry(plan,reg)
+            source=self.artifact(root,plan['trials'][0])
+            with patch('os.link',side_effect=OSError(45,'Operation not supported')) as forbidden:
+                first=bind_result(reg,'a',source)
+                second=bind_result(reg,'a',source)
+            forbidden.assert_not_called()
+            self.assertEqual(first['status'],'bound');self.assertEqual(second['status'],'unchanged')
+            self.assertEqual(report_registry(reg,root/'report')['available_tests'],2)

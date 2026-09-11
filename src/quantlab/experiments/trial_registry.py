@@ -1,5 +1,6 @@
 """Fixed local experiment families with write-once result bindings."""
 import hashlib
+import fcntl
 import json
 import os
 import re
@@ -135,12 +136,21 @@ def bind_result(root, trial_id, artifact):
         'record':record,'bound_at':datetime.now(timezone.utc).isoformat()}
     binding['binding_id']=digest(binding)
     target=root/'results'/f'{trial_id}.json'
-    # Publish only a fully written file. Hard-link creation is atomic and never replaces a binding.
+    # Serialize cooperating writers and atomically rename a complete file.
+    # Unlike hard links, this works on the user's external volume as well.
     fd,temp=tempfile.mkstemp(prefix='.pending-',dir=root/'results')
     try:
         with os.fdopen(fd,'w') as stream:
             stream.write(encode(binding));stream.flush();os.fsync(stream.fileno())
-        try:os.link(temp,target)
+        try:
+            lock=root/'binding.lock'
+            if lock.is_symlink() or target.is_symlink():raise ValueError('Invalid binding path')
+            with lock.open('a+b') as guard:
+                fcntl.flock(guard,fcntl.LOCK_EX)
+                try:
+                    if target.exists():raise FileExistsError(target)
+                    os.rename(temp,target)
+                finally:fcntl.flock(guard,fcntl.LOCK_UN)
         except FileExistsError:
             existing=json.loads(target.read_text())
             _validate_binding(existing,trial)

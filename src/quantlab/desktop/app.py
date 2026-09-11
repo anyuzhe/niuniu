@@ -26,7 +26,7 @@ from .business_view import BusinessDetails
 NAV = ['研究工作台','数据中心','因子库','市场状态','结构与事件','序列构建器',
        '理论实验室','实验中心','组合与模型','策略回测','结果对比','系统设置']
 ICONS = ['⌂','◎','ƒ(x)','▥','⌘','▤','♙','▷','◔','▧','▣','⚙']
-KINDS = {'factor':'因子实验','execution':'独立成交回测','ablation':'消融研究',
+KINDS = {'campaign':'固定研究包','factor':'因子实验','execution':'独立成交回测','ablation':'消融研究',
     'holdout':'样本外验证','walkforward':'滚动验证','sweep':'参数扫描','theory_study':'理论全流程','trial_registry':'跨实验登记检验族','return_family':'固定净收益检验族','return_increment':'净收益增量比较','stability':'参数与子样本比较','residual_alpha':'残差研究','correlation':'因子相关与去重','correlation_holdout':'样本外相关性','correlation_walkforward':'滚动相关性'}
 MODES = [('single','单因子 / 条件 / 组合'),('holdout','固定样本外'),('walkforward','滚动验证'),
     ('ablation','逐输入消融'),('sweep','参数扫描'),('execution','独立成交回测'),('theory_study','理论全流程'),('correlation','因子相关性与冗余')]
@@ -90,6 +90,11 @@ class MainWindow(QMainWindow):
         from .research_memory import ResearchMemoryDialog
         selected=memory_id if isinstance(memory_id,str) else None
         self.show_dialog(ResearchMemoryDialog(self,selected_id=selected))
+
+    def research_campaign(self):
+        if self.data_root is None:self.status.setText("请先指定行情目录");return
+        from .research_campaign import CampaignDialog
+        self.show_dialog(CampaignDialog(self))
 
     def agent_catalog(self):
         from .agent_catalog import AgentCatalogDialog
@@ -490,6 +495,11 @@ class MainWindow(QMainWindow):
                 ['日均净收益差',summary.get('mean_daily_difference')],['原始 p 值',test.get('p_value')],
                 ['检验状态',test.get('reason') or test.get('status')]]),1)
             box.addWidget(label('候选减基准；这是相同约束下的回顾性净收益差。跨比较校正请查看固定检验族报告。','note',True))
+        elif record.get('kind')=='campaign':
+            summary=record.get('summary',{});family=summary.get('family') or {}
+            box.addWidget(label('固定研究包：'+summary.get('workflow_status','unknown')+'；原计划检验 '+str(summary.get('planned_tests',0))+' 项。失败和跳过项保留，不按显著性追加节点。','note',True))
+            box.addWidget(table(['节点','状态','原因','实验编号'],[[n.get('node_id'),n.get('status'),n.get('reason',n.get('error','')),n.get('run_id','')] for n in summary.get('nodes',[])]))
+            box.addWidget(table(['节点','持有期','指标','状态','原始p','Holm p'],[[t.get(k) for k in ('trial_id','horizon','metric','status','p_value','p_holm')] for t in family.get('tests',[])]))
         elif record.get('kind')=='trial_registry':
             summary=record.get('summary',{})
             box.addWidget(label(f"原计划 {summary.get('planned_tests',0)} 项；可用 p 值 {summary.get('available_tests',0)} 项。失败、部分失败及未运行项保留；原登记时间不代表新预注册。",'note',True))

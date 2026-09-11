@@ -59,6 +59,9 @@ class Submission:
 
 def prepare(spec):
     """Validate before enqueueing, using the existing factor/config contracts."""
+    if isinstance(spec,dict) and spec.get("mode")=="campaign":
+        from quantlab.agent.campaign_plan import prepare_campaign,CampaignSubmission
+        return CampaignSubmission(prepare_campaign(spec)["spec"])
     allowed = {'question', 'symbols', 'timeframe', 'start', 'end', 'factor', 'version',
         'parameters', 'theory', 'theory_version', 'horizons', 'quantiles', 'seed',
         'adjustment', 'mode', 'split', 'schedule', 'grid', 'sequence_audit',
@@ -174,7 +177,10 @@ def prepare(spec):
     return Submission(config, mode, adjustment, split, schedule, grid, universe, execution, study, portfolio, backend, market_rules, correlation)
 
 
-def execute(submission, data_root, artifact_root):
+def execute(submission, data_root, artifact_root, *, campaign_job_id=None):
+    if submission.mode == "campaign":
+        from quantlab.experiments.campaign import run_campaign
+        return run_campaign(submission,data_root,artifact_root,campaign_job_id)
     config = submission.config
     runner = build_runner(data_root, artifact_root, config.data.symbols, submission.adjustment, submission.universe)
     if submission.mode == 'correlation':
@@ -357,7 +363,7 @@ class JobQueue:
             with research_progress(progress),child_checkpoint_scope(self.root,job_id,record['spec']) as children:
                 progress('准备执行',None,None)
                 try:
-                    result = execute(submission, self.data_root, self.root)
+                    result = execute(submission, self.data_root, self.root, **({"campaign_job_id":job_id} if submission.mode=="campaign" else {}))
                 finally:
                     with self.lock:record['checkpoint_summary']=children.summary()
                 with self.lock:record['progress']={'stage':'已完成','completed':None,'total':None,'updated_at':now()}

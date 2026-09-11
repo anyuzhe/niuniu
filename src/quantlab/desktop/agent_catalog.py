@@ -32,6 +32,7 @@ class AgentCatalogDialog(QDialog):
             if key == 'version': control.setText('1.0.0')
             title = label(names[key]); self.form.addRow(title, control)
             self.controls[key] = control; self.labels[key] = title
+        box.addWidget(button('编排固定研究包',lambda:window.research_campaign()))
         self.run_button = button('执行只读查询', self.query, True)
         box.addWidget(row(self.run_button, button('查看工具合同', self.show_schemas)))
         self.status = label('尚未查询。', 'muted', True); box.addWidget(self.status)

@@ -58,6 +58,9 @@ def parse_spec(text):
 
 
 def preview_experiment(spec, budget=None):
+    if isinstance(spec,dict) and spec.get("mode")=="campaign":
+        from quantlab.agent.campaign_plan import prepare_campaign
+        return prepare_campaign(spec,budget)
     from quantlab.workbench.jobs import prepare
     from quantlab.app import default_registry
     from quantlab.experiments.ablation import variants
