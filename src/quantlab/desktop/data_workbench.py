@@ -32,6 +32,7 @@ class DataConnectedWorkbench(MainWindow):
         super().__init__(output,data_root)
         menu=self.menuBar().addMenu('Baostock 数据')
         menu.addAction('候选因子对照（只读）',self.open_candidate_review)
+        menu.addAction('跟踪基准换版（保留旧历史）',self.open_watch_rebase)
         menu.addAction('导入、查看和选择数据集',self.open_baostock_data)
         menu.addAction('日历驱动的跟踪到期检查',self.open_readiness)
         menu.addAction('打开带数据工具的研究助手',self.research_chat)
@@ -40,6 +41,9 @@ class DataConnectedWorkbench(MainWindow):
         self.tracking_controller=TrackingController(self,action)
         from .notification_controller import NotificationController
         self.notification_controller=NotificationController(self,menu.addMenu("桌面通知"))
+    def open_watch_rebase(self):
+        from .watch_rebase import WatchRebaseDialog
+        self.show_dialog(WatchRebaseDialog(self))
     def open_candidate_review(self):
         from .candidate_review import CandidateReviewDialog
         self.show_dialog(CandidateReviewDialog(self))
