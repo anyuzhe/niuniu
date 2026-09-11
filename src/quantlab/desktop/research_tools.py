@@ -151,7 +151,7 @@ class ResearchToolsDialog(QDialog):
         from quantlab.workbench.jobs import JobQueue
         window=self.window;entries=self.frozen_specs[1]
         def run():
-            if window.queue is None:window.queue=JobQueue(window.output,window.data_root)
+            window.get_research_queue()
             return {'jobs':[window.queue.submit(job_id,spec) for job_id,spec in entries]}
         self.perform(run)
     def bind(self):

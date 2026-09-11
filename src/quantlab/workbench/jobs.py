@@ -203,6 +203,20 @@ def execute(submission, data_root, artifact_root):
     return runner.run(config)
 
 
+def validate_execution_guard(guard):
+    if guard is None: return
+    if not isinstance(guard,dict) or set(guard)!={'runtime','cooperative_seconds','max_active_jobs'}:
+        raise ValueError('Invalid approved execution guard')
+    if type(guard['max_active_jobs']) is not int or guard['max_active_jobs'] < 1:
+        raise ValueError('Invalid approved active-job budget')
+    seconds = guard['cooperative_seconds']
+    if type(seconds) is not int or not 1 <= seconds <= 3600:
+        raise ValueError('Approved cooperative time limit must be 1–3600 seconds')
+    from quantlab.experiments.runner import runtime_fingerprint
+    if guard['runtime'] != runtime_fingerprint():
+        raise ValueError('批准后的代码或依赖环境已变化；请重新生成研究提案')
+
+
 class JobQueue:
     """Journal submissions across restarts; interrupted work is never auto-replayed."""
 
@@ -253,22 +267,27 @@ class JobQueue:
         with self.lock:
             return json.loads(encode(sorted(self.jobs.values(), key=lambda j: (j['created_at'], j['job_id']), reverse=True)))
 
-    def submit(self, job_id, spec):
+    def submit(self, job_id, spec, *, execution_guard=None):
         if not isinstance(job_id, str) or str(UUID(job_id)) != job_id:
             raise ValueError('job_id 必须为规范 UUID')
         # Round-trip also rejects non-JSON and non-finite inputs before persistence.
         spec = json.loads(encode(spec))
+        execution_guard = json.loads(encode(execution_guard))
+        validate_execution_guard(execution_guard)
         with self.lock:
             if self.closed:
                 raise ValueError('服务正在关闭，不再接收任务')
             if job_id in self.jobs:
-                if self.jobs[job_id]['spec'] != spec:
+                if self.jobs[job_id]['spec'] != spec or self.jobs[job_id].get('execution_guard') != execution_guard:
                     raise ValueError('同一 job_id 不可用于不同配置')
                 return json.loads(encode(self.jobs[job_id]))
+            if execution_guard and sum(j['status'] in ('queued','running') for j in self.jobs.values()) >= execution_guard['max_active_jobs']:
+                raise ValueError('BUDGET_EXCEEDED：共享队列活动任务已达本次批准上限')
             submission = prepare(spec)
             record = {'job_id': job_id, 'status': 'queued', 'created_at': now(),
                 'started_at': None, 'finished_at': None, 'spec': spec,
                 'resolved': submission.preview(), 'run_id': None, 'error': None, 'attempt': 1}
+            if execution_guard is not None: record['execution_guard'] = execution_guard
             self._save(record)
             self.jobs[job_id] = record
             self.cancellations[job_id]=Event()
@@ -283,6 +302,7 @@ class JobQueue:
             if record is None:raise ValueError('未知任务')
             if record['status'] not in ('interrupted','cancelled','failed'):
                 raise ValueError('只有中断、取消或失败的任务可以恢复')
+            validate_execution_guard(record.get('execution_guard'))
             submission=prepare(record['spec'])
             if submission.preview()!=record['resolved']:
                 raise ValueError('当前解析规则与原任务不一致，请新建研究并核对配置')
@@ -322,8 +342,13 @@ class JobQueue:
                 record.update(status='running', started_at=now())
                 self._save(record)
             from quantlab.progress import research_progress,ResearchCancelled
+            import time
+            guard = record.get('execution_guard'); validate_execution_guard(guard)
+            deadline = time.monotonic()+guard['cooperative_seconds'] if guard else None
             def progress(stage,completed,total):
                 if self.cancellations[job_id].is_set():raise ResearchCancelled('用户取消；已完成的子实验与缓存保留')
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError('已到批准的研究执行时限；在检查点停止，已有归档和断点保留')
                 if stage is not None:
                     with self.lock:
                         record['progress']={'stage':stage,'completed':completed,'total':total,'updated_at':now()}

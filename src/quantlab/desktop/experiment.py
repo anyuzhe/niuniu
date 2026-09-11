@@ -218,7 +218,7 @@ class ExperimentDialog(QDialog):
         self.submit_button.setEnabled(False);self.status.setText('正在提交…')
         job_id=self.job_id
         def execute():
-            if self.window.queue is None:self.window.queue=JobQueue(self.window.output,self.window.data_root)
+            self.window.get_research_queue()
             return self.window.queue.submit(job_id,spec)
         def done(data,error):
             self.submit_button.setEnabled(True)

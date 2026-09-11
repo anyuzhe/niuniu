@@ -15,6 +15,19 @@ LABELS.update({'backend':'成交引擎','corporate_action_mode':'公司行动资
 VALUES={'completed':'已完成','running':'运行中','queued':'等待运行','failed':'失败','cancelled':'已取消','boolean':'条件事件','scalar':'数值因子','theory':'理论模板','qfq':'前复权','raw':'不复权','research':'研究价格','account':'精细账户','strict':'严格历史可用时间','retrospective':'回顾性资料','gt':'大于','ge':'大于等于','lt':'小于','le':'小于等于','eq':'等于','ne':'不等于','explicit':'指定股票','listing':'历史上市日期','pit':'历史可用资格'}
 VALUES.update({'open':'独立开盘成交引擎','vnpy_rules':'vn.py 规则引擎','equal':'等权','score':'评分权重'})
 
+LABELS.update({'proposal_id':'提案编号','request_id':'幂等请求编号','proposal_digest':'完整提案校验值',
+    'job_id':'原队列任务编号','approved_at':'人工批准时间','spec':'原始研究配置','spec_digest':'配置校验值',
+    'resolved':'原引擎解析结果','estimate':'规模预估','budget':'本次预算','binding':'工作空间与代码绑定',
+    'data_policy':'行情快照政策','calendar_days':'自然日跨度','leaf_studies':'叶子研究数',
+    'bar_evaluations_upper_estimate':'保守 K 线评价量','resample_date_draws_upper_estimate':'保守重采样工作量',
+    'max_symbols':'证券数量上限','max_calendar_days':'自然日跨度上限','max_leaf_studies':'叶子研究上限',
+    'max_bar_evaluations':'K 线评价量上限','max_resamples':'重采样次数上限',
+    'max_resample_date_draws':'重采样工作量上限','max_pending_proposals':'待处理提案上限',
+    'max_active_jobs':'新提案提交时活动任务上限','cooperative_seconds':'每次执行合作式时限（秒）',
+    'output':'研究产物目录','data_root':'只读行情目录','device':'存储设备标识','inode':'目录身份标识'})
+VALUES.update({'pending':'待人工批准','approved':'已批准，待入队确认','submitted':'已交付原任务队列',
+    'rejected':'已拒绝','execution_time_snapshot_not_approval_time_freeze':'批准时不冻结行情字节；执行时保存数据快照'})
+
 
 class BusinessDetails(QWidget):
     def __init__(self,value,parent=None):

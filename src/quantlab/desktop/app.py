@@ -3,6 +3,7 @@ import json
 import re
 import sys
 from collections import Counter
+from threading import RLock
 from pathlib import Path
 from uuid import uuid4
 
@@ -52,6 +53,7 @@ class MainWindow(QMainWindow):
         self.output=Path(output).resolve();self.output.mkdir(parents=True,exist_ok=True)
         self.catalog=ArtifactCatalog(self.output);self.data_root=Path(data_root).resolve() if data_root else None
         self.factors=json.loads(encode(default_registry().describe()));self.theories=templates()
+        self.queue_lock=RLock()
         self.queue=None;self.callbacks={};self.next_task=0;self.epoch=0;self.current=0;self.closing=False
         self.pool=QThreadPool(self);self.pool.setMaxThreadCount(2)
         self.signals=Signals(self);self.signals.finished.connect(self.finished)
@@ -77,12 +79,24 @@ class MainWindow(QMainWindow):
         self.boss_button=button('老板键 F12',self.boss_key.hide)
         self.boss_button.setToolTip(self.boss_key.help_text)
         self.boss_button.setAccessibleDescription(self.boss_key.help_text)
-        tb.addWidget(self.search,1);tb.addWidget(button('搜索',self.global_search));tb.addStretch();tb.addWidget(self.boss_button);tb.addWidget(label('●  本地研究员','muted'));tb.addWidget(button('运行任务',self.show_jobs));tb.addWidget(button('＋ 新建实验',self.new_experiment,True));wb.addWidget(top)
+        tb.addWidget(self.search,1);tb.addWidget(button('搜索',self.global_search));tb.addStretch();tb.addWidget(self.boss_button);tb.addWidget(button('AI 研究接口',self.agent_catalog));tb.addWidget(label('●  本地研究员','muted'));tb.addWidget(button('运行任务',self.show_jobs));tb.addWidget(button('＋ 新建实验',self.new_experiment,True));wb.addWidget(top)
         self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);wb.addWidget(self.scroll,1)
         self.status=label('牛牛平台 · Research First · Causal Correctness · Reproducible Experiments','muted');self.status.setContentsMargins(24,8,24,8);wb.addWidget(self.status)
         QShortcut(QKeySequence.StandardKey.Find,self,activated=self.search.setFocus)
         self.shutdown_timer=QTimer(self);self.shutdown_timer.setInterval(250);self.shutdown_timer.timeout.connect(self.close)
         self.navigate(0)
+
+    def agent_catalog(self):
+        from .agent_catalog import AgentCatalogDialog
+        self.show_dialog(AgentCatalogDialog(self))
+
+    def get_research_queue(self):
+        """One shared queue for manual forms, fixed plans and approved proposals."""
+        with self.queue_lock:
+            if self.closing: raise ValueError('工作台正在关闭，不再创建新任务')
+            if self.data_root is None: raise ValueError('请先配置行情数据目录')
+            if self.queue is None: self.queue=JobQueue(self.output,self.data_root)
+            return self.queue
 
     def async_call(self, function, callback, guarded=True):
         key=self.next_task;self.next_task+=1
@@ -360,6 +374,16 @@ class MainWindow(QMainWindow):
                 layout.addWidget(tabs);self.show_dialog(dialog)
             self.async_call(lambda:[self.catalog.record(i) for i in ids],done)
 
+    def research_chat(self):
+        from PyQt6 import sip
+        from .research_chat import ResearchChatDialog
+        try:
+            dialog=getattr(self,'_research_chat_dialog',None)
+            if dialog is not None and not sip.isdeleted(dialog) and dialog.output==self.output and dialog.data_root==self.data_root:
+                dialog.show();dialog.raise_();dialog.activateWindow();return
+            dialog=ResearchChatDialog(self);self._research_chat_dialog=dialog;self.show_dialog(dialog)
+        except Exception as error:self.status.setText('研究助手未打开：'+str(error))
+
     def research_tools(self):
         from .research_tools import ResearchToolsDialog
         self.show_dialog(ResearchToolsDialog(self))
@@ -624,7 +648,7 @@ class MainWindow(QMainWindow):
         def resume(identifier):
             try:
                 if self.data_root is None:raise ValueError('请先配置行情数据目录')
-                if self.queue is None:self.queue=JobQueue(self.output,self.data_root)
+                self.get_research_queue()
                 self.queue.resume(identifier)
                 self.status.setText('任务已恢复：复用校验通过的缓存和缠论状态断点，其余步骤重新计算。')
                 self.show_jobs()
