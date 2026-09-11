@@ -150,3 +150,46 @@ class TrackingScheduler:
                         'enabled':state['enabled'],'tasks_reserved':len(state['cycles'])})
             except BlockingIOError:results.append({'watch_id':watch_id,'status':'busy'})
         return {'controls':results,'errors':listing['errors'],'network_requests':0}
+
+    def reconcile_completed(self,watch_id,*,now=None):
+        """Host action: adopt a manually recovered original job, never submit/resume."""
+        stamp=utc(now)
+        with self.store.locked(watch_id):
+            state=self.store.get(watch_id)
+            if state is None:raise ValueError('没有可核对的跟踪授权记录')
+            candidates=[c for c in state['cycles'] if c['status'] in ('failed','cancelled','interrupted')]
+            results=[];synchronized=0
+            jobs={j['job_id']:j for j in self.queue().list()} if candidates else {}
+            for cycle in candidates:
+                job=jobs.get(cycle['job_id'])
+                row={'job_id':cycle['job_id'],'previous_status':cycle['status']}
+                try:
+                    if job is None:raise ValueError('原任务记录缺失，不创建替代任务')
+                    if job['spec']!=cycle['spec'] or job.get('execution_guard')!=cycle['guard']:
+                        raise ValueError('原任务配置或执行约束变化，拒绝纳入跟踪')
+                    if job['status']!='completed':
+                        row.update(status='not_completed',job_status=job['status'])
+                        results.append(row);continue
+                    result=self.watch.observe(watch_id,job['run_id'])
+                    cycle['manual_recovery']={'from_status':cycle['status'],'prior_error':cycle.get('error'),
+                        'attempt':job.get('attempt',1),'checked_at':stamp.isoformat()}
+                    cycle.update(status='synced',run_id=job['run_id'],
+                        snapshot_id=result['snapshot']['snapshot_id'])
+                    synchronized+=1
+                    row.update(status='synced',run_id=job['run_id'],snapshot_id=cycle['snapshot_id'])
+                    notify(state,'synced:'+cycle['end'],'snapshot_updated',row,stamp)
+                    for alert in result['snapshot'].get('alerts',[]):
+                        key='alert:'+alert['kind']+':'+str(alert.get('window',''))+':'+str(alert.get('horizon',''))
+                        notify(state,key,alert['kind'],alert,stamp)
+                    self.store.save(state)
+                except (ValueError,OSError,KeyError,TypeError,pl.exceptions.PolarsError) as error:
+                    row.update(status='requires_review',error=type(error).__name__+': '+str(error)[:240])
+                results.append(row)
+            if synchronized and not state['enabled']:
+                state['recovery_previous_status']=state['status']
+                state['status']='recovered_results_synced'
+            report={'checked_at':stamp.isoformat(),'results':results,'synchronized':synchronized,
+                'authorization_enabled':state['enabled'],'new_research_jobs':0,'resumed_jobs':0}
+            state['last_reconciliation']=report
+            self.store.save(state)
+            return report

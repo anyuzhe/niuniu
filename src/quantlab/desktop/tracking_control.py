@@ -37,6 +37,7 @@ class TrackingControlDialog(QDialog):
         box.addWidget(label('撤销/到期停止新入队；已经入队的任务需在运行任务页单独取消。失败或中断不自动重试。','muted',True))
         box.addWidget(row(button('刷新跟踪及日历',self.reload),button('查看授权与提醒',self.inspect),
             button('提醒标为已读',self.acknowledge),button('检查已授权计划',window.tracking_controller.check)))
+        box.addWidget(button('同步人工恢复成功的原任务',self.reconcile))
         self.details=BusinessDetails({});box.addWidget(self.details,1)
         self.status=label('默认没有授权；先选择新版本基准和完整日历。','muted',True);box.addWidget(self.status)
         self.confirm.toggled.connect(self.buttons)
@@ -107,3 +108,13 @@ class TrackingControlDialog(QDialog):
     def acknowledge(self):
         watch=self.watches.currentData()
         if watch:self.work(lambda:ControlStore(self.output).acknowledge(watch),lambda _:self.status.setText('提醒已标为已读。'))
+
+    def reconcile(self):
+        watch=self.watches.currentData()
+        if not watch:self.status.setText('请先选择已有跟踪。');return
+        from quantlab.agent.tracking_scheduler import TrackingScheduler
+        engine=TrackingScheduler(self.output,self.data_root,self.window.get_research_queue)
+        def done(value):
+            self.details.setPlainText(encode(value))
+            self.status.setText('已同步 '+str(value['synchronized'])+' 个原任务结果；未提交或恢复任务，也未重新开启授权。')
+        self.work(lambda:engine.reconcile_completed(watch),done)

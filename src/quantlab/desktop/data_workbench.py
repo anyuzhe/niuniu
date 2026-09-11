@@ -31,12 +31,18 @@ class DataConnectedWorkbench(MainWindow):
     def __init__(self,output,data_root=None):
         super().__init__(output,data_root)
         menu=self.menuBar().addMenu('Baostock 数据')
+        menu.addAction('候选因子对照（只读）',self.open_candidate_review)
         menu.addAction('导入、查看和选择数据集',self.open_baostock_data)
         menu.addAction('日历驱动的跟踪到期检查',self.open_readiness)
         menu.addAction('打开带数据工具的研究助手',self.research_chat)
         from .tracking_controller import TrackingController
         action=menu.addAction('受控自动跟踪与提醒',self.open_tracking_control)
         self.tracking_controller=TrackingController(self,action)
+        from .notification_controller import NotificationController
+        self.notification_controller=NotificationController(self,menu.addMenu("桌面通知"))
+    def open_candidate_review(self):
+        from .candidate_review import CandidateReviewDialog
+        self.show_dialog(CandidateReviewDialog(self))
     def open_tracking_control(self):
         from .tracking_control import TrackingControlDialog
         self.show_dialog(TrackingControlDialog(self))

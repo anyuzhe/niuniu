@@ -89,4 +89,5 @@ def control_summary(state):
         'interval_minutes':grant['interval_minutes'],'authorization_source':state['authorization_source'],
         'cycles':[{k:v for k,v in c.items() if k not in ('spec','guard')} for c in state['cycles']],
         'notices':list(state['notices'].values()),'desktop_open_required':True,
+        'last_reconciliation':state.get('last_reconciliation'),
         'network_download':False,'model_can_authorize':False}
