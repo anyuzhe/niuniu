@@ -10,6 +10,8 @@ from quantlab.agent.refresh_readiness import watch_readiness
 from quantlab.storage.codec import encode
 
 TOOLS=[
+    schema('list_baostock_series','只读查询人工建立的数据更新通道；不接入批次或授权研究。',{'offset':OFFSET,'limit':LIMIT}),
+    schema('get_baostock_series','读取通道发布链和当前批次身份；只核对发布记录，不认证全部数据文件或PIT。',{'series_id':TEXT}),
     schema('compare_factor_candidates','只读对照两个真实单因子归档：相同数据/股票池/处理条件，在共同成熟样本比较Rank IC并单独计算因子相关性；没有显著性或Alpha认证，不创建任务。',{'candidate_run_id':TEXT,'baseline_run_id':TEXT,'horizon':{'type':'integer','minimum':1,'maximum':1000}}),
     schema('get_tracking_control','只读查询宿主预授权的自动跟踪状态、预算和应用内提醒；不启用、修改、撤销或执行任务。',{'watch_id':TEXT}),
     schema('list_baostock_imports','查询实际Baostock导入批次；失败和空响应不隐藏。不联网下载。',{'offset':OFFSET,'limit':LIMIT}),
@@ -27,7 +29,7 @@ class MarketDataResearchAPI(WatchResearchAPI):
             result=super().call(name,arguments)
             if name=='get_capabilities' and result.get('ok'):
                 result['data'].update(imported_market_data_available=True,data_download_tool=False,candidate_review_available=True,
-                    calendar_readiness_available=True,controlled_tracking_available=True,
+                    calendar_readiness_available=True,controlled_tracking_available=True,managed_series_available=True,
                     tracking_authorization_host_only=True,tools=[t['name'] for t in self.schemas()])
             return result
         try:
@@ -39,7 +41,17 @@ class MarketDataResearchAPI(WatchResearchAPI):
                     type(value) is int and prop['minimum']<=value<=prop['maximum'])
                 if not valid:raise ValueError('参数类型或范围错误：'+key)
             refs=[]
-            if name=='compare_factor_candidates':
+            if name in ('list_baostock_series','get_baostock_series'):
+                from quantlab.data.baostock_series import SeriesService
+                service=SeriesService(self.output)
+                if name=='list_baostock_series':
+                    value=service.list();rows=value['series']
+                    data={'series':rows[arguments['offset']:arguments['offset']+arguments['limit']],'total':len(rows),'errors':value['errors']}
+                else:
+                    state=service.get(arguments['series_id'])
+                    data={**state,'history':state['history'][-20:],'history_omitted':max(0,len(state['history'])-20),'publication_record_verified':True,'source_files_verified':False}
+                    refs=[{'kind':'market_data','import_id':state['history'][-1]['delivery']['import_id']}]
+            elif name=='compare_factor_candidates':
                 from quantlab.agent.candidate_review import compare_candidate
                 data=compare_candidate(self.output,**arguments)
                 refs=[{'kind':'experiment','run_id':arguments[key]} for key in ('candidate_run_id','baseline_run_id')]

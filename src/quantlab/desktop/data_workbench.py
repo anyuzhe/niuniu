@@ -31,6 +31,7 @@ class DataConnectedWorkbench(MainWindow):
     def __init__(self,output,data_root=None):
         super().__init__(output,data_root)
         menu=self.menuBar().addMenu('Baostock 数据')
+        menu.addAction('固定更新通道（跨批次接入）',self.open_baostock_series)
         menu.addAction('候选因子对照（只读）',self.open_candidate_review)
         menu.addAction('跟踪基准换版（保留旧历史）',self.open_watch_rebase)
         menu.addAction('导入、查看和选择数据集',self.open_baostock_data)
@@ -44,6 +45,24 @@ class DataConnectedWorkbench(MainWindow):
     def open_watch_rebase(self):
         from .watch_rebase import WatchRebaseDialog
         self.show_dialog(WatchRebaseDialog(self))
+    def open_baostock_series(self):
+        from .baostock_series import BaostockSeriesDialog
+        self.show_dialog(BaostockSeriesDialog(self))
+    def select_baostock_series(self,identifier):
+        from quantlab.data.baostock_series import SeriesService
+        from quantlab.agent.tracking_control_store import ControlStore
+        service=SeriesService(self.output);service.get(identifier);directory=service.folder(identifier).resolve()
+        if self.callbacks or (self.queue and any(j['status'] in ('queued','running') for j in self.queue.list())):
+            raise ValueError('请先等待当前读取和研究完成')
+        if self.data_root==directory:return
+        controls=ControlStore(self.output).list()
+        if controls['errors'] or any(s['enabled'] or any(c['status'] in ('reserved','queued','running') for c in s['cycles']) for s in controls['controls']):
+            raise ValueError('切换数据源前请撤销旧授权并处理未完成任务')
+        if self.queue:self.queue.close();self.queue=None
+        from .baostock_series import BaostockSeriesDialog
+        for child in self.dialogs:
+            if isinstance(child,QDialog) and not isinstance(child,BaostockSeriesDialog):child.close()
+        self.data_root=directory;self._research_chat_dialog=None;self.last_records=[]
     def open_candidate_review(self):
         from .candidate_review import CandidateReviewDialog
         self.show_dialog(CandidateReviewDialog(self))
