@@ -119,7 +119,7 @@ class ResearchChatDialog(QDialog):
                     key=digest(ref)
                     if key in self.references:continue
                     self.references[key]=ref
-                    identifier=ref.get('run_id',ref.get('proposal_id',ref.get('factor_id',ref.get('job_id',''))))
+                    identifier=ref.get('memory_id',ref.get('run_id',ref.get('proposal_id',ref.get('factor_id',ref.get('job_id','')))))
                     entry=QListWidgetItem(ref['kind']+' · '+identifier)
                     entry.setData(Qt.ItemDataRole.UserRole,ref);self.evidence.addItem(entry)
 
@@ -188,7 +188,8 @@ class ResearchChatDialog(QDialog):
         if item is None:self.status.setText('请先选择工具返回的真实引用。');return
         ref=item.data(Qt.ItemDataRole.UserRole)
         try:
-            if ref['kind']=='proposal':self.open_proposals(ref['proposal_id'])
+            if ref['kind']=='memory':self.window.research_memory(ref['memory_id'])
+            elif ref['kind']=='proposal':self.open_proposals(ref['proposal_id'])
             elif ref['kind']=='experiment':
                 self.window.catalog.file(ref['run_id'],'experiment.json')
                 self.hide();self.window.open_run(ref['run_id'])

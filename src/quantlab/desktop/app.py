@@ -79,12 +79,17 @@ class MainWindow(QMainWindow):
         self.boss_button=button('老板键 F12',self.boss_key.hide)
         self.boss_button.setToolTip(self.boss_key.help_text)
         self.boss_button.setAccessibleDescription(self.boss_key.help_text)
-        tb.addWidget(self.search,1);tb.addWidget(button('搜索',self.global_search));tb.addStretch();tb.addWidget(self.boss_button);tb.addWidget(button('AI 研究接口',self.agent_catalog));tb.addWidget(label('●  本地研究员','muted'));tb.addWidget(button('运行任务',self.show_jobs));tb.addWidget(button('＋ 新建实验',self.new_experiment,True));wb.addWidget(top)
+        tb.addWidget(self.search,1);tb.addWidget(button('搜索',self.global_search));tb.addStretch();tb.addWidget(self.boss_button);tb.addWidget(button('AI 研究接口',self.agent_catalog));tb.addWidget(button('研究记忆',self.research_memory));tb.addWidget(label('●  本地研究员','muted'));tb.addWidget(button('运行任务',self.show_jobs));tb.addWidget(button('＋ 新建实验',self.new_experiment,True));wb.addWidget(top)
         self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);wb.addWidget(self.scroll,1)
         self.status=label('牛牛平台 · Research First · Causal Correctness · Reproducible Experiments','muted');self.status.setContentsMargins(24,8,24,8);wb.addWidget(self.status)
         QShortcut(QKeySequence.StandardKey.Find,self,activated=self.search.setFocus)
         self.shutdown_timer=QTimer(self);self.shutdown_timer.setInterval(250);self.shutdown_timer.timeout.connect(self.close)
         self.navigate(0)
+
+    def research_memory(self, memory_id=None):
+        from .research_memory import ResearchMemoryDialog
+        selected=memory_id if isinstance(memory_id,str) else None
+        self.show_dialog(ResearchMemoryDialog(self,selected_id=selected))
 
     def agent_catalog(self):
         from .agent_catalog import AgentCatalogDialog
