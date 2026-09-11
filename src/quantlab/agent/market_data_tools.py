@@ -1,0 +1,95 @@
+"""Read-only imported-data tools; downloading remains an explicit host action."""
+import json
+from pathlib import Path
+import polars as pl
+from quantlab.agent.watch_tools import WatchResearchAPI
+from quantlab.agent.catalog import schema,TEXT,LIMIT,OFFSET,compact
+from quantlab.data.baostock_ingest import load_import
+from quantlab.data.baostock_dataset import dataset_manifest,read_table,responses,read_dataset_bytes
+from quantlab.agent.refresh_readiness import watch_readiness
+from quantlab.storage.codec import encode
+
+TOOLS=[
+    schema('list_baostock_imports','查询实际Baostock导入批次；失败和空响应不隐藏。不联网下载。',{'offset':OFFSET,'limit':LIMIT}),
+    schema('get_baostock_import','核对一个批次的响应校验值和数据覆盖。抓取成功不等于PIT或真实交易规则认证。',{'import_id':TEXT}),
+    schema('read_baostock_table','分页读取已归档数据表。table名称来自get_baostock_import，symbol留空不筛选。财报原始比例单位保持供应商口径；空值不填零。',{'import_id':TEXT,'table':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
+    schema('get_watch_refresh_readiness','使用已归档完整日历和带时区as_of检查日线跟踪到期候选，不下载、不批准、不运行。',{'watch_id':TEXT,'import_id':TEXT,'as_of':TEXT}),
+]
+
+
+class MarketDataResearchAPI(WatchResearchAPI):
+    def schemas(self):return super().schemas()+json.loads(json.dumps(TOOLS,ensure_ascii=False))
+    def call(self,name,arguments):
+        definition=next((t for t in TOOLS if t['name']==name),None)
+        if definition is None:
+            result=super().call(name,arguments)
+            if name=='get_capabilities' and result.get('ok'):
+                result['data'].update(imported_market_data_available=True,data_download_tool=False,
+                    calendar_readiness_available=True,tools=[t['name'] for t in self.schemas()])
+            return result
+        try:
+            props=definition['parameters']['properties']
+            if not isinstance(arguments,dict) or set(arguments)!=set(props):raise ValueError('字段必须与工具合同一致')
+            for key,prop in props.items():
+                value=arguments[key]
+                valid=isinstance(value,str) and len(value)<=prop['maxLength'] if prop['type']=='string' else (
+                    type(value) is int and prop['minimum']<=value<=prop['maximum'])
+                if not valid:raise ValueError('参数类型或范围错误：'+key)
+            refs=[]
+            if name=='list_baostock_imports':
+                rows=[];unreadable=0;root=self.output/'_market_data'/'baostock'
+                for path in root.glob('*/manifest.json'):
+                    try:
+                        _,m=load_import(self.output,path.parent.name)
+                        row={k:m.get(k) for k in ('import_id','status','created_at','dataset_ready')}
+                        row['dataset']={k:v for k,v in (m.get('dataset') or {}).items() if k in ('ready','calendar_ready','tables')}
+                        rows.append(row)
+                    except (ValueError,OSError,TypeError):unreadable+=1
+                rows.sort(key=lambda r:r.get('created_at') or '',reverse=True)
+                selected=rows[arguments['offset']:arguments['offset']+arguments['limit']]
+                data={'imports':selected,'total':len(rows),'unreadable':unreadable}
+                refs=[{'kind':'market_data','import_id':r['import_id']} for r in selected]
+            elif name=='get_watch_refresh_readiness':
+                data=watch_readiness(self.output,**arguments)
+                refs=[{'kind':'watch','watch_id':arguments['watch_id']}]
+            else:
+                directory,m=load_import(self.output,arguments['import_id'])
+                refs=[{'kind':'market_data','import_id':arguments['import_id']}]
+                if name=='get_baostock_import':
+                    counts={};verified=0
+                    for entry,record in responses(directory,m):
+                        verified+=1;item=counts.setdefault(entry['kind'],{'queries':0,'received':0,'no_data':0,'failed':0,'rows':0})
+                        item['queries']+=1;item[entry['status']]+=1;item['rows']+=entry['rows']
+                    data={k:v for k,v in m.items() if k!='responses'}
+                    data.update(verified_responses=verified,response_summary=counts)
+                    if m.get('dataset_ready'):
+                        ds,_=dataset_manifest(directory/'dataset')
+                        for relative in ds['files']:read_dataset_bytes(directory/'dataset',relative,ds)
+                        data['verified_dataset_files']=len(ds['files'])
+                        data['dataset_fingerprint']=ds['checksum']
+                else:
+                    frame=read_table(directory/'dataset',arguments['table'])
+                    if arguments['symbol']:
+                        if 'code' not in frame.columns:raise ValueError('本表没有证券列，不能指定symbol')
+                        frame=frame.filter(pl.col('code')==arguments['symbol'])
+                    page=frame.slice(arguments['offset'],arguments['limit'])
+                    data={'table':arguments['table'],'columns':page.columns,'rows':page.to_dicts(),
+                        'total':frame.height,'offset':arguments['offset'],'historical_available_at_verified':False}
+            result={'ok':True,'tool':name,'data':compact(data),'evidence':refs,
+                'warnings':['数据采集日期不是历史首次可用日期；不提供严格PIT、真实每日市值或官方价格限制认证。'],'error':None}
+            if len(encode(result))>24000:result['data']={'omitted':True,'reason':'result_size_limit'}
+            return json.loads(encode(result))
+        except (ValueError,TypeError,KeyError,OSError,pl.exceptions.PolarsError) as error:
+            return {'ok':False,'tool':name,'data':None,'evidence':[],'warnings':[],
+                'error':{'code':'MARKET_DATA_READ_FAILED','message':str(error)[:240]}}
+
+
+if __name__=='__main__':
+    import argparse
+    from quantlab.agent.model_config import strict_json
+    parser=argparse.ArgumentParser(description='已导入的Baostock资料与跟踪日历查询，不联网下载')
+    parser.add_argument('--output',required=True);parser.add_argument('--data-root')
+    parser.add_argument('--call',default='get_capabilities');parser.add_argument('--arguments',default='{}')
+    args=parser.parse_args()
+    result=MarketDataResearchAPI(args.output,args.data_root).call(args.call,strict_json(args.arguments))
+    print(encode(result));raise SystemExit(0 if result['ok'] else 2)

@@ -49,11 +49,11 @@ def campaign_directory(output,job_id):
 
 def input_signature(spec,data_root):
     from quantlab.workbench.jobs import prepare
-    from quantlab.data.mqc import MQCParquetProvider
+    from quantlab.data.provider import local_data_provider
     from quantlab.data.universe import build_universe
     submission = prepare(spec); cfg = submission.config
     try:
-        provider = MQCParquetProvider(data_root,submission.adjustment)
+        provider = local_data_provider(data_root,submission.adjustment)
         batch = provider.load(cfg.data)
         universe = build_universe(data_root,cfg.data.symbols,submission.universe)
         inputs = [{'snapshot':asdict(batch.snapshot),'bars_hash':digest(batch.bars.write_json())}]
@@ -61,7 +61,7 @@ def input_signature(spec,data_root):
             context = provider.load(cfg.context.request(cfg.data))
             inputs.append({'snapshot':asdict(context.snapshot),'bars_hash':digest(context.bars.write_json())})
         if submission.execution and submission.execution.price_mode=='account' and submission.adjustment!='raw':
-            raw = MQCParquetProvider(data_root,'raw').load(cfg.data)
+            raw = local_data_provider(data_root,'raw').load(cfg.data)
             inputs.append({'snapshot':asdict(raw.snapshot),'bars_hash':digest(raw.bars.write_json())})
         return {'status':'available','inputs':inputs,'universe_version':universe.version,
             'mask_hash':digest(universe.mask(batch.bars).sort('symbol','datetime').write_json())}

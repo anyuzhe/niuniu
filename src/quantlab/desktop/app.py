@@ -704,4 +704,5 @@ class MainWindow(QMainWindow):
 
 def launch(output=Path('artifacts'),data_root=None):
     app=QApplication.instance() or QApplication(sys.argv[:1]);app.setApplicationName('牛牛平台');app.setStyle('Fusion')
-    window=MainWindow(output,data_root);window.show();return app.exec()
+    from .data_workbench import DataConnectedWorkbench
+    window=DataConnectedWorkbench(output,data_root);window.show();return app.exec()

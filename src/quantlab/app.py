@@ -18,6 +18,7 @@ from quantlab.factors.order_block import order_block_pack
 from quantlab.factors.liquidity_pool import liquidity_pool_pack
 from quantlab.factors.chan_progression import chan_progression_pack
 from quantlab.data.mqc import MQCParquetProvider
+from quantlab.data.provider import local_data_provider
 from quantlab.experiments.runner import ExperimentRunner
 from quantlab.factors.builtin import base_quant_pack
 from quantlab.factors.alpha import alpha_packs
@@ -36,6 +37,8 @@ from quantlab.storage.experiments import LocalExperimentStore
 def default_registry() -> FactorRegistry:
     registry = FactorRegistry()
     registry.register_pack(base_quant_pack())
+    from quantlab.factors.baostock import baostock_pack
+    registry.register_pack(baostock_pack())
     registry.register_pack(technical_pack())
     registry.register_pack(smc_pack())
     registry.register_pack(brooks_pack())
@@ -65,5 +68,5 @@ def default_registry() -> FactorRegistry:
 def build_runner(data_root: Path, artifact_root: Path, symbols: tuple[str, ...], adjustment: str = "raw", universe_config=None, snapshot_manifest=None) -> ExperimentRunner:
     from quantlab.data.archive import ArchivedBarProvider
     if snapshot_manifest and adjustment!='raw':raise ValueError('Archived data requires raw adjustment')
-    data=ArchivedBarProvider(snapshot_manifest) if snapshot_manifest else MQCParquetProvider(data_root, adjustment)
+    data=ArchivedBarProvider(snapshot_manifest) if snapshot_manifest else local_data_provider(data_root, adjustment)
     return ExperimentRunner(data, default_registry(), build_universe(data_root, symbols, universe_config), LocalExperimentStore(artifact_root))

@@ -156,6 +156,7 @@ def launch_chat(output,data_root=None):
     from .app import MainWindow
     app=QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName('牛牛 AI 研究助手');app.setStyle('Fusion')
-    window=MainWindow(output,data_root);window.show()
+    from .data_workbench import DataConnectedWorkbench
+    window=DataConnectedWorkbench(output,data_root);window.show()
     window.research_chat()
     return app.exec()

@@ -45,9 +45,11 @@ class ExecutionStudy:
             signal_bars=bars
             if execution_config.price_mode=='account' and signal_snapshot['adjustment']!='raw':
                 from quantlab.data.mqc import MQCParquetProvider
-                if self.execution_data is None and not isinstance(self.runner.data,MQCParquetProvider):
+                from quantlab.data.baostock_provider import BaostockSnapshotProvider
+                from quantlab.data.provider import local_data_provider
+                if self.execution_data is None and not isinstance(self.runner.data,(MQCParquetProvider,BaostockSnapshotProvider)):
                     raise ValueError('复权信号回测需要对应的不复权行情源')
-                raw_batch=(self.execution_data or MQCParquetProvider(self.runner.data.root,'raw')).load(config.data)
+                raw_batch=(self.execution_data or local_data_provider(self.runner.data.root,'raw')).load(config.data)
                 if raw_batch.snapshot.adjustment!='raw':raise ValueError('成交行情必须是不复权 raw 价格')
                 keys=['symbol','datetime','available_at']
                 if not bars.select(keys).sort(keys).equals(raw_batch.bars.select(keys).sort(keys)):
