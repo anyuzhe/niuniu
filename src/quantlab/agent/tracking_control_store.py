@@ -87,6 +87,7 @@ def control_summary(state):
         'next_check':state['next_check'],'expires_at':grant['expires_at'],
         'end_cap':grant['end'],'max_jobs':grant['max_jobs'],'reserved_jobs':len(state['cycles']),
         'interval_minutes':grant['interval_minutes'],'authorization_source':state['authorization_source'],
+        'target_session':state.get('target_session'),'delivery_audit':state.get('delivery_audit'),
         'cycles':[{k:v for k,v in c.items() if k not in ('spec','guard')} for c in state['cycles']],
         'notices':list(state['notices'].values()),'desktop_open_required':True,
         'last_reconciliation':state.get('last_reconciliation'),

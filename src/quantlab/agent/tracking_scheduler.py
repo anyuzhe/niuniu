@@ -1,5 +1,7 @@
 """Bounded local-data refreshes under an explicit host grant; no LLM or network."""
 from copy import deepcopy
+from dataclasses import asdict
+from zoneinfo import ZoneInfo
 import polars as pl
 from datetime import date,datetime,timedelta
 from uuid import UUID,uuid5
@@ -10,7 +12,8 @@ from quantlab.agent.refresh_readiness import watch_readiness
 from quantlab.agent.proposals import workspace_identity
 from quantlab.agent.planning import ResearchBudget,preview_experiment
 from quantlab.data.baostock_ingest import load_import
-from quantlab.data.baostock_dataset import dataset_manifest
+from quantlab.data.baostock_dataset import dataset_manifest, read_table
+from quantlab.data.session_coverage import audit_daily_coverage, calendar_sessions
 from quantlab.data.provider import local_data_provider
 from quantlab.workbench.jobs import prepare
 from quantlab.experiments.campaign_state import input_signature
@@ -44,20 +47,31 @@ class TrackingScheduler:
         if workspace_identity(queue.root)!=workspace_identity(self.output) or workspace_identity(queue.data_root)!=workspace_identity(self.data_root):
             raise ValueError('调度队列与授权工作空间不一致')
         return queue
-    def data_signature(self,spec,target,stamp):
+    def calendar(self,state):
+        grant=state['grant'];directory,receipt=load_import(self.output,grant['import_id'])
+        manifest,_=dataset_manifest(directory/'dataset')
+        if receipt.get('status') not in ('completed','completed_with_errors') or manifest['checksum']!=grant['calendar_hash']:
+            raise ValueError('授权日历批次状态或校验值变化')
+        return read_table(directory/'dataset','calendar')
+    def data_signature(self,spec,target,stamp,control):
         config=prepare(spec).config
+        if config.data.end!=date.fromisoformat(target):raise ValueError('任务与目标日期不一致')
         batch=local_data_provider(self.data_root,spec['adjustment']).load(config.data)
-        for symbol in config.data.symbols:
-            rows=batch.bars.filter(pl.col('symbol')==symbol)
-            if rows.is_empty() or rows['datetime'].max().date()!=date.fromisoformat(target):
-                raise ValueError('所选本地数据尚未覆盖目标日：'+symbol)
-            if rows['available_at'].max()>stamp:raise ValueError('本地数据包含尚未完成的K线')
+        report=audit_daily_coverage(batch.bars,self.calendar(control),config.data.symbols,
+            config.data.start,config.data.end,stamp)
+        control['delivery_audit']=report
+        if report['status']!='complete':
+            gaps=[r['symbol']+':'+','.join(r['missing_examples'][:3]) for r in report['symbols'] if r['missing_sessions']]
+            raise ValueError('日线覆盖不完整，未创建研究任务；'+(';'.join(gaps[:5]) or '存在重复、非交易日或未可用数据'))
         signature=input_signature(spec,self.data_root)
         if signature['status']!='available':raise ValueError('本地输入尚未通过校验')
+        first=signature['inputs'][0]
+        if first['bars_hash']!=digest(batch.bars.write_json()) or first['snapshot']!=asdict(batch.snapshot):
+            raise ValueError('逐日审计后输入已变化，请重新核对')
         return digest(signature)
     def dispatch(self,state,cycle,stamp):
         self.validate(state,stamp)
-        if self.data_signature(cycle['spec'],cycle['end'],stamp)!=cycle['guard']['input_signature']:
+        if self.data_signature(cycle['spec'],cycle['end'],stamp,state)!=cycle['guard']['input_signature']:
             raise ValueError('保留任务的输入数据变化，拒绝静默重放')
         result=self.queue().submit(cycle['job_id'],cycle['spec'],execution_guard=cycle['guard'])
         cycle.update(status='queued',submitted_at=stamp.isoformat())
@@ -105,16 +119,21 @@ class TrackingScheduler:
         if readiness['status'] not in ('candidate_for_refresh','up_to_date'):
             state['status']=readiness['status'];return
         if readiness['proposed_end'] is None:return
-        target=min(grant['end'],readiness['proposed_end'])
-        if all(v and datetime.fromisoformat(v).date()>=date.fromisoformat(target)
+        start=date.fromisoformat(grant['spec']['start']);calendar=self.calendar(state)
+        cap_sessions=calendar_sessions(calendar,start,date.fromisoformat(grant['end']))
+        candidates=[d for d in cap_sessions if str(d)<=readiness['proposed_end']]
+        if not candidates:
+            state['status']='no_trading_session_within_cap';return
+        target=str(candidates[-1]);state['target_session']=target
+        if all(v and datetime.fromisoformat(v).astimezone(ZoneInfo('Asia/Shanghai')).date()>=candidates[-1]
                for v in readiness['data_watermarks'].values()):
             state['status']='up_to_date'
-            if target==grant['end']:state.update(enabled=False,status='end_cap_reached')
+            if candidates[-1]==cap_sessions[-1]:state.update(enabled=False,status='end_cap_reached')
             return
         if any(c['end']==target for c in state['cycles']):return
         spec=deepcopy(grant['spec']);spec['end']=target
         preview_experiment(spec,ResearchBudget(**grant['budget']))
-        signature=self.data_signature(spec,target,stamp)
+        signature=self.data_signature(spec,target,stamp,state)
         guard={k:grant['budget'][k] for k in ('cooperative_seconds','max_active_jobs')}
         guard.update(runtime=grant['binding']['runtime'],input_signature=signature)
         cycle={'end':target,'job_id':str(uuid5(UUID(state['grant_id']),target)),
