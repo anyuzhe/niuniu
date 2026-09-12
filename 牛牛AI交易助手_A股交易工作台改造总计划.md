@@ -318,6 +318,8 @@ Git 纪律：
 - 2026-09-12：P4 A 股主线市场 / Theme Matrix 完成。Theme Snapshot 已支持 append-only revision、市场事实来源/时点约束、Machine/AI 状态分离、Decision/量化证据关联与只读模型工具；缺失格子保持 UNKNOWN，不从标签或 AI 文本推导事实。最终全仓 700 项通过，隔离端到端验收新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P4主线市场ThemeMatrix_验收说明.md`。下一阶段：P5 Decision Frame。
 - 2026-09-13：P5 Decision Frame 完成。PREP/AUCTION/R1/R2/R3/D1/D2/D3+ 已升级为可审计时间合同；真实提交时间、Frame Policy 版本、EARLY/ON_TIME/LATE/BACKFILL、跨轮 missing/变化与 D1+ 原判关联均正式落盘，旧 Decision 保持可读。最终全仓 710 项通过，隔离端到端新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P5DecisionFrame_验收说明.md`。下一阶段：P6 策略动作状态机。
 
+- 2026-09-13：P6 策略动作状态机完成。Strategy Intent 已正式约束 DISCOVERED/WATCH/READY/PLAN_OPEN/OPEN/ADD/HOLD/REDUCE/EXIT 与 INVALIDATED/REJECTED/EXPIRED；非法跳级、同 Frame 重复当前状态、历史插入和后续状态下改写旧动作均被阻断；当前状态按 trading_day + Frame 业务时间计算，策略意图继续与 Paper/真实成交严格分离。最终全仓 720 项通过，隔离端到端新增研究任务 0、模型写状态工具 0。阶段说明见 `牛牛AI交易工作台_P6策略动作状态机_验收说明.md`。下一阶段：P7 今日交易驾驶舱。
+
 ## 20. AI Team / Dev Studio 记忆架构：Git-first Markdown Memory
 
 对标系统补充确认：其文件智能体以**文件记忆为主**，规则和经验长期落在 Git 仓库中的 Markdown；每次开工先 `git pull`，再读取约定的记忆入口，没有把向量库作为主记忆层。牛牛采用同类原则，但与研究证据严格分层。

@@ -5,6 +5,7 @@ from datetime import date, datetime
 import re
 
 FRAMES = ('PREP','AUCTION','R1','R2','R3','D1','D2','D3_PLUS')
+FRAME_ORDER={name:index for index,name in enumerate(FRAMES)}
 ACTIONS = (
     'DISCOVERED','WATCH','READY','PLAN_OPEN','OPEN','ADD','HOLD','REDUCE','EXIT',
     'INVALIDATED','REJECTED','EXPIRED',
@@ -50,6 +51,10 @@ def _optional_iso_datetime(value, name):
     if parsed.tzinfo is None:
         raise ValueError(f'{name} 必须包含时区。')
     return parsed.isoformat()
+
+
+def business_order_key(value):
+    return (value.get('trading_day',''),FRAME_ORDER.get(value.get('frame'),-1),value.get('submitted_at',''))
 
 
 def _string_list(value, name, maximum=100):
@@ -99,12 +104,20 @@ def normalize_decision(content):
         'risk_flags': _string_list(content.get('risk_flags'), 'risk_flags', 50),
         'revision_of': _text(content.get('revision_of'), 'revision_of', 64) or None,
         'reference_decision_id': _text(content.get('reference_decision_id'), 'reference_decision_id', 64) or None,
+        'transition_reason': _text(content.get('transition_reason'), 'transition_reason', 2000),
+        'intent_previous_decision_id': _text(content.get('intent_previous_decision_id'), 'intent_previous_decision_id', 64) or None,
+        'intent_previous_action': _text(content.get('intent_previous_action'), 'intent_previous_action', 30).upper() or None,
+        'intent_transition_version': _text(content.get('intent_transition_version'), 'intent_transition_version', 120),
+        'intent_transition_kind': _text(content.get('intent_transition_kind'), 'intent_transition_kind', 80),
+        'position_scope': _text(content.get('position_scope'), 'position_scope', 80),
         'outcome': _text(content.get('outcome'), 'outcome', 4000),
         'source': _text(content.get('source', 'manual'), 'source', 80) or 'manual',
         'effective_at': _optional_iso_datetime(content.get('effective_at'), 'effective_at'),
     }
     for name in TEXT_FIELDS:
         result[name] = _text(content.get(name), name)
+    if result['intent_previous_action'] is not None and result['intent_previous_action'] not in ACTIONS:
+        raise ValueError('未知 intent_previous_action。')
     if action in ('PLAN_OPEN','OPEN','ADD') and not (result['confirm_trigger'] or result['buy_zone']):
         raise ValueError('计划开仓/开仓/加仓至少需要 buy_zone 或 confirm_trigger。')
     if action in ('OPEN','ADD','HOLD') and not (result['hold_reason'] or result['ai_thesis'] or result['machine_state']):

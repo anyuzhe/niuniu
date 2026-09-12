@@ -46,10 +46,14 @@ def stock_page(window):
 
 
 def position_page(window):
-    box=window.page('持仓计划','策略意图中心 · 计划/开/加/持/减/退，与 Paper/真实成交严格分开。')
-    active={'PLAN_OPEN','OPEN','ADD','HOLD','REDUCE','EXIT'};latest=[d for d in _store(window).latest_by_symbol() if d['action'] in active]
-    box.addWidget(label('这里展示 Strategy Intent，不代表真实账户持仓；只有成交回执才能改变 Paper/未来 Real Position。','note',True))
-    box.addWidget(table(['证券','交易日','Frame','动作','买入区间','确认触发','持有理由','退出条件'],[[d['symbol'],d['trading_day'],d['frame'],d['action'],d.get('buy_zone',''),d.get('confirm_trigger',''),d.get('hold_reason',''),d.get('exit_condition','')] for d in latest]),1)
+    box=window.page('持仓计划','Strategy Intent 状态机 · 动作变化由新 Decision 驱动，与 Paper/真实成交严格分开。')
+    from quantlab.trading.strategy_intent import allowed_next
+    latest=_store(window).latest_by_symbol()
+    box.addWidget(label('这里展示 Strategy Intent，不代表真实账户持仓；只有模拟/券商成交回执才能改变 Paper/未来 Real Position。','note',True))
+    rows=[]
+    for d in latest:
+        rows.append([d['symbol'],d['trading_day'],d['frame'],d['action'],' / '.join(allowed_next(d['action'])),d.get('intent_transition_kind','legacy'),d.get('transition_reason','')[:70],d.get('hold_reason','')[:60],d.get('exit_condition','')[:60]])
+    box.addWidget(table(['证券','交易日','Frame','当前状态','允许下一动作','转移类型','转移理由','持有依据','退出条件'],rows),1)
 
 
 def review_page(window):

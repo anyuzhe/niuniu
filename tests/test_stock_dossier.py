@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import datetime
 from uuid import uuid4
 
 from quantlab.agent.watch_store import WatchStore
@@ -52,6 +53,15 @@ class StockDossierTests(unittest.TestCase):
         self.assertEqual([w['watch_id'] for w in dossier['watches']],[watch_id])
         self.assertEqual(dossier['themes'],['银行'])
         self.assertFalse((self.root/'_jobs').exists())
+
+    def test_current_decision_uses_business_frame_not_late_write_time(self):
+        r3_store=DecisionStore(self.root,now_fn=lambda:datetime.fromisoformat('2026-09-11T15:10:00+08:00'))
+        r3=r3_store.create(str(uuid4()),self.decision(frame='R3',ai_thesis='R3判断'))
+        late_store=DecisionStore(self.root,now_fn=lambda:datetime.fromisoformat('2026-09-11T20:00:00+08:00'))
+        late_store.create(str(uuid4()),self.decision(frame='R1',action='READY',ai_thesis='夜间补录R1'))
+        dossier=StockDossier(self.root).get(self.symbol)
+        self.assertEqual(dossier['current_decision']['decision_id'],r3['decision_id'])
+        self.assertEqual(dossier['current_decision']['frame'],'R3')
 
     def test_dossier_with_no_decision_can_still_show_research_evidence(self):
         run_id=self.add_run([self.symbol]);self.add_watch([self.symbol])

@@ -12,6 +12,8 @@ from quantlab.storage.codec import digest, encode
 from .decision import ACTIONS, FRAMES, normalize_decision
 from .frame_policy import FramePolicyStore, assess_submission
 
+FRAME_ORDER_SQL="CASE d.frame WHEN 'PREP' THEN 0 WHEN 'AUCTION' THEN 1 WHEN 'R1' THEN 2 WHEN 'R2' THEN 3 WHEN 'R3' THEN 4 WHEN 'D1' THEN 5 WHEN 'D2' THEN 6 WHEN 'D3_PLUS' THEN 7 ELSE -1 END"
+
 
 class DecisionError(ValueError):
     def __init__(self, code, message):
@@ -195,9 +197,25 @@ class DecisionStore:
     def timeline(self, symbol, include_superseded=True, limit=500):
         return self.list(symbol=symbol,include_superseded=include_superseded,limit=min(limit,200))
 
+    def current_timeline(self,symbol,limit=5000):
+        symbol=symbol.lower()
+        if self.path.is_symlink():raise DecisionError('INVALID_WORKSPACE','Decision Ledger 不能为符号链接。')
+        if not self.path.exists():return []
+        with self.connection() as db:
+            rows=db.execute('SELECT d.* FROM decisions d WHERE d.symbol=? AND NOT EXISTS (SELECT 1 FROM decisions n WHERE n.revision_of=d.id) ORDER BY d.trading_day ASC,'+FRAME_ORDER_SQL+' ASC,d.submitted_at ASC,d.id ASC LIMIT ?', (symbol,limit))
+            return [self.decode(row) for row in rows]
+
+    def latest_current(self,symbol):
+        rows=self.current_timeline(symbol)
+        return rows[-1] if rows else None
+
     def latest_by_symbol(self, limit=200):
-        records = self.list(limit=min(limit,200))['records']
-        latest = {}
-        for record in records:
-            latest.setdefault(record['symbol'],record)
-        return list(latest.values())
+        if self.path.is_symlink():raise DecisionError('INVALID_WORKSPACE','Decision Ledger 不能为符号链接。')
+        if not self.path.exists():return []
+        with self.connection() as db:
+            rows=db.execute('SELECT d.* FROM decisions d WHERE NOT EXISTS (SELECT 1 FROM decisions n WHERE n.revision_of=d.id) ORDER BY d.symbol ASC,d.trading_day DESC,'+FRAME_ORDER_SQL+' DESC,d.submitted_at DESC,d.id DESC')
+            latest={}
+            for row in rows:
+                value=self.decode(row);latest.setdefault(value['symbol'],value)
+                if len(latest)>=limit:break
+        return sorted(latest.values(),key=lambda r:(r['trading_day'],r.get('frame',''),r['symbol']),reverse=True)

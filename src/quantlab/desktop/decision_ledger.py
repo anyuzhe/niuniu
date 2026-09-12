@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QComboBox,QDateEdit,QDialog,QFormLayout,QLineEdit,QP
 
 from quantlab.trading.decision import ACTIONS, FRAMES
 from quantlab.trading.decision_store import DecisionError, DecisionStore
+from quantlab.trading.strategy_intent import StrategyIntentService
 from .widgets import button,label,row
 
 FRAME_LABELS = {
@@ -21,7 +22,7 @@ ACTION_LABELS = {
 
 class DecisionEditor(QDialog):
     def __init__(self, window, source=None):
-        super().__init__(window); self.window=window; self.store=DecisionStore(window.output)
+        super().__init__(window); self.window=window; self.store=DecisionStore(window.output); self.intent=StrategyIntentService(window.output)
         self.source=source or {}; self.saved=None
         self.setWindowTitle('新增 Decision' if not source else '修订 Decision')
         self.resize(720,760); outer=QVBoxLayout(self); form=QFormLayout(); outer.addLayout(form)
@@ -29,6 +30,7 @@ class DecisionEditor(QDialog):
         self.day=QDateEdit(); self.day.setCalendarPopup(True); self.day.setDate(QDate.fromString(self.source.get('trading_day',''),'yyyy-MM-dd') if source else QDate.currentDate()); form.addRow('交易日',self.day)
         self.frame=QComboBox(); [self.frame.addItem(FRAME_LABELS[v],v) for v in FRAMES]; form.addRow('Decision Frame',self.frame)
         self.action=QComboBox(); [self.action.addItem(ACTION_LABELS[v],v) for v in ACTIONS]; form.addRow('策略动作',self.action)
+        self.transition_reason=QLineEdit(self.source.get('transition_reason',''));self.transition_reason.setPlaceholderText('动作变化的原因；留空时可复用判断/机器状态');form.addRow('状态转移理由',self.transition_reason)
         self.theme=QLineEdit(self.source.get('theme','')); form.addRow('主线 / 主题',self.theme)
         self.theme_role=QLineEdit(self.source.get('theme_role','')); form.addRow('主题角色',self.theme_role)
         self.ai_thesis=QPlainTextEdit(self.source.get('ai_thesis','')); self.ai_thesis.setMaximumHeight(100); form.addRow('判断 / 依据',self.ai_thesis)
@@ -53,13 +55,18 @@ class DecisionEditor(QDialog):
         records=self.store.list(symbol=symbol,include_superseded=False,limit=200)['records'] if symbol else []
         source=next((d for d in records if d['trading_day']<day and d['frame'] in ('PREP','AUCTION','R1','R2','R3')),None)
         if source:
-            self.reference.setText(source['decision_id']);self.status.setText('已选择最近的更早原判：'+source['trading_day']+' '+source['frame'])
+            self.reference.setText(source['decision_id'])
+            self.action.setCurrentIndex(max(0,self.action.findData(source['action'])))
+            for control,key in ((self.buy_zone,'buy_zone'),(self.confirm_trigger,'confirm_trigger'),(self.invalidation,'invalidation'),(self.hold_reason,'hold_reason'),(self.add_condition,'add_condition'),(self.reduce_condition,'reduce_condition'),(self.exit_condition,'exit_condition')):
+                if not control.text().strip() and source.get(key):control.setText(source[key])
+            self.status.setText('已选择最近的更早原判并继承当前策略动作/计划字段：'+source['trading_day']+' '+source['frame'])
         else:self.status.setText('没有找到同一证券、更早交易日的原始 Decision。')
 
     def payload(self):
         return {
             'symbol':self.symbol.text().strip(),'trading_day':self.day.date().toString('yyyy-MM-dd'),
             'frame':self.frame.currentData(),'action':self.action.currentData(),'role_id':'human',
+            'transition_reason':self.transition_reason.text().strip(),
             'theme':self.theme.text().strip(),'theme_role':self.theme_role.text().strip(),
             'ai_thesis':self.ai_thesis.toPlainText().strip(),'buy_zone':self.buy_zone.text().strip(),
             'confirm_trigger':self.confirm_trigger.text().strip(),'invalidation':self.invalidation.text().strip(),
@@ -73,7 +80,7 @@ class DecisionEditor(QDialog):
 
     def save(self):
         try:
-            self.saved=self.store.create(str(uuid4()),self.payload())
+            self.saved=self.intent.transition(str(uuid4()),self.payload())
         except DecisionError as exc:
             self.status.setText(f'{exc.code}: {exc}'); return
         self.accept()

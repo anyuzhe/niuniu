@@ -60,7 +60,7 @@ class StockDossier:
         current, history = self.decision_evidence(symbol)
         experiments = self.experiment_evidence(symbol)
         watches, unreadable = self.watch_evidence(symbol)
-        latest = current[0] if current else None
+        latest = self.decisions.latest_current(symbol)
         themes = []
         for item in history:
             value = item.get('theme', '')

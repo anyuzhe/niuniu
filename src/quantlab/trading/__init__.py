@@ -11,3 +11,5 @@ from .theme_state import THEME_STATES, normalize_theme_snapshot
 from .theme_store import ThemeError, ThemeStore
 
 __all__ += ['THEME_STATES','ThemeError','ThemeStore','normalize_theme_snapshot']
+
+from .strategy_intent import StrategyIntentService,allowed_next
