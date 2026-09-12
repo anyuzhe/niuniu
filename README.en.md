@@ -99,6 +99,7 @@ Install optional data retrieval or vn.py functionality as needed:
 ```bash
 python -m pip install -e ".[market_data]"
 python -m pip install -e ".[vnpy]"
+python -m pip install -e ".[mcp]"
 ```
 
 See [pyproject.toml](pyproject.toml) for dependency constraints. These commands do not install a broker gateway or connect a live trading account.
@@ -112,6 +113,12 @@ quantlab desktop --output ./artifacts
 ```
 
 Without a data root, you can browse the interface and registry. Market-data experiments require a valid source.
+
+### Standard MCP and persistent tracking
+
+After installing `.[mcp]`, local agents can connect over stdio with `niuniu-mcp --output ./artifacts --data-root /path/to/data`. For HTTP use `--transport streamable-http --host 127.0.0.1 --port 8766`. Non-loopback binds are rejected; use an SSH tunnel or an authenticated reverse proxy across machines. MCP exposes only the existing model-safe tools and does not add download, approval, execution, DSL-registration, or tracking-authorization privileges.
+
+When the desktop is closed, run `niuniu-tracking-daemon --output ./artifacts --data-root /path/to/data`. It consumes only tracking grants already saved by the host and preserves the original single-worker `JobQueue` boundary. `quantlab tracking-launchd-write ...` can generate a macOS LaunchAgent plist but does not load it or create an authorization.
 
 ### 3. Connect local market data
 

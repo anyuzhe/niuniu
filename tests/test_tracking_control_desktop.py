@@ -72,3 +72,10 @@ class TrackingControlDesktopTests(unittest.TestCase):
         dialog.plan={'fixture':True};dialog.confirm.setChecked(True)
         dialog.downloads.setValue(dialog.downloads.value()+1)
         self.assertIsNone(dialog.plan);self.assertFalse(dialog.confirm.isChecked())
+
+    def test_controller_yields_to_running_daemon(self):
+        with patch('quantlab.desktop.tracking_controller.daemon_active',return_value=True),\
+                patch.object(self.window,'get_research_queue',side_effect=AssertionError('desktop timer must yield')) as queue:
+            self.window.tracking_controller.check()
+        queue.assert_not_called()
+        self.assertIn('守护进程运行中',self.window.tracking_controller.action.text())

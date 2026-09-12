@@ -92,6 +92,6 @@ def control_summary(state):
         'accepted_publication_id':state.get('accepted_publication_id'),
         'last_data_update':state.get('last_data_update'),'data_update_count':len(state.get('data_updates',[])),
         'cycles':[{k:v for k,v in c.items() if k not in ('spec','guard')} for c in state['cycles']],
-        'notices':list(state['notices'].values()),'desktop_open_required':True,
+        'notices':list(state['notices'].values()),'desktop_open_required':False,'daemon_supported':True,
         'last_reconciliation':state.get('last_reconciliation'),
         'network_download':False,'model_can_authorize':False}

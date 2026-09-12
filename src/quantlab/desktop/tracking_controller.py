@@ -3,6 +3,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject,QTimer
 from quantlab.agent.tracking_scheduler import TrackingScheduler
 from quantlab.agent.tracking_control_store import ControlStore
+from quantlab.agent.tracking_daemon import daemon_active
 
 
 class TrackingController(QObject):
@@ -13,6 +14,8 @@ class TrackingController(QObject):
     def check(self):
         window=self.window
         if self.busy or window.closing or window.callbacks or window.data_root is None:return
+        if daemon_active(window.output):
+            self.action.setText('受控自动跟踪：守护进程运行中');return
         self.busy=True;output=window.output;data_root=window.data_root
         def queue():
             if window.closing or window.output!=output or window.data_root!=data_root:

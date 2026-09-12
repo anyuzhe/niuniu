@@ -97,6 +97,7 @@ Windows PowerShell 使用 `.venv\Scripts\Activate.ps1` 激活环境。只使用 
 ```bash
 python -m pip install -e ".[market_data]"
 python -m pip install -e ".[vnpy]"
+python -m pip install -e ".[mcp]"
 ```
 
 可选版本约束见 [pyproject.toml](pyproject.toml)。这里不自动安装券商 Gateway 或连接实盘账户。
@@ -110,6 +111,12 @@ quantlab desktop --output ./artifacts
 ```
 
 不提供数据目录可以浏览界面和注册信息；执行行情研究需要有效的数据源。
+
+### 标准 MCP 与常驻跟踪
+
+安装 `.[mcp]` 后，本机智能体可用 `niuniu-mcp --output ./artifacts --data-root /path/to/data` 通过 stdio 连接。需要 HTTP 时使用 `--transport streamable-http --host 127.0.0.1 --port 8766`；程序拒绝非回环监听，跨机器请使用 SSH 隧道或有认证的反向代理。MCP 只暴露现有模型工具，不增加下载、批准、执行、DSL 注册或跟踪授权权限。
+
+桌面退出后可运行 `niuniu-tracking-daemon --output ./artifacts --data-root /path/to/data`。守护进程只执行已经由宿主保存的跟踪授权，并与桌面共享原 `JobQueue` 单 worker 边界。`quantlab tracking-launchd-write ...` 可以生成 macOS LaunchAgent plist，但不会自动加载或创建授权。
 
 ### 3. 接入自己的本地行情
 

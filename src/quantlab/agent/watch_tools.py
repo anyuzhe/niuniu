@@ -21,8 +21,9 @@ class WatchResearchAPI(DslCandidateAPI):
         if tool is None:
             result = super().call(name,arguments)
             if name=='get_capabilities' and result.get('ok'):
-                result['data'].update(version='1.5',watchlist_available=True,
-                    automatic_tracking=False,watch_refresh_requires_host_approval=True,
+                result['data'].update(version='1.6',watchlist_available=True,
+                    automatic_tracking=False,host_authorized_tracking_available=True,tracking_daemon_available=True,
+                    watch_refresh_requires_host_approval=True,model_can_authorize_tracking=False,
                     tools=[t['name'] for t in self.schemas()])
             return result
         try:

@@ -42,6 +42,18 @@ def main() -> None:
     desktop = commands.add_parser('desktop', help='启动牛牛 PyQt6 原生桌面平台')
     desktop.add_argument('--output',type=Path,default=Path('artifacts'))
     desktop.add_argument('--data-root',type=Path,help='MQC 只读行情目录')
+    mcp_cmd=commands.add_parser('mcp',help='启动标准MCP服务；stdio或回环Streamable HTTP')
+    mcp_cmd.add_argument('--output',type=Path,default=Path('artifacts'));mcp_cmd.add_argument('--data-root',type=Path)
+    mcp_cmd.add_argument('--transport',choices=['stdio','streamable-http'],default='stdio')
+    mcp_cmd.add_argument('--host',default='127.0.0.1');mcp_cmd.add_argument('--port',type=int,default=8766)
+    daemon_cmd=commands.add_parser('tracking-daemon',help='常驻执行已经由宿主授权的跟踪计划')
+    daemon_cmd.add_argument('--output',type=Path,default=Path('artifacts'));daemon_cmd.add_argument('--data-root',type=Path,required=True)
+    daemon_cmd.add_argument('--poll-seconds',type=float,default=60);daemon_cmd.add_argument('--once',action='store_true')
+    daemon_status_cmd=commands.add_parser('tracking-daemon-status',help='读取跟踪守护进程最后回执')
+    daemon_status_cmd.add_argument('--output',type=Path,default=Path('artifacts'))
+    launchd_cmd=commands.add_parser('tracking-launchd-write',help='生成但不加载macOS LaunchAgent配置')
+    launchd_cmd.add_argument('--output',type=Path,default=Path('artifacts'));launchd_cmd.add_argument('--data-root',type=Path,required=True)
+    launchd_cmd.add_argument('--path',type=Path,required=True);launchd_cmd.add_argument('--poll-seconds',type=float,default=60)
     correlate = commands.add_parser("correlate", help="因子截面相关矩阵及冗余分组，不计算收益标签")
     correlate.add_argument("--data-root", type=Path, required=True)
     correlate.add_argument("--output", type=Path, default=Path("artifacts"))
@@ -233,6 +245,21 @@ def main() -> None:
     registry_report.add_argument('--output',type=Path,required=True)
     registry_report.add_argument('--archive-output',type=Path,help='将登记报告和成功来源实验纳入常规复现归档')
     args = parser.parse_args()
+    if args.command=='mcp':
+        from quantlab.agent.mcp_server import run_mcp
+        run_mcp(args.output,args.data_root,args.transport,args.host,args.port);return
+    if args.command=='tracking-daemon':
+        from quantlab.agent.tracking_daemon import TrackingDaemon
+        daemon=TrackingDaemon(args.output,args.data_root,args.poll_seconds)
+        result=daemon.once() if args.once else daemon.run_forever()
+        if result is not None:print(encode(result))
+        return
+    if args.command=='tracking-daemon-status':
+        from quantlab.agent.tracking_daemon import daemon_status
+        print(encode(daemon_status(args.output)));return
+    if args.command=='tracking-launchd-write':
+        from quantlab.agent.tracking_daemon import write_launchd
+        print(encode(write_launchd(args.path,args.output,args.data_root,args.poll_seconds)));return
     if args.command in ('trials-create','trials-bind','trials-report'):
         from quantlab.experiments.trial_registry import create_registry,bind_result,report_registry
         if args.command=='trials-create':result=create_registry(json.loads(args.plan.read_text()),args.output)
