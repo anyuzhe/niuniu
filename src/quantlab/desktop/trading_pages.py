@@ -32,15 +32,9 @@ def today_page(window):
 
 
 def theme_page(window):
-    box=window.page('主线市场','A 股主题 × 交易日 × Frame · 机器事实、量化证据、AI 判断分层。')
-    records=_decisions(window,history=True); grouped=defaultdict(lambda:{'symbols':set(),'decisions':0,'latest':''})
-    for item in records:
-        theme=item.get('theme') or '未归类'; grouped[theme]['symbols'].add(item['symbol']);grouped[theme]['decisions']+=1
-        grouped[theme]['latest']=max(grouped[theme]['latest'],item['trading_day'])
-    box.addWidget(label('当前先以 Decision 中的主题标签形成可追溯骨架；P4 再接正式 Theme Matrix 和市场事实输入。','note',True))
-    rows=[[name,len(value['symbols']),value['decisions'],value['latest']] for name,value in sorted(grouped.items(),key=lambda x:(x[1]['latest'],x[1]['decisions']),reverse=True)]
-    box.addWidget(Card('主线目录'))
-    card=box.itemAt(box.count()-1).widget();card.add(table(['主题','证券数','Decision数','最近交易日'],rows),1)
+    box=window.page('主线市场','A 股主题 × 明确日期 × Decision Frame · Market Facts / Machine Rule / AI / Risk 分层。')
+    from .theme_matrix import ThemeMatrixWidget
+    box.addWidget(ThemeMatrixWidget(window),1)
 
 
 def stock_page(window):

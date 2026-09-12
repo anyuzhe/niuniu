@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import polars as pl
-from quantlab.agent.watch_tools import WatchResearchAPI
+from quantlab.agent.theme_tools import ThemeResearchAPI
 from quantlab.agent.catalog import schema,TEXT,LIMIT,OFFSET,compact
 from quantlab.data.baostock_ingest import load_import
 from quantlab.data.baostock_dataset import dataset_manifest,read_table,responses,read_dataset_bytes
@@ -21,7 +21,7 @@ TOOLS=[
 ]
 
 
-class MarketDataResearchAPI(WatchResearchAPI):
+class MarketDataResearchAPI(ThemeResearchAPI):
     def schemas(self):return super().schemas()+json.loads(json.dumps(TOOLS,ensure_ascii=False))
     def call(self,name,arguments):
         definition=next((t for t in TOOLS if t['name']==name),None)

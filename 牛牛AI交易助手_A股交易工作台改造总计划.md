@@ -315,3 +315,4 @@ Git 纪律：
 - 2026-09-12：建立 v1 总计划，基线 `e6502aa`。首轮实施范围冻结为 P1 + P2 基础，不在同一提交顺手实现后续 P3–P13。
 - 2026-09-12：P1 + P2 基础完成并通过验收。新 8 个业务一级入口已落地，旧 12 个研究页保留兼容；Decision Ledger 已具备 append-only、revision、幂等、checksum、人工桌面创建/修订和股票检索。最终全仓 688 项通过，端到端验收创建研究任务 0。阶段说明见 `牛牛AI交易工作台_P1P2新导航与DecisionLedger_验收说明.md`。下一阶段：P3 Stock Dossier。
 - 2026-09-12：P3 Stock Dossier 完成。股票中心已可按证券聚合当前/历史 Decision、精确关联实验、Factor Watch，并可反向打开原实验/跟踪证据；打开档案不创建研究任务。最终全仓 692 项通过，端到端聚合新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P3StockDossier_验收说明.md`。下一阶段：P4 A 股主线市场 / Theme Matrix。
+- 2026-09-12：P4 A 股主线市场 / Theme Matrix 完成。Theme Snapshot 已支持 append-only revision、市场事实来源/时点约束、Machine/AI 状态分离、Decision/量化证据关联与只读模型工具；缺失格子保持 UNKNOWN，不从标签或 AI 文本推导事实。最终全仓 700 项通过，隔离端到端验收新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P4主线市场ThemeMatrix_验收说明.md`。下一阶段：P5 Decision Frame。

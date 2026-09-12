@@ -7,3 +7,7 @@ __all__ = ['ACTIONS','FRAMES','DecisionError','DecisionStore','normalize_decisio
 from .stock_dossier import StockDossier
 
 __all__.append('StockDossier')
+from .theme_state import THEME_STATES, normalize_theme_snapshot
+from .theme_store import ThemeError, ThemeStore
+
+__all__ += ['THEME_STATES','ThemeError','ThemeStore','normalize_theme_snapshot']
