@@ -39,12 +39,22 @@ class DecisionEditor(QDialog):
         self.add_condition=QLineEdit(self.source.get('add_condition','')); form.addRow('加仓条件',self.add_condition)
         self.reduce_condition=QLineEdit(self.source.get('reduce_condition','')); form.addRow('减仓条件',self.reduce_condition)
         self.exit_condition=QLineEdit(self.source.get('exit_condition','')); form.addRow('退出条件',self.exit_condition)
-        self.status=label('Decision 保存后不可修改；后续变化必须新建 revision。','note',True); outer.addWidget(self.status)
+        self.reference=QLineEdit(self.source.get('reference_decision_id') or ''); self.reference.setPlaceholderText('D1/D2/D3+ 必填：更早的同一证券 Decision UUID'); form.addRow('关联原始 Decision',row(self.reference,button('最近原判',self.fill_reference)))
+        self.effective_at=QLineEdit(self.source.get('effective_at') or ''); self.effective_at.setPlaceholderText('可选，例如 2026-09-11T10:25:00+08:00'); form.addRow('信息实际可用时点',self.effective_at)
+        self.status=label('Decision 保存后不可修改；submitted_at 由宿主写入。迟交/补录会自动标记，不能伪装成原时点提交。','note',True); outer.addWidget(self.status)
         outer.addWidget(row(button('保存 Decision',self.save,True),button('取消',self.reject)))
         if source:
             self.frame.setCurrentIndex(max(0,self.frame.findData(source['frame'])))
             self.action.setCurrentIndex(max(0,self.action.findData(source['action'])))
             self.symbol.setReadOnly(True); self.day.setEnabled(False); self.frame.setEnabled(False)
+
+    def fill_reference(self):
+        symbol=self.symbol.text().strip().lower();day=self.day.date().toString('yyyy-MM-dd')
+        records=self.store.list(symbol=symbol,include_superseded=False,limit=200)['records'] if symbol else []
+        source=next((d for d in records if d['trading_day']<day and d['frame'] in ('PREP','AUCTION','R1','R2','R3')),None)
+        if source:
+            self.reference.setText(source['decision_id']);self.status.setText('已选择最近的更早原判：'+source['trading_day']+' '+source['frame'])
+        else:self.status.setText('没有找到同一证券、更早交易日的原始 Decision。')
 
     def payload(self):
         return {
@@ -56,6 +66,8 @@ class DecisionEditor(QDialog):
             'hold_reason':self.hold_reason.text().strip(),'add_condition':self.add_condition.text().strip(),
             'reduce_condition':self.reduce_condition.text().strip(),'exit_condition':self.exit_condition.text().strip(),
             'revision_of':self.source.get('decision_id') if self.source else None,
+            'reference_decision_id':self.reference.text().strip() or None,
+            'effective_at':self.effective_at.text().strip() or None,
             'source':'desktop_manual',
         }
 

@@ -55,9 +55,15 @@ def position_page(window):
 def review_page(window):
     box=window.page('复盘中心','Decision Ledger · 原判、修订、后续结果分开保留，不用后来行情覆盖当时判断。')
     records=_decisions(window,history=True)
-    rows=[[d['submitted_at'].replace('T',' ')[:19],d['trading_day'],d['symbol'],d['frame'],d['action'],d.get('revision_of')[:8] if d.get('revision_of') else '—',d.get('outcome','')[:70]] for d in records]
-    box.addWidget(row(button('＋ 新增 Decision',window.new_decision,True),label('历史 revision 默认全部显示；当前版本由 revision 链判定。','muted')))
-    box.addWidget(table(['提交时间','交易日','证券','Frame','动作','修订自','Outcome'],rows,lambda i:window.open_decision(records[i]) if records else None),1)
+    rows=[[d.get('submitted_local',d['submitted_at']).replace('T',' ')[:19],d['trading_day'],d['symbol'],d['frame'],d['action'],d.get('submission_status','legacy'),d.get('revision_of')[:8] if d.get('revision_of') else '—',d.get('outcome','')[:70]] for d in records]
+    def compare():
+        from .decision_frames import FrameComparisonDialog
+        window.show_dialog(FrameComparisonDialog(window))
+    def policy():
+        from .decision_frames import FramePolicyDialog
+        window.show_dialog(FramePolicyDialog(window))
+    box.addWidget(row(button('＋ 新增 Decision',window.new_decision,True),button('跨轮对比',compare),button('Frame Policy',policy),label('迟交/补录会保留状态；旧记录显示 legacy。','muted')))
+    box.addWidget(table(['实际提交时间','交易日','证券','Frame','动作','提交状态','修订自','Outcome'],rows,lambda i:window.open_decision(records[i]) if records else None),1)
 
 
 def ai_team_page(window):

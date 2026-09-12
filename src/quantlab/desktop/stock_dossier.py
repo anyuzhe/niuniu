@@ -41,7 +41,7 @@ class StockDossierDialog(QDialog):
 
     def render_decisions(self):
         rows=self.value['decision_history'];page,layout=self.page()
-        control=table(['交易日','Frame','动作','主题','提交时间','判断'],[[d['trading_day'],d['frame'],d['action'],d.get('theme',''),d['submitted_at'].replace('T',' ')[:19],d.get('ai_thesis','')[:100]] for d in rows],lambda i:self.window.open_decision(rows[i]))
+        control=table(['交易日','Frame','动作','主题','实际提交时间','提交状态','判断'],[[d['trading_day'],d['frame'],d['action'],d.get('theme',''),d.get('submitted_local',d['submitted_at']).replace('T',' ')[:19],d.get('submission_status','legacy'),d.get('ai_thesis','')[:100]] for d in rows],lambda i:self.window.open_decision(rows[i]))
         layout.addWidget(label('原判和 revision 同时保留；后来的判断不会覆盖当时记录。','note',True));layout.addWidget(control,1)
         self.tabs.addTab(page,'Decision 时间线')
 

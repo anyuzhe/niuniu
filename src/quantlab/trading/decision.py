@@ -98,6 +98,7 @@ def normalize_decision(content):
         'research_evidence_ids': _string_list(content.get('research_evidence_ids'), 'research_evidence_ids'),
         'risk_flags': _string_list(content.get('risk_flags'), 'risk_flags', 50),
         'revision_of': _text(content.get('revision_of'), 'revision_of', 64) or None,
+        'reference_decision_id': _text(content.get('reference_decision_id'), 'reference_decision_id', 64) or None,
         'outcome': _text(content.get('outcome'), 'outcome', 4000),
         'source': _text(content.get('source', 'manual'), 'source', 80) or 'manual',
         'effective_at': _optional_iso_datetime(content.get('effective_at'), 'effective_at'),

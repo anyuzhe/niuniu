@@ -10,6 +10,7 @@ import sqlite3
 
 from quantlab.storage.codec import digest, encode
 from .decision import ACTIONS, FRAMES, normalize_decision
+from .frame_policy import FramePolicyStore, assess_submission
 
 
 class DecisionError(ValueError):
@@ -28,8 +29,9 @@ def identifier(value, name='编号'):
 
 
 class DecisionStore:
-    def __init__(self, output):
+    def __init__(self, output, now_fn=None):
         self.output = Path(output).resolve()
+        self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.directory = self.output / '_trading'
         self.path = self.directory / 'decision_ledger.sqlite3'
 
@@ -108,7 +110,10 @@ class DecisionStore:
         except ValueError as exc:
             raise DecisionError('INVALID_ARGUMENT',str(exc)) from None
         input_hash = digest(normalized)
-        now = datetime.now(timezone.utc).isoformat()
+        now_dt = self.now_fn()
+        if not isinstance(now_dt, datetime) or now_dt.tzinfo is None:
+            raise DecisionError('INVALID_CLOCK','DecisionStore 时钟必须返回带时区时间。')
+        now = now_dt.astimezone(timezone.utc).isoformat()
         with self.connection(write=True) as db:
             row = db.execute('SELECT * FROM decisions WHERE request_id=?',(request_id,)).fetchone()
             if row is not None:
@@ -126,8 +131,26 @@ class DecisionStore:
                     raise DecisionError('INVALID_REVISION','修订只能替换同一证券、交易日和 Frame 的 Decision。')
                 if db.execute('SELECT 1 FROM decisions WHERE revision_of=?',(parent['decision_id'],)).fetchone():
                     raise DecisionError('STALE_REVISION','该 Decision 已有后续修订，请从最新版本继续。')
+            reference = normalized.get('reference_decision_id')
+            if normalized['frame'] in ('D1','D2','D3_PLUS') and not reference:
+                raise DecisionError('MISSING_REFERENCE','D1/D2/D3+ 必须关联更早的原始 Decision。')
+            if reference:
+                identifier(reference,'reference_decision_id ')
+                source = self.decode(db.execute('SELECT * FROM decisions WHERE id=?',(reference,)).fetchone())
+                if source['symbol'] != normalized['symbol'] or source['trading_day'] >= normalized['trading_day']:
+                    raise DecisionError('INVALID_REFERENCE','后续 Decision 只能关联同一证券、更早交易日的 Decision。')
+                if source['frame'] not in ('PREP','AUCTION','R1','R2','R3'):
+                    raise DecisionError('INVALID_REFERENCE','D1/D2/D3+ 只能关联更早交易日的原始盘前/盘中 Decision。')
+            if normalized.get('effective_at'):
+                effective = datetime.fromisoformat(normalized['effective_at'])
+                if effective.astimezone(timezone.utc) > now_dt.astimezone(timezone.utc):
+                    raise DecisionError('FUTURE_EFFECTIVE_AT','effective_at 不能晚于真实提交时间。')
+            try:
+                assessment=assess_submission(normalized['trading_day'],normalized['frame'],now_dt,FramePolicyStore(self.output).load())
+            except (ValueError,OSError,json.JSONDecodeError) as exc:
+                raise DecisionError('FRAME_POLICY_INVALID',str(exc)) from None
             value = {
-                **normalized,
+                **normalized,**assessment,
                 'decision_id':str(uuid4()),
                 'request_id':request_id,
                 'input_hash':input_hash,
@@ -136,7 +159,7 @@ class DecisionStore:
             }
             search = ' '.join(str(value.get(key,'')) for key in (
                 'symbol','trading_day','frame','action','theme','theme_role','machine_state','ai_thesis',
-                'hold_reason','invalidation','exit_condition','agent_id','role_id')).casefold()
+                'hold_reason','invalidation','exit_condition','agent_id','role_id','submission_status')).casefold()
             db.execute('INSERT INTO decisions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',(
                 value['decision_id'],request_id,input_hash,value['symbol'],value['trading_day'],value['frame'],
                 value['action'],value['revision_of'],value['submitted_at'],value['frozen_at'],search,encode(value),digest(value)))
