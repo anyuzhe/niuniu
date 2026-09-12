@@ -59,18 +59,9 @@ def review_page(window):
 
 
 def ai_team_page(window):
-    box=window.page('AI 团队','Role 与模型分离 · 日常单助理负责，需要时再按需复核。')
-    roles=[
-        ('Chief Researcher','主对话、综合证据、生成提案；不能自行批准研究。'),
-        ('Market Scanner','后续负责覆盖检查，重点防漏股票、漏主题、漏数据。'),
-        ('Skeptic / Risk Reviewer','后续按需挑战结论、PIT 和执行风险。'),
-        ('Quant Researcher','复用现有 Research Lab / Factory / Watch / PIT。'),
-        ('Developer','后续仅在 Dev Studio 隔离 worktree 中修改代码。'),
-    ]
-    box.addWidget(table(['Role','当前职责'],roles))
-    box.addWidget(row(button('打开 AI 研究助手',window.research_chat,True),button('研究议程',window.research_agenda),button('研究记忆',window.research_memory),button('AI 工具接口',window.agent_catalog)))
-    box.addWidget(label('P8 才启用正式 Peer Review 任务链；当前不会伪装成已经有多 Agent 自动会议。','note',True))
-
+    box=window.page('AI 团队','Role 与模型分离 · Chief 默认单独完成，需要时再启动有限同行复核。')
+    from .ai_team import AITeamWidget
+    box.addWidget(AITeamWidget(window),1)
 
 def research_lab_page(window):
     box=window.page('研究实验室','保留原牛牛全部研究能力；Trading Desk 只是新的业务入口，不削弱实验内核。')

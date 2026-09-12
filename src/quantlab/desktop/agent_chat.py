@@ -121,11 +121,11 @@ class AgentChatDialog(QDialog):
         elif kind=='connection':self.status.setText('已连接 '+str(value.get('model',''))+'；正在处理…')
         elif kind=='turn_error':self.status.setText(value['message'])
     def add_reference(self,ref):
-        if not isinstance(ref,dict) or ref.get('kind') not in ('experiment','proposal','job','factor','memory','watch'):return
+        if not isinstance(ref,dict) or ref.get('kind') not in ('experiment','proposal','job','factor','memory','watch','peer_review'):return
         for i in range(self.references.count()):
             if self.references.item(i).data(Qt.ItemDataRole.UserRole)==ref:return
-        key={'experiment':'run_id','proposal':'proposal_id','job':'job_id','factor':'factor_id','memory':'memory_id','watch':'watch_id'}[ref['kind']]
-        title={'experiment':'实验','proposal':'待核对提案','job':'任务','factor':'因子','memory':'研究记忆','watch':'因子跟踪'}[ref['kind']]
+        key={'experiment':'run_id','proposal':'proposal_id','job':'job_id','factor':'factor_id','memory':'memory_id','watch':'watch_id','peer_review':'task_id'}[ref['kind']]
+        title={'experiment':'实验','proposal':'待核对提案','job':'任务','factor':'因子','memory':'研究记忆','watch':'因子跟踪','peer_review':'同行复核'}[ref['kind']]
         item=QListWidgetItem(title+' · '+str(ref[key]));item.setData(Qt.ItemDataRole.UserRole,ref)
         self.references.addItem(item)
     def open_reference(self):
@@ -137,6 +137,7 @@ class AgentChatDialog(QDialog):
         elif ref['kind']=='watch':self.window.factor_watches(ref['watch_id'])
         elif ref['kind']=='memory':self.window.research_memory(ref['memory_id'])
         elif ref['kind']=='job':self.window.show_jobs()
+        elif ref['kind']=='peer_review':self.window.navigate_root(5)
         else:self.window.registry_page('factor',ref['factor_id'])
     def open_proposals(self,selected_id=None):
         if not self.window.data_root:self.status.setText('当前未配置行情目录，不能提交研究提案');return

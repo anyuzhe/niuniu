@@ -350,4 +350,4 @@ Git 纪律：
 
 Research Agent 默认只读 Agent Memory；Developer/Reviewer 可在隔离 worktree 中提出记忆修改。任何自动总结不得直接覆盖已有规则，只能新增或修订并保留 Git diff。涉及统计、PIT、权限、真实账户和自动交易的规则变更仍需人工批准。
 
-- 2026-09-13：根据对标系统实际使用方式，将 P8/P10 的智能体长期记忆正式调整为 **Git-first Markdown Memory**；向量库从“可能的长期记忆方案”降级为未来可选、可删除的检索索引层。
+- 2026-09-13：根据对标系统实际使用方式，将 P8/P10 的智能体长期记忆正式调整为 **Git-first Markdown Memory**；向量库从“可能的长期记忆方案”降级为未来可选、可删除的检索索引层。- 2026-09-13：P8 AI Team / Peer Review 完成。固定角色与模型解耦；Reviewer 第一轮互盲、第二轮仅 Chief 综合，最多两轮；Reviewer 仅只读证据工具，模型只能创建 pending 复核请求，真正启动仍需宿主显式发送许可。Git-first Agent Memory 绑定 commit/文件 SHA/memory_hash，`agent_memory/` 有未提交修改时正式 Agent 拒绝启动；Developer 在 P10 前强制关闭。最终全仓 736 项通过，隔离端到端新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P8AITeam与PeerReview_验收说明.md`。下一阶段：P9 Agent Scorecard。
