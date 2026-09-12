@@ -15,7 +15,7 @@
 最终同时具备三类能力：
 
 1. **Trading Desk**：每天面向 A 股市场、主线、股票、计划、持仓意图和复盘使用。
-2. **Research Lab**：保留并继续强化现有因子、实验、PIT、Alpha Factory、Campaign、Watch 等严谨研究能力。
+2. **Research Lab**：保留并继续强化现有因子、实验、PIT、Alpha Factory、Campaign、Watch 等严谨研究能力，并新增面向 A 股短线的高手玩法 / Playbook Lab。
 3. **Dev Studio**：允许用户向开发助理提出修改牛牛本身的需求，在隔离 worktree 中开发、测试、复核，人工批准后再合并发布。
 
 核心原则：**不推倒现有研究内核；交易产品层建立在现有严谨研究证据之上。**
@@ -36,7 +36,7 @@
 
 ## 3. 对标系统只借鉴什么
 
-借鉴：A 股业务导航、主线→股票→动作、跨日股票档案、R1/R2/R3、D1/D2/D3、共享池、动作状态、规则判/AI 判分离、多助理按需复核、开发助理、移动入口、系统健康可视化。
+借鉴：A 股业务导航、主线→股票→动作、跨日股票档案、R1/R2/R3、D1/D2/D3、共享池、动作状态、规则判/AI 判分离、多助理按需复核、高手经验规则化与历史验证、主 Agent 动态拆子任务、开发助理、移动入口、系统健康可视化。
 
 不照搬：助理数量竞赛、多人同意=正确、未经校准的“85%信心”、事后最高价复利、历史回填冒充原判、自由修改生产代码、多模型自动调权。
 ## 4. 目标产品架构
@@ -58,7 +58,8 @@
    │   ├─ Quant Researcher
    │   └─ Developer
    ├─ Research Lab
-   │   └─ 现有全部因子、实验、PIT、Campaign、Factory、Watch 能力
+   │   ├─ Factor / Experiment / PIT / Campaign / Factory / Watch
+   │   └─ Playbook Lab：高手玩法→候选全集→选择差异→历史验证
    ├─ Dev Studio
    │   └─ DevTask → Worktree → Tests → Review → Human Merge
    └─ System Center
@@ -165,13 +166,14 @@ Dev Studio 允许“AI 帮用户修改牛牛自己”，但与研究权限严格
 
 固定流程：
 
-`User Request → DevTask → isolated git worktree → Developer → targeted tests → Reviewer → full tests(必要时) → diff/risk/evidence → Human Approval → merge/commit/push`
+`User Request → DevTask → Main Developer Agent → 按需动态 Subtasks → Shared isolated worktree → targeted tests → Reviewer → Main Agent final acceptance → full tests(必要时) → diff/risk/evidence → Human Approval → merge/commit/push`
 
 DevTask 最小记录：
 
 - `dev_task_id / requested_by / created_at`
 - `base_commit / worktree / allowed_paths / risk_level`
-- `agent_id / model_id / prompt_version`
+- `main_agent_id / model_id / prompt_version`
+- `subtasks / parent_subtask_id / assigned_agent / tool_policy / path_lease / budget / stop_reason`
 - `acceptance_tests`
 - `changed_files / diff_hash / test_results / review_result`
 - `commit_sha / merged_by / released_at / rollback_sha`
@@ -256,13 +258,25 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 第一轮独立判断互不可见，复核轮才允许查看对方输出。
 - 验收：任务链有 task_id/parent/reviewer/stop_reason，不能出现无限对话。
 
-### P9 Agent Scorecard
-- 评价 Coverage、证据正确、计划完整、及时性、修订纪律、约束违规、后续跟踪等。
-- 第一阶段只展示，不自动调模型权重。
+### P8.5 A股高手玩法 / Playbook Lab（新增优先阶段）
+- 将淘股吧等公开实盘高手的可核验玩法作为“研究假设来源”，不是直接当真理。
+- 先做 source archive / 交割记录 / 当时市场上下文，再抽取 eligibility、候选池、选择条件、否决条件、entry/confirm/invalidation/exit。
+- 核心研究问题从“这个因子有没有 Alpha”扩展为“同一时点符合玩法的 10 个候选，为什么高手选择其中 2 个；剩余 8 个是什么反例”。
+- Playbook 规则/经验的人类可读版本进入 Git；数值验证、候选全集、失败样本和收益仍进入结构化 Research Evidence。
+- 第一批可把“期末50分”作为试点，但只有拿到可核验原始记录后才建正式 Playbook，不凭二手总结补全规则。
+- 验收：完整候选集合、正负样本、规则版本、样本外/走步验证、可成交收益、成本与 A 股制度约束均可审计。
 
-### P10 Dev Studio
-- DevTask、worktree、Developer、Reviewer、tests、人工 merge。
-- 验收：研究 Agent 无 repo write 权；开发 Agent 无生产 main 自动发布权。
+### P9 Agent Scorecard
+- 评价 Coverage、证据正确、计划完整、及时性、修订纪律、约束违规、后续跟踪，以及 Playbook 候选覆盖/漏选/错误升级。
+- 第一阶段只展示，不自动调模型权重；Scorecard 必须按任务类型评价，不做一个“模型总分”。
+
+### P10 Dev Studio + Dynamic Agent Orchestrator
+- DevTask、isolated worktree、Main Developer Agent、动态 Subagents、tests、Reviewer、人工 merge。
+- 主 Agent 负责理解需求、冻结验收标准、决定是否拆分、分配工具/路径/预算、汇总结果、最终验收；不满意可以在预算内重新规划。
+- 子 Agent 按任务动态创建，不固定长期常驻；典型分工为代码检索、资料/接口核对、局部实现、测试/分析、diff review。
+- 同一 DevTask 共享一个隔离 worktree，但写入必须 path-scoped lease；禁止两个子 Agent 同时修改同一文件/目录。默认 Explorer/Reviewer 只读，只有明确 Implementer 获得分配路径写权限。
+- 子 Agent 不得自行 commit/push；Main Agent 负责最终 diff、测试证据和验收，仍需人工批准后才能 merge/push main。
+- 验收：研究 Agent 无 repo write 权；开发 Agent 无生产 main 自动发布权；任务树、subtask、workspace lease、changed files、tests、review、stop_reason 全部可追溯。
 ### P11 System Health
 - 统一服务、任务、日志、心跳、数据新鲜度、PIT blocker。
 - 不把“在线”当作“正确”。
@@ -350,4 +364,174 @@ Git 纪律：
 
 Research Agent 默认只读 Agent Memory；Developer/Reviewer 可在隔离 worktree 中提出记忆修改。任何自动总结不得直接覆盖已有规则，只能新增或修订并保留 Git diff。涉及统计、PIT、权限、真实账户和自动交易的规则变更仍需人工批准。
 
-- 2026-09-13：根据对标系统实际使用方式，将 P8/P10 的智能体长期记忆正式调整为 **Git-first Markdown Memory**；向量库从“可能的长期记忆方案”降级为未来可选、可删除的检索索引层。- 2026-09-13：P8 AI Team / Peer Review 完成。固定角色与模型解耦；Reviewer 第一轮互盲、第二轮仅 Chief 综合，最多两轮；Reviewer 仅只读证据工具，模型只能创建 pending 复核请求，真正启动仍需宿主显式发送许可。Git-first Agent Memory 绑定 commit/文件 SHA/memory_hash，`agent_memory/` 有未提交修改时正式 Agent 拒绝启动；Developer 在 P10 前强制关闭。最终全仓 736 项通过，隔离端到端新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P8AITeam与PeerReview_验收说明.md`。下一阶段：P9 Agent Scorecard。
+- 2026-09-13：根据对标系统实际使用方式，将 P8/P10 的智能体长期记忆正式调整为 **Git-first Markdown Memory**；向量库从“可能的长期记忆方案”降级为未来可选、可删除的检索索引层。
+
+- 2026-09-13：P8 AI Team / Peer Review 完成。固定角色与模型解耦；Reviewer 第一轮互盲、第二轮仅 Chief 综合，最多两轮；Reviewer 仅只读证据工具，模型只能创建 pending 复核请求，真正启动仍需宿主显式发送许可。Git-first Agent Memory 绑定 commit/文件 SHA/memory_hash，`agent_memory/` 有未提交修改时正式 Agent 拒绝启动；Developer 在 P10 前强制关闭。最终全仓 736 项通过，隔离端到端新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P8AITeam与PeerReview_验收说明.md`。下一阶段调整为新增 P8.5 A股高手玩法 / Playbook Lab。
+
+## 21. Dynamic Agent Orchestrator：主 Agent + 动态子 Agent
+
+新增对标信息确认：对方不是固定流水线调用若干 Agent，而是本地 Codex 主 Agent 先理解需求、判断策略、调用工具，并在复杂任务时动态拆分子任务；子 Agent 共享同一工作区，最终回到主 Agent 汇总、判断和验收。牛牛借鉴这一**编排思想**，但保留更严格的工作区与权限合同。
+
+### 21.1 通用编排模型
+
+```text
+User
+  ↓
+Main Agent / Supervisor
+  ├─ 理解目标与约束
+  ├─ 冻结 acceptance criteria
+  ├─ 判断是否需要拆分
+  ├─ 分配 role / tools / budget / workspace scope
+  ↓
+Dynamic Subtasks (0..N)
+  ├─ Explorer：查代码/查现有证据，只读
+  ├─ Researcher：查资料/接口/历史案例，只读或只写 scratch artifact
+  ├─ Implementer：只写分配路径
+  ├─ Tester：运行限定测试，不改生产代码
+  └─ Reviewer：审 diff / 证据，只读
+  ↓
+Main Agent Aggregate / Replan / Final Acceptance
+  ↓
+Human Approval（涉及发布/高风险动作时）
+```
+
+子 Agent 数量不是 KPI；简单任务由 Main Agent 自己完成。第一版 `max_parallel_subagents=3`、`max_delegation_depth=1`，不得子 Agent 再无限创建孙 Agent。
+
+### 21.2 Research Profile 与 Dev Profile 必须不同
+
+**Research Profile**：共享的是冻结 evidence snapshot，而不是可变研究状态。Subagent 默认只读，输出写入独立 task artifact；不能修改 Decision、Theme、Watch、授权、实验结果。涉及独立判断时继续沿用 P8 的“首轮互盲”，Main Agent 汇总后才可比较意见。
+
+**Dev Profile**：共享同一个隔离 Git worktree，便于查代码、实现、测试形成同一工作结果；但所有写操作必须持有 `path_lease`，同一路径只能有一个 Writer。Main Agent 可以重新分配 lease，但必须记录历史。
+
+### 21.3 Shared Workspace 不是自由并发写
+
+每个 DevTask 只有一个 isolated worktree；所有 Subagent 读取相同 `base_commit` 和当前 worktree。写入规则：
+
+- Explorer / Researcher / Tester / Reviewer 默认 `read_only`。
+- Implementer 仅写 `allowed_paths ∩ leased_paths`。
+- 同一文件不能同时被两个 Subagent lease。
+- 每个 Subtask 记录 `before_diff_hash / after_diff_hash / changed_files`。
+- Subagent 不允许 `git commit`、`git push`、切换 branch、修改 `.git`、改变全局 Git 配置。
+- Main Agent 汇总前必须检测跨 Subtask 冲突和越界文件。
+
+### 21.4 Main Agent 才负责“完成”
+
+Subagent 返回“完成”只表示自己的局部任务结束。只有 Main Agent 可以判断 DevTask 是否满足 acceptance criteria。Main Agent 不满意时可在预算内：补充证据、重新拆分、回滚局部修改、再跑测试；达到 `max_replans` 后必须停并向用户报告，不得无限自循环。
+
+最终交付至少保存：`task_tree`、每个 Subtask 的输入/输出、模型与 role、工具调用摘要、workspace lease、changed files、测试、Reviewer 结论、Main Agent final acceptance、停止原因。
+
+### 21.5 与 P8 的关系
+
+P8 Peer Review 不改成“共享答案一起讨论”。P8 保留独立 Reviewer → Chief synthesis，用于高风险交易/研究判断。Dynamic Orchestrator 是更通用的任务执行层：在 Dev Studio 中允许共享 worktree；在 Research 中共享只读 evidence，不破坏独立判断。
+
+## 22. A股高手玩法 / Expert Playbook Lab
+
+新增研究主线：对于 A 股短线主线、情绪周期、龙头、弱转强、分歧转一致、二波/龙回头等高度条件化模式，**高手玩法比单一通用因子更接近日常交易问题的形态**。牛牛因此从 Factor-first 调整为：
+
+> **Playbook-first hypothesis discovery + deterministic market facts + Quant/PIT validation**
+
+因子不删除，也不降级为无用；它从“唯一中心”变成 Playbook 的特征、控制变量、对照和增量验证工具之一。
+
+### 22.1 研究对象
+
+第一版新增正式对象：
+
+- `ExpertSource`：高手、原帖/实盘赛/交割记录、来源 URL/文件、发布时间、可用时间、完整性说明。
+- `PlaybookDefinition`：玩法定义、市场上下文、eligibility、候选生成、选择条件、否决条件、entry、confirm、invalidation、hold/add/reduce/exit。
+- `PlaybookCase`：一次历史事件/交易案例，绑定当时可见数据和原始来源。
+- `CandidateSet`：在当时规则下**所有**符合 eligibility 的股票，不只保存最终买入者。
+- `SelectionDecision`：高手/系统从 CandidateSet 中选择谁、没选谁，以及能否从当时证据解释差异。
+- `PlaybookValidation`：冻结版本后的历史验证、样本外、walk-forward、执行收益、失败样本与局限。
+
+### 22.2 “10选2”是核心问题，不只是规则命中率
+
+如果某玩法一天筛出 10 只而高手只选 2 只，研究必须保留全部 10 只。不能只拿 2 个赢家反推规则。
+
+验证拆成两层：
+
+1. **Eligibility**：哪些股票在当时确实符合这套玩法；规则负责召回。
+2. **Selection**：为什么选择 A/B 而不选择其余 8 只；可能涉及主线强度、龙头身份、主动性、带动性、竞价、换手、市场节点和相对排序。
+
+Selection 可以使用 deterministic features、pairwise/ranking 分析和 AI 条件解释，但最终必须在冻结候选全集上验证，不能看完结果再补选择条件。
+
+### 22.3 高手经验进入 Git，但收益事实不进 Markdown
+
+建议新增：
+
+```text
+playbooks/
+  README.md
+  qimofenshu/
+    README.md          # 人类可读玩法假设、来源和版本历史
+    definition.json    # 受 schema 约束的机器规则
+    notes/             # 公开资料的摘要/人工标注，不替代原始来源
+```
+
+Git 保存规则、概念定义、变更理由和人工复盘。大体积/受版权约束的原始材料只保存引用、哈希和合法本地归档位置；交易结果、CandidateSet、回测和统计证据继续进入结构化 Research Evidence。
+
+### 22.4 正式研究流程
+
+```text
+原始高手资料/交割记录
+  ↓ 来源归档 + 时间戳
+概念抽取 / 术语统一
+  ↓
+Playbook hypothesis v0
+  ↓
+历史候选全集重建（含未选/失败样本）
+  ↓
+机器事实 + 主线/情绪/龙头上下文
+  ↓
+冻结 eligibility / selection / veto / action rules
+  ↓
+训练期探索 + holdout / walk-forward
+  ↓
+A股可成交执行：涨跌停、停牌、T+1、费用、滑点、资金占用
+  ↓
+PlaybookValidation
+  ↓
+通过后进入 Daily Scanner / Decision Ledger
+  ↓
+D1/D2/D3+ 复盘 → 规则版本迭代
+```
+
+### 22.5 防止“高手幸存者偏差 / 事后神化”
+
+Playbook Lab 必须额外阻断：
+
+- 只选知名高手成功交易、不保存其失败交易。
+- 只保存最终买入股票、不保存当时同样符合条件的其他候选。
+- 用后来总结替代当时公开/可见的信息。
+- 看到历史结果后不断添加规则，再把同一历史区间当验证。
+- 用次日最高价/理论涨幅代替可执行账户收益。
+- 因为某高手长期赚钱就直接推导“玩法已被牛牛提取成功”。
+
+### 22.6 与现有牛牛模块的连接
+
+- Theme Matrix：提供主线/情绪上下文。
+- Stock Dossier：显示该股票历史命中过哪些 Playbook、何时被选/未选。
+- Decision Ledger：保存系统在当时基于 Playbook 的真实判断，不能事后覆盖。
+- Strategy Intent：Playbook 命中只能产生候选/计划，不等于成交。
+- Research Lab：因子、事件研究、Campaign、Factory 可作为验证器。
+- Strict PIT：决定某次历史重建能否称严格时点验证。
+- AI Team：Scanner 防漏候选，Skeptic 找反例，Quant Researcher 做正式验证；Chief 最终综合。
+- Agent Scorecard：以后评价谁在 Playbook 候选覆盖、选择、风险识别上更可靠。
+
+### 22.7 首个试点：期末50分
+
+“期末50分”只作为第一批试点方向，不把当前二手描述直接固化为交易规则。正式启动条件：拿到足够可核验的原帖/实盘记录/交易时间/候选上下文；先重建若干真实案例，再判断能否形成稳定 Playbook。第一阶段目标不是证明能赚钱，而是回答：**规则能不能稳定重建候选集合，以及系统能不能解释并样本外验证‘为什么10选2’。**
+
+## 23. 2026-09-13 后续顺序调整
+
+完成 P8 后，后续优先级调整为：
+
+1. **P8.5 Expert Playbook Lab**：先建立 A 股高手玩法的数据合同和首个试点。
+2. **P9 Agent Scorecard**：有真实 Playbook/Decision 使用后再评价 Agent，避免空跑排行榜。
+3. **P10 Dev Studio + Dynamic Agent Orchestrator**：把主 Agent 动态拆任务、Shared Worktree、Subagent 工具/路径权限正式产品化。
+4. P11 System Health。
+5. P12 移动端。
+6. P13 Paper → Real 渐进交易层。
+
+并行继续 Research Lab 基础设施线（approval-time freeze、Session Grant、Strict PIT 数据补齐、Watch 序贯统计）。
+
+- 2026-09-13：根据新增对标信息，确认“主 Agent 动态拆 Subagent + Shared Workspace + Main Agent 最终验收”主要借鉴到 P10 Dev Studio，并抽象为 Research/Dev 两种 profile；同时新增 P8.5 Expert Playbook Lab，把 A 股短线模式发现从 Factor-first 调整为 Playbook-first + Quant Validation。
