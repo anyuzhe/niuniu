@@ -26,7 +26,7 @@ from .business_view import BusinessDetails
 NAV = ['研究工作台','数据中心','因子库','市场状态','结构与事件','序列构建器',
        '理论实验室','实验中心','组合与模型','策略回测','结果对比','系统设置']
 ICONS = ['⌂','◎','ƒ(x)','▥','⌘','▤','♙','▷','◔','▧','▣','⚙']
-KINDS = {'campaign':'固定研究包','factor':'因子实验','execution':'独立成交回测','ablation':'消融研究',
+KINDS = {'campaign':'固定研究包','alpha_factory':'Alpha Factory','factor':'因子实验','execution':'独立成交回测','ablation':'消融研究',
     'holdout':'样本外验证','walkforward':'滚动验证','sweep':'参数扫描','theory_study':'理论全流程','trial_registry':'跨实验登记检验族','return_family':'固定净收益检验族','return_increment':'净收益增量比较','stability':'参数与子样本比较','residual_alpha':'残差研究','correlation':'因子相关与去重','correlation_holdout':'样本外相关性','correlation_walkforward':'滚动相关性'}
 MODES = [('single','单因子 / 条件 / 组合'),('holdout','固定样本外'),('walkforward','滚动验证'),
     ('ablation','逐输入消融'),('sweep','参数扫描'),('execution','独立成交回测'),('theory_study','理论全流程'),('correlation','因子相关性与冗余')]
@@ -79,12 +79,16 @@ class MainWindow(QMainWindow):
         self.boss_button=button('老板键 F12',self.boss_key.hide)
         self.boss_button.setToolTip(self.boss_key.help_text)
         self.boss_button.setAccessibleDescription(self.boss_key.help_text)
-        tb.addWidget(self.search,1);tb.addWidget(button('搜索',self.global_search));tb.addStretch();tb.addWidget(self.boss_button);tb.addWidget(button('AI 研究接口',self.agent_catalog));tb.addWidget(button('研究记忆',self.research_memory));tb.addWidget(label('●  本地研究员','muted'));tb.addWidget(button('运行任务',self.show_jobs));tb.addWidget(button('＋ 新建实验',self.new_experiment,True));wb.addWidget(top)
+        tb.addWidget(self.search,1);tb.addWidget(button('搜索',self.global_search));tb.addStretch();tb.addWidget(self.boss_button);tb.addWidget(button('研究议程',self.research_agenda));tb.addWidget(button('AI 研究接口',self.agent_catalog));tb.addWidget(button('研究记忆',self.research_memory));tb.addWidget(label('●  本地研究员','muted'));tb.addWidget(button('运行任务',self.show_jobs));tb.addWidget(button('＋ 新建实验',self.new_experiment,True));wb.addWidget(top)
         self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);wb.addWidget(self.scroll,1)
         self.status=label('牛牛平台 · Research First · Causal Correctness · Reproducible Experiments','muted');self.status.setContentsMargins(24,8,24,8);wb.addWidget(self.status)
         QShortcut(QKeySequence.StandardKey.Find,self,activated=self.search.setFocus)
         self.shutdown_timer=QTimer(self);self.shutdown_timer.setInterval(250);self.shutdown_timer.timeout.connect(self.close)
         self.navigate(0)
+
+    def research_agenda(self):
+        from .research_agenda import ResearchAgendaDialog
+        self.show_dialog(ResearchAgendaDialog(self))
 
     def research_memory(self, memory_id=None):
         from .research_memory import ResearchMemoryDialog

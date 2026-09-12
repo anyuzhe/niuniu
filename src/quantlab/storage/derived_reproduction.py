@@ -7,7 +7,7 @@ from quantlab.storage.codec import encode
 from quantlab.storage.experiments import load_record_fields
 from quantlab.storage.reproduction import _graph
 
-KINDS=('residual_alpha','return_increment','stability','return_family','incremental_evidence')
+KINDS=('residual_alpha','return_increment','stability','return_family','incremental_evidence','alpha_factory')
 
 
 def reproduce_derived(artifact, output, *, _source_cache=None):
@@ -24,6 +24,7 @@ def reproduce_derived(artifact, output, *, _source_cache=None):
     if kind=='stability' and len(ids)!=2*len(manifest['plan']['comparisons']):raise ValueError('Invalid stability source count')
     if kind=='return_family':return reproduce_return_family(path,output,graph)
     if kind=='incremental_evidence':return reproduce_incremental_evidence(path,output,graph)
+    if kind=='alpha_factory':return reproduce_alpha_factory(path,output,graph)
     if 'source_experiments' in manifest and [graph[i]['experiment_id'] for i in ids]!=manifest['source_experiments']:raise ValueError('Derived source identity mismatch')
     # Dependencies must contain their frozen inputs; never fall back to the old absolute paths.
     from quantlab.storage.frozen_inputs import load_frozen_inputs
@@ -152,4 +153,103 @@ def reproduce_incremental_evidence(path,output,graph):
         'run_mapping':mapping,'planned_tests':len(tests),'recomputed_tests':len(new_children),
         'preserved_failed_slots':failed,'status':'available_results_matched' if failed else 'numerically_matched',
         'scope':'Recomputed every available fixed incremental-evidence slot and Holm over the original full family; failed slots remain unknown.'}
+    (target/'reproduction.json').write_text(encode(verification));return verification
+
+
+def reproduce_alpha_factory(path,output,graph):
+    from copy import deepcopy
+    from datetime import date,datetime,timezone
+    from uuid import uuid4
+    from quantlab.agent.alpha_factory import factory_decisions
+    from quantlab.agent.candidate_review import compare_candidate
+    from quantlab.experiments.residual import run_residual
+    from quantlab.experiments.return_increment import compare_returns
+    from quantlab.statistics.permutation import holm
+    from quantlab.storage.bundle import reproduce_artifact,_compare_reproduction
+    from quantlab.storage.codec import digest
+    from quantlab.storage.experiments import LocalExperimentStore,load_record_fields
+
+    record=graph[path.name];manifest=record['manifest'];original=record['summary'];plan=manifest['plan']
+    if original['planned_tests']!=len(original['tests']) or original['planned_candidates']!=len(plan['candidate_ids']):
+        raise ValueError('Factory父归档计划数量不一致')
+    primary=[plan['baseline_run_id'],*plan['control_run_ids']]
+    if plan['require_net_return']:primary.append(plan['baseline_execution_run_id'])
+    for entry in original.get('runs',{}).values():
+        primary.extend(v for k,v in entry.items() if k.endswith('_run_id') and v)
+    mapping={};new_paths={};source_cache={}
+    for run_id in dict.fromkeys(primary):
+        result=reproduce_artifact(path.parent/run_id,output)
+        if result['status'] not in ('numerically_matched','available_results_matched'):
+            raise ValueError('Factory来源复算未匹配：'+run_id)
+        new_paths[run_id]=Path(result['artifact_path']);mapping.update(result.get('run_mapping',{}));mapping[run_id]=result['run_id']
+    tests=[];reviews={};new_runs={};new_children=[]
+    for cid in plan['candidate_ids']:
+        old_runs=original['runs'].get(cid,{})
+        factor_old=old_runs.get('factor_run_id');execution_old=old_runs.get('execution_run_id')
+        new_runs[cid]={'factor_job_id':old_runs.get('factor_job_id'),'factor_run_id':mapping.get(factor_old)}
+        if execution_old:new_runs[cid].update(execution_job_id=old_runs.get('execution_job_id'),execution_run_id=mapping.get(execution_old))
+        old_candidate_tests=[t for t in original['tests'] if t['candidate_id']==cid]
+        if not factor_old:
+            tests.extend(deepcopy(old_candidate_tests));reviews[cid]=deepcopy(original.get('candidate_reviews',{}).get(cid,{}));continue
+        candidate_new=mapping[factor_old];baseline_new=mapping[plan['baseline_run_id']]
+        reviews[cid]=compare_candidate(output,candidate_new,baseline_new,plan['horizon'])
+        old_residual=next(t for t in old_candidate_tests if t['id']=='residual_ic')
+        if old_residual['status']=='failed':tests.append(deepcopy(old_residual))
+        else:
+            result=run_residual(new_paths[factor_old],[new_paths[v] for v in plan['control_run_ids']],
+                date.fromisoformat(plan['train_end']),output,plan['horizon'])
+            raw=result['summary']['test'];tests.append({'candidate_id':cid,'id':'residual_ic','kind':'residual_alpha',
+                'status':'completed','run_id':result['run_id'],'artifact_path':result['artifact_path'],
+                'p_value':raw.get('p_value'),'estimate':raw.get('estimate'),'test_status':raw.get('status'),'reused':False})
+            new_children.append({'run_id':result['run_id'],'artifact_path':result['artifact_path'],'name':'residual_ic '+cid[:8]})
+            mapping[old_residual['run_id']]=result['run_id']
+        if plan['require_net_return']:
+            old_net=next(t for t in old_candidate_tests if t['id']=='net_return_increment')
+            if old_net['status']=='failed':tests.append(deepcopy(old_net))
+            else:
+                result=compare_returns(new_paths[execution_old],new_paths[plan['baseline_execution_run_id']],
+                    date.fromisoformat(plan['evaluation_start']),output)
+                raw=result['summary']['permutation'];tests.append({'candidate_id':cid,'id':'net_return_increment','kind':'return_increment',
+                    'status':'completed','run_id':result['run_id'],'artifact_path':result['artifact_path'],
+                    'p_value':raw.get('p_value'),'estimate':result['summary'].get('mean_daily_difference'),
+                    'test_status':raw.get('status'),'reused':False})
+                new_children.append({'run_id':result['run_id'],'artifact_path':result['artifact_path'],'name':'net_return_increment '+cid[:8]})
+                mapping[old_net['run_id']]=result['run_id']
+    adjusted=holm([t.get('p_value') for t in tests])
+    for row,p in zip(tests,adjusted):
+        row['p_holm']=p;row['reject']=p<=plan['alpha'] if p is not None else None
+    names={d['candidate_id']:d['name'] for d in original['decisions']}
+    prepared={'plan':plan,'candidates':[{'candidate_id':cid,'name':names[cid]} for cid in plan['candidate_ids']]}
+    decisions=factory_decisions(prepared,tests,reviews)
+    report=deepcopy(original);report.update(tests=tests,candidate_reviews=reviews,runs=new_runs,
+        decisions=decisions,available_tests=sum(t.get('p_value') is not None for t in tests),
+        recommended_candidate_ids=[d['candidate_id'] for d in decisions if d['recommended_for_watchlist']])
+    def semantic(value):
+        value=deepcopy(value)
+        for row in value['tests']:
+            for key in ('run_id','artifact_path','reused'):row.pop(key,None)
+        for row in value.get('runs',{}).values():
+            row.pop('factor_run_id',None);row.pop('execution_run_id',None)
+        for review in value.get('candidate_reviews',{}).values():
+            review.pop('source_fingerprints',None)
+            for key in ('candidate','baseline'):
+                if isinstance(review.get(key),dict):review[key].pop('run_id',None)
+        return value
+    _compare_reproduction(semantic(original),semantic(report),'alpha_factory/summary')
+    children=[];seen=set()
+    for old in dict.fromkeys(primary):
+        new=mapping[old]
+        if new in seen:continue
+        children.append({'run_id':new,'artifact_path':str(new_paths[old]),'name':'复算来源'});seen.add(new)
+    children.extend(new_children)
+    run_id=str(uuid4());new_record={'run_id':run_id,'experiment_id':digest(manifest),
+        'created_at':datetime.now(timezone.utc).isoformat(),'kind':'alpha_factory','status':'completed',
+        'manifest':manifest,'summary':report,'children':children}
+    target=LocalExperimentStore(output).save(run_id,new_record,None);mapping[path.name]=run_id
+    failed=sum(t['status']=='failed' for t in tests)
+    verification={'source_run_id':path.name,'run_id':run_id,'artifact_path':str(target),'run_mapping':mapping,
+        'planned_candidates':len(plan['candidate_ids']),'planned_tests':len(tests),
+        'recomputed_tests':len(tests)-failed,'preserved_failed_slots':failed,
+        'status':'available_results_matched' if failed else 'numerically_matched',
+        'scope':'Recomputed frozen source studies, candidate reviews, all available Factory tests, Factory-wide Holm and the unchanged watchlist recommendation rule.'}
     (target/'reproduction.json').write_text(encode(verification));return verification

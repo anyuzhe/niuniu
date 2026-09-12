@@ -41,6 +41,7 @@ The project is intended for individual quantitative researchers, developers form
 | Independent execution | Next-bar-open simulation, cash and positions, lot sizes, T+1, costs and slippage, trading constraints, target-versus-actual holdings, fills/rejections, and equity |
 | Audit and reproduction | Replay by date, signal, event, or fill; structure layers and actual-timeframe switching; configuration and artifact archives, export/restore, and numerical reproduction for supported experiment types |
 | Tasks and continuation | Persisted local task state; classic Chan checkpoints, appended-bar continuation, and interruption recovery. Universal continuation is not implemented for every algorithm |
+| AI research assistant | Structured research memory, fixed campaigns, restricted-DSL candidates, Research Agenda, Safe Alpha Factory, persistent monitoring, standard MCP, and controlled background scheduling; models cannot approve studies or auto-promote candidates to the watchlist |
 
 The desktop also has a **boss key, F12**. On macOS, it hides the application and its dialogs; the Dock icon restores it. Background computation and unsaved form values are retained. Some keyboards require `Fn + F12`. Other window systems use minimization; native interaction testing has primarily been performed on macOS.
 

@@ -24,8 +24,8 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
                 by_name={t.name:t for t in listed.tools}
                 self.assertTrue(by_name['describe_factor'].annotations.read_only_hint)
                 self.assertFalse(by_name['propose_dsl_candidate'].annotations.read_only_hint)
-            for forbidden in ('approve_proposal','register_dsl_candidate','execute_incremental_evidence',
-                    'download_baostock','authorize_tracking','run_shell'):
+            for forbidden in ('approve_proposal','register_dsl_candidate','execute_incremental_evidence','submit_alpha_factory',
+                    'sync_alpha_factory','promote_alpha_candidate','download_baostock','authorize_tracking','run_shell'):
                 self.assertNotIn(forbidden,names)
 
     async def test_stdio_subprocess_and_argument_validation(self):

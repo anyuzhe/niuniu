@@ -32,6 +32,8 @@ class DataConnectedWorkbench(MainWindow):
         super().__init__(output,data_root)
         menu=self.menuBar().addMenu('Baostock 数据')
         menu.addAction('固定更新通道（跨批次接入）',self.open_baostock_series)
+        menu.addAction('AI主动研究议程',self.research_agenda)
+        menu.addAction('安全Alpha Factory',self.open_alpha_factory)
         menu.addAction('候选因子对照（只读）',self.open_candidate_review)
         menu.addAction('候选增量证据包',self.open_incremental_evidence)
         menu.addAction('受限DSL候选注册',self.open_dsl_candidates)
@@ -65,6 +67,9 @@ class DataConnectedWorkbench(MainWindow):
         for child in self.dialogs:
             if isinstance(child,QDialog) and not isinstance(child,BaostockSeriesDialog):child.close()
         self.data_root=directory;self._research_chat_dialog=None;self.last_records=[]
+    def open_alpha_factory(self):
+        from .alpha_factory import AlphaFactoryDialog
+        self.show_dialog(AlphaFactoryDialog(self))
     def open_candidate_review(self):
         from .candidate_review import CandidateReviewDialog
         self.show_dialog(CandidateReviewDialog(self))

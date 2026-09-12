@@ -155,7 +155,7 @@ class LocalExperimentStore:
             lines += ['', '这是日期块 Bootstrap 近似推断；按原计划比较数校正，不可用项保留名额。原始股票样本与容许范围保存在 manifest.plan；归档不证明用户事先未看数据。',
                 '', '[等效性检验的区间原则](https://pmc.ncbi.nlm.nih.gov/articles/PMC5502906/)', '', '## 完整统计记录', '', '```json',encode(summary),'```']
             return '\n'.join(lines)+'\n'
-        if record.get('kind') in ('residual_alpha','return_increment','stability','return_family','incremental_evidence','trial_registry','campaign'):
+        if record.get('kind') in ('residual_alpha','return_increment','stability','return_family','incremental_evidence','alpha_factory','trial_registry','campaign'):
             return '# '+record['manifest']['config']['research_question']+'\n\n```json\n'+encode(record['summary'])+'\n```\n'
         if record.get('kind')=='theory_study' and record['status']=='completed':
             lines=['# 理论研究全流程','','组件、完整组合、消融、固定样本外、滚动和预设参数敏感性。没有自动择优。','']

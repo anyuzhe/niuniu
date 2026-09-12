@@ -2,7 +2,7 @@
 import json
 import polars as pl
 from quantlab.agent.catalog import schema, TEXT, LIMIT, OFFSET, compact
-from quantlab.agent.dsl_tools import DslCandidateAPI
+from quantlab.agent.agenda_tools import ResearchAgendaAPI
 from quantlab.agent.watchlist import WatchService
 from quantlab.storage.codec import encode
 
@@ -14,7 +14,7 @@ TOOLS = [
 ]
 
 
-class WatchResearchAPI(DslCandidateAPI):
+class WatchResearchAPI(ResearchAgendaAPI):
     def schemas(self): return super().schemas()+json.loads(json.dumps(TOOLS,ensure_ascii=False))
     def call(self, name, arguments):
         tool = next((t for t in TOOLS if t['name']==name),None)
