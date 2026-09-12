@@ -23,9 +23,10 @@ from .widgets import ASSETS, STYLE, Card, Chart, Flow, label, button, row, hero,
 from .boss_key import BossKey
 from .business_view import BusinessDetails
 
-NAV = ['研究工作台','数据中心','因子库','市场状态','结构与事件','序列构建器',
+LEGACY_NAV = ['研究工作台','数据中心','因子库','市场状态','结构与事件','序列构建器',
        '理论实验室','实验中心','组合与模型','策略回测','结果对比','系统设置']
-ICONS = ['⌂','◎','ƒ(x)','▥','⌘','▤','♙','▷','◔','▧','▣','⚙']
+NAV = ['今日交易','主线市场','股票中心','持仓计划','复盘中心','AI 团队','研究实验室','系统中心']
+ICONS = ['⌂','▦','◎','◉','↺','✦','▤','⚙']
 KINDS = {'campaign':'固定研究包','alpha_factory':'Alpha Factory','factor':'因子实验','execution':'独立成交回测','ablation':'消融研究',
     'holdout':'样本外验证','walkforward':'滚动验证','sweep':'参数扫描','theory_study':'理论全流程','trial_registry':'跨实验登记检验族','return_family':'固定净收益检验族','return_increment':'净收益增量比较','stability':'参数与子样本比较','residual_alpha':'残差研究','correlation':'因子相关与去重','correlation_holdout':'样本外相关性','correlation_walkforward':'滚动相关性'}
 MODES = [('single','单因子 / 条件 / 组合'),('holdout','固定样本外'),('walkforward','滚动验证'),
@@ -48,13 +49,13 @@ class Task(QRunnable):
 class MainWindow(QMainWindow):
     def __init__(self, output, data_root=None):
         super().__init__()
-        self.setWindowTitle('牛牛平台 · 统一技术交易因子实验平台'); self.setWindowIcon(QIcon(str(ASSETS/'niuniu_logo_icon.png')))
+        self.setWindowTitle('牛牛 AI · 个人 A 股交易研究助手'); self.setWindowIcon(QIcon(str(ASSETS/'niuniu_logo_icon.png')))
         self.resize(1600,980);self.setMinimumSize(1180,760)
         self.output=Path(output).resolve();self.output.mkdir(parents=True,exist_ok=True)
         self.catalog=ArtifactCatalog(self.output);self.data_root=Path(data_root).resolve() if data_root else None
         self.factors=json.loads(encode(default_registry().describe()));self.theories=templates()
         self.queue_lock=RLock()
-        self.queue=None;self.callbacks={};self.next_task=0;self.epoch=0;self.current=0;self.closing=False
+        self.queue=None;self.callbacks={};self.next_task=0;self.epoch=0;self.current=0;self.root_current=0;self.legacy_current=None;self.closing=False
         self.pool=QThreadPool(self);self.pool.setMaxThreadCount(2)
         self.signals=Signals(self);self.signals.finished.connect(self.finished)
         self.dialogs=[];self.last_records=[]
@@ -62,29 +63,29 @@ class MainWindow(QMainWindow):
         shell=QWidget();self.setCentralWidget(shell);outer=QHBoxLayout(shell);outer.setContentsMargins(0,0,0,0);outer.setSpacing(0)
         side=QFrame();side.setObjectName('sidebar');side.setFixedWidth(252);sidebox=QVBoxLayout(side);sidebox.setContentsMargins(10,18,10,20);sidebox.setSpacing(7)
         logo=label();logo.setPixmap(QPixmap(str(ASSETS/'niuniu_logo_icon.png')).scaled(58,58,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
-        brand=QWidget();brand.setObjectName('transparent');bl=QVBoxLayout(brand);bl.setContentsMargins(0,0,0,0);bl.addWidget(label('牛牛平台','brand'));bl.addWidget(label('统一技术交易因子实验平台','muted'))
+        brand=QWidget();brand.setObjectName('transparent');bl=QVBoxLayout(brand);bl.setContentsMargins(0,0,0,0);bl.addWidget(label('牛牛 AI','brand'));bl.addWidget(label('个人 A 股交易研究助手','muted'))
         sidebox.addWidget(row(logo,brand));sidebox.addSpacing(22);self.nav=[]
         for index,title in enumerate(NAV):
             b=button(f'{ICONS[index]}   {title}',lambda:None);b.setObjectName('nav');b.setCheckable(True);b.setAutoExclusive(True);b.setMinimumHeight(49);sidebox.addWidget(b);self.nav.append(b)
             # AX changes checked state without emitting clicked. Defer page
             # destruction until the native accessibility action has returned.
-            b.toggled.connect(lambda checked,i=index:QTimer.singleShot(0,lambda:self.navigate(i) if self.nav[i].isChecked() else None) if checked else None)
+            b.toggled.connect(lambda checked,i=index:QTimer.singleShot(0,lambda:self.navigate_root(i) if self.nav[i].isChecked() else None) if checked else None)
         sidebox.addStretch();sidebox.addWidget(label('用数据发现规律\n用逻辑创造价值\n让交易更科学','muted'))
         motto=label('D I S C I P L I N E   C R E A T E S   A L P H A','gold');motto.setStyleSheet('font-size:9px;');sidebox.addWidget(motto)
         outer.addWidget(side)
         workspace=QWidget();wb=QVBoxLayout(workspace);wb.setContentsMargins(0,0,0,0);wb.setSpacing(0);outer.addWidget(workspace,1)
         top=QFrame();top.setObjectName('topbar');top.setFixedHeight(66);tb=QHBoxLayout(top);tb.setContentsMargins(28,10,24,10)
-        self.search=QLineEdit();self.search.setPlaceholderText('⌕  搜索因子 · 事件 · 序列 · Theory · 实验…');self.search.setAccessibleName('全局搜索');self.search.setMinimumWidth(320);self.search.setMaximumWidth(640);self.search.returnPressed.connect(self.global_search)
+        self.search=QLineEdit();self.search.setPlaceholderText('⌕  搜索股票 · 主线 · 因子 · 实验 · 研究记录…');self.search.setAccessibleName('全局搜索');self.search.setMinimumWidth(320);self.search.setMaximumWidth(640);self.search.returnPressed.connect(self.global_search)
         self.boss_key=BossKey(self)
         self.boss_button=button('老板键 F12',self.boss_key.hide)
         self.boss_button.setToolTip(self.boss_key.help_text)
         self.boss_button.setAccessibleDescription(self.boss_key.help_text)
-        tb.addWidget(self.search,1);tb.addWidget(button('搜索',self.global_search));tb.addStretch();tb.addWidget(self.boss_button);tb.addWidget(button('研究议程',self.research_agenda));tb.addWidget(button('AI 研究接口',self.agent_catalog));tb.addWidget(button('研究记忆',self.research_memory));tb.addWidget(label('●  本地研究员','muted'));tb.addWidget(button('运行任务',self.show_jobs));tb.addWidget(button('＋ 新建实验',self.new_experiment,True));wb.addWidget(top)
+        tb.addWidget(self.search,1);tb.addWidget(button('搜索',self.global_search));tb.addStretch();tb.addWidget(self.boss_button);tb.addWidget(button('研究议程',self.research_agenda));tb.addWidget(button('AI 研究接口',self.agent_catalog));tb.addWidget(button('研究记忆',self.research_memory));tb.addWidget(label('●  本地研究员','muted'));tb.addWidget(button('运行任务',self.show_jobs));tb.addWidget(button('新建实验',self.new_experiment));tb.addWidget(button('＋ Decision',self.new_decision,True));wb.addWidget(top)
         self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);wb.addWidget(self.scroll,1)
-        self.status=label('牛牛平台 · Research First · Causal Correctness · Reproducible Experiments','muted');self.status.setContentsMargins(24,8,24,8);wb.addWidget(self.status)
+        self.status=label('牛牛 AI · Trading Desk + Research Lab · Evidence First · Reproducible Research','muted');self.status.setContentsMargins(24,8,24,8);wb.addWidget(self.status)
         QShortcut(QKeySequence.StandardKey.Find,self,activated=self.search.setFocus)
         self.shutdown_timer=QTimer(self);self.shutdown_timer.setInterval(250);self.shutdown_timer.timeout.connect(self.close)
-        self.navigate(0)
+        self.navigate_root(0)
 
     def research_agenda(self):
         from .research_agenda import ResearchAgendaDialog
@@ -111,6 +112,31 @@ class MainWindow(QMainWindow):
     def agent_catalog(self):
         from .agent_catalog import AgentCatalogDialog
         self.show_dialog(AgentCatalogDialog(self))
+
+    def new_decision(self, source=None):
+        from .decision_ledger import DecisionEditor
+        dialog=DecisionEditor(self,source)
+        dialog.accepted.connect(lambda:self.navigate_root(self.root_current) if self.root_current<=4 else None)
+        self.show_dialog(dialog)
+
+    def open_decision(self, decision):
+        from quantlab.trading.decision_store import DecisionStore
+        full=DecisionStore(self.output).get(decision['decision_id'])
+        dialog=QDialog(self);dialog.setWindowTitle(full['symbol']+' · '+full['trading_day']+' · '+full['frame']);dialog.resize(900,720)
+        layout=QVBoxLayout(dialog);layout.addWidget(BusinessDetails(full),1)
+        if full.get('superseded_by'):
+            layout.addWidget(label('该 Decision 已有后续修订；历史版本保持只读。','note',True))
+        else:
+            layout.addWidget(button('基于此 Decision 新建修订',lambda:(dialog.close(),self.new_decision(full)),True))
+        self.show_dialog(dialog)
+
+    def open_stock_decisions(self, symbol):
+        from quantlab.trading.decision_store import DecisionStore
+        records=DecisionStore(self.output).timeline(symbol,include_superseded=True)['records']
+        dialog=QDialog(self);dialog.setWindowTitle(symbol+' · Decision 时间线');dialog.resize(1100,720);layout=QVBoxLayout(dialog)
+        layout.addWidget(label('原判与修订全部保留；双击打开具体 Decision。','note',True))
+        layout.addWidget(table(['交易日','Frame','动作','主题','提交时间','判断'],[[d['trading_day'],d['frame'],d['action'],d.get('theme',''),d['submitted_at'].replace('T',' ')[:19],d.get('ai_thesis','')[:100]] for d in records],lambda i:self.open_decision(records[i])),1)
+        self.show_dialog(dialog)
 
     def get_research_queue(self):
         """One shared queue for manual forms, fixed plans and approved proposals."""
@@ -141,18 +167,32 @@ class MainWindow(QMainWindow):
         box.addWidget(hero(title,subtitle));self.scroll.setWidget(content);self.body=box
         return box
 
-    def navigate(self,index):
+    def as_of_day(self):
+        return QDate.currentDate().toString('yyyy-MM-dd')
+
+    def navigate_root(self,index):
         if self.closing:return
-        self.current=index
+        if not 0<=index<len(NAV):raise IndexError(index)
+        self.root_current=index
         for i,b in enumerate(self.nav):
             b.blockSignals(True);b.setChecked(i==index);b.blockSignals(False)
+        from .trading_pages import (today_page,theme_page,stock_page,position_page,review_page,
+            ai_team_page,research_lab_page,system_center_page)
+        handlers=[today_page,theme_page,stock_page,position_page,review_page,ai_team_page,research_lab_page,system_center_page]
+        handlers[index](self)
+
+    def navigate(self,index):
+        """Compatibility route for the original 12 research pages."""
+        if self.closing:return
+        if not 0<=index<len(LEGACY_NAV):raise IndexError(index)
+        self.current=index;self.legacy_current=index
         handlers=[self.home,self.data_page,lambda:self.registry_page('factor'),self.regime_page,
             self.objects_page,self.sequence_page,self.theory_page,
             self.experiments,self.portfolio,self.backtests,self.comparison,self.settings]
         handlers[index]()
 
     def home(self):
-        box=self.page(NAV[0],'统一研究入口 · 从理论拆解、因子注册、事件序列到科学实验与增量 Alpha。')
+        box=self.page(LEGACY_NAV[0],'统一研究入口 · 从理论拆解、因子注册、事件序列到科学实验与增量 Alpha。')
         d=[f['definition'] for f in self.factors]
         stats=kpis([('注册因子',len(d),'当前注册版本'),('研究模板',len(self.theories),'固定研究模板'),
             ('已完成实验','…','当前产物目录'),('布尔类因子',sum(f['factor_type']=='boolean' for f in d),'事件 / 状态等定义'),
@@ -179,7 +219,7 @@ class MainWindow(QMainWindow):
         self.async_call(lambda:self.catalog.list(limit=6),loaded)
 
     def registry_page(self,kind,query=''):
-        title={'factor':NAV[2],'sequence':NAV[5],'theory':NAV[6]}[kind]
+        title={'factor':LEGACY_NAV[2],'sequence':LEGACY_NAV[5],'theory':LEGACY_NAV[6]}[kind]
         values=self.theories if kind=='theory' else [v for v in self.factors if kind!='sequence' or v['definition']['category']=='sequence']
         box=self.page(title,'统一注册对象、规则版本与因果口径 · 选择一行查看定义与研究参数。')
         if kind=='factor':
@@ -246,7 +286,7 @@ class MainWindow(QMainWindow):
 
     def theory_page(self,index=0):
         selected=self.theories[index]
-        box=self.page(NAV[6],'Theory Pack → 组件对象 → 组合规则 → Ablation / OOS / Incremental Alpha')
+        box=self.page(LEGACY_NAV[6],'Theory Pack → 组件对象 → 组合规则 → Ablation / OOS / Incremental Alpha')
         chooser=QComboBox()
         for value in self.theories:chooser.addItem(value['name'])
         chooser.setCurrentIndex(index);chooser.currentIndexChanged.connect(self.theory_page)
@@ -263,17 +303,17 @@ class MainWindow(QMainWindow):
 
     def sequence_page(self):
         from .sequence_builder import SequenceBuilder
-        box=self.page(NAV[5],'事件库 → 状态流 → 超时 / 失效 → 完成确认 · 原生拖放编辑')
+        box=self.page(LEGACY_NAV[5],'事件库 → 状态流 → 超时 / 失效 → 完成确认 · 原生拖放编辑')
         box.addWidget(SequenceBuilder(self),1)
         box.addWidget(button('浏览全部已注册序列规则',lambda:self.registry_page('sequence')))
 
     def experiments(self,query=''):
-        box=self.page(NAV[7],'Single / Conditional / Combination / Sequence / Ablation / OOS / Walk Forward')
+        box=self.page(LEGACY_NAV[7],'Single / Conditional / Combination / Sequence / Ablation / OOS / Walk Forward')
         box.addWidget(row(button('＋ 新建实验',self.new_experiment,True),button('运行任务',self.show_jobs)))
         self.run_list(box,query=query)
 
     def data_page(self):
-        box=self.page(NAV[1],'数据快照 · 时间可用性 · Universe 版本 · 复现证据')
+        box=self.page(LEGACY_NAV[1],'数据快照 · 时间可用性 · Universe 版本 · 复现证据')
         from .reference_tools import ReferenceDialog
         box.addWidget(button('获取 Baostock 历史行业 / 股本 / 交易状态',lambda:self.show_dialog(ReferenceDialog(self))))
         sources=Card('数据接入与来源口径');sources.add(Flow([('MQC 行情','日线 / 5 分钟\n只读数据源'),('Parquet','按证券与周期读取'),('DuckDB','查询与研究分析'),('Corporate Action','以实验归档事件为准'),('Universe / PIT','以已保存资格来源为准')]))
@@ -282,7 +322,7 @@ class MainWindow(QMainWindow):
         self.run_list(box)
 
     def regime_page(self):
-        box=self.page(NAV[3],'Direction / Structure / Volatility / Liquidity · Alpha(Factor | Regime)')
+        box=self.page(LEGACY_NAV[3],'Direction / Structure / Volatility / Liquidity · Alpha(Factor | Regime)')
         box.addWidget(kpis([('Direction','Bull / Bear','方向维度'),('Structure','Trend / Range','结构维度'),('Volatility','Low / High','波动维度'),('Liquidity','依归档','不推断缺失状态')]))
         view=Card('条件研究结果');message=label('选择实验后读取已保存的市场状态统计。','muted');view.add(message);box.addWidget(view)
         def choose(r):
@@ -310,7 +350,7 @@ class MainWindow(QMainWindow):
         self.run_list(box,kind='factor',on_select=choose)
 
     def objects_page(self):
-        box=self.page(NAV[4],'Swing / Fractal / FVG / Order Block · occurred_at / available_at / confirmed_at')
+        box=self.page(LEGACY_NAV[4],'Swing / Fractal / FVG / Order Block · occurred_at / available_at / confirmed_at')
         chart=Card('K 线 / 结构 / 事件回放');chart.add(Chart());chart.add(label('选择已保存实验，查看时间截断后的 K 线与结构事件证据。','muted',True));box.addWidget(chart,1)
         def choose(r):
             self.object_selected=r['run_id'];request=r['run_id']
@@ -327,7 +367,7 @@ class MainWindow(QMainWindow):
         self.run_list(box,kind='factor',on_select=choose)
 
     def backtests(self):
-        box=self.page(NAV[9],'Execution Backtester · order / fill / position / commission / slippage / risk')
+        box=self.page(LEGACY_NAV[9],'Execution Backtester · order / fill / position / commission / slippage / risk')
         box.addWidget(row(button('＋ 新建独立成交回测',lambda:self.new_experiment(mode='execution'),True),label('净值与成交取自归档；双击实验打开研究报告。','muted')))
         curve=Card('策略净值');plot=Chart();curve.add(plot,1)
         summary=Card('收益 / 成本 / 风险');summary.add(label('选择回测记录，查看原始汇总。','muted'))
@@ -354,7 +394,7 @@ class MainWindow(QMainWindow):
         self.run_list(box,kind='execution',on_select=choose)
 
     def portfolio(self):
-        box=self.page(NAV[8],'Factor → Combination → Alpha Signal → Portfolio → Risk')
+        box=self.page(LEGACY_NAV[8],'Factor → Combination → Alpha Signal → Portfolio → Risk')
         flow=Card('组合与风险流程');flow.add(Flow([('Factor','注册对象'),('Combination','条件 / 加权评分'),('Alpha Signal','可用时间对齐'),('Portfolio','目标权重与约束'),('Risk','模拟成交与账务')]))
         box.addWidget(flow);box.addWidget(label('机器学习与实盘未启用。这里展示现有组合定义和模拟账户归档。','note',True))
         box.addWidget(row(button('条件与评分定义',lambda:self.registry_page('factor','COMB.')),button('查看独立成交回测',lambda:self.navigate(9))))
@@ -379,7 +419,7 @@ class MainWindow(QMainWindow):
         self.async_call(read,done)
 
     def comparison(self):
-        box=self.page(NAV[10],'IC · Rank IC · OOS · Walk Forward · Ablation · Incremental Alpha')
+        box=self.page(LEGACY_NAV[10],'IC · Rank IC · OOS · Walk Forward · Ablation · Incremental Alpha')
         box.addWidget(label('按 Command / Ctrl 或 Shift 选择同页 2–4 个实验。保留各自数据范围和评价口径，不直接将不同样本排名。','note',True))
         action=button('比较选中实验',lambda:compare(),True);box.addWidget(row(action,button('相关性研究',lambda:self.new_experiment(mode='correlation')),button('残差与检验族',self.research_tools)))
         holder=self.run_list(box,multi=True)
@@ -423,7 +463,7 @@ class MainWindow(QMainWindow):
             def done(result,error):
                 self.status.setText(error or '已恢复并校验：'+result['artifact_root']+'；可在路径设置中切换。')
             self.async_call(lambda:restore_bundle(bundle,destination),done,guarded=False)
-        box=self.page(NAV[11],'当前桌面工作空间 · 数据存储 · 研究执行 · 适配器状态')
+        box=self.page(LEGACY_NAV[11],'当前桌面工作空间 · 数据存储 · 研究执行 · 适配器状态')
         paths=Card('路径与存储');paths.add(table(['项目','当前配置'],[['行情只读目录',str(self.data_root or '未配置')],['研究产物目录',str(self.output)],['界面','PyQt6 原生 QWidget / QPainter'],['数据格式','Parquet / DuckDB']]));box.addWidget(paths)
         engine=Card('研究引擎与边界');engine.add(table(['能力','状态'],[['因子注册',len(self.factors)],['固定理论模板',len(self.theories)],['vn.py','独立回测通过 execution_backend 选择；安装不等于逐笔已验证'],['机器学习 / 实盘','未启用']]));box.addWidget(engine)
         box.addWidget(button('修改当前工作空间路径',self.edit_paths,True))
@@ -464,7 +504,12 @@ class MainWindow(QMainWindow):
         form.addWidget(row(button('应用路径',apply,True),button('取消',dialog.reject)));self.show_dialog(dialog)
 
     def global_search(self):
-        query=self.search.text().strip();box=self.page('全局搜索',f'关键词：{query or "全部"} · 因子 / 理论 / 实验')
+        query=self.search.text().strip();box=self.page('全局搜索',f'关键词：{query or "全部"} · 股票 / Decision / 因子 / 理论 / 实验')
+        from quantlab.trading.decision_store import DecisionStore
+        decisions=DecisionStore(self.output).list(query=query,limit=50)['records']
+        dcard=Card(f'Decision / 股票 · {len(decisions)}')
+        dcard.add(table(['证券','交易日','Frame','动作','主题','判断'],[[d['symbol'],d['trading_day'],d['frame'],d['action'],d.get('theme',''),d.get('ai_thesis','')[:80]] for d in decisions],lambda i:self.open_decision(decisions[i])))
+        box.addWidget(dcard)
         matches=[v for v in self.factors+self.theories if query.casefold() in encode(v).casefold()]
         card=Card(f'注册定义 · {len(matches)}')
         card.add(table(['名称','ID','类型'],[[v.get('definition',v).get('name_cn',v.get('name','')),v.get('definition',v).get('factor_id',v.get('template_id','')),v.get('definition',{}).get('factor_type','theory')] for v in matches],lambda i:self.new_experiment(matches[i])))
