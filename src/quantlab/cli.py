@@ -219,6 +219,10 @@ def main() -> None:
     rules_audit.add_argument('--end',type=date.fromisoformat,required=True)
     rules_audit.add_argument('--market-rules',type=Path,required=True)
     rules_audit.add_argument('--output',type=Path,required=True)
+    official_archive=commands.add_parser('official-rule-archive',help='下载并归档交易所规则原文，绑定显式MarketRules快照；不推断缺失逐日价格界限')
+    official_archive.add_argument('--data-root',type=Path,required=True)
+    official_archive.add_argument('--market-rules',type=Path,required=True)
+    official_archive.add_argument('--url',action='append',required=True,help='上交所/深交所/北交所HTTPS规则原文URL，可重复')
     feed.add_argument('--require-fresh',action='store_true',help='行情过期或最新截面不齐时拒绝推进账户')
     archive=commands.add_parser('archive-bars',help='在独立工作目录保存不可变行情版本，显式处理修订')
     archive.add_argument('--bars',type=Path,required=True,help='规范化行情 Parquet')
@@ -304,6 +308,11 @@ def main() -> None:
         result=audit_market_rules(MarketRules(json.loads(args.market_rules.read_text())),args.symbols,[d for d in dates if args.start<=d<=args.end])
         args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(encode(result))
         print(encode({'path':args.output,'status':result['status'],'covered':result['covered_symbol_sessions'],'expected':result['expected_symbol_sessions']}));return
+    if args.command=='official-rule-archive':
+        from quantlab.data.official_rule_archive import archive_official_rules
+        records=json.loads(args.market_rules.read_text())
+        if not isinstance(records,list):raise ValueError('market-rules JSON须为数组')
+        print(encode(archive_official_rules(args.data_root,records,args.url)));return
     if args.command=='paper-reconcile':
         from quantlab.execution.reconcile import reconcile_account
         if args.output.exists():raise FileExistsError(args.output)

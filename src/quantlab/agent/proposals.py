@@ -20,8 +20,19 @@ class ProposalService:
         self.output = Path(output).resolve(); self.data_root = Path(data_root).resolve()
         self.budget = budget or ResearchBudget(); self.store = ProposalStore(self.output)
 
+    def qualify(self,spec):
+        from quantlab.data.qualification import qualify_spec
+        try:return qualify_spec(self.data_root,spec)
+        except ProposalError:raise
+        except (ValueError,TypeError,KeyError,OSError) as error:
+            raise ProposalError('DATA_QUALIFICATION_FAILED','数据资格检查未完成：'+str(error)[:240]) from error
+
     def preview(self, spec):
         value = preview_experiment(spec,self.budget)
+        qualification=self.qualify(value['spec'])
+        if not qualification['qualified']:
+            raise ProposalError('DATA_QUALIFICATION_BLOCKED','请求的数据资格级别未满足：'+', '.join(qualification.get('blockers',[])[:12]))
+        value['qualification']=qualification
         value['binding'] = {'output':workspace_identity(self.output),
             'data_root':workspace_identity(self.data_root),'runtime':runtime_fingerprint()}
         return value

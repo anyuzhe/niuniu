@@ -8,7 +8,8 @@ from quantlab.storage.codec import encode
 
 SPEC = {'type':'string','maxLength':65536}
 PROPOSAL_TOOLS = [
-    schema('preview_experiment','校验原有研究配置并估算规模；不加载行情、不创建任务。',{'spec_json':SPEC}),
+    schema('qualify_research_data','按research_only/retrospective_reference/strict_pit/official_rule_covered核对本地数据资格；只读，不创建任务。',{'spec_json':SPEC}),
+    schema('preview_experiment','校验研究配置并估算规模；严格资格请求会只读核对本地归档，不创建任务。',{'spec_json':SPEC}),
     schema('propose_experiment','保存待用户批准的固定提案；相同 request_id 重试幂等。不会执行研究。',{'request_id':TEXT,'spec_json':SPEC}),
     schema('get_proposal','读取真实提案及状态；批准不在模型工具集合中。',{'proposal_id':TEXT}),
 ]
@@ -28,7 +29,8 @@ class ResearchProposalAPI(ReadOnlyResearchAPI):
             if result['ok']:
                 result['data'].update(version='1.1',access='read_and_propose',
                     tools=[t['name'] for t in self.schemas()],host_approval_submission_available=True,
-                    approval_tools_available_to_model=False)
+                    approval_tools_available_to_model=False,data_qualification_available=True,
+                    qualification_levels=['research_only','retrospective_reference','strict_pit','official_rule_covered'])
                 result['data']['limitations'][0]='尚未连接聊天模型；AI 只能查询和生成提案，不能自行批准或启动研究。'
             return result
         definition = next((t for t in PROPOSAL_TOOLS if t['name']==name),None)
@@ -39,7 +41,9 @@ class ResearchProposalAPI(ReadOnlyResearchAPI):
                 raise ProposalError('INVALID_ARGUMENT','工具字段必须与 Schema 完全一致。')
             if any(not isinstance(arguments[k],str) or len(arguments[k])>v['maxLength'] for k,v in props.items()):
                 raise ProposalError('INVALID_ARGUMENT','工具字段类型或长度错误。')
-            if name == 'preview_experiment':
+            if name == 'qualify_research_data':
+                data = self.proposals.qualify(parse_spec(arguments['spec_json'])); evidence=[]
+            elif name == 'preview_experiment':
                 data = self.proposals.preview(parse_spec(arguments['spec_json'])); evidence=[]
             elif name == 'propose_experiment':
                 data = self.proposals.propose(arguments['request_id'],parse_spec(arguments['spec_json']))

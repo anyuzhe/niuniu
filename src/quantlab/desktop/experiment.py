@@ -27,6 +27,7 @@ class ExperimentDialog(QDialog):
         for minutes in (1,15,30,60):self.timeframe.addItem(f'{minutes} 分钟',f'{minutes}m')
         form.addRow('K 线周期',self.timeframe)
         self.adjustment=QComboBox();self.adjustment.addItem('不复权 raw','raw');self.adjustment.addItem('前复权 qfq','qfq');self.adjustment.setCurrentIndex(self.adjustment.findData('qfq'));form.addRow('复权口径',self.adjustment)
+        self.qualification=QComboBox();self.qualification.addItem('研究探索（不声明PIT）','research_only');self.qualification.addItem('回顾性参考','retrospective_reference');self.qualification.addItem('严格PIT','strict_pit');self.qualification.addItem('官方逐日交易规则覆盖','official_rule_covered');form.addRow('数据资格要求',self.qualification)
         self.target=QComboBox();self.definitions=window.factors+window.theories
         for v in self.definitions:
             d=v.get('definition',v);self.target.addItem(d.get('name_cn',d.get('name',''))+' · '+d.get('factor_id',d.get('template_id','')))
@@ -85,7 +86,7 @@ class ExperimentDialog(QDialog):
             control.textChanged.connect(self.invalidate_preview)
         for control in (self.start,self.end,self.train_end,self.valid_end):
             control.dateChanged.connect(self.invalidate_preview)
-        for control in (self.timeframe,self.adjustment,self.target,self.mode,self.price_mode):
+        for control in (self.timeframe,self.adjustment,self.qualification,self.target,self.mode,self.price_mode):
             control.currentIndexChanged.connect(self.invalidate_preview)
         for control in (self.quantiles,*self.lengths):
             control.valueChanged.connect(self.invalidate_preview)
@@ -165,6 +166,7 @@ class ExperimentDialog(QDialog):
         self.start.setDate(QDate.fromString(spec['start'],'yyyy-MM-dd'));self.end.setDate(QDate.fromString(spec['end'],'yyyy-MM-dd'))
         self.timeframe.setCurrentIndex(self.timeframe.findData(spec.get('timeframe','1d')))
         self.adjustment.setCurrentIndex(self.adjustment.findData(prepared.adjustment))
+        self.qualification.setCurrentIndex(self.qualification.findData(spec.get('qualification','research_only')))
         self.price_mode.setCurrentIndex(self.price_mode.findData(prepared.execution.price_mode if prepared.execution else 'research'))
         self.horizons.setText(' '.join(map(str,spec.get('horizons',[1,5,20]))));self.quantiles.setValue(spec.get('quantiles',5))
         self.parameters.setPlainText(json.dumps(spec.get('parameters',{}),ensure_ascii=False,indent=2))
@@ -175,7 +177,7 @@ class ExperimentDialog(QDialog):
             self.expanding.setChecked(prepared.schedule.expanding)
             for control,key in zip(self.lengths,('train_days','valid_days','test_days')):control.setValue(spec['schedule'][key])
         if prepared.grid:self.grid.setText(json.dumps(spec['grid'],ensure_ascii=False))
-        fields={'question','symbols','start','end','timeframe','adjustment','mode','factor','version','parameters','theory','theory_version','horizons','quantiles','replay','sequence_audit','split','schedule','grid'}
+        fields={'question','symbols','start','end','timeframe','adjustment','mode','factor','version','parameters','theory','theory_version','horizons','quantiles','replay','sequence_audit','qualification','split','schedule','grid'}
         if prepared.mode=='correlation':fields-= {'split','schedule'}
         self.advanced.setPlainText(json.dumps({k:v for k,v in spec.items() if k not in fields},ensure_ascii=False,indent=2))
         self.invalidate_preview();self.status.setText('配置已导入，请核对股票、日期和成本后校验提交。')
@@ -183,13 +185,14 @@ class ExperimentDialog(QDialog):
     def collect(self):
         advanced=json.loads(self.advanced.toPlainText())
         if not isinstance(advanced,dict):raise ValueError('扩展配置必须是 JSON 对象')
-        protected={'question','symbols','start','end','timeframe','adjustment','mode','factor','version','parameters','theory','theory_version','horizons','quantiles','replay','sequence_audit'}
+        protected={'question','symbols','start','end','timeframe','adjustment','mode','factor','version','parameters','theory','theory_version','horizons','quantiles','replay','sequence_audit','qualification'}
         if protected.intersection(advanced):raise ValueError('扩展 JSON 不得覆盖表单字段：'+', '.join(sorted(protected.intersection(advanced))))
         spec={**advanced,'question':self.question.text().strip(),'symbols':[v for v in re.split(r'[\s,，]+',self.symbols.text().strip()) if v],
             'start':self.start.date().toString('yyyy-MM-dd'),'end':self.end.date().toString('yyyy-MM-dd'),
             'timeframe':self.timeframe.currentData(),'adjustment':self.adjustment.currentData(),'mode':self.mode.currentData(),
             'horizons':[int(v) for v in re.split(r'[\s,，]+',self.horizons.text().strip()) if v],
-            'quantiles':self.quantiles.value(),'replay':self.replay.isChecked(),'sequence_audit':self.audit.isChecked()}
+            'quantiles':self.quantiles.value(),'replay':self.replay.isChecked(),'sequence_audit':self.audit.isChecked(),
+            'qualification':self.qualification.currentData()}
         if not spec['question']:raise ValueError('请填写研究问题')
         if spec['mode']=='execution':spec['execution']={**spec.get('execution',{}),'price_mode':self.price_mode.currentData()}
         chosen=self.definitions[self.target.currentIndex()]
@@ -204,9 +207,15 @@ class ExperimentDialog(QDialog):
         try:
             spec=self.collect();result=prepare(spec)
             universe_name={'explicit':'指定股票','listing':'按上市日期筛选（回顾性）','pit':'历史可用资格'}.get(result.universe.mode,result.universe.mode)
-            summary=[self.question.text(),f'证券：{len(result.config.data.symbols)} 只　期间：{spec["start"]} 至 {spec["end"]}',f'方式：{self.mode.currentText()}　周期：{self.timeframe.currentText()}　价格：{self.adjustment.currentText()}',f'因子：{self.target.currentText()}',f'持有期：{self.horizons.text()}　分位组：{self.quantiles.value()}',f'股票资格：{universe_name}　保存回放：{"是" if result.config.replay else "否"}']
+            summary=[self.question.text(),f'证券：{len(result.config.data.symbols)} 只　期间：{spec["start"]} 至 {spec["end"]}',f'方式：{self.mode.currentText()}　周期：{self.timeframe.currentText()}　价格：{self.adjustment.currentText()}',f'因子：{self.target.currentText()}',f'持有期：{self.horizons.text()}　分位组：{self.quantiles.value()}',f'股票资格：{universe_name}　数据资格要求：{self.qualification.currentText()}　保存回放：{"是" if result.config.replay else "否"}']
+            if self.window.data_root:
+                from quantlab.data.qualification import qualify_spec
+                qualification=qualify_spec(self.window.data_root,spec)
+                summary.append('资格状态：'+qualification['status'])
+                if not qualification['qualified']:raise ValueError('数据资格未满足：'+', '.join(qualification.get('blockers',[])[:8]))
+            elif spec.get('qualification')!='research_only':raise ValueError('严格/回顾性资格校验需要数据目录')
             if result.execution:summary.append(f'初始资金：{result.execution.initial_cash:,.2f} 元　最多入选：{result.execution.top_n} 只　佣金：{result.execution.commission_bps} 万分之一　滑点：{result.execution.slippage_bps} 万分之一')
-            self.preview.setPlainText('\n'.join(summary));self.preview.show();self.status.setText('配置校验通过。尚未读取行情或执行实验。');return True
+            self.preview.setPlainText('\n'.join(summary));self.preview.show();self.status.setText('配置与数据资格校验通过；未执行实验。' if self.window.data_root and spec.get('qualification')!='research_only' else '配置校验通过。尚未读取行情或执行实验。');return True
         except Exception as exc:
             self.preview.clear();self.preview.hide();self.status.setText('配置错误：'+str(exc));return False
 

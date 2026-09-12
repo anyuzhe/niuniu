@@ -52,6 +52,7 @@ class Submission:
     execution_backend: str = "open"
     market_rules: list | None = None
     correlation: dict | None = None
+    qualification: str = 'research_only'
 
     def preview(self):
         return json.loads(encode(asdict(self)))
@@ -65,7 +66,7 @@ def prepare(spec):
     allowed = {'question', 'symbols', 'timeframe', 'start', 'end', 'factor', 'version',
         'parameters', 'theory', 'theory_version', 'horizons', 'quantiles', 'seed',
         'adjustment', 'mode', 'split', 'schedule', 'grid', 'sequence_audit',
-        'regime', 'regime_filter', 'context', 'processor', 'bootstrap', 'permutation', 'incremental_test', 'universe', 'replay', 'execution', 'theory_study', 'portfolio', 'execution_backend', 'market_rules', 'correlation'}
+        'regime', 'regime_filter', 'context', 'processor', 'bootstrap', 'permutation', 'incremental_test', 'universe', 'replay', 'execution', 'theory_study', 'portfolio', 'execution_backend', 'market_rules', 'correlation', 'qualification'}
     if not isinstance(spec, dict) or set(spec) - allowed:
         raise ValueError('配置包含不支持的字段')
     symbols = spec.get('symbols')
@@ -74,6 +75,9 @@ def prepare(spec):
         raise ValueError('symbols 必须是股票代码列表，例如 ["sh.600519", "sz.000001"]')
     request = DataRequest(tuple(symbols), Timeframe(spec.get('timeframe', '1d')),
         date.fromisoformat(spec['start']), date.fromisoformat(spec['end']))
+    qualification=spec.get('qualification','research_only')
+    if qualification not in ('research_only','retrospective_reference','strict_pit','official_rule_covered'):
+        raise ValueError('qualification须为research_only/retrospective_reference/strict_pit/official_rule_covered')
     mode = spec.get('mode', 'single')
     if mode not in {'single', 'holdout', 'walkforward', 'ablation', 'sweep', 'execution', 'theory_study', 'correlation'}:
         raise ValueError('不支持的实验类型')
@@ -174,7 +178,7 @@ def prepare(spec):
         if type(correlation['min_symbols']) is not int or correlation['min_symbols']<3 or type(correlation['min_periods']) is not int or correlation['min_periods']<1:raise ValueError('相关研究至少 3 证券、1 个时间点')
         complete_link_groups([],[],correlation['cluster_threshold'])
     elif 'correlation' in spec:raise ValueError('correlation 配置需要相关性研究模式')
-    return Submission(config, mode, adjustment, split, schedule, grid, universe, execution, study, portfolio, backend, market_rules, correlation)
+    return Submission(config, mode, adjustment, split, schedule, grid, universe, execution, study, portfolio, backend, market_rules, correlation, qualification)
 
 
 def execute(submission, data_root, artifact_root, *, campaign_job_id=None):
@@ -293,9 +297,13 @@ class JobQueue:
             if execution_guard and sum(j['status'] in ('queued','running') for j in self.jobs.values()) >= execution_guard['max_active_jobs']:
                 raise ValueError('BUDGET_EXCEEDED：共享队列活动任务已达本次批准上限')
             submission = prepare(spec)
+            from quantlab.data.qualification import qualify_spec
+            qualification=qualify_spec(self.data_root,spec)
+            if not qualification['qualified']:
+                raise ValueError('DATA_QUALIFICATION_BLOCKED：'+', '.join(qualification.get('blockers',[])[:12]))
             record = {'job_id': job_id, 'status': 'queued', 'created_at': now(),
                 'started_at': None, 'finished_at': None, 'spec': spec,
-                'resolved': submission.preview(), 'run_id': None, 'error': None, 'attempt': 1}
+                'resolved': submission.preview(), 'qualification':qualification, 'run_id': None, 'error': None, 'attempt': 1}
             if execution_guard is not None: record['execution_guard'] = execution_guard
             self._save(record)
             self.jobs[job_id] = record
@@ -313,13 +321,26 @@ class JobQueue:
                 raise ValueError('只有中断、取消或失败的任务可以恢复')
             validate_execution_guard(record.get('execution_guard'))
             submission=prepare(record['spec'])
-            if submission.preview()!=record['resolved']:
+            from quantlab.data.qualification import qualify_spec
+            qualification=qualify_spec(self.data_root,record['spec'])
+            stored_qualification=record.get('qualification')
+            if not qualification['qualified'] or (stored_qualification is not None and qualification!=stored_qualification):
+                raise ValueError('数据资格或来源已变化，请新建研究并重新批准')
+            if stored_qualification is None and qualification.get('required_level')!='research_only':
+                raise ValueError('旧任务没有严格资格回执，请新建研究并重新批准')
+            current_resolved=submission.preview()
+            if stored_qualification is None:
+                legacy_resolved=dict(current_resolved);legacy_resolved.pop('qualification',None)
+                if record['resolved'] not in (current_resolved,legacy_resolved):
+                    raise ValueError('当前解析规则与原任务不一致，请新建研究并核对配置')
+            elif current_resolved!=record['resolved']:
                 raise ValueError('当前解析规则与原任务不一致，请新建研究并核对配置')
             attempt=record.get('attempt',1)+1
             updated={**record,'attempt':attempt,'attempts':[*record.get('attempts',[]),
                 {k:record.get(k) for k in ('attempt','status','started_at','finished_at','error','progress')}],
                 'status':'queued','started_at':None,'finished_at':None,'error':None,
-                'cancel_requested':False,'run_id':None,'progress':{'stage':'等待恢复；仅复用通过校验的断点','completed':None,'total':None,'updated_at':now()}}
+                'cancel_requested':False,'run_id':None,'qualification':qualification,'resolved':current_resolved,
+                'progress':{'stage':'等待恢复；仅复用通过校验的断点','completed':None,'total':None,'updated_at':now()}}
             self._save(updated);self.jobs[job_id]=updated
             self.cancellations[job_id]=Event()
             self.executor.submit(self._run,job_id,submission,attempt)
@@ -355,6 +376,10 @@ class JobQueue:
             guard = record.get('execution_guard'); validate_execution_guard(guard)
             deadline = time.monotonic()+guard['cooperative_seconds'] if guard else None
             def check_inputs():
+                from quantlab.data.qualification import qualify_spec
+                current_qualification=qualify_spec(self.data_root,record['spec'])
+                if not current_qualification['qualified'] or current_qualification!=record.get('qualification'):
+                    raise ValueError('研究数据资格或资格证据在入队后发生变化；停止执行')
                 if guard and 'input_signature' in guard:
                     from quantlab.experiments.campaign_state import input_signature
                     from quantlab.storage.codec import digest

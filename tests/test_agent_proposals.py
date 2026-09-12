@@ -39,7 +39,8 @@ class ProposalTests(unittest.TestCase):
         with patch('quantlab.data.mqc.MQCParquetProvider.load',side_effect=AssertionError('no data read')):
             result=self.api.call('preview_experiment',{'spec_json':encode(self.spec)})
         self.assertTrue(result['ok'],result);self.assertEqual(list(self.output.iterdir()),[])
-        self.assertEqual(len(self.api.schemas()),9)
+        names=[tool['name'] for tool in self.api.schemas()]
+        self.assertIn('qualify_research_data',names);self.assertIn('preview_experiment',names)
         for name in ('approve_experiment','approve_and_submit','submit','run_shell'):
             self.assertEqual(self.api.call(name,{})['error']['code'],'UNKNOWN_TOOL')
         self.assertFalse(self.api.call('get_capabilities',{})['data']['approval_tools_available_to_model'])
