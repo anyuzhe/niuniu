@@ -14,21 +14,9 @@ def _decisions(window, history=False, limit=200):
 
 
 def today_page(window):
-    box=window.page('今日交易','A 股个人交易研究驾驶舱 · 市场事实、计划、AI 判断与研究证据分层呈现。')
-    decisions=_decisions(window); latest=_store(window).latest_by_symbol()
-    actions=Counter(item['action'] for item in latest)
-    box.addWidget(kpis([
-        ('股票档案',len(latest),'已有 Decision 的证券'),('本日 Decision',sum(d['trading_day']==window.as_of_day() for d in decisions),'当前自然日；不推断交易日'),
-        ('观察 / 准备',actions['WATCH']+actions['READY'],'当前最新状态'),('计划开仓',actions['PLAN_OPEN'],'策略意图，不等于成交'),
-        ('持有意图',actions['OPEN']+actions['ADD']+actions['HOLD'],'不等于真实账户'),('风险退出',actions['REDUCE']+actions['EXIT']+actions['INVALIDATED'],'需要理由或失效条件'),
-    ]))
-    left=Card('今日待处理')
-    left.add(label('Trading Desk 第一阶段先接 Decision Ledger；主线实时数据、R1/R2/R3 自动生成将在后续阶段接入。','note',True))
-    left.add(row(button('＋ 新增 Decision',window.new_decision,True),button('查看复盘账本',lambda:window.navigate_root(4))))
-    right=Card('最近 Decision')
-    rows=[[d['trading_day'],d['symbol'],d['frame'],d['action'],d.get('theme',''),d.get('ai_thesis','')[:60]] for d in decisions[:12]]
-    right.add(table(['交易日','证券','Frame','动作','主线','判断'],rows),1)
-    panels=row(left,right);panels.layout().setStretch(0,1);panels.layout().setStretch(1,2);box.addWidget(panels,1)
+    box=window.page('今日交易','A 股个人交易研究驾驶舱 · 市场事实、主线、股票状态、AI结论、风险、Agenda 与 Watch。')
+    from .trading_cockpit import TradingCockpitWidget
+    box.addWidget(TradingCockpitWidget(window),1)
 
 
 def theme_page(window):

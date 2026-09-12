@@ -320,6 +320,8 @@ Git 纪律：
 
 - 2026-09-13：P6 策略动作状态机完成。Strategy Intent 已正式约束 DISCOVERED/WATCH/READY/PLAN_OPEN/OPEN/ADD/HOLD/REDUCE/EXIT 与 INVALIDATED/REJECTED/EXPIRED；非法跳级、同 Frame 重复当前状态、历史插入和后续状态下改写旧动作均被阻断；当前状态按 trading_day + Frame 业务时间计算，策略意图继续与 Paper/真实成交严格分离。最终全仓 720 项通过，隔离端到端新增研究任务 0、模型写状态工具 0。阶段说明见 `牛牛AI交易工作台_P6策略动作状态机_验收说明.md`。下一阶段：P7 今日交易驾驶舱。
 
+- 2026-09-13：P7 今日交易驾驶舱完成。默认首页已统一聚合 Strategy Intent、Theme Snapshot 正式 facts、已保存 AI Thesis、Risk Review、Research Agenda 与 Watch；默认日期取工作空间最新有证据的业务日，不按自然时钟猜盘中 Frame；首页只读，不调用模型、不刷新 Watch、不下载或执行研究。最终全仓 724 项通过，隔离端到端新增研究任务 0、Watch/失败任务归档前后未改。阶段说明见 `牛牛AI交易工作台_P7今日交易驾驶舱_验收说明.md`。下一阶段：P8 AI Team / Peer Review。
+
 ## 20. AI Team / Dev Studio 记忆架构：Git-first Markdown Memory
 
 对标系统补充确认：其文件智能体以**文件记忆为主**，规则和经验长期落在 Git 仓库中的 Markdown；每次开工先 `git pull`，再读取约定的记忆入口，没有把向量库作为主记忆层。牛牛采用同类原则，但与研究证据严格分层。
