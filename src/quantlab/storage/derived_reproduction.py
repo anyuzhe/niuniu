@@ -7,7 +7,7 @@ from quantlab.storage.codec import encode
 from quantlab.storage.experiments import load_record_fields
 from quantlab.storage.reproduction import _graph
 
-KINDS=('residual_alpha','return_increment','stability','return_family')
+KINDS=('residual_alpha','return_increment','stability','return_family','incremental_evidence')
 
 
 def reproduce_derived(artifact, output, *, _source_cache=None):
@@ -23,6 +23,7 @@ def reproduce_derived(artifact, output, *, _source_cache=None):
     if kind=='residual_alpha' and len(ids)<2 or kind=='return_increment' and len(ids)!=2:raise ValueError('Invalid comparison source count')
     if kind=='stability' and len(ids)!=2*len(manifest['plan']['comparisons']):raise ValueError('Invalid stability source count')
     if kind=='return_family':return reproduce_return_family(path,output,graph)
+    if kind=='incremental_evidence':return reproduce_incremental_evidence(path,output,graph)
     if 'source_experiments' in manifest and [graph[i]['experiment_id'] for i in ids]!=manifest['source_experiments']:raise ValueError('Derived source identity mismatch')
     # Dependencies must contain their frozen inputs; never fall back to the old absolute paths.
     from quantlab.storage.frozen_inputs import load_frozen_inputs
@@ -103,3 +104,52 @@ def reproduce_return_family(path, output, graph):
         'scope':'Recomputed available comparisons and Holm over every original planned slot; failed slots remain unknown. Original registration time and source hashes are provenance, not a new prospective registration.'}
     (target/'reproduction.json').write_text(encode(verification))
     return verification
+
+
+def reproduce_incremental_evidence(path,output,graph):
+    from datetime import datetime,timezone
+    from uuid import uuid4
+    from copy import deepcopy
+    from quantlab.storage.codec import digest
+    from quantlab.storage.experiments import LocalExperimentStore,load_record_fields
+    from quantlab.storage.bundle import _compare_reproduction
+    from quantlab.statistics.permutation import holm
+    record=graph[path.name];original=record['summary'];tests=original['tests']
+    children={c['name']:c['run_id'] for c in record['children']};new_children=[];mapping={};pvalues=[]
+    report=deepcopy(original)
+    for old,new in zip(tests,report['tests']):
+        if old['status']=='failed':
+            if old.get('run_id') or old.get('p_value') is not None:raise ValueError('失败槽位不能带研究结果')
+            pvalues.append(None);continue
+        run_id=children.get(old['id'])
+        if run_id!=old.get('run_id'):raise ValueError('增量证据子研究映射不一致')
+        result=reproduce_derived(path.parent/run_id,output)
+        child=load_record_fields(Path(result['artifact_path'])/'experiment.json',{'kind','summary'})
+        raw=child['summary']['test'] if child['kind']=='residual_alpha' else child['summary']['permutation']
+        if raw.get('p_value')!=old.get('p_value') or raw.get('status')!=old.get('test_status'):
+            raise ValueError('增量证据原始检验结果不一致')
+        new.update(run_id=result['run_id'],artifact_path=result['artifact_path'],reused=False)
+        pvalues.append(raw.get('p_value'));mapping.update(result.get('run_mapping',{}))
+        new_children.append({'run_id':result['run_id'],'artifact_path':result['artifact_path'],'name':old['id']})
+    adjusted=holm(pvalues);alpha=record['manifest']['plan']['alpha']
+    for old,new,p in zip(tests,report['tests'],adjusted):
+        reject=p<=alpha if p is not None else None
+        _compare_reproduction({'p_holm':old.get('p_holm'),'reject':old.get('reject')},
+            {'p_holm':p,'reject':reject},'incremental/Holm/'+old['id'])
+        new.update(p_holm=p,reject=reject)
+    def semantic(value):
+        value=deepcopy(value)
+        for row in value['tests']:
+            for key in ('run_id','artifact_path','reused'):row.pop(key,None)
+        return value
+    _compare_reproduction(semantic(original),semantic(report),'incremental/summary')
+    run_id=str(uuid4());manifest=record['manifest']
+    new_record={'run_id':run_id,'experiment_id':digest(manifest),'created_at':datetime.now(timezone.utc).isoformat(),
+        'status':'completed','kind':'incremental_evidence','manifest':manifest,'summary':report,'children':new_children}
+    target=LocalExperimentStore(output).save(run_id,new_record,None);mapping[path.name]=run_id
+    failed=sum(t['status']=='failed' for t in tests)
+    verification={'source_run_id':path.name,'run_id':run_id,'artifact_path':str(target),
+        'run_mapping':mapping,'planned_tests':len(tests),'recomputed_tests':len(new_children),
+        'preserved_failed_slots':failed,'status':'available_results_matched' if failed else 'numerically_matched',
+        'scope':'Recomputed every available fixed incremental-evidence slot and Holm over the original full family; failed slots remain unknown.'}
+    (target/'reproduction.json').write_text(encode(verification));return verification

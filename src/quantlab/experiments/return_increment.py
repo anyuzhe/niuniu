@@ -1,7 +1,7 @@
 """Paired net daily return differences on comparable saved execution accounts."""
 from datetime import datetime,timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID,uuid4
 import polars as pl
 from quantlab.statistics.bootstrap import BootstrapConfig,block_mean_interval
 from quantlab.statistics.permutation import PermutationConfig,block_sign_test
@@ -10,7 +10,7 @@ from quantlab.experiments.runner import runtime_fingerprint
 from quantlab.storage.codec import digest
 
 
-def compare_returns(candidate,baseline,start,output):
+def compare_returns(candidate,baseline,start,output,run_id=None):
     paths=[Path(candidate),Path(baseline)];records=[load_identity(p/'experiment.json') for p in paths]
     if any(r.get('kind')!='execution' or r.get('status')!='completed' for r in records):raise ValueError('Completed execution accounts required')
     for key in ('data_snapshot','universe','execution','portfolio','backend','market_rules'):
@@ -32,7 +32,7 @@ def compare_returns(candidate,baseline,start,output):
     manifest={'runtime':runtime_fingerprint(),'config':{'research_question':'相同约束下的组合净收益增量比较','data':records[0]['manifest']['config']['data']},
         'evaluation_start':start,'source_experiments':[r['experiment_id'] for r in records],
         'curve_hashes':[digest(f.write_json()) for f in curves],'code_hash':digest(Path(__file__).read_text())}
-    run_id=str(uuid4());record={'run_id':run_id,'experiment_id':digest(manifest),'created_at':datetime.now(timezone.utc).isoformat(),
+    run_id=str(uuid4()) if run_id is None else str(UUID(run_id));record={'run_id':run_id,'experiment_id':digest(manifest),'created_at':datetime.now(timezone.utc).isoformat(),
         'status':'completed','kind':'return_increment','manifest':manifest,'summary':summary,
         'children':[{'name':name,'run_id':r['run_id'],'artifact_path':str(p.resolve())} for name,r,p in zip(('候选组合','基准组合'),records,paths)]}
     path=LocalExperimentStore(output).save(run_id,record,frame)

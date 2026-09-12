@@ -33,6 +33,8 @@ class DataConnectedWorkbench(MainWindow):
         menu=self.menuBar().addMenu('Baostock 数据')
         menu.addAction('固定更新通道（跨批次接入）',self.open_baostock_series)
         menu.addAction('候选因子对照（只读）',self.open_candidate_review)
+        menu.addAction('候选增量证据包',self.open_incremental_evidence)
+        menu.addAction('受限DSL候选注册',self.open_dsl_candidates)
         menu.addAction('跟踪基准换版（保留旧历史）',self.open_watch_rebase)
         menu.addAction('导入、查看和选择数据集',self.open_baostock_data)
         menu.addAction('日历驱动的跟踪到期检查',self.open_readiness)
@@ -66,6 +68,12 @@ class DataConnectedWorkbench(MainWindow):
     def open_candidate_review(self):
         from .candidate_review import CandidateReviewDialog
         self.show_dialog(CandidateReviewDialog(self))
+    def open_incremental_evidence(self):
+        from .incremental_evidence import IncrementalEvidenceDialog
+        self.show_dialog(IncrementalEvidenceDialog(self))
+    def open_dsl_candidates(self):
+        from .dsl_candidates import DslCandidateDialog
+        self.show_dialog(DslCandidateDialog(self))
     def open_tracking_control(self):
         from .tracking_control import TrackingControlDialog
         self.show_dialog(TrackingControlDialog(self))
