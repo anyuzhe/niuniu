@@ -4,3 +4,6 @@ from .decision import ACTIONS, FRAMES, normalize_decision
 from .decision_store import DecisionError, DecisionStore
 
 __all__ = ['ACTIONS','FRAMES','DecisionError','DecisionStore','normalize_decision']
+from .stock_dossier import StockDossier
+
+__all__.append('StockDossier')

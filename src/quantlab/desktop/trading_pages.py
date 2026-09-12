@@ -48,7 +48,7 @@ def stock_page(window):
     latest=_store(window).latest_by_symbol()
     rows=[[d['symbol'],d.get('theme',''),d.get('theme_role',''),d['trading_day'],d['frame'],d['action'],d.get('ai_thesis','')[:80]] for d in latest]
     card=Card('股票档案');box.addWidget(row(button('＋ 新增 Decision',window.new_decision,True),label('双击证券可查看 Decision 时间线。','muted')))
-    card.add(table(['证券','主题','角色','最近交易日','Frame','状态','最近判断'],rows,lambda i:window.open_stock_decisions(latest[i]['symbol']) if latest else None),1);box.addWidget(card,1)
+    card.add(table(['证券','主题','角色','最近交易日','Frame','状态','最近判断'],rows,lambda i:window.open_stock_dossier(latest[i]['symbol']) if latest else None),1);box.addWidget(card,1)
 
 
 def position_page(window):

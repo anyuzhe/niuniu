@@ -130,6 +130,10 @@ class MainWindow(QMainWindow):
             layout.addWidget(button('基于此 Decision 新建修订',lambda:(dialog.close(),self.new_decision(full)),True))
         self.show_dialog(dialog)
 
+    def open_stock_dossier(self, symbol):
+        from .stock_dossier import StockDossierDialog
+        self.show_dialog(StockDossierDialog(self,symbol))
+
     def open_stock_decisions(self, symbol):
         from quantlab.trading.decision_store import DecisionStore
         records=DecisionStore(self.output).timeline(symbol,include_superseded=True)['records']
