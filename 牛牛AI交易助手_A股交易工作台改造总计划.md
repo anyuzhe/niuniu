@@ -316,3 +316,32 @@ Git 纪律：
 - 2026-09-12：P1 + P2 基础完成并通过验收。新 8 个业务一级入口已落地，旧 12 个研究页保留兼容；Decision Ledger 已具备 append-only、revision、幂等、checksum、人工桌面创建/修订和股票检索。最终全仓 688 项通过，端到端验收创建研究任务 0。阶段说明见 `牛牛AI交易工作台_P1P2新导航与DecisionLedger_验收说明.md`。下一阶段：P3 Stock Dossier。
 - 2026-09-12：P3 Stock Dossier 完成。股票中心已可按证券聚合当前/历史 Decision、精确关联实验、Factor Watch，并可反向打开原实验/跟踪证据；打开档案不创建研究任务。最终全仓 692 项通过，端到端聚合新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P3StockDossier_验收说明.md`。下一阶段：P4 A 股主线市场 / Theme Matrix。
 - 2026-09-12：P4 A 股主线市场 / Theme Matrix 完成。Theme Snapshot 已支持 append-only revision、市场事实来源/时点约束、Machine/AI 状态分离、Decision/量化证据关联与只读模型工具；缺失格子保持 UNKNOWN，不从标签或 AI 文本推导事实。最终全仓 700 项通过，隔离端到端验收新增研究任务 0。阶段说明见 `牛牛AI交易工作台_P4主线市场ThemeMatrix_验收说明.md`。下一阶段：P5 Decision Frame。
+## 20. AI Team / Dev Studio 记忆架构：Git-first Markdown Memory
+
+对标系统补充确认：其文件智能体以**文件记忆为主**，规则和经验长期落在 Git 仓库中的 Markdown；每次开工先 `git pull`，再读取约定的记忆入口，没有把向量库作为主记忆层。牛牛采用同类原则，但与研究证据严格分层。
+
+### 20.1 Agent Operating Memory
+
+以下内容以 Git 中的 Markdown 为权威源：
+
+- 智能体角色规则、工具边界、工作流程。
+- 开发规范、测试纪律、代码风格、发布规则。
+- 已验证的工程经验、常见故障、踩坑与恢复方法。
+- 用户明确确认的长期工作偏好与项目约定。
+- 各阶段架构决策、变更理由和复盘。
+
+建议目录：`agent_memory/README.md` 作为固定入口，下面分 `rules/`、`experience/`、`incidents/`、`architecture/`、`roles/`。每次 Agent 开工流程固定为：`pull/fetch -> 读取 README -> 按任务读取相关 md -> 工作 -> 将值得长期保留的经验以 diff 提交`。
+
+### 20.2 Research Evidence 不迁移到 Markdown
+
+实验结果、PIT 资格、Decision Ledger、Theme Snapshot、Watch、成交归档、统计检验和冻结复算继续由现有结构化存储承担。Markdown 可以总结这些证据，但不得成为数值事实的唯一来源，也不得用文字覆盖原归档。
+
+### 20.3 不以向量库作为权威记忆
+
+第一阶段不建设向量数据库主记忆。Git Markdown 具备版本历史、diff、review、回滚、分支和人工可读性，更适合个人长期维护。未来如果文件数量过大，可增加全文索引或向量索引作为**可重建的检索加速层**；删除索引后仍必须能从 Git Markdown 恢复全部 Agent Operating Memory。
+
+### 20.4 权限与写入纪律
+
+Research Agent 默认只读 Agent Memory；Developer/Reviewer 可在隔离 worktree 中提出记忆修改。任何自动总结不得直接覆盖已有规则，只能新增或修订并保留 Git diff。涉及统计、PIT、权限、真实账户和自动交易的规则变更仍需人工批准。
+
+- 2026-09-13：根据对标系统实际使用方式，将 P8/P10 的智能体长期记忆正式调整为 **Git-first Markdown Memory**；向量库从“可能的长期记忆方案”降级为未来可选、可删除的检索索引层。
