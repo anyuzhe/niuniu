@@ -536,3 +536,5 @@ Playbook Lab 必须额外阻断：
 
 - 2026-09-13：根据新增对标信息，确认“主 Agent 动态拆 Subagent + Shared Workspace + Main Agent 最终验收”主要借鉴到 P10 Dev Studio，并抽象为 Research/Dev 两种 profile；同时新增 P8.5 Expert Playbook Lab，把 A 股短线模式发现从 Factor-first 调整为 Playbook-first + Quant Validation。
 - 2026-09-13：P8.5-A Expert Playbook Lab 基础框架完成。新增 ExpertSource / PlaybookDefinition / PlaybookCase / CandidateSet / SelectionDecision / PlaybookValidation 六类严格对象；完整候选全集、selected/unselected、冻结时点 SYSTEM_PREDICTION、FROZEN/FULL/STRICT_PIT/VERIFIED 正式验证门槛和 A 股执行审计均已落地。AI Team 仅获得 Playbook 只读证据工具；Research Lab 与 Stock Dossier 已接入。`playbooks/qimofenshu/` 仍固定为 SOURCE_REQUIRED，不用二手总结填充正式规则。最终全仓 750 项通过。阶段说明见 `牛牛AI交易工作台_P8_5PlaybookLab基础框架_验收说明.md`。P8.5 尚未整体结束，下一步仍是取得可核验“期末50分”原始资料并重建第一批真实 Case/CandidateSet。
+
+- 2026-09-13：P8.5-B 首批真实来源核验启动。已从开发机直接核验期末50分本人 2026-07-24 主帖和交割单公开讨论线程，保存 URL/时间/页面 SHA256；实际工作空间登记 2 个 PARTIAL ExpertSource 与 1 个 DRAFT `source-hypothesis-1`，无 FROZEN、无 Case/CandidateSet，研究 Job 数前后均为 8。公开 KDocs 当前跳转登录页，且讨论线程存在 7 月24日后买卖记录缺口质疑，因此不能把该交割单升级为 VERIFIED。下一道门槛仍是取得连续、可核验交易记录并做持仓勾稽。

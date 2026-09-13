@@ -23,5 +23,8 @@
     "reduce": null,
     "exit": null
   },
-  "note": "当前二手总结不得用于填充正式规则；先完成来源核验和真实案例重建。"
+  "note": "当前二手总结不得用于填充正式规则；先完成来源核验和真实案例重建。",
+  "source_candidate_count": 2,
+  "workspace_draft_version": "source-hypothesis-1",
+  "next_gate": "取得连续可核验交易记录，完成买卖/持仓连续性审计后再建立首批 PlaybookCase/CandidateSet"
 }
