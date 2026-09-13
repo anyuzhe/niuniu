@@ -43,8 +43,8 @@ class StockDossierDesktopTests(unittest.TestCase):
     def test_stock_dossier_opens_all_evidence_tabs_without_side_effects(self):
         self.window.open_stock_dossier(self.symbol);self.wait();dialog=self.window.dialogs[-1]
         self.assertIsInstance(dialog,StockDossierDialog)
-        tabs=dialog.findChild(QTabWidget);self.assertEqual(tabs.count(),4)
-        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())],['当前概览','Decision 时间线','研究证据','Watch / 跟踪'])
+        tabs=dialog.findChild(QTabWidget);self.assertEqual(tabs.count(),5)
+        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())],['当前概览','Decision 时间线','研究证据','Watch / 跟踪','Playbook / 10选2'])
         tables=dialog.findChildren(QTableWidget)
         self.assertTrue(any(t.rowCount()==1 and t.columnCount()==6 for t in tables))
         self.assertTrue(any(t.rowCount()==1 and t.columnCount()==6 and t.item(0,0).text()=='股票实验' for t in tables if t.item(0,0)))

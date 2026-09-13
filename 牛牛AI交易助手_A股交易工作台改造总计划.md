@@ -3,7 +3,7 @@
 - 计划冻结日期：2026-09-12
 - 改造基线：`e6502aafdfea7310d46a06b7986f79425846ed71`
 - 基线状态：`main` 与 `origin/main` 一致，工作区干净
-- 当前全仓基线：681 passed / 0 failed / 0 skipped
+- 计划冻结时全仓基线：681 passed / 0 failed / 0 skipped
 - 计划性质：长期核对合同；阶段实现如需偏离，必须在本文件追加变更记录，不静默改目标
 
 ## 1. 改造目标
@@ -535,3 +535,4 @@ Playbook Lab 必须额外阻断：
 并行继续 Research Lab 基础设施线（approval-time freeze、Session Grant、Strict PIT 数据补齐、Watch 序贯统计）。
 
 - 2026-09-13：根据新增对标信息，确认“主 Agent 动态拆 Subagent + Shared Workspace + Main Agent 最终验收”主要借鉴到 P10 Dev Studio，并抽象为 Research/Dev 两种 profile；同时新增 P8.5 Expert Playbook Lab，把 A 股短线模式发现从 Factor-first 调整为 Playbook-first + Quant Validation。
+- 2026-09-13：P8.5-A Expert Playbook Lab 基础框架完成。新增 ExpertSource / PlaybookDefinition / PlaybookCase / CandidateSet / SelectionDecision / PlaybookValidation 六类严格对象；完整候选全集、selected/unselected、冻结时点 SYSTEM_PREDICTION、FROZEN/FULL/STRICT_PIT/VERIFIED 正式验证门槛和 A 股执行审计均已落地。AI Team 仅获得 Playbook 只读证据工具；Research Lab 与 Stock Dossier 已接入。`playbooks/qimofenshu/` 仍固定为 SOURCE_REQUIRED，不用二手总结填充正式规则。最终全仓 750 项通过。阶段说明见 `牛牛AI交易工作台_P8_5PlaybookLab基础框架_验收说明.md`。P8.5 尚未整体结束，下一步仍是取得可核验“期末50分”原始资料并重建第一批真实 Case/CandidateSet。

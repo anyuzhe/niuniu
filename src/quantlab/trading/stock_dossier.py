@@ -7,6 +7,7 @@ from quantlab.agent.watch_store import WatchStore
 from quantlab.workbench.server import ArtifactCatalog
 from .decision import SYMBOL
 from .decision_store import DecisionStore
+from .playbook_store import PlaybookStore
 
 
 class StockDossier:
@@ -17,6 +18,7 @@ class StockDossier:
         self.decisions = DecisionStore(self.output)
         self.catalog = ArtifactCatalog(self.output)
         self.watches = WatchStore(self.output)
+        self.playbooks = PlaybookStore(self.output)
 
     @staticmethod
     def validate_symbol(symbol):
@@ -61,6 +63,7 @@ class StockDossier:
         experiments = self.experiment_evidence(symbol)
         watches, unreadable = self.watch_evidence(symbol)
         latest = self.decisions.latest_current(symbol)
+        playbooks = self.playbooks.symbol_history(symbol)
         themes = []
         for item in history:
             value = item.get('theme', '')
@@ -73,6 +76,7 @@ class StockDossier:
             'decision_history': history,
             'experiments': experiments,
             'watches': watches,
+            'playbooks': playbooks,
             'unreadable_watches': unreadable,
             'themes': themes,
             'counts': {
@@ -80,6 +84,7 @@ class StockDossier:
                 'decision_history': len(history),
                 'experiments': len(experiments),
                 'watches': len(watches),
+                'playbooks': len(playbooks),
             },
-            'policy': '只聚合已有归档；打开 Stock Dossier 不创建研究、不刷新 Watch、不修改 Decision。',
+            'policy': '只聚合已有归档；打开 Stock Dossier 不创建研究、不刷新 Watch、不修改 Decision/Playbook。',
         }

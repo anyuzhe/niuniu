@@ -96,6 +96,10 @@ class MainWindow(QMainWindow):
         selected=memory_id if isinstance(memory_id,str) else None
         self.show_dialog(ResearchMemoryDialog(self,selected_id=selected))
 
+    def playbook_lab(self):
+        from .playbook_lab import PlaybookLabDialog
+        self.show_dialog(PlaybookLabDialog(self))
+
     def research_campaign(self):
         if self.data_root is None:self.status.setText("请先指定行情目录");return
         from .research_campaign import CampaignDialog

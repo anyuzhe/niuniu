@@ -12,7 +12,7 @@ class StockDossierDialog(QDialog):
         super().__init__(window);self.window=window;self.symbol=symbol;self.value=None
         self.setWindowTitle(symbol+' · 股票研究档案');self.resize(1220,820)
         self.box=QVBoxLayout(self)
-        self.notice=label('正在聚合已有 Decision、实验和 Watch；不会启动新研究。','note',True)
+        self.notice=label('正在聚合已有 Decision、实验、Watch 与 Playbook 证据；不会启动新研究。','note',True)
         self.box.addWidget(self.notice)
         self.tabs=QTabWidget();self.box.addWidget(self.tabs,1)
         self.window.async_call(lambda:StockDossier(window.output).get(symbol),self.loaded,guarded=False)
@@ -24,7 +24,7 @@ class StockDossierDialog(QDialog):
         if sip.isdeleted(self):return
         if error:self.notice.setText('股票档案读取失败：'+error);return
         self.value=value;self.notice.setText(value['policy']);self.tabs.clear()
-        self.render_overview();self.render_decisions();self.render_experiments();self.render_watches()
+        self.render_overview();self.render_decisions();self.render_experiments();self.render_watches();self.render_playbooks()
     def render_overview(self):
         value=self.value;current=value['current_decision'];page,layout=self.page()
         counts=value['counts'];layout.addWidget(kpis([
@@ -32,6 +32,7 @@ class StockDossierDialog(QDialog):
             ('历史 Decision',counts['decision_history'],'包含旧版本'),
             ('相关实验',counts['experiments'],'已保存归档'),
             ('相关 Watch',counts['watches'],'人工跟踪池'),
+            ('Playbook 命中',counts['playbooks'],'候选/选择历史'),
         ]))
         layout.addWidget(label('主题：'+(' / '.join(value['themes']) if value['themes'] else '尚无 Decision 主题标签'),'muted',True))
         details=BusinessDetails(current or {'status':'尚无当前 Decision'});layout.addWidget(details,1)
@@ -56,3 +57,10 @@ class StockDossierDialog(QDialog):
         control=table(['跟踪名称','因子','状态','快照数','最近变化','最近更新'],[[r['name'],r['factor_id'],'启用' if r['active'] else '暂停',r['snapshots'],r.get('latest_change') or '—',r['updated_at'].replace('T',' ')[:19]] for r in rows],lambda i:self.window.factor_watches(rows[i]['watch_id']))
         layout.addWidget(label(f"相关 Watch {len(rows)} 个；无法读取 {self.value['unreadable_watches']} 项。打开档案不会刷新跟踪。",'note',True));layout.addWidget(control,1)
         self.tabs.addTab(page,'Watch / 跟踪')
+    def render_playbooks(self):
+        rows=self.value['playbooks'];page,layout=self.page()
+        control=table(['玩法','版本','交易日','Frame','候选完整性','PIT','被选角色','未选角色'],[[
+            r['playbook_name'],r['version'],r['trading_day'],r['frame'],r['completeness'],r['pit_status'],
+            ' / '.join(r['selected_by']) or '—',' / '.join(r['unselected_by']) or '—'] for r in rows])
+        layout.addWidget(label('这里只显示冻结 CandidateSet 中真实出现过该股票的记录；被选/未选都保留，不能只看赢家。','note',True))
+        layout.addWidget(control,1);self.tabs.addTab(page,'Playbook / 10选2')

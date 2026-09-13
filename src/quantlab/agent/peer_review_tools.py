@@ -5,7 +5,7 @@ from uuid import UUID,uuid5
 from quantlab.agent.catalog import schema,TEXT,LIMIT,OFFSET,compact
 from quantlab.agent.peer_review import PeerReviewService,normalize_spec
 from quantlab.agent.model_config import ModelError
-from quantlab.agent.theme_tools import ThemeResearchAPI
+from quantlab.agent.playbook_tools import PlaybookResearchAPI
 from quantlab.storage.codec import digest,encode
 
 JSON_TEXT={'type':'string','maxLength':24000}
@@ -22,7 +22,7 @@ def parse_request(text):
     return normalize_spec(value)
 
 
-class PeerReviewResearchAPI(ThemeResearchAPI):
+class PeerReviewResearchAPI(PlaybookResearchAPI):
     def __init__(self,output,data_root=None):
         super().__init__(output,data_root);self.peer_reviews=PeerReviewService(output,data_root)
     def schemas(self):return super().schemas()+json.loads(json.dumps(TOOLS,ensure_ascii=False))

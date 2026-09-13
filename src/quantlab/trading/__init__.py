@@ -13,3 +13,7 @@ from .theme_store import ThemeError, ThemeStore
 __all__ += ['THEME_STATES','ThemeError','ThemeStore','normalize_theme_snapshot']
 
 from .strategy_intent import StrategyIntentService,allowed_next
+
+from .playbook_store import PlaybookError,PlaybookStore
+
+__all__ += ['PlaybookError','PlaybookStore']

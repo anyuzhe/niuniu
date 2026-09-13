@@ -64,7 +64,9 @@ def ai_team_page(window):
     box.addWidget(AITeamWidget(window),1)
 
 def research_lab_page(window):
-    box=window.page('研究实验室','保留原牛牛全部研究能力；Trading Desk 只是新的业务入口，不削弱实验内核。')
+    box=window.page('研究实验室','保留原牛牛全部研究能力；新增 Playbook Lab 研究高手玩法的完整候选集与选择差异。')
+    box.addWidget(row(button('高手玩法 / Playbook Lab',window.playbook_lab,True),
+        label('Playbook-first · 先保留完整候选全集，再研究为什么 10 选 2；不把二手总结直接固化为规则。','note',True)))
     entries=[
         ('研究总览',0),('数据中心',1),('因子库',2),('市场状态',3),('结构与事件',4),('序列构建器',5),
         ('理论实验室',6),('实验中心',7),('组合与模型',8),('策略回测',9),('结果对比',10),('研究设置',11),

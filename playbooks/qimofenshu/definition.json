@@ -1,0 +1,27 @@
+{
+  "schema_version": "playbook-git-v1",
+  "playbook_key": "qimofenshu",
+  "name": "期末50分",
+  "status": "SOURCE_REQUIRED",
+  "formal_definition_id": null,
+  "source_requirements": [
+    "可核验原帖或原始实盘记录",
+    "明确发布时间与历史可用时间",
+    "原始内容 SHA256",
+    "交易日期、标的与当时市场上下文"
+  ],
+  "rules": {
+    "market_context": null,
+    "eligibility": null,
+    "selection": null,
+    "veto": null,
+    "entry": null,
+    "confirm": null,
+    "invalidation": null,
+    "hold": null,
+    "add": null,
+    "reduce": null,
+    "exit": null
+  },
+  "note": "当前二手总结不得用于填充正式规则；先完成来源核验和真实案例重建。"
+}

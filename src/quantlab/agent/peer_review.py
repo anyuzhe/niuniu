@@ -13,7 +13,7 @@ import os
 from quantlab.agent.agent_memory import AgentMemoryLoader
 from quantlab.agent.model_config import ModelConfig,ModelError,ChatStopped,assistant_root
 from quantlab.agent.team_config import TeamConfigStore,REVIEWERS,role_model_config
-from quantlab.agent.theme_tools import ThemeResearchAPI
+from quantlab.agent.playbook_tools import PlaybookResearchAPI
 from quantlab.storage.codec import digest,encode
 
 MAX_QUESTION=12_000
@@ -25,6 +25,9 @@ SAFE_TOOLS={
     'get_campaign','get_tracking_preview','get_incremental_evidence','get_dsl_candidate_proposal','list_dsl_candidates',
     'get_dsl_candidate','get_alpha_factory','list_alpha_factories','get_research_agenda','list_factor_watches',
     'get_factor_watch','list_theme_snapshots','get_theme_snapshot',
+    'get_playbook_overview','list_expert_sources','get_expert_source','list_playbook_definitions',
+    'get_playbook_definition','list_playbook_cases','get_playbook_case_bundle','list_playbook_validations',
+    'get_playbook_validation','get_symbol_playbook_history',
 }
 
 
@@ -53,7 +56,7 @@ def normalize_spec(value):
 
 class ReviewReadOnlyAPI:
     def __init__(self,output,data_root=None):
-        self.inner=ThemeResearchAPI(output,data_root)
+        self.inner=PlaybookResearchAPI(output,data_root)
         self._schemas=[schema for schema in self.inner.schemas() if schema['name'] in SAFE_TOOLS]
 
     def schemas(self):return json.loads(json.dumps(self._schemas,ensure_ascii=False))
