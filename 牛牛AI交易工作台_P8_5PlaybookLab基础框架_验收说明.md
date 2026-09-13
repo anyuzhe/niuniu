@@ -119,3 +119,9 @@ v1 失败后建立 selection-hypothesis-v2 DRAFT：先看市场节点/新旧题�
 - 正裕工业：8/17完整二板10只，8/18官方买入一字3板，龙虎榜12864360元与11.80元对应1090200股，8/19公开割肉且历史次日-10%；作为 queue-dependent 明确失败样本。
 - 新建 `queue-dependent-overnight-board-hypothesis-v2` 与 `meta-playbook-hypothesis-v3`，二者均保持 DRAFT / RETROSPECTIVE_REFERENCE。
 - v3 research cutoff 固定为 2026-09-13；后续真实前瞻记录必须先预测、后揭晓，历史补录不得伪装为 SYSTEM_PREDICTION。
+
+### P8.5-B 桂林/龙版补充（2026-09-13）
+- 结构化状态更新为：ExpertSource 38、PlaybookDefinition 17、PlaybookCase 33、CandidateSet 23、FULL CandidateSet 21、SelectionDecision 34、Validation 2；FROZEN / AUDIT_COMPLETE 仍为 0。
+- 桂林旅游：9/9四只3板全集，9/10竞价唯一涨停；9/10华安武汉百步亭买入、9/11同席位卖出与账户已验证截图闭合，写入 `OBSERVED_EXPERT`。
+- 龙版传媒：9/3两只4板全集，9/4 09:35历史回放选择龙版；因三日龙虎榜不能确定专家精确买入日，只写 `HUMAN_RECONSTRUCTION`，不生成专家目标标签。
+- 原始账户截图、网页和龙虎榜快照继续只保存在 `source_raw/`，Git 仅保存研究结论与方法。

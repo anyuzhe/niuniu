@@ -552,3 +552,8 @@ Playbook Lab 必须额外阻断：
 - 新增华西股份 8/13→8/14成功样本：官方年赛买/卖与华安武汉百步亭龙虎榜交叉验证；首板候选本地79 vs 公开约82，CandidateSet fail-closed 为 PARTIAL。
 - 新增正裕工业 8/18→8/19失败样本：8/17完整二板10只逐一一致，8/18一字3板买入、8/19次日-10%并割肉；正式证明 QUEUE_DEPENDENT 只提高成交概率，不等于 Alpha。
 - 新建 `meta-playbook-hypothesis-v3`：市场节点 → 目标身位 → 身位内相对选择 → 执行访问。研究截止固定为 2026-09-13，之后使用前瞻协议，不再用旧样本反复调参宣称样本外成功。
+
+### 2026-09-13：P8.5-B 桂林/龙版证据分级更新
+- 桂林旅游 9/10 建立 FULL 4只3板候选全集与强交叉 `OBSERVED_EXPERT`：账户已验证截图、9/10华安买入、9/11同席位卖出及候选竞价全部可核。
+- 龙版传媒 9/4 建立 FULL 2只4板候选全集，但因华安数据来自9/7三日榜，精确买入日不可确认，只保存 `HUMAN_RECONSTRUCTION`；9/8清仓与9/9空仓作为直接事实来源。
+- 新建 `mid-board-theme-leader-acceleration-hypothesis-v1`，继续保持 DRAFT / RETROSPECTIVE_REFERENCE；9/13 cutoff 后的前瞻统计不纳入上述旧样本。
