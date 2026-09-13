@@ -104,3 +104,11 @@ v1 失败后建立 selection-hypothesis-v2 DRAFT：先看市场节点/新旧题�
 同时建立 `space-leader-reentry-hypothesis-v1`（哈药 7/17 清仓后 179 秒涨停重入）、`high-low-switch-hypothesis-v1`（7/24 四只3板梯队中实际选择长缆而非超大一字爱丽）、`second-wave-repair-hypothesis-v1`（恒尚旧8板龙断板清仓后首次修复板、次日早盘大分歧回收）。二波修复因尚未重建全市场历史旧龙身份，CandidateSet 刻意保持 PARTIAL。
 
 当前实际 PlaybookStore：15 sources / 11 DRAFT definitions / 27 cases / 17 candidate sets（16 FULL）/ 28 selections / 2 descriptive validations；FROZEN=0，audit_complete=0。下一阶段禁止继续在这批7月发现样本上调阈值，优先取得新的连续交割记录进行真正未见样本检查。
+
+## 12. 新时间段样本与执行访问边
+
+继续自主搜索公开资料后，结构化 Playbook Lab 已扩展到 22 个 ExpertSource、13 个 DRAFT Definition、29 个 Case、19 个 CandidateSet（18 个 FULL）、30 个 SelectionDecision、2 个描述性 Validation；仍无 FROZEN、无 AUDIT_COMPLETE。
+
+8/7 百花医药没有被强行解释成既有五分支成功，而被记录为 Meta-Playbook 覆盖缺口；8/28 万向德农与 9/1 竞业达则建立 `queue-dependent-overnight-board-hypothesis-v1`。两者说明策略复现必须拆分 `selection_alpha` 与 `execution_access_alpha`：高速通道能够成交的一字排板，不得在普通账户回测中默认可成交。
+
+`meta-playbook-hypothesis-v2` 已建立但保持 DRAFT；它新增中位题材核心加速候选分支与通道依赖执行分支，并明确比赛 8/20–8/27 报单展示缺口是来源完整性 blocker。以上仅为结构化研究数据和文档增量；生产代码仍沿用上一轮全仓 **758 passed / 0 failed / 0 skipped** 的稳定基线。
