@@ -96,3 +96,11 @@ v1 失败后建立 selection-hypothesis-v2 DRAFT：先看市场节点/新旧题�
 权限侧进一步封堵历史回填：SYSTEM_PREDICTION 除 as_of 必须与 CandidateSet 一致外，CandidateSet 的真实 frozen_at 与预测真实创建时间也必须处于近实时窗口；历史规则回放改用 HUMAN_RECONSTRUCTION，只允许 RECONSTRUCTION / IN_SAMPLE，不能冒充 HOLDOUT / WALK_FORWARD。
 
 本轮 Selection / Meta-Playbook 与防历史回填修改专项联合回归 **22 passed / 0 failed**；最终全仓 **758 passed / 0 failed / 0 skipped，exit=0**。相对上一稳定基线 756 项新增的测试专门覆盖历史 CandidateSet 不能冒充近实时 SYSTEM_PREDICTION，以及 HUMAN_RECONSTRUCTION 只能用于描述性回放、不能进入正式 HOLDOUT/WALK_FORWARD。
+
+## 11. 空间龙 / 重入 / 高低切 / 二波分支
+
+继续将 7/1–7/24 可靠交割区间中的正负样本按账户状态与市场高度拆分。`space-leader-first-buyable-hypothesis-v1` 保存 10 个“前一日唯一最高板且开盘未持有”的机会日：3 个真实买入、7 个明确未买；同一发现窗口内的 DRAFT 条件可以 3/3 命中且 0 误报，但 Validation 明确使用 `IN_SAMPLE`，`alpha_verified=false`，不得称验证成功。
+
+同时建立 `space-leader-reentry-hypothesis-v1`（哈药 7/17 清仓后 179 秒涨停重入）、`high-low-switch-hypothesis-v1`（7/24 四只3板梯队中实际选择长缆而非超大一字爱丽）、`second-wave-repair-hypothesis-v1`（恒尚旧8板龙断板清仓后首次修复板、次日早盘大分歧回收）。二波修复因尚未重建全市场历史旧龙身份，CandidateSet 刻意保持 PARTIAL。
+
+当前实际 PlaybookStore：15 sources / 11 DRAFT definitions / 27 cases / 17 candidate sets（16 FULL）/ 28 selections / 2 descriptive validations；FROZEN=0，audit_complete=0。下一阶段禁止继续在这批7月发现样本上调阈值，优先取得新的连续交割记录进行真正未见样本检查。
