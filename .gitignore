@@ -14,3 +14,4 @@ dist/
 htmlcov/
 .idea/
 .vscode/
+playbooks/**/source_raw/

@@ -24,5 +24,11 @@ class PlaybookGitContractTests(unittest.TestCase):
         self.assertIn('T+1',text)
         self.assertIn('不等于牛牛已经获得 Alpha',text)
 
+    def test_raw_expert_material_is_not_tracked_by_git_policy(self):
+        ignore=(self.repo/'.gitignore').read_text(encoding='utf-8')
+        self.assertIn('playbooks/**/source_raw/',ignore)
+        note=(self.repo/'playbooks'/'qimofenshu'/'notes'/'trade_log_audit_summary_20260913.md').read_text(encoding='utf-8')
+        self.assertIn('用户',note);self.assertIn('SHA256',note)
+
 
 if __name__=='__main__':unittest.main()
