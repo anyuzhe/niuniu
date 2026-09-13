@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -9,7 +10,9 @@ from quantlab.trading.playbook_store import PlaybookError, PlaybookStore
 
 class PlaybookLabTests(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.store=PlaybookStore(self.root)
+        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
+        self.clock=datetime.fromisoformat('2024-01-02T09:35:00+08:00')
+        self.store=PlaybookStore(self.root,now_fn=lambda:self.clock)
     def tearDown(self):self.temp.cleanup()
 
     def source(self, **updates):
@@ -78,6 +81,15 @@ class PlaybookLabTests(unittest.TestCase):
             self.store.create_selection(str(uuid4()),{'candidate_set_id':candidates['candidate_set_id'],
                 'kind':'SYSTEM_PREDICTION','selected_symbols':['sh.600000'],'ranked_symbols':['sh.600000'],
                 'reasons':{},'evidence_ids':[],'as_of':'2024-01-02T10:00:00+08:00','notes':''})
+        self.assertEqual(error.exception.code,'LOOKAHEAD_BLOCKED')
+
+    def test_historical_candidate_set_cannot_masquerade_as_live_system_prediction(self):
+        _,definition,case,candidates=self.build_strict_case()
+        self.clock=datetime.fromisoformat('2024-01-03T09:35:00+08:00')
+        with self.assertRaises(PlaybookError) as error:
+            self.store.create_selection(str(uuid4()),{'candidate_set_id':candidates['candidate_set_id'],
+                'kind':'SYSTEM_PREDICTION','selected_symbols':['sh.600000'],'ranked_symbols':['sh.600000'],
+                'reasons':{},'evidence_ids':['model-1'],'as_of':'2024-01-02T09:35:00+08:00','notes':''})
         self.assertEqual(error.exception.code,'LOOKAHEAD_BLOCKED')
 
     def test_formal_validation_computes_ten_choose_two_style_match_without_alpha_claim(self):
@@ -151,6 +163,31 @@ class PlaybookLabTests(unittest.TestCase):
         with self.assertRaises(PlaybookError) as corrupt:self.store.get_source(source['source_id'])
         self.assertEqual(corrupt.exception.code,'CORRUPT_RECORD')
         self.assertFalse((self.root/'_jobs').exists())
+
+
+    def test_descriptive_reconstruction_accepts_human_rule_replay_without_live_prediction_claim(self):
+        _,definition,case,candidates=self.build_strict_case()
+        target=self.store.create_selection(str(uuid4()),{'candidate_set_id':candidates['candidate_set_id'],
+            'kind':'OBSERVED_EXPERT','selected_symbols':['sh.600000'],'ranked_symbols':[],
+            'reasons':{},'evidence_ids':['expert-trade'],'as_of':'2024-01-02T09:36:00+08:00','notes':''})
+        model=self.store.create_selection(str(uuid4()),{'candidate_set_id':candidates['candidate_set_id'],
+            'kind':'HUMAN_RECONSTRUCTION','selected_symbols':['sz.000001'],'ranked_symbols':['sz.000001'],
+            'reasons':{},'evidence_ids':['frozen-rule-v1'],'as_of':'2024-01-02T09:35:00+08:00','notes':''})
+        result=self.store.create_validation(str(uuid4()),{'definition_id':definition['definition_id'],
+            'method':'RECONSTRUCTION','pairs':[{'case_id':case['case_id'],'target_selection_id':target['selection_id'],
+                'model_selection_id':model['selection_id']}],'execution_evidence_ids':[],
+            'execution_summary':{},'notes':'历史规则回放只做描述，不冒充当时预测。'})
+        self.assertEqual(result['status'],'DESCRIPTIVE')
+        self.assertFalse(result['audit']['live_system_predictions'])
+        self.assertFalse(result['metrics']['pair_results'][0]['exact_match'])
+        self.assertFalse(result['alpha_verified'])
+        with self.assertRaises(PlaybookError) as formal:
+            self.store.create_validation(str(uuid4()),{'definition_id':definition['definition_id'],
+                'method':'HOLDOUT','pairs':[{'case_id':case['case_id'],'target_selection_id':target['selection_id'],
+                    'model_selection_id':model['selection_id']}],'execution_evidence_ids':[],
+                'execution_summary':{},'notes':'历史回放不能冒充正式样本外预测。'})
+        self.assertEqual(formal.exception.code,'INVALID_SELECTION_ROLE')
+
 
 
 if __name__=='__main__':unittest.main()

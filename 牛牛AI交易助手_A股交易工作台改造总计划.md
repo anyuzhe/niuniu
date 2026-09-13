@@ -540,3 +540,6 @@ Playbook Lab 必须额外阻断：
 - 2026-09-13：P8.5-B 首批真实来源核验启动。已从开发机直接核验期末50分本人 2026-07-24 主帖和交割单公开讨论线程，保存 URL/时间/页面 SHA256；实际工作空间登记 2 个 PARTIAL ExpertSource 与 1 个 DRAFT `source-hypothesis-1`，无 FROZEN、无 Case/CandidateSet，研究 Job 数前后均为 8。公开 KDocs 当前跳转登录页，且讨论线程存在 7 月24日后买卖记录缺口质疑，因此不能把该交割单升级为 VERIFIED。下一道门槛仍是取得连续、可核验交易记录并做持仓勾稽。
 
 - 2026-09-13：P8.5-B 取得用户提供的公开交割表成交副本并完成持仓连续性审计。原始逐笔材料只保存在 Git 忽略的 `playbooks/**/source_raw/`；Git 保存哈希与审计摘要。当前结构化 Playbook Evidence 已登记 8 个来源、3 个 DRAFT 定义、12 个 Case；其中建立 2026-07-01 的 18 只与 2026-07-03 的 16 只 `FULL + RETROSPECTIVE_REFERENCE` 候选全集及真实选择记录。候选重建采用精确涨停价、真实交易日、停牌跳过和逐日特殊价格限制；S佳通 5%、ST通脉摘帽前后 5%→10% 均显式审计。Selection 规则仍未冻结、Validation 仍为 0，因此 P8.5 继续进行，下一步转向“为什么18/16选1”的 Selection 特征提取与未见样本验证。
+
+- 2026-09-13：P8.5-B Selection 研究继续推进。7/2 康欣新材建立第 3 个 FULL CandidateSet（19选1）并保留亏损样本；7/13 立方制药建立第 4 个 FULL CandidateSet（9选1），冻结的 selection-hypothesis-v1 首次未见样本回放选择贵绳股份而真实选择立方制药，结构化 RECONSTRUCTION 为 0 命中，v1 失败永久保留。由此新增 selection-hypothesis-v2 DRAFT：市场节点/题材生命周期 → 可成交性 → 主动拉升确认 → 相对强度，7/13 不回算为验证成功。
+- 2026-09-13：交割区间进一步表明期末50分不是单一板数玩法，新增 `meta-playbook-hypothesis-v1` DRAFT，暂分低位2→3、空间龙首次可交易分歧、高位重入、高低切补涨、二波修复五个研究分支。7/1–7/24 的唯一空间板反例表明“见最高就买”不成立；后续必须同时研究未买日和已有持仓/不可成交情形。SYSTEM_PREDICTION 同时增加真实 wall-clock 近实时约束；历史规则回放只能使用 HUMAN_RECONSTRUCTION，禁止伪装成正式样本外预测。

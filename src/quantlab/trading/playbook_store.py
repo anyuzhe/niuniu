@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 import json
@@ -262,8 +262,13 @@ class PlaybookStore:
             referenced = set(normalized['selected_symbols']) | set(normalized['ranked_symbols']) | set(normalized['reasons'])
             if not referenced <= universe:
                 raise PlaybookError('OUTSIDE_CANDIDATE_SET','SelectionDecision 只能引用冻结 CandidateSet 内的证券。')
-            if normalized['kind']=='SYSTEM_PREDICTION' and not self._same_instant(normalized['as_of'],candidates['as_of']):
-                raise PlaybookError('LOOKAHEAD_BLOCKED','SYSTEM_PREDICTION 必须在 CandidateSet 冻结时点作出，不能事后回填。')
+            if normalized['kind']=='SYSTEM_PREDICTION':
+                if not self._same_instant(normalized['as_of'],candidates['as_of']):
+                    raise PlaybookError('LOOKAHEAD_BLOCKED','SYSTEM_PREDICTION 必须在 CandidateSet as_of 时点作出，不能事后回填。')
+                frozen=_utc(candidates['frozen_at']); as_of=_utc(candidates['as_of']); created_at=_utc(created)
+                tolerance=timedelta(minutes=10); delay=created_at-frozen
+                if abs(frozen-as_of)>tolerance or delay<timedelta(0) or delay>tolerance:
+                    raise PlaybookError('LOOKAHEAD_BLOCKED','SYSTEM_PREDICTION 只允许近实时 CandidateSet；历史重建或倒退时钟不得冒充当时预测。')
             selected = normalized['selected_symbols']
             unselected = [symbol for symbol in candidates['candidate_symbols'] if symbol not in set(selected)]
             value = {**normalized,'selection_id':str(uuid4()),'request_id':request_id,'input_hash':input_hash,
@@ -321,7 +326,7 @@ class PlaybookStore:
             definition = self._get_in_db(db,'definitions',normalized['definition_id'])
             formal_method = normalized['method'] in ('HOLDOUT','WALK_FORWARD')
             pair_rows = []; candidate_total = target_total = predicted_total = hits_total = 0
-            all_full = True; all_strict = True; all_sources = True; exact = 0
+            all_full = True; all_strict = True; all_sources = True; all_live_predictions = True; exact = 0
             seen_cases = set()
             for pair in normalized['pairs']:
                 case = self._get_in_db(db,'cases',pair['case_id'])
@@ -333,8 +338,12 @@ class PlaybookStore:
                     raise PlaybookError('CASE_MISMATCH','Validation selection 与 case 不一致。')
                 if target['candidate_set_id'] != model['candidate_set_id']:
                     raise PlaybookError('CANDIDATE_MISMATCH','目标与模型选择必须基于同一个冻结 CandidateSet。')
-                if target['kind']=='SYSTEM_PREDICTION' or model['kind']!='SYSTEM_PREDICTION':
-                    raise PlaybookError('INVALID_SELECTION_ROLE','target 必须是专家/人工标签，model 必须是 SYSTEM_PREDICTION。')
+                if target['kind']=='SYSTEM_PREDICTION':
+                    raise PlaybookError('INVALID_SELECTION_ROLE','target 不能是 SYSTEM_PREDICTION。')
+                if formal_method and model['kind']!='SYSTEM_PREDICTION':
+                    raise PlaybookError('INVALID_SELECTION_ROLE','HOLDOUT/WALK_FORWARD 的 model 必须是实时 SYSTEM_PREDICTION。')
+                if not formal_method and model['kind'] not in ('SYSTEM_PREDICTION','HUMAN_RECONSTRUCTION'):
+                    raise PlaybookError('INVALID_SELECTION_ROLE','RECONSTRUCTION/IN_SAMPLE 只接受 SYSTEM_PREDICTION 或 HUMAN_RECONSTRUCTION 作为 model。')
                 if formal_method and (target['kind']!='OBSERVED_EXPERT' or not target['evidence_ids']):
                     raise PlaybookError('TARGET_EVIDENCE_REQUIRED',
                         'HOLDOUT/WALK_FORWARD 的目标选择必须是有证据引用的 OBSERVED_EXPERT，不能用人工推测标签代替。')
@@ -348,8 +357,9 @@ class PlaybookStore:
                 all_full = all_full and candidates['completeness']=='FULL'
                 all_strict = all_strict and candidates['pit_status']=='STRICT_PIT'
                 all_sources = all_sources and self._formal_source_ready(db,case)
+                all_live_predictions = all_live_predictions and model['kind']=='SYSTEM_PREDICTION'
             definition_frozen = definition['state']=='FROZEN'
-            strict_selection_ready = definition_frozen and all_full and all_strict and all_sources
+            strict_selection_ready = definition_frozen and all_full and all_strict and all_sources and all_live_predictions
             if formal_method and not strict_selection_ready:
                 raise PlaybookError('FORMAL_VALIDATION_BLOCKED',
                     'HOLDOUT/WALK_FORWARD 要求 FROZEN 规则、FULL CandidateSet、STRICT_PIT 与 VERIFIED 案例来源。')
@@ -363,7 +373,7 @@ class PlaybookStore:
                 'micro_precision':micro_precision,'micro_recall':micro_recall,
                 'exact_match_rate':exact/len(pair_rows),'pair_results':pair_rows}
             audit = {'definition_frozen':definition_frozen,'candidate_sets_full':all_full,
-                'strict_pit':all_strict,'expert_sources_verified':all_sources,
+                'strict_pit':all_strict,'expert_sources_verified':all_sources,'live_system_predictions':all_live_predictions,
                 'execution':execution_audit,'formal_method':formal_method,'audit_complete':complete}
             value = {**normalized,'validation_id':str(uuid4()),'request_id':request_id,'input_hash':input_hash,
                 'playbook_key':definition['playbook_key'],'playbook_version':definition['version'],

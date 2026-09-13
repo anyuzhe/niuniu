@@ -82,3 +82,17 @@ Playbook/Trading Desk/AI Team 专项联合回归：**32 项通过**；追加严�
 Playbook 专项联合回归本轮为 **20 项通过**。正式 Validation 仍为 0；下一阶段继续提取 Selection 层可计算事实，并用未参与规则提取的日期验证。
 
 本轮 P8.5-B 收尾全仓回归：**756 passed / 0 failed / 0 skipped，exit=0**。原始交割表和网页/PDF归档继续只留本机 `source_raw/`，不进入 Git；结构化 Playbook Evidence 留在 `artifacts/_playbooks`，Git 仅提交代码、来源哈希与审计摘要。
+
+## 10. Selection 外推与 Meta-Playbook 进展
+
+2026-09-13 继续使用交割副本和全市场 MQC 数据推进 Selection 研究。新增 7/2 康欣新材 19 选 1 失败案例：候选冻结于 10:15，真实首笔成交 10:16:36；买入前价格强度仅排第 8、距离涨停约 7%，但早盘成交额已约为前一整日 2.14 倍。该案例只用于提出待验证 veto，不反推“本人规则”。
+
+selection-hypothesis-v1 固定由 7/1、7/3 两个发现样本提出。7/13 立方制药作为首个未参与发现的 2→3 回放样本，v1 因贵绳股份唯一 auction_open_at_limit 而回放选择贵绳，真实选择为立方；结构化 RECONSTRUCTION 保存 0 命中、0 precision/recall、exact_match=false，失败保持不可覆盖。
+
+v1 失败后建立 selection-hypothesis-v2 DRAFT：先看市场节点/新旧题材，再看 buyability，再看主动拉升/换手确认，最后比较主动性、带动性和拥挤度。7/13 只属于 v2 的发现样本，不重新计算为验证成功。
+
+同时新增 Meta-Playbook DRAFT，暂分 low_board_2_to_3、space_leader_first_buyable_divergence、space_leader_reentry、high_low_switch、second_wave_repair 五个研究分支。唯一空间板反例统计证明“买最高板”不是充分条件；后续每个分支都必须连同不交易日重建负样本。
+
+权限侧进一步封堵历史回填：SYSTEM_PREDICTION 除 as_of 必须与 CandidateSet 一致外，CandidateSet 的真实 frozen_at 与预测真实创建时间也必须处于近实时窗口；历史规则回放改用 HUMAN_RECONSTRUCTION，只允许 RECONSTRUCTION / IN_SAMPLE，不能冒充 HOLDOUT / WALK_FORWARD。
+
+本轮 Selection / Meta-Playbook 与防历史回填修改专项联合回归 **22 passed / 0 failed**；最终全仓 **758 passed / 0 failed / 0 skipped，exit=0**。相对上一稳定基线 756 项新增的测试专门覆盖历史 CandidateSet 不能冒充近实时 SYSTEM_PREDICTION，以及 HUMAN_RECONSTRUCTION 只能用于描述性回放、不能进入正式 HOLDOUT/WALK_FORWARD。
