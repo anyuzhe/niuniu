@@ -112,3 +112,10 @@ v1 失败后建立 selection-hypothesis-v2 DRAFT：先看市场节点/新旧题�
 8/7 百花医药没有被强行解释成既有五分支成功，而被记录为 Meta-Playbook 覆盖缺口；8/28 万向德农与 9/1 竞业达则建立 `queue-dependent-overnight-board-hypothesis-v1`。两者说明策略复现必须拆分 `selection_alpha` 与 `execution_access_alpha`：高速通道能够成交的一字排板，不得在普通账户回测中默认可成交。
 
 `meta-playbook-hypothesis-v2` 已建立但保持 DRAFT；它新增中位题材核心加速候选分支与通道依赖执行分支，并明确比赛 8/20–8/27 报单展示缺口是来源完整性 blocker。以上仅为结构化研究数据和文档增量；生产代码仍沿用上一轮全仓 **758 passed / 0 failed / 0 skipped** 的稳定基线。
+
+### P8.5-B 新增证据（2026-09-13）
+- ExpertSource：22 → 29；PlaybookDefinition：13 → 16；PlaybookCase：29 → 31；CandidateSet：19 → 21；FULL CandidateSet：18 → 19；SelectionDecision：30 → 32。
+- 华西股份：8/13官方买入、8/14官方卖出+9.94%，龙虎榜华安武汉百步亭11709980元与6.34元对应1847000股；候选全集仍有3只左右制度差异，故只标PARTIAL。
+- 正裕工业：8/17完整二板10只，8/18官方买入一字3板，龙虎榜12864360元与11.80元对应1090200股，8/19公开割肉且历史次日-10%；作为 queue-dependent 明确失败样本。
+- 新建 `queue-dependent-overnight-board-hypothesis-v2` 与 `meta-playbook-hypothesis-v3`，二者均保持 DRAFT / RETROSPECTIVE_REFERENCE。
+- v3 research cutoff 固定为 2026-09-13；后续真实前瞻记录必须先预测、后揭晓，历史补录不得伪装为 SYSTEM_PREDICTION。
