@@ -40,7 +40,8 @@ def main():
         if args.freeze and not args.definition_id:raise ValueError('--freeze 必须提供 --definition-id。')
         rules=_read_json(args.market_rules_json);universe=_symbols(args.universe_json)
         scan=scan_prep_universe(args.data_root,args.as_of_session,target_streak=args.target_streak,
-            market_rules=rules,universe_symbols=universe,universe_pit_verified=False)
+            market_rules=rules,universe_symbols=universe,universe_pit_verified=False,
+            daily_market_output=args.output)
         result={'ok':True,'scan':scan,'snapshot':None,'freeze':None}
         if args.save_snapshot or args.freeze:
             if args.snapshot_as_of:as_of=args.snapshot_as_of

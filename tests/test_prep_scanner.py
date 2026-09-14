@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -11,6 +11,30 @@ from quantlab.trading.prep_scanner import (
 )
 from quantlab.trading.market_snapshot import MarketSnapshotStore
 from quantlab.execution.rules import MarketRules
+from quantlab.data.daily_market_archive import DailyMarketArchive,EXPECTED_FIELDS
+
+
+class _DailyResponse:
+    error_code='0';error_msg='success'
+    def __init__(self,rows):self.rows=rows;self.fields=list(EXPECTED_FIELDS);self.index=-1
+    def next(self):self.index+=1;return self.index<len(self.rows)
+    def get_row_data(self):return [self.rows[self.index][k] for k in self.fields]
+
+
+class _DailySDK:
+    __version__='0.9.3'
+    def __init__(self,rows):self.rows=rows
+    def login(self):return _DailyResponse([{'ok':'1'}])
+    def logout(self):pass
+    def query_daily_history_k_AStock(self,date=''):return _DailyResponse(self.rows)
+
+
+def _daily_row(day,code,close,preclose):
+    row={key:'1' for key in EXPECTED_FIELDS}
+    row.update(date=day,code=code,open=str(close),high=str(close),low=str(close),close=str(close),
+        preclose=str(preclose),volume='1000',amount='10000',adjustflag='3',turn='2',tradestatus='1',
+        pctChg=str((close/preclose-1)*100),peTTM='12',pbMRQ='1',psTTM='2',pcfNcfTTM='3',isST='0')
+    return row
 
 
 class PrepScannerTests(unittest.TestCase):
@@ -132,6 +156,35 @@ class PrepScannerTests(unittest.TestCase):
             'source_ids':['00000000-0000-0000-0000-000000000003']}
         with self.assertRaises(PrepScanError) as ctx:build_prep_forward_payload(scan,fake,definition)
         self.assertEqual(ctx.exception.code,'ROUTE_UNKNOWN')
+
+
+    def test_daily_market_overlay_advances_stale_base_without_rewriting_lake(self):
+        self.write_symbol('sh.600001',[10.0,10.0,10.0])
+        self.write_symbol('sh.600002',[10.0,10.1,10.2])
+        clock=lambda:datetime(2026,9,11,10,tzinfo=timezone.utc)
+        archive=DailyMarketArchive(self.output,now_fn=clock)
+        archive.capture('2026-09-10',sdk=_DailySDK([
+            _daily_row('2026-09-10','sh.600001',11.0,10.0),_daily_row('2026-09-10','sh.600002',10.3,10.2)]))
+        archive.capture('2026-09-11',sdk=_DailySDK([
+            _daily_row('2026-09-11','sh.600001',12.1,11.0),_daily_row('2026-09-11','sh.600002',10.4,10.3)]))
+        scan=scan_prep_universe(self.data,'2026-09-11',target_streak=2,
+            universe_symbols=['sh.600001','sh.600002'],universe_pit_verified=False,
+            lookback_sessions=5,daily_market_output=self.output)
+        self.assertEqual(scan['latest_available_session'],'2026-09-11')
+        self.assertEqual(scan['daily_market_days'],['2026-09-10','2026-09-11'])
+        self.assertEqual([row['symbol'] for row in scan['candidates']],['sh.600001'])
+        self.assertEqual(scan['pit_status'],'RETROSPECTIVE_REFERENCE')
+        self.assertIn('official_market_rules_missing',scan['blockers'])
+
+    def test_daily_market_overlap_revision_conflict_fails_closed(self):
+        self.write_symbol('sh.600001',[10.0,10.0,10.0])
+        archive=DailyMarketArchive(self.output,now_fn=lambda:datetime(2026,9,9,10,tzinfo=timezone.utc))
+        archive.capture('2026-09-09',sdk=_DailySDK([_daily_row('2026-09-09','sh.600001',10.5,10.0)]))
+        with self.assertRaises(PrepScanError) as ctx:
+            scan_prep_universe(self.data,'2026-09-09',target_streak=1,
+                universe_symbols=['sh.600001'],universe_pit_verified=False,
+                lookback_sessions=3,daily_market_output=self.output)
+        self.assertEqual(ctx.exception.code,'DATA_REVISION_CONFLICT')
 
 
 if __name__=='__main__':unittest.main()

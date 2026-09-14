@@ -363,3 +363,15 @@
 - 真实验收：2026-09-04 全市场 5215 只完整扫描约17.7秒；本地数据请求 2026-09-11 时约6.3秒确认最新仅到2026-09-04并阻断。
 - 测试/验收：D2 新增8项测试；D1+D2+Playbook 联合回归 32/32；完整仓库 **777 tests / 0 failed / 0 skipped**。
 - 后续事项：建设每日全市场数据自动更新链，并把数据更新成功事件接到 PREP 自动运行，再衔接 AUCTION/R1 定时扫描。
+
+### 2026-09-14 16:45｜[功能] P8.5-E1 每日全市场增量归档与 PREP Overlay
+
+- 模块：市场数据更新 / PREP Scanner / Expert Playbook 前瞻基础设施。
+- Git：本条与功能代码同一提交发布，提交标题 `feat: 增加每日全市场增量归档与PREP接力`；SHA 以该提交 Git 历史为准。
+- 改动内容：新增 append-only `DailyMarketArchive`，按交易日保存 Baostock 全A股日快照的原始响应、规范化 Parquet、manifest 与 SHA256；PREP Scanner 支持“旧 MQC 历史湖 + accepted DailyMarket 日增量”叠加，不再要求每天重写 5215 个单股历史文件。
+- 改动原因：D2 已发现当前 MQC 全市场湖会出现数据截止日落后；每日自动 PREP 需要轻量、可审计、可修订的最近交易日数据层。
+- 关键约束：同内容幂等；历史修订进入 revision review，宿主显式确认才切换；重叠数据冲突 fail-closed；`preclose/tradestatus/isST` 可补市场事实，但 PIT Universe 与官方逐日 MarketRules 仍独立审核，不能因此升级 Strict PIT。
+- 产品接入：新增 `niuniu-daily-market`；`capture` 是唯一联网动作，查询默认只读；`niuniu-prep-playbook-scan` 自动消费 accepted 日增量。
+- 测试/验收：DailyMarket + PREP 联合专项 **15/15 passed**；完整仓库 **784 tests / 0 failed / 0 skipped**；editable install 与 CLI smoke 通过。
+- 已知限制：本次会话真实 Baostock provider 请求未成功返回，网络可用性仍为运行期依赖；SDK 函数/字段合同来自本机安装包源码及 demo，联网路径由 fixture 测试覆盖。
+- 后续事项：另起阶段实现受控每日编排（收盘 capture → 数据就绪 → PREP → 09:25 AUCTION → 09:35 R1）。

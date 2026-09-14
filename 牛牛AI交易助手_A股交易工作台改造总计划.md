@@ -581,3 +581,11 @@ Playbook Lab 必须额外阻断：
 - 真实 5215 只扫描约17.7秒；本地日线最新仍为 2026-09-04，请求9/11会约6.3秒 fail-fast 为 DATA_NOT_UPDATED。
 - D2 新增8项测试；完整仓库 **777 passed / 0 failed / 0 skipped**。
 - 下一实际优先级：把现有 Baostock/数据更新链接到每日 PREP 前置流程，确保最近交易日数据可用，再继续 Trading Cockpit → Strategy Intent → Paper 闭环。
+### 2026-09-14：P8.5-E1 每日全市场增量归档与 PREP 接力
+
+- 新增 DailyMarket 日增量归档层，不再要求为了更新一个交易日重写约 2.5GB / 5215 只单股历史湖。
+- 每日快照保存原始响应、规范化 Parquet、manifest 与 SHA256；同内容幂等，同日历史修订进入 revision review，宿主确认后才切换 accepted 版本。
+- PREP Scanner 已支持“旧 MQC 历史湖 + accepted DailyMarket 日增量”叠加，并优先使用明确 `preclose / tradestatus / isST`。
+- DailyMarket 只补市场事实，不替代 PIT Universe 或交易所逐日 official MarketRules；证据不足时继续保持 PARTIAL / RETROSPECTIVE_REFERENCE。
+- 新增 `niuniu-daily-market`；`capture` 是唯一联网动作，默认查询只读。
+- 本阶段全仓 **784 tests / 0 failed / 0 skipped**。下一阶段进入受控每日编排：收盘后 capture/就绪检查 → PREP → 09:25 AUCTION → 09:35 R1。

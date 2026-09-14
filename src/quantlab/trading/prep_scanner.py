@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 
 from quantlab.storage.codec import digest
 from quantlab.execution.rules import MarketRules
+from quantlab.data.daily_market_archive import DailyMarketArchive,DailyMarketArchiveError
 from .playbook_reconstruction import default_limit_rate
 
 ROUTER_VERSION='market-node-router-v1-20260914'
@@ -104,8 +105,13 @@ def _load_symbol_rows(path,as_of,lookback,managed_root=None,managed_manifest=Non
     return symbol,rows,sha,managed_status
 
 
-def _status(row,managed_status):
-    if managed_status:
+def _has_status(row):
+    return (('bs_trade_status' in row and 'bs_is_st' in row) or
+        ('tradestatus' in row and 'isST' in row))
+
+
+def _status(row):
+    if _has_status(row):
         trade=row.get('bs_trade_status',row.get('tradestatus'))
         st=row.get('bs_is_st',row.get('isST'))
         tradable=bool(trade==1 or trade==1.0 or trade=='1')
@@ -121,24 +127,27 @@ def _rule_for(rules,symbol,day):
     return rules.at(symbol,opening)
 
 
-def _annotate(rows,symbol,rules,managed_status):
+def _annotate(rows,symbol,rules):
     annotated=[];previous=None;rule_gaps=0
     for row in rows:
-        day=row['date'];close=float(row['close']);tradable,is_st=_status(row,managed_status)
+        day=row['date'];tradable,is_st=_status(row)
+        close_value=row.get('close');close=float(close_value) if close_value is not None else None
+        explicit_pre=row.get('preclose')
+        reference=float(explicit_pre) if explicit_pre not in (None,'') and float(explicit_pre)>0 else previous
         rule=_rule_for(rules,symbol,day)
         if rules is not None:
             if rule is None:rule_gaps+=1;tradable=False;limit_up=limit_down=None
             else:
                 tradable=not rule['suspended'];limit_up=rule['limit_up'];limit_down=rule['limit_down']
-        elif previous is not None and tradable:
+        elif reference is not None and tradable:
             rate=0.05 if is_st else default_limit_rate(symbol)
-            limit_up=_round_bound(previous,rate,True);limit_down=_round_bound(previous,rate,False)
+            limit_up=_round_bound(reference,rate,True);limit_down=_round_bound(reference,rate,False)
         else:limit_up=limit_down=None
-        is_up=bool(tradable and limit_up is not None and math.isclose(close,float(limit_up),abs_tol=1e-9))
-        is_down=bool(tradable and limit_down is not None and math.isclose(close,float(limit_down),abs_tol=1e-9))
-        annotated.append({**row,'tradable':tradable,'is_st':is_st,'previous_trade_close':previous,
+        is_up=bool(tradable and close is not None and limit_up is not None and math.isclose(close,float(limit_up),abs_tol=1e-9))
+        is_down=bool(tradable and close is not None and limit_down is not None and math.isclose(close,float(limit_down),abs_tol=1e-9))
+        annotated.append({**row,'tradable':tradable,'is_st':is_st,'previous_trade_close':reference,
             'limit_up_price':limit_up,'limit_down_price':limit_down,'is_limit_up_close':is_up,'is_limit_down_close':is_down})
-        if tradable:previous=close
+        if tradable and close is not None:previous=close
     return annotated,rule_gaps
 
 
@@ -166,8 +175,29 @@ def _daily_directory(root):
     return root/'lake/bronze/provider=baostock/stock_kline_daily'
 
 
+def _daily_market_overlay(output,as_of,lookback_sessions):
+    if output is None:return {},[],[]
+    try:store=DailyMarketArchive(output)
+    except DailyMarketArchiveError as exc:raise PrepScanError(exc.code,str(exc)) from None
+    selected=[]
+    for item in store.list_days(limit=min(5000,max(lookback_sessions*4,40))):
+        day=date.fromisoformat(item['date'])
+        if day<=as_of:selected.append(item)
+        if len(selected)>=lookback_sessions:break
+    selected.sort(key=lambda row:row['date'])
+    by_symbol={};evidence=[]
+    for item in selected:
+        try:frame,manifest=store.read_frame(item['date'],item['snapshot_id'])
+        except DailyMarketArchiveError as exc:raise PrepScanError(exc.code,str(exc)) from None
+        evidence.append({'date':item['date'],'snapshot_id':item['snapshot_id'],
+            'content_hash':manifest['content_hash'],'fetched_at':manifest['fetched_at'],'rows':manifest['rows']})
+        for row in frame.select('date','code','close','preclose','volume','tradestatus','isST').to_dicts():
+            by_symbol.setdefault(row['code'],[]).append(row)
+    return by_symbol,selected,evidence
+
+
 def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules=None,
-        universe_symbols=None,universe_pit_verified=False,lookback_sessions=12):
+        universe_symbols=None,universe_pit_verified=False,lookback_sessions=12,daily_market_output=None):
     root=Path(data_root).resolve();as_of=_day(as_of_session,'as_of_session')
     if type(lookback_sessions) is not int or not 3<=lookback_sessions<=60:
         raise PrepScanError('INVALID_ARGUMENT','lookback_sessions 必须为3–60。')
@@ -183,12 +213,17 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
     if (root/'baostock-dataset.json').is_file():
         from quantlab.data.baostock_dataset import dataset_manifest
         managed_manifest,_=dataset_manifest(root)
+    overlay_by_symbol,overlay_days,overlay_evidence=_daily_market_overlay(
+        daily_market_output,as_of,lookback_sessions)
+    overlay_symbols=set(overlay_by_symbol)
     if universe_symbols is None:
-        paths=[]
+        path_map={}
         for path in sorted(directory.glob('*.parquet')):
             symbol=_symbol_from_path(path)
-            if symbol:paths.append((symbol,path))
-        universe_mode='DISCOVERED_FILES'
+            if symbol:path_map[symbol]=path
+        for symbol in overlay_symbols:path_map.setdefault(symbol,directory/(symbol.replace('.','_')+'.parquet'))
+        paths=sorted(path_map.items())
+        universe_mode='DISCOVERED_FILES_PLUS_DAILY_MARKET' if overlay_symbols else 'DISCOVERED_FILES'
     else:
         if not isinstance(universe_symbols,list) or not universe_symbols:
             raise PrepScanError('INVALID_ARGUMENT','universe_symbols 必须为非空数组或None。')
@@ -206,6 +241,7 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
         if path.is_file():
             maximum=_parquet_max_date(path)
             if maximum is not None:stat_dates.append(maximum)
+    stat_dates.extend(date.fromisoformat(item['date']) for item in overlay_days)
     latest_available_session=max(stat_dates) if stat_dates else None
     if latest_available_session is not None and latest_available_session<as_of:
         raise PrepScanError('DATA_NOT_UPDATED',
@@ -219,26 +255,42 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
         official_rules_verified=not unofficial_rule_sources and bool(official_rule_receipt.get('verified'))
     file_hashes=[];records=[];missing_files=[];stale_as_of_symbols=[];managed_status_count=0;rule_gaps=0
     for symbol,path in paths:
-        if not path.is_file():missing_files.append(symbol);continue
-        loaded_symbol,rows,sha,managed_status=_load_symbol_rows(
-            path,as_of,lookback_sessions,root if managed_manifest is not None else None,managed_manifest)
-        if loaded_symbol!=symbol:raise PrepScanError('DATA_SCHEMA','证券路径与解析结果不一致。')
-        file_hashes.append({'symbol':symbol,'sha256':sha})
-        managed_status_count+=int(managed_status)
-        annotated,gaps=_annotate(rows,symbol,rules,managed_status);rule_gaps+=gaps
+        rows=[];base_sha=None
+        if path.is_file():
+            loaded_symbol,rows,base_sha,_=_load_symbol_rows(
+                path,as_of,lookback_sessions,root if managed_manifest is not None else None,managed_manifest)
+            if loaded_symbol!=symbol:raise PrepScanError('DATA_SCHEMA','证券路径与解析结果不一致。')
+            file_hashes.append({'symbol':symbol,'sha256':base_sha})
+        overlay_rows=overlay_by_symbol.get(symbol,[])
+        if not rows and not overlay_rows:
+            missing_files.append(symbol);continue
+        merged={row['date']:dict(row) for row in rows}
+        for overlay in overlay_rows:
+            old=merged.get(overlay['date'])
+            if old is not None:
+                for key in ('close','volume'):
+                    left=old.get(key);right=overlay.get(key)
+                    if left is not None and right is not None and not math.isclose(float(left),float(right),rel_tol=0,abs_tol=1e-9):
+                        raise PrepScanError('DATA_REVISION_CONFLICT',f'{symbol} {overlay["date"]} 旧湖与DailyMarket {key} 不一致。')
+                merged[overlay['date']]={**old,**overlay}
+            else:merged[overlay['date']]=dict(overlay)
+        rows=[merged[k] for k in sorted(merged) if k<=as_of][-lookback_sessions:]
+        status_complete=bool(rows) and all(_has_status(row) for row in rows)
+        managed_status_count+=int(status_complete)
+        annotated,gaps=_annotate(rows,symbol,rules);rule_gaps+=gaps
         current=_active_as_of(annotated,as_of)
         if current is None:
             rule=_rule_for(rules,symbol,as_of)
             if not (rule is not None and rule['suspended']):stale_as_of_symbols.append(symbol)
             continue
-        streak=_trailing_streak(annotated)
-        previous=current['previous_trade_close']
+        streak=_trailing_streak(annotated);previous=current['previous_trade_close']
         records.append({'symbol':symbol,'rows':annotated,'current':current,'streak':streak,
-            'managed_status':managed_status,'previous':previous})
+            'managed_status':status_complete,'previous':previous})
 
     if not records:
         raise PrepScanError('NO_AS_OF_DATA','指定 as_of_session 没有任何可扫描日线。')
-    source_hash=digest({'files':file_hashes,'as_of_session':as_of.isoformat(),'lookback_sessions':lookback_sessions})
+    source_hash=digest({'files':file_hashes,'daily_market':overlay_evidence,
+        'as_of_session':as_of.isoformat(),'lookback_sessions':lookback_sessions})
     breadth_up=breadth_down=limit_up_count=limit_down_count=0;max_streak=0
     candidate_counts={};candidates=[]
     for item in records:
@@ -271,7 +323,8 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
     pit_status='STRICT_PIT' if not blockers else 'RETROSPECTIVE_REFERENCE'
     quality='OFFICIAL_RULES' if rules is not None and not rule_gaps and official_rules_verified else (
         'EXPLICIT_RULES_UNVERIFIED' if rules is not None and not rule_gaps else (
-        'MANAGED_RETROSPECTIVE' if status_known_all else 'LEGACY_RETROSPECTIVE_ESTIMATE'))
+        'DAILY_MARKET_RETROSPECTIVE' if status_known_all and overlay_evidence else (
+        'MANAGED_RETROSPECTIVE' if status_known_all else 'LEGACY_RETROSPECTIVE_ESTIMATE')))
     route={**route,'evidence_quality':pit_status}
     if route['action']=='NO_TRADE':
         effective_target=None;target_source='ROUTER_NO_TRADE'
@@ -287,6 +340,8 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
     return {'as_of_session':as_of.isoformat(),'latest_available_session':latest_available_session.isoformat() if latest_available_session else None,
         'universe_mode':universe_mode,'universe_file_count':len(paths),'active_symbol_rows':len(records),
         'missing_files':missing_files,'stale_as_of_symbols':stale_as_of_symbols,'managed_status_rows':managed_status_count,
+        'daily_market_days':[item['date'] for item in overlay_days],
+        'daily_market_snapshots':overlay_evidence,'daily_market_symbol_rows':sum(len(v) for v in overlay_by_symbol.values()),
         'source_hash':source_hash,'source_file_count':len(file_hashes),'rule_snapshot_id':rules.snapshot_id if rules else None,
         'rule_gaps':rule_gaps,'official_rules_verified':official_rules_verified,
         'official_rule_receipt':official_rule_receipt,'unofficial_rule_sources':unofficial_rule_sources,
