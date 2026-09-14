@@ -13,6 +13,7 @@ from .decision_store import DecisionStore
 from .theme_store import ThemeStore
 from .market_snapshot import MarketSnapshotStore
 from .playbook_paper_plan import PlaybookPaperPlanService
+from .paper_lifecycle import PaperLifecycleAnalytics
 
 CANDIDATE_ACTIONS={'DISCOVERED','WATCH','READY'}
 PLAN_ACTIONS={'PLAN_OPEN','OPEN','ADD','HOLD','REDUCE','EXIT','INVALIDATED'}
@@ -83,6 +84,8 @@ class TradingCockpitService:
         agenda=self._agenda(agenda_limit);watch=self._watch_rows()
         try:paper_plans=PlaybookPaperPlanService(self.output).list(limit=200)
         except Exception:paper_plans=[]
+        try:paper_lifecycle=PaperLifecycleAnalytics(self.output).build()
+        except Exception:paper_lifecycle={'paper_plans':len(paper_plans),'paper_executions':0,'paper_reviews':0,'dynamic_account_count':0,'paper_rebalances':0,'automatic_real_trade':False}
         return {
             'trading_day':day,'day_source':day_source,'latest_saved_frame':saved_frame,
             'current_states':current,'state_counts':dict(Counter(d['action'] for d in current)),
@@ -90,7 +93,7 @@ class TradingCockpitService:
             'themes':themes,'theme_fact_snapshots':sum(bool(t.get('facts')) for t in themes),
             'market_snapshots':market_snapshots,'latest_market_snapshots':latest_market_snapshots,
             'ai_conclusions':[d for d in current if d.get('ai_thesis')][:12],
-            'risks':risks[:30],'agenda':agenda,'watches':watch,'paper_plans':paper_plans,
+            'risks':risks[:30],'agenda':agenda,'watches':watch,'paper_plans':paper_plans,'paper_lifecycle':paper_lifecycle,
             'paper_plan_executed':sum(p.get('status','').startswith('EXECUTED') for p in paper_plans),
             'market_facts_policy':'只展示正式 Theme Snapshot 中带 facts_source/facts_as_of 的事实；不跨主题加总，不用 AI 文本补市场数字。',
             'new_research_jobs':0,'automatic_execution':False,

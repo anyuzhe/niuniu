@@ -43,3 +43,12 @@ __all__ += ['PlaybookDecisionBridgeError','PlaybookDecisionBridge']
 from .playbook_paper_plan import PlaybookPaperPlanError,PlaybookPaperPlanService
 
 __all__ += ['PlaybookPaperPlanError','PlaybookPaperPlanService']
+
+from .paper_fill_intent import PaperFillIntentError,PaperFillIntentBridge
+from .paper_review import PaperReviewError,PaperReviewService
+from .paper_lifecycle import PaperLifecycleAnalytics
+from .paper_rebalance import PaperRebalanceError,PaperRebalancePlanService
+from .paper_rebalance_outcome import PaperRebalanceOutcomeError,PaperRebalanceOutcomeBridge
+
+__all__ += ['PaperFillIntentError','PaperFillIntentBridge','PaperReviewError','PaperReviewService','PaperLifecycleAnalytics',
+    'PaperRebalanceError','PaperRebalancePlanService','PaperRebalanceOutcomeError','PaperRebalanceOutcomeBridge']

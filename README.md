@@ -333,8 +333,8 @@ python -m unittest discover -s tests -v
 - 官方逐日涨跌停价及特殊上市/退市规则覆盖尚不完整；合成规则回测不等于完整真实市场规则验收。
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
-- Tick/L2 与 OrderFlow 暂不推进；P8.8-A/B 已完成 Prediction→Decision/Intent 与显式 PaperPlan 模拟执行，但动态跨日 universe、fill→OPEN 状态推进和 D1/D2/D3+ 自动复盘仍未完成，不能描述成长期 Paper 已持续运行。
-- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排、正式实时 MarketSnapshot provider、Playbook→Paper 长期闭环、Agent Scorecard、Dynamic Agent Orchestrator、System Health 和移动端仍在后续计划。
+- Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
+- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待产品化。下一正式阶段是 P9 Agent Scorecard，之后为 Dynamic Agent Orchestrator、System Health 和移动端。
 - 机器学习训练不是当前主线；真实券商连接与自动实盘最后单独立项。任何回测或前瞻样本都只是给定证据和执行假设下的研究结果。
 
 ## 深入文档与来源

@@ -27,6 +27,11 @@ niuniu-daily-market = "quantlab.agent.daily_market_cli:main"
 niuniu-daily-orchestrator = "quantlab.agent.daily_orchestrator_cli:main"
 niuniu-playbook-decision-bridge = "quantlab.agent.playbook_decision_bridge_cli:main"
 niuniu-playbook-paper-plan = "quantlab.agent.playbook_paper_plan_cli:main"
+niuniu-paper-fill-intent = "quantlab.agent.paper_fill_intent_cli:main"
+niuniu-paper-review = "quantlab.agent.paper_review_cli:main"
+niuniu-paper-lifecycle = "quantlab.agent.paper_lifecycle_cli:main"
+niuniu-paper-rebalance = "quantlab.agent.paper_rebalance_cli:main"
+niuniu-paper-rebalance-outcome = "quantlab.agent.paper_rebalance_outcome_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

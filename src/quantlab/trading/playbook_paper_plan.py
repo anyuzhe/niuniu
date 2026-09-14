@@ -17,6 +17,7 @@ import polars as pl
 
 from quantlab.execution.backtest import ExecutionConfig
 from quantlab.execution.paper import PaperAccount
+from quantlab.execution.dynamic_paper import DynamicPaperAccount,DynamicPaperError
 from quantlab.execution.rules import MarketRules
 from quantlab.experiments.campaign_state import read_checked,write_checked
 from quantlab.storage.codec import digest
@@ -217,6 +218,48 @@ class PlaybookPaperPlanService:
             state['status']='EXECUTED_WITH_FILL' if new_fills else 'EXECUTED_NO_FILL';state['updated_at']=stamp.isoformat()
             state['events'].append({'at':stamp.isoformat(),'status':state['status'],
                 'detail':f"Paper revision={paper['revision']} new_orders={len(new_orders)} fills={len(new_fills)}; Strategy Intent remains PLAN_OPEN."})
+            self._save(state);return state
+
+    def execute_dynamic(self,plan_id,bars,rules,config=None,backend='open',*,as_of=None,confirmed=False):
+        if confirmed is not True:raise PlaybookPaperPlanError('CONFIRMATION_REQUIRED','执行动态 PaperPlan 需要宿主显式确认。')
+        if not isinstance(bars,pl.DataFrame) or bars.is_empty():raise PlaybookPaperPlanError('INVALID_MARKET_INPUT','bars 必须是非空 Polars DataFrame。')
+        if not isinstance(rules,MarketRules):raise PlaybookPaperPlanError('INVALID_MARKET_INPUT','必须提供显式 MarketRules。')
+        if backend not in ('open','vnpy_rules'):raise PlaybookPaperPlanError('INVALID_ARGUMENT','backend 仅支持 open/vnpy_rules。')
+        config=config or ExecutionConfig(price_mode='account');stamp=_stamp(as_of or self.now_fn())
+        with self._locked(_uuid(plan_id,'plan_id')):
+            state=self._load(plan_id);self._revalidate_sources(state);spec=state['spec']
+            account=self.output/'paper_dynamic'/(spec['account_name']+'.json')
+            dynamic=DynamicPaperAccount(account)
+            previous=dynamic.read() if account.exists() else None
+            current=dict(previous['target_events'][-1]['weights']) if previous and previous.get('target_events') else {}
+            full_target={**current,**spec['target_weights']}
+            execution_spec={'mode':'dynamic_v1','bars_hash':_frame_hash(bars),'rules_snapshot_id':rules.snapshot_id,
+                'config':asdict(config),'backend':backend,'as_of':stamp.isoformat(),'target_weights':full_target}
+            request_hash=digest(execution_spec);existing=state.get('execution')
+            if existing and existing.get('request_hash')!=request_hash:
+                raise PlaybookPaperPlanError('EXECUTION_CONFLICT','同一 PaperPlan 已预留不同执行输入或执行模式。')
+            if existing and existing.get('status')=='EXECUTED':return state
+            if existing is None:
+                state['execution']={'status':'RESERVED','mode':'dynamic_v1','request_hash':request_hash,'spec':execution_spec,
+                    'reserved_at':stamp.isoformat(),'before_order_ids':sorted(o['order_id'] for o in (previous or {}).get('orders',[])),
+                    'before_fill_count':len((previous or {}).get('fills',[])),'before_account_revision':(previous or {}).get('revision',0)}
+                state['status']='EXECUTION_RESERVED';state['updated_at']=stamp.isoformat();self._save(state);existing=state['execution']
+            before_orders=set(existing.get('before_order_ids',[]));before_fills=existing.get('before_fill_count',0)
+            try:
+                paper=dynamic.advance(bars,rules,config,backend,as_of=stamp,target_at=datetime.fromisoformat(spec['target_at']),
+                    target_weights=full_target,target_source_ref='paper_plan:'+plan_id)
+            except (DynamicPaperError,OSError,ValueError,KeyError,TypeError) as exc:
+                state=self._load(plan_id);state['execution'].update(status='FAILED',error=type(exc).__name__+': '+str(exc)[:400])
+                state['status']='EXECUTION_FAILED';state['updated_at']=stamp.isoformat();self._save(state)
+                raise PlaybookPaperPlanError('PAPER_EXECUTION_FAILED',str(exc)) from None
+            new_orders=[o for o in paper.get('orders',[]) if o['order_id'] not in before_orders]
+            new_fills=paper.get('fills',[])[before_fills:]
+            state=self._load(plan_id);state['execution'].update(status='EXECUTED',mode='dynamic_v1',account_path=str(account),
+                account_revision=paper['revision'],new_order_ids=[o['order_id'] for o in new_orders],new_orders=new_orders,
+                new_fills=new_fills,summary=paper['summary'],executed_at=stamp.isoformat(),portfolio_target=full_target)
+            state['status']='EXECUTED_WITH_FILL' if new_fills else 'EXECUTED_NO_FILL';state['updated_at']=stamp.isoformat()
+            state['events'].append({'at':stamp.isoformat(),'status':state['status'],
+                'detail':f"Dynamic Paper revision={paper['revision']} new_orders={len(new_orders)} fills={len(new_fills)}; Intent transition remains separate."})
             self._save(state);return state
 
 

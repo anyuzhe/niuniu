@@ -28,7 +28,7 @@ def main(argv=None):
     parser.add_argument('--selection-id');parser.add_argument('--decision-id',action='append',default=[])
     parser.add_argument('--account-name');parser.add_argument('--target-weights-json');parser.add_argument('--plan-id')
     parser.add_argument('--bars-parquet');parser.add_argument('--rules-json');parser.add_argument('--config-json')
-    parser.add_argument('--backend',choices=('open','vnpy_rules'),default='open');parser.add_argument('--confirm',action='store_true')
+    parser.add_argument('--backend',choices=('open','vnpy_rules'),default='open');parser.add_argument('--dynamic',action='store_true',help='使用长期动态-universe PaperAccount');parser.add_argument('--confirm',action='store_true')
     args=parser.parse_args(argv)
     try:
         service=PlaybookPaperPlanService(Path(args.output))
@@ -43,7 +43,7 @@ def main(argv=None):
             rules_value=_json(args.rules_json)
             if not isinstance(rules_value,list):raise ValueError('rules-json 必须是 MarketRules 记录数组。')
             config=ExecutionConfig(**_json(args.config_json,256000)) if args.config_json else ExecutionConfig(price_mode='account')
-            data=service.execute(args.plan_id,pl.read_parquet(args.bars_parquet),MarketRules(rules_value),config,args.backend,confirmed=args.confirm)
+            data=(service.execute_dynamic(args.plan_id,pl.read_parquet(args.bars_parquet),MarketRules(rules_value),config,args.backend,confirmed=args.confirm) if args.dynamic else service.execute(args.plan_id,pl.read_parquet(args.bars_parquet),MarketRules(rules_value),config,args.backend,confirmed=args.confirm))
         elif args.status:
             if not args.plan_id:raise ValueError('--status 需要 --plan-id。')
             data=service.get(args.plan_id)

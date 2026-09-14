@@ -283,25 +283,22 @@
 
 已完成：ExpertSource 试点、来源归档、候选全集、selected/unselected、规则版本、历史回放、前瞻冻结、防回填、Selection/Execution Access 分离、PREP/AUCTION/R1 Scanner 与 DailyMarket 增量接力。
 
-当前架构升级：`ExpertSource` 先作为 `StrategySource(type=TRADER)` 的兼容实现；下一步增加 USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / STATISTICAL_DISCOVERY / SYSTEM_REVIEW 等通用来源，同时继续积累真实前瞻样本。
+当前架构已推进到 P8.8-C：StrategySource 通用来源、Daily Orchestrator 与 Prediction→Decision→动态 Paper→跨日复盘核心链路均已落地；下一阶段进入 P9 Agent Scorecard，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
 
 ## 8. 尚未完成的正式阶段
 
-- **P8.6 StrategySource 通用来源层**：多来源类型、多对多来源↔Playbook、ExpertSource 向后兼容。
-- **P8.7 Daily Orchestrator**：DailyMarket 数据就绪 → PREP → 09:25 AUCTION → 09:35 R1 → R2/R3 的受控调度。
-- **P8.8 Playbook → Trading Desk → Paper**：把预测、Decision、Strategy Intent、模拟订单/成交/持仓和跨日复盘接成长期闭环。
 - **P9 Agent Scorecard**：按任务类型评价 Coverage、证据正确性、计划完整性、及时性、约束违规和风险识别；只展示，不自动调模型权重。
+- **P8.7 扩展项（并行）**：R2/R3 自动编排与正式实时 MarketSnapshot provider 仍未产品化。
+- **P8.8 运行验证（并行）**：核心长期 Paper 闭环已实现，但仍需积累足够真实前瞻运行天数来评价稳定性和绩效。
 - **P10 Dev Studio + Dynamic Agent Orchestrator**：DevTask、隔离 worktree、Main Agent 动态 Subagent、path lease、Tester、Reviewer、Human Merge。
 - **P11 System Health / P12 移动端 / P13 Paper→Real**：依次推进；真实券商和自动实盘最后单独评审。
 
 ## 9. 当前推荐的后续主线
 
-1. 先做 P8.6，把“高手来源试点”升级为通用 StrategySource，但不破坏已有 ExpertSource 历史证据。
-2. 做 P8.7 Daily Orchestrator，让数据更新、PREP、AUCTION、R1/R2/R3 真正每天受控自动运行。
-2. 做 P8.8，把 Playbook 前瞻输出接入 Decision / Strategy Intent / 长期 Paper，并正式统计 NO_TRADE、未成交和退出。
-2. 在真实前瞻 Decision 足够后再做 P9 Agent Scorecard。
-3. 随后推进 P10 / P11 / P12；P13 真实账户最后单独评审。
-4. 并行继续 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
+1. 下一正式阶段做 P9 Agent Scorecard，基于已经分层保存的 Prediction / Decision / Paper / Review 证据按任务类型评分。
+2. 随后推进 P10 Dev Studio + Dynamic Agent Orchestrator、P11 System Health、P12 移动端。
+3. P13 真实账户最后单独评审，不把 Paper 成功直接外推到真实券商。
+4. 并行继续积累真实前瞻 Paper 样本，并补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
 ## 10. 关键测试基线演进
 
@@ -324,6 +321,8 @@
 | 2026-09-14 | P8.5-E1 DailyMarket 增量 / PREP Overlay | **784 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.6 StrategySource 通用来源层 | **793 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.7 Daily Orchestrator v1 | **805 passed / 0 failed / 0 skipped** |
+| 2026-09-14 | P8.8-A/B Decision Bridge + PaperPlan | **821 passed / 0 failed / 0 skipped** |
+| 2026-09-14 | P8.8-C Dynamic Paper / Fill Intent / Review / Rebalance | **842 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -441,3 +440,15 @@
 - 产品接入：Trading Cockpit 只读显示 PaperPlan 状态、账户、Universe、Selection Frame、revision 和本次成交数；打开首页无执行副作用。
 - 测试/验收：P8.8 联合 Decision/Intent/Paper/Orchestrator/Cockpit **40/40 passed**；完整仓库 **821 tests / 0 failed / 0 skipped**；两个新 CLI editable install / help 烟测通过。
 - 后续事项：P8.8-C 动态 universe 长期 Paper、fill→Intent 严格状态合同、D1/D2/D3+ 自动复盘；随后再进入 P9 Agent Scorecard。
+### 2026-09-14 22:05｜[功能] P8.8-C 长期动态 Paper 与跨日复盘闭环
+
+- 模块：Dynamic Paper / PaperPlan / Strategy Intent / Rebalance / D1-D3+ Review / 生命周期统计。
+- Git：本条与功能代码同一提交发布，提交标题 `feat: 完成长周期Paper与复盘闭环`；SHA 以该提交 Git 历史为准。
+- 改动内容：新增独立 `DynamicPaperAccount`，允许跨交易日动态增加证券，同时将新证券在旧 target 中确定性补0，并要求历史 NAV/fill/order 前缀完全不变；旧固定-universe `PaperAccount` 原合同不修改。
+- 成交状态：真实 Paper buy fill 经宿主显式确认后才允许 PLAN_OPEN→OPEN；无成交保持 PLAN_OPEN；人工已推进/修订状态时人工状态优先；Decision 已写但 receipt 丢失的崩溃场景可恢复。
+- 持仓调整：新增 `PaperRebalancePlan`，ADD/REDUCE/EXIT/INVALIDATED 只能作用于已有动态账户证券，不能借再平衡新增股票；ADD/REDUCE 实际成交后回 HOLD，EXIT 清仓后保留 EXIT 并记录完成回执。
+- 跨日复盘：新增 D1/D2/D3+ `PaperOutcomeReview` 与 `auto_all`，只读取复盘日及以前的 bars/fills/nav；未来 D2/D3 数据到达后不能改变已冻结 D1 review_hash；复盘不自动做新的 HOLD/REDUCE/EXIT 判断。
+- 长期统计：新增只读生命周期汇总，分开统计 Prediction、NO_TRADE、PaperPlan、成交/未成交、rejection reason、费用、滑点、review 和动态账户收益；打开 Cockpit/统计不会产生交易副作用。
+- 权限：新增宿主 CLI，AI/MCP 不获得 Paper 创建、执行、再平衡或 Intent 写权限；真实券商仍属于 P13。
+- 测试/验收：P8.8-C 联合链路 52/52 通过；动态账户/再平衡/复盘/权限专项继续全绿；最终完整仓库 **842 tests / 0 failed / 0 skipped**，耗时 292.278 秒。
+- 后续事项：进入 P9 Agent Scorecard；并行积累真实前瞻 Paper 样本，补 P8.7 R2/R3 与正式实时 MarketSnapshot provider。

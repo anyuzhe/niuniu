@@ -13,8 +13,11 @@ PaperPlan 是宿主冻结的模拟执行计划：
 - 只有当前 PLAN_OPEN Decision 可进入 PaperPlan。
 - 创建和执行都需要 host confirmation。
 - 完成 bars + 显式 dated MarketRules 才能执行现有 PaperAccount。
-- 模拟 fill 不自动把 Strategy Intent 改成 OPEN；fill→Intent 需要独立严格合同。
-- 现有 PaperAccount 是固定 universe；不得为了每日新股票重写历史 universe。
-- 真实券商、真实资金、自动实盘均不属于 P8.8。
-
-P8.8-C 再解决动态跨日 universe、成交回执驱动状态推进和 D1/D2/D3+ 自动复盘。
+- 固定 `PaperAccount` 继续作为旧研究账户，不修改其 fixed-universe 合同。
+- 长期账户使用独立 `DynamicPaperAccount`；新增证券时历史 target 补0，且旧 NAV/fill/order 前缀必须逐项不变。
+- fill→Intent 是独立严格桥：没有实际 buy fill 不得 PLAN_OPEN→OPEN；人工已经改变状态时人工状态优先。
+- ADD/REDUCE/EXIT 必须由当前对应 Decision + RebalancePlan 驱动；rebalance 不能借机加入新股票。
+- D1/D2/D3+ `PaperOutcomeReview` 只生成因果结果证据，不自动替用户做 HOLD/REDUCE/EXIT。
+- 生命周期统计必须分开 Prediction / NO_TRADE / Plan / fill / rejection / costs / review / account return。
+- AI/MCP 不得拥有 Paper 创建、执行、再平衡或 Intent 写工具；这些仍是宿主显式动作。
+- 真实券商、真实资金、自动实盘均不属于 P8.8，继续留在 P13。

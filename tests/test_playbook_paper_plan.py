@@ -129,6 +129,18 @@ class PlaybookPaperPlanTests(unittest.TestCase):
             self.service.execute(plan['plan_id'],self.bars(),self.rules(),ExecutionConfig(price_mode='account'),confirmed=True,as_of=dt('2026-09-15T15:05:00'))
         self.assertEqual(mismatch.exception.code,'ACCOUNT_UNIVERSE_MISMATCH')
 
+    def test_dynamic_execution_uses_separate_long_account_and_is_idempotent(self):
+        plan=self.make_plan(account_name='long_playbook');cfg=ExecutionConfig(initial_cash=100000,exposure=1,top_n=1,price_mode='account')
+        result=self.service.execute_dynamic(plan['plan_id'],self.bars(),self.rules(),cfg,confirmed=True,as_of=dt('2026-09-15T15:05:00'))
+        self.assertEqual(result['status'],'EXECUTED_WITH_FILL');self.assertEqual(result['execution']['mode'],'dynamic_v1')
+        self.assertTrue((self.root/'paper_dynamic/long_playbook.json').exists())
+        self.assertFalse((self.root/'paper/long_playbook.json').exists())
+        self.assertEqual(result['execution']['portfolio_target'],{'sh.600000':0.5})
+        same=self.service.execute_dynamic(plan['plan_id'],self.bars(),self.rules(),cfg,confirmed=True,as_of=dt('2026-09-15T15:05:00'))
+        self.assertEqual(same['execution']['account_revision'],1)
+        self.assertEqual(same['execution']['new_order_ids'],result['execution']['new_order_ids'])
+
+
     def test_crash_after_account_write_recovers_fill_receipt(self):
         from unittest.mock import patch
         plan=self.make_plan();cfg=ExecutionConfig(initial_cash=100000,exposure=1,top_n=1,price_mode='account')

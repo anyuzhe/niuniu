@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-14
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P8.8-A/B 核心接线已完成，全仓 `821 passed / 0 failed / 0 skipped`
+- 当前稳定基线：P8.8-A/B/C 核心长期 Paper 闭环已完成，全仓 `842 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -238,18 +238,19 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Dynamic Agent Orchestrator / Dev Studio | P10，尚未完成 |
 | System Health | P11，尚未完成 |
 | 移动端 | P12，尚未完成 |
-| Prediction→Decision/Intent + PaperPlan v1 | P8.8-A/B 已完成；长期动态 Paper 仍未完成 |
-| 长期 Paper / Real Broker | P8.8-C / P13，尚未完成 |
+| Prediction→Decision/Intent + PaperPlan | **P8.8-A/B 已完成** |
+| 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
+| Real Broker | P13，尚未开始 |
 
-当前生产代码最近完整回归基线：**821 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**842 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 新版路线按“先让知识来源通用化，再让每日闭环自动运行”的顺序推进：
 
-1. **P8.8-C 长期 Paper / 复盘闭环**：在 A/B 已完成基础上补动态 universe、成交回执驱动 Intent、D1/D2/D3+ 自动复盘。
-2. **P9 Agent Scorecard**：在有足够真实前瞻 Decision 后评价不同任务类型，不做模型总排行榜，也不自动调权。
-3. **P10 Dev Studio + Dynamic Agent Orchestrator**：Main Agent、动态 Subagents、隔离 worktree、path lease、Tester、Reviewer、Human Merge。
-4. **P11 System Health → P12 移动端 → P13 Paper→Real**。
+1. **P9 Agent Scorecard**：开始按任务类型评价 Coverage、证据正确性、计划完整性、及时性、约束违规和后续跟踪；先展示，不自动调模型权重。
+2. **P10 Dev Studio + Dynamic Agent Orchestrator**：Main Agent、动态 Subagents、隔离 worktree、path lease、Tester、Reviewer、Human Merge。
+3. **P11 System Health → P12 移动端 → P13 Paper→Real**。
+4. 并行积累真实前瞻 Paper 日志，并继续补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 原始资料。
 
 并行继续补 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
@@ -259,9 +260,9 @@ Daily Orchestrator v1 是**单交易日、宿主先建计划**的持久状态机
 
 ### P8.8 当前边界
 
-P8.8-A 已将真实 `SYSTEM_PREDICTION` 通过保守 bridge 接入 Decision Ledger / Strategy Intent：首次选择最多 WATCH，NO_TRADE 不制造股票 Decision，已有 PLAN_OPEN/OPEN/HOLD 不被覆盖。P8.8-B 已新增显式 `PaperPlan`：只有 PLAN_OPEN + host confirmation 才能调用现有 PaperAccount，模拟成交成功也不会自动把 Intent 改成 OPEN。
+P8.8-A/B/C 的核心链路已经完成：`SYSTEM_PREDICTION → Decision/Strategy Intent → PLAN_OPEN → PaperPlan → DynamicPaperAccount → fill receipt → OPEN/HOLD/REDUCE/EXIT → D1/D2/D3+ PaperOutcomeReview`。动态账户允许跨日增加证券，但过去 target 会确定性补 0，且历史 NAV/fill/order 前缀必须保持不变；ADD/REDUCE/EXIT 必须由对应当前 Strategy Intent Decision 驱动，不能借 rebalance 偷偷开新股票。
 
-当前 PaperAccount 仍是固定 universe 研究账户，因此动态跨日 universe、fill→Intent 状态推进和 D1/D2/D3+ 自动复盘列入 P8.8-C；真实券商继续留在 P13。
+P8.8-C 的“自动复盘”只生成因果 outcome evidence，不替用户事后自动做 HOLD/REDUCE/EXIT 决策；真实券商、真实资金和自动实盘仍全部留在 P13。当前还需要通过后续真实前瞻运行积累足够长期 Paper 样本，才能评价规则/Agent/账户表现。
 
 ## 13. 一句话定义
 

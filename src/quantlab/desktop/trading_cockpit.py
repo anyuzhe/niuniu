@@ -46,7 +46,7 @@ class TradingCockpitWidget(QWidget):
         self.window.async_call(lambda:self.service.build(day),done)
 
     def render(self,value):
-        self.clear();counts=value['state_counts'];watch=value['watches'];agenda=value['agenda']
+        self.clear();counts=value['state_counts'];watch=value['watches'];agenda=value['agenda'];lifecycle=value.get('paper_lifecycle') or {}
         self.status.setText(f"{value['trading_day']} · {value['day_source']} · 最近已保存Frame {value['latest_saved_frame'] or '无'}")
         self.body.addWidget(kpis([
             ('候选',len(value['candidates']),'DISCOVERED / WATCH / READY'),
@@ -56,6 +56,7 @@ class TradingCockpitWidget(QWidget):
             ('Agenda',agenda.get('total',0),'确定性待办，不自动执行'),
             ('Watch',len(watch['rows']),f"不可读 {watch['unreadable']}"),
             ('Paper计划',len(value.get('paper_plans',[])),f"已执行 {value.get('paper_plan_executed',0)}"),
+            ('长期Paper',lifecycle.get('dynamic_account_count',0),f"复盘 {lifecycle.get('paper_reviews',0)} / 再平衡 {lifecycle.get('paper_rebalances',0)}"),
             ('风险项',len(value['risks']),'Decision + Theme 已保存风险'),
         ]))
         theme=Card('主线 / 市场事实')
@@ -91,6 +92,17 @@ class TradingCockpitWidget(QWidget):
         paper.add(label('这里只展示已保存 PaperPlan/模拟成交回执；Cockpit 不会自动创建计划或执行账户。','note',True))
         paper.add(table(['状态','账户','Universe','Selection Frame','账户Revision','本次成交'],paper_rows),1)
         self.body.addWidget(paper)
+
+        life=Card('长期 Paper / 生命周期统计')
+        life.add(label('预测、Intent、模拟成交、复盘和账户收益分开计数；这里只读，不自动执行。','note',True))
+        life_rows=[
+            ['SYSTEM_PREDICTION',lifecycle.get('system_predictions',0),f"NO_TRADE={lifecycle.get('no_trade_predictions',0)}"],
+            ['Paper执行',lifecycle.get('paper_executions',0),f"有成交={lifecycle.get('paper_executions_with_fill',0)} / 无成交={lifecycle.get('paper_executions_no_fill',0)}"],
+            ['复盘',lifecycle.get('paper_reviews',0),str(lifecycle.get('paper_reviews_by_frame',{}))],
+            ['再平衡',lifecycle.get('paper_rebalances',0),str(lifecycle.get('paper_rebalance_status',{}))],
+            ['拒单',sum((lifecycle.get('paper_rejection_reasons') or {}).values()),str(lifecycle.get('paper_rejection_reasons',{}))],
+        ]
+        life.add(table(['层','数量','说明'],life_rows),1);self.body.addWidget(life)
 
         ai=Card('AI 结论 / 风险')
         ai_rows=[[d['symbol'],d['action'],d.get('theme',''),d.get('ai_thesis','')[:95],'/'.join(d.get('risk_flags') or []),d.get('invalidation','')[:70]] for d in value['ai_conclusions']]
