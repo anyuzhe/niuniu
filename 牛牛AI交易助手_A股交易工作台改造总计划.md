@@ -572,3 +572,12 @@ Playbook Lab 必须额外阻断：
 - Trading Cockpit、AI Research、Reviewer、标准 MCP 已接入 MarketSnapshot 只读查询；模型仍无行情写入、预测冻结、Strategy Intent 修改和自动交易权限。
 - 使用 9/14 实际行情 BACKFILL 重放仍选择超声电子；全仓 **769 tests / 0 failed / 0 skipped**。阶段说明见 `牛牛AI交易工作台_P8_5D实时快照与DailyScanner_验收说明.md`。
 - 下一步：P8.5-D2 全市场 PREP 自动扫描与市场节点→目标身位路由；逐日 official-rule 不足时保持 PARTIAL/UNKNOWN。
+
+### 2026-09-14：P8.5-D2 PREP 全市场自动扫描完成
+
+- 新增 `niuniu-prep-playbook-scan` 与 `prep_scanner.py`：可从全市场日线自动生成 PREP 市场事实、连板高度、目标身位候选和版本化市场节点 Router。
+- Router v1 是宿主工程策略，不是期末50分规则；只对极端风险/退潮高风险做自动路由，其余返回 UNKNOWN，避免每天强行出股票。
+- Strict 路径要求逐日 MarketRules 完整、官方交易所来源、本地哈希 receipt 与 PIT Universe 证据同时满足；当前旧 MQC 自动保持 PARTIAL/RETROSPECTIVE。
+- 真实 5215 只扫描约17.7秒；本地日线最新仍为 2026-09-04，请求9/11会约6.3秒 fail-fast 为 DATA_NOT_UPDATED。
+- D2 新增8项测试；完整仓库 **777 passed / 0 failed / 0 skipped**。
+- 下一实际优先级：把现有 Baostock/数据更新链接到每日 PREP 前置流程，确保最近交易日数据可用，再继续 Trading Cockpit → Strategy Intent → Paper 闭环。

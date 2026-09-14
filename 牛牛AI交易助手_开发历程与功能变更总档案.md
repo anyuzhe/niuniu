@@ -350,3 +350,16 @@
 - 产品接入：新增 `niuniu-market-snapshot`、`niuniu-daily-playbook-scan`；Trading Cockpit、AI Research、Reviewer、标准 MCP 均可只读查看正式快照。
 - 测试/验收：9/14真实数据 BACKFILL 重放仍选择超声电子；新增6项核心测试；最终全仓 **769 tests / 0 failed / 0 skipped**；editable install 后两个新 CLI 已实际可运行。
 - 后续事项：P8.5-D2 自动化 PREP 全市场扫描、市场节点→目标身位路由和完整 CandidateSet 生成；official-rule 不足时保持 PARTIAL/UNKNOWN。
+
+### 2026-09-14 15:20｜[功能] P8.5-D2 PREP全市场扫描与市场节点路由
+
+- 模块：PREP全市场扫描 / Market Node Router / 数据资格 / Playbook前瞻链。
+- Git：本条与功能代码同一提交发布，提交标题 `feat: 增加PREP全市场扫描与节点路由`；SHA 以该提交 Git 历史为准。
+- 改动内容：新增 `prep_scanner.py` 与 `niuniu-prep-playbook-scan`，从全市场日线读取、涨跌停/连板高度、市场宽度与最高板事实，生成版本化市场节点路由和目标身位 CandidateSet；可进一步保存 PREP MarketSnapshot 并接入既有 forward freeze。
+- 改动原因：D1 已能对冻结候选做 AUCTION/R1 扫描，但 PREP 候选仍依赖人工；D2 将“全市场 → 市场节点 → 目标身位 → 候选集”产品化。
+- 关键约束：Router v1 明确标记 `host_engineering_policy_not_expert_rule`，不是期末50分已验证规则；其余节点证据不足时返回 UNKNOWN，不强行每日推荐。
+- 数据资格：逐日 MarketRules 只有同时满足无缺口、官方交易所来源、本地哈希 receipt 以及 PIT Universe 资格时才能升级严格口径；旧 MQC 自动降级为 `PARTIAL + RETROSPECTIVE_REFERENCE`。
+- 数据新鲜度：新增 Parquet 元数据 fail-fast；若请求交易日晚于本地最新日线，返回 `DATA_NOT_UPDATED` 与实际最新日期。
+- 真实验收：2026-09-04 全市场 5215 只完整扫描约17.7秒；本地数据请求 2026-09-11 时约6.3秒确认最新仅到2026-09-04并阻断。
+- 测试/验收：D2 新增8项测试；D1+D2+Playbook 联合回归 32/32；完整仓库 **777 tests / 0 failed / 0 skipped**。
+- 后续事项：建设每日全市场数据自动更新链，并把数据更新成功事件接到 PREP 自动运行，再衔接 AUCTION/R1 定时扫描。

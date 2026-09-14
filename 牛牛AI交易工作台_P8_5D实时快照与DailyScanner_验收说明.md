@@ -1,4 +1,4 @@
-# 牛牛 AI 交易工作台 P8.5-D1：MarketSnapshot 与 Daily Playbook Scanner 验收说明
+# 牛牛 AI 交易工作台 P8.5-D：MarketSnapshot、Daily Scanner 与 PREP 全市场扫描验收说明
 
 ## 1. 本轮目标
 
@@ -62,8 +62,40 @@ Playbook/Trading Cockpit/AI/MCP 受影响面联合回归通过；一次直接模
 
 editable install 已重新执行，两个新 CLI 均真实存在于 `.venv/bin` 且 `--help` 可运行。
 
-## 9. 当前边界 / D2
+## 9. D1 结束时边界
 
 D1 不负责自动构造全市场 PREP 候选。下一阶段 P8.5-D2 将处理：逐日 A 股制度资格、全市场连板/身位计算、市场节点路由、目标身位选择和 PREP CandidateSet 自动生成。
 
 D2 必须继续遵守 ST/摘帽/S股/停牌/特殊价格限制等 official-rule 边界；资料不足时保持 PARTIAL/UNKNOWN，不能为了自动化静默删票。
+
+## 10. P8.5-D2：PREP 全市场扫描与节点路由
+
+D2 新增 `prep_scanner.py`，把 PREP 阶段从“人工先给候选池”推进到“读取全市场日线 → 计算涨跌停/连板高度 → 生成市场宽度与高度事实 → 版本化 Router → 目标身位候选”。
+
+第一版 Router 固定为 `market-node-router-v1-20260914`，来源明确标记 `host_engineering_policy_not_expert_rule`。它是牛牛的宿主工程策略，不等于已经提取出的期末50分规则，也不允许用历史结果把同一版本不断调成命中。
+
+Router v1 只自动处理证据较清晰的高风险节点：极端风险可输出 `NO_TRADE`；退潮/高风险且最高板压缩时可路由到 2→3 观察；其余情况返回 `UNKNOWN`，不强行每天推荐股票。
+
+新增 `niuniu-prep-playbook-scan`：默认只读；`--save-snapshot` 才保存 PREP MarketSnapshot；`--freeze` 还必须显式提供 PlaybookDefinition，并继续经过原 PREP wall-clock 闸门。
+## 11. PREP 数据资格与 fail-closed
+
+D2 不把“代码前缀对应 10%/20%”冒充逐日官方规则。若提供 MarketRules，要升级为严格口径还必须同时满足：逐日规则无缺口、规则来源属于官方交易所域名、本地 `official_market_rules.json` receipt 与规则快照哈希一致，以及 Universe 的 PIT 资格已由宿主证据确认。
+
+当前 `/Volumes/Lexar/MQC-DATA` 属于旧 MQC 日线湖：5215 个证券文件、约 2.5GB，日线主要保存 OHLCV，缺少完整 `isST/tradestatus`，也没有当前扫描所需的 PIT Universe 认证。因此真实全市场扫描自动降级为 `PARTIAL + RETROSPECTIVE_REFERENCE`，并显式给出 `official_market_rules_missing / historical_st_tradestatus_missing / pit_universe_not_certified` blocker。
+
+显式规则 JSON 但没有官方归档 receipt 时仍不能升级 Strict PIT；专项测试固定覆盖该反向场景。部分证券目标日缺行会记录 `stale_as_of_symbols` 并增加 `as_of_session_data_incomplete`，不会静默从 Universe 删除。
+
+Parquet 元数据新增 fail-fast：若全市场文件的最新日期整体早于请求 `as_of_session`，直接返回 `DATA_NOT_UPDATED` 与实际最新日期，不再读取全部 2.5GB 后才发现数据过期。
+## 12. D2 真实工作区验收
+
+真实扫描 2026-09-04：5215 个证券文件全部读取并参与源哈希，约 17.7 秒完成；得到 5215 个目标日证券行、40 个涨停、9 个跌停、最高5板。显式宿主覆盖 `target_streak=2` 时得到6个候选。由于数据资格不足，结果正确保持 `LEGACY_RETROSPECTIVE_ESTIMATE / PARTIAL / RETROSPECTIVE_REFERENCE`。
+
+请求 2026-09-11 时，系统通过 Parquet 元数据约 6.3 秒 fail-fast：当前全市场日线最新日期实际只有 2026-09-04，因此返回 `DATA_NOT_UPDATED`，没有假造9/11市场节点或候选池。
+
+这说明 D2 自动链路已经具备，但当前正式数据更新链仍是下一实际 blocker：若希望以后每天自动 PREP，必须先确保全市场日线在 PREP 前更新到最近交易日，并逐步补齐可审计 ST/停牌/官方价格边界与 PIT Universe。
+
+## 13. D2 测试与发布基线
+
+D2 新增8项专项测试，覆盖：Router UNKNOWN/NO_TRADE/退潮路由、旧 MQC 自动降级、官方规则+PIT Universe 严格路径、缺规则 session 阻断、无官方 receipt 阻断、数据未更新 fail-fast、PREP Snapshot/Forward payload 不提前选股。
+
+D1+D2+Playbook 联合回归：**32/32 passed**。完整仓库回归：**777 tests / 0 failed / 0 skipped**。
