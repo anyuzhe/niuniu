@@ -62,9 +62,9 @@ class DailyOrchestratorTests(unittest.TestCase):
 
     def service(self,now):return DailyPlaybookOrchestrator(self.output,self.data,now_fn=lambda:now)
 
-    def init(self,now,allow=False):
+    def init(self,now,allow=False,bridge=False):
         return self.service(now).create_plan('2026-09-14','2026-09-11',self.definition['definition_id'],
-            target_streak=2,allow_daily_market_capture=allow)
+            target_streak=2,allow_daily_market_capture=allow,bridge_to_trading_desk=bridge)
 
     def accept_daily(self):
         return DailyMarketArchive(self.output,now_fn=lambda:datetime.fromisoformat('2026-09-13T18:31:00+08:00')).capture(
@@ -167,6 +167,15 @@ class DailyOrchestratorTests(unittest.TestCase):
         self.assertEqual(state['auction']['status'],'FROZEN');self.assertEqual(state['auction']['selected_symbols'],[])
         prediction=state['auction']['prediction_id'];again=self.service(now).tick('2026-09-14',now=now)
         self.assertEqual(again['auction']['prediction_id'],prediction);self.assertEqual(again['status'],'WAIT_R1_DATA_READY')
+
+    def test_explicit_trading_desk_bridge_keeps_partial_r1_as_no_trade(self):
+        self.accept_daily();prep_time=datetime.fromisoformat('2026-09-13T18:31:00+08:00');self.init(prep_time,bridge=True)
+        state=self.service(prep_time).tick('2026-09-14',now=prep_time);self.assertEqual(state['prep']['status'],'FROZEN')
+        self.auction_snapshot();self.r1_snapshot();now=datetime.fromisoformat('2026-09-14T09:36:30+08:00')
+        state=self.service(now).tick('2026-09-14',now=now)
+        self.assertEqual(state['r1']['status'],'FROZEN');self.assertTrue(state['r1']['decision_bridge']['no_trade'])
+        self.assertEqual(state['r1']['decision_bridge']['decisions'],[])
+        self.assertFalse((self.output/'_trading/decision_ledger.sqlite3').exists())
 
     def test_r1_can_run_after_auction_prediction_missed_if_live_auction_fact_exists(self):
         self.prep_frozen();self.auction_snapshot();self.r1_snapshot();now=datetime.fromisoformat('2026-09-14T09:36:30+08:00')

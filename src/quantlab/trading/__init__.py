@@ -35,3 +35,11 @@ __all__ += ['PrepScanError','route_market_node','scan_prep_universe','prep_marke
 from .daily_orchestrator import DailyOrchestratorError,DailyPlaybookOrchestrator
 
 __all__ += ['DailyOrchestratorError','DailyPlaybookOrchestrator']
+
+from .playbook_decision_bridge import PlaybookDecisionBridgeError,PlaybookDecisionBridge
+
+__all__ += ['PlaybookDecisionBridgeError','PlaybookDecisionBridge']
+
+from .playbook_paper_plan import PlaybookPaperPlanError,PlaybookPaperPlanService
+
+__all__ += ['PlaybookPaperPlanError','PlaybookPaperPlanService']

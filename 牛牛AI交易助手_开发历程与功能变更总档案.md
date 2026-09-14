@@ -426,3 +426,18 @@
 - 测试/验收：P8.7 自身12/12；DailyMarket+Orchestrator 16/16；Forward/Scanner联合36/36；editable install 与 CLI help 通过；完整仓库 **805 tests / 0 failed / 0 skipped**。
 - 已知边界：v1 仅 PREP/AUCTION/R1；R2/R3 仍 unsupported。AUCTION/R1 的正式实时 MarketSnapshot provider 尚未产品化，Orchestrator 不使用临时网页抓取替代。
 - 后续事项：P8.8 将已有前瞻预测接入 Decision Ledger → Strategy Intent → Paper/Execution → D1/D2/D3+ 复盘。
+
+
+### 2026-09-14 20:30｜[功能] P8.8-A/B Playbook → Trading Desk → PaperPlan
+
+- 模块：SYSTEM_PREDICTION / Decision Ledger / Strategy Intent / PaperPlan / Trading Cockpit。
+- Git：本条与功能代码同一提交发布，提交标题以最终 Git 历史为准。
+- P8.8-A：新增 `PlaybookDecisionBridge` 与 `niuniu-playbook-decision-bridge`；只接受真实 SYSTEM_PREDICTION，首次选择最多 WATCH，已有 DISCOVERED→WATCH，READY 保持，NO_TRADE 只留 receipt；人工同 Frame Decision 和 PLAN_OPEN/OPEN/HOLD 等状态不自动覆盖。
+- P8.8-A 与 Orchestrator：新增显式 `bridge_to_trading_desk` 计划开关，默认 false，旧 P8.7 行为不变。
+- P8.8-B：新增 `PlaybookPaperPlanService` 与 `niuniu-playbook-paper-plan`。只有当前 PLAN_OPEN + 宿主显式确认才能创建/执行；target_weights 必须精确覆盖 Selection selected_symbols；完成 bars + dated MarketRules 后才调用现有 PaperAccount。
+- 执行边界：模拟成交 receipt 保存 account revision / order IDs / fills / summary，但**不会自动把 Strategy Intent 从 PLAN_OPEN 改成 OPEN**。
+- 恢复：执行 reservation 冻结成交前 order/fill 基线；即使 PaperAccount 已提交成交、PaperPlan receipt 写盘前崩溃，重启仍能恢复原 fills/orders。
+- 固定 universe：现有 PaperAccount 不允许历史 universe 被改写；复用账户 universe 不一致时 fail-closed。动态跨日 universe 留给 P8.8-C。
+- 产品接入：Trading Cockpit 只读显示 PaperPlan 状态、账户、Universe、Selection Frame、revision 和本次成交数；打开首页无执行副作用。
+- 测试/验收：P8.8 联合 Decision/Intent/Paper/Orchestrator/Cockpit **40/40 passed**；完整仓库 **821 tests / 0 failed / 0 skipped**；两个新 CLI editable install / help 烟测通过。
+- 后续事项：P8.8-C 动态 universe 长期 Paper、fill→Intent 严格状态合同、D1/D2/D3+ 自动复盘；随后再进入 P9 Agent Scorecard。

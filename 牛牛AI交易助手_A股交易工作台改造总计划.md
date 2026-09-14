@@ -300,6 +300,9 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - `SYSTEM_PREDICTION` 不等于成交；Paper 只有模拟成交回执后才改变 Paper Position。
 - 建立 NO_TRADE、未成交、QUEUE_DEPENDENT、T+1、费用、滑点和退出条件的长期账户复盘。
 - 验收：判断、计划、订单、成交、持仓、收益和复盘全部分层；AI 无自动实盘权限。
+- **P8.8-A 已完成**：新增保守 `PlaybookDecisionBridge`。SYSTEM_PREDICTION 首次最多写 WATCH，NO_TRADE 只留 receipt；已有人工 Decision 和 PLAN_OPEN/OPEN/HOLD 不自动覆盖；Orchestrator bridge 默认关闭、需宿主显式启用。
+- **P8.8-B 已完成**：新增显式 `PaperPlan`。只有当前 PLAN_OPEN + host confirmation 才能冻结计划并用完成 bars + dated MarketRules 调用 PaperAccount；模拟成交不自动推进 OPEN；固定 universe 不兼容 fail-closed；崩溃后可从 reservation 恢复成交 receipt。全仓 **821/0/0**。
+- **P8.8-C 待完成**：动态跨日 universe Paper、fill→Intent 严格状态推进、D1/D2/D3+ 自动复盘与长期 NO_TRADE/未成交/成本统计。真实券商不在本阶段。
 
 ### P9 Agent Scorecard
 - 评价 Coverage、证据正确、计划完整、及时性、修订纪律、约束违规、后续跟踪，以及 Playbook 候选覆盖/漏选/错误升级。
@@ -538,7 +541,7 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 完成 P8.5-E1 与架构升级后，后续优先级调整为：
 
-1. **P8.8 Playbook → Trading Desk → Paper**：把前瞻判断接入 Decision/Strategy Intent/模拟成交与跨日复盘。
+1. **P8.8-C 长期 Paper / 复盘闭环**：补动态 universe、成交回执驱动 Intent、D1/D2/D3+ 自动复盘。
 2. **P9 Agent Scorecard**：等真实前瞻 Decision 样本足够后再做按任务类型评价，不自动调模型权重。
 3. **P10 Dev Studio + Dynamic Agent Orchestrator**。
 4. P11 System Health。
@@ -615,3 +618,5 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 - 2026-09-14：P8.6 StrategySource 通用来源层完成。新增六类 StrategySource、旧 ExpertSource→TRADER 兼容投影与 PlaybookSourceLink 多对多关系；正式 FROZEN/HOLDOUT 合同仍沿用旧 VERIFIED ExpertSource，不允许新来源绕过验证门槛。真实旧库副本 v1→v2 迁移保持 42 Source / 17 Definition / 36 Case / 26 CandidateSet / 37 Selection / 2 Validation 的 payload+checksum 不变；全仓 793/0/0。下一阶段 P8.7 Daily Orchestrator。
 
 - 2026-09-14：P8.7 Daily Orchestrator v1 完成。新增单交易日受控状态机与 `niuniu-daily-orchestrator`；默认不联网，只有宿主计划显式授权才 capture DailyMarket；PREP/AUCTION/R1 复用现有 Scanner/Forward 合同，错过实时窗口记录 MISSED 而不回填。网络失败有15分钟冷却，DailyMarket revision_review 可人工确认后继续；中断后复用同一 reservation/snapshot。AUCTION/R1 仍依赖正式 LIVE_NEAR_REALTIME MarketSnapshot provider，R2/R3 未宣称支持。全仓 805/0/0。下一阶段 P8.8。
+
+- 2026-09-14：P8.8-A/B 核心接线完成。SYSTEM_PREDICTION 通过保守 Decision Bridge 最多自动进入 WATCH/READY；NO_TRADE 不制造股票状态，人工/已有计划不被覆盖。PLAN_OPEN 经 host confirmation 可冻结 PaperPlan，并在显式完成 bars + dated MarketRules 下调用固定-universe PaperAccount；模拟成交成功也不自动改 Intent=OPEN。新增崩溃后成交 receipt 恢复，Trading Cockpit 只读展示 PaperPlan。全仓 821/0/0。P8.8-C 继续做动态 universe、fill→Intent 和 D1/D2/D3+ 自动复盘。

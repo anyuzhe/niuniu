@@ -15,6 +15,7 @@ from .market_snapshot import MarketSnapshotError,MarketSnapshotStore
 from .playbook_forward import forward_frame_status,freeze_forward_snapshot
 from .playbook_scanner import DailyPlaybookScanner,PlaybookScanError
 from .playbook_store import PlaybookError,PlaybookStore,identifier
+from .playbook_decision_bridge import PlaybookDecisionBridge,PlaybookDecisionBridgeError
 from .prep_scanner import PrepScanError,build_prep_forward_payload,prep_market_snapshot_content,scan_prep_universe
 
 FORMAT='daily-playbook-orchestrator-v1'
@@ -88,18 +89,18 @@ class DailyPlaybookOrchestrator:
         state.setdefault('events',[]).append({'at':stamp.isoformat(),'status':status,'detail':str(detail)[:500]})
         if len(state['events'])>500:state['events']=state['events'][-500:]
 
-    def create_plan(self,trading_day,as_of_session,definition_id,*,target_streak=None,allow_daily_market_capture=False):
+    def create_plan(self,trading_day,as_of_session,definition_id,*,target_streak=None,allow_daily_market_capture=False,bridge_to_trading_desk=False):
         trading_day=_day(trading_day,'trading_day');as_of_session=_day(as_of_session,'as_of_session')
         if date.fromisoformat(as_of_session)>=date.fromisoformat(trading_day):
             raise DailyOrchestratorError('INVALID_ARGUMENT','as_of_session 必须早于 trading_day。')
         identifier(definition_id,'definition_id');PlaybookStore(self.output).get_definition(definition_id)
         if target_streak is not None and (type(target_streak) is not int or not 1<=target_streak<=10):
             raise DailyOrchestratorError('INVALID_ARGUMENT','target_streak 必须为1–10或None。')
-        if type(allow_daily_market_capture) is not bool:
-            raise DailyOrchestratorError('INVALID_ARGUMENT','allow_daily_market_capture 必须是布尔值。')
+        if type(allow_daily_market_capture) is not bool or type(bridge_to_trading_desk) is not bool:
+            raise DailyOrchestratorError('INVALID_ARGUMENT','capture/bridge 开关必须是布尔值。')
         spec={'trading_day':trading_day,'as_of_session':as_of_session,'definition_id':definition_id,
             'target_streak':target_streak,'allow_daily_market_capture':allow_daily_market_capture,
-            'data_root':str(self.data_root)}
+            'bridge_to_trading_desk':bridge_to_trading_desk,'data_root':str(self.data_root)}
         plan_id=str(uuid5(NAMESPACE_URL,'niuniu-daily-orchestrator-plan:'+digest(spec)))
         stamp=_stamp(self.now_fn())
         with self._locked(trading_day):
@@ -213,6 +214,19 @@ class DailyPlaybookOrchestrator:
             selected_symbols=result['selected_symbols'],ranked_symbols=result['ranked_symbols'],frozen_at=stamp.isoformat())
         self._event(state,stamp,stage_name.upper()+'_FROZEN',f"selected={','.join(result['selected_symbols']) or 'NO_TRADE'}");return True
 
+    def _bridge_stage(self,state,stage_name,stamp):
+        if not state.get('bridge_to_trading_desk',False):return True
+        stage=state[stage_name]
+        if stage.get('status')!='FROZEN' or not stage.get('prediction_id'):return True
+        if stage.get('decision_bridge',{}).get('status')=='APPLIED':return True
+        try:receipt=PlaybookDecisionBridge(self.output,now_fn=lambda:stamp).apply(stage['prediction_id'])
+        except PlaybookDecisionBridgeError as exc:
+            stage['decision_bridge']={'status':'FAILED','code':exc.code,'error':str(exc)[:400]}
+            self._event(state,stamp,'DECISION_BRIDGE_FAILED',stage_name+': '+exc.code+': '+str(exc));return False
+        stage['decision_bridge']={'status':'APPLIED','selection_id':receipt['selection_id'],
+            'no_trade':receipt['no_trade'],'decisions':receipt['decisions'],'skipped':receipt['skipped']}
+        return True
+
     def _auction(self,state,stamp):
         stage=state['auction']
         if stage.get('status') in ('FROZEN','MISSED'):return stage['status']=='FROZEN'
@@ -263,8 +277,12 @@ class DailyPlaybookOrchestrator:
                 self._auction(state,stamp)
                 if state['auction'].get('status') not in ('FROZEN','MISSED'):
                     self._save(state);return state
+                if state['auction'].get('status')=='FROZEN' and not self._bridge_stage(state,'auction',stamp):
+                    self._save(state);return state
                 # R1 may proceed even when AUCTION prediction was missed, provided a live auction fact snapshot exists.
                 self._r1(state,stamp)
+                if state['r1'].get('status')=='FROZEN' and not self._bridge_stage(state,'r1',stamp):
+                    self._save(state);return state
                 if state['r1'].get('status')=='FROZEN':
                     self._event(state,stamp,'COMPLETE_WITH_MISSED' if state['auction'].get('status')=='MISSED' else 'COMPLETE',
                         'PREP/AUCTION/R1 v1 编排结束。')

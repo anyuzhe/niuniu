@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-14
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P8.7 Daily Orchestrator v1 已完成，全仓 `805 passed / 0 failed / 0 skipped`
+- 当前稳定基线：P8.8-A/B 核心接线已完成，全仓 `821 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -238,14 +238,15 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Dynamic Agent Orchestrator / Dev Studio | P10，尚未完成 |
 | System Health | P11，尚未完成 |
 | 移动端 | P12，尚未完成 |
-| 长期 Paper / Real Broker | P13，尚未完成 |
+| Prediction→Decision/Intent + PaperPlan v1 | P8.8-A/B 已完成；长期动态 Paper 仍未完成 |
+| 长期 Paper / Real Broker | P8.8-C / P13，尚未完成 |
 
-当前生产代码最近完整回归基线：**805 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**821 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 新版路线按“先让知识来源通用化，再让每日闭环自动运行”的顺序推进：
 
-1. **P8.8 Playbook → Trading Desk → Paper 接线**：把前瞻选择转成 Decision / Strategy Intent，并进入长期 Paper，而不是自动实盘。
+1. **P8.8-C 长期 Paper / 复盘闭环**：在 A/B 已完成基础上补动态 universe、成交回执驱动 Intent、D1/D2/D3+ 自动复盘。
 2. **P9 Agent Scorecard**：在有足够真实前瞻 Decision 后评价不同任务类型，不做模型总排行榜，也不自动调权。
 3. **P10 Dev Studio + Dynamic Agent Orchestrator**：Main Agent、动态 Subagents、隔离 worktree、path lease、Tester、Reviewer、Human Merge。
 4. **P11 System Health → P12 移动端 → P13 Paper→Real**。
@@ -255,6 +256,12 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 ### P8.7 当前边界
 
 Daily Orchestrator v1 是**单交易日、宿主先建计划**的持久状态机：DailyMarket 可显式授权 capture；PREP 使用正式全市场扫描；AUCTION/R1 只消费已经存在的 `LIVE_NEAR_REALTIME MarketSnapshot`。它不会自己选择一个未经审计的实时行情网站，也不会在错过时间窗后生成 SYSTEM_PREDICTION。R2/R3 仍标记为 unsupported，等对应 Scanner/Forward 合同完成后再扩展。
+
+### P8.8 当前边界
+
+P8.8-A 已将真实 `SYSTEM_PREDICTION` 通过保守 bridge 接入 Decision Ledger / Strategy Intent：首次选择最多 WATCH，NO_TRADE 不制造股票 Decision，已有 PLAN_OPEN/OPEN/HOLD 不被覆盖。P8.8-B 已新增显式 `PaperPlan`：只有 PLAN_OPEN + host confirmation 才能调用现有 PaperAccount，模拟成交成功也不会自动把 Intent 改成 OPEN。
+
+当前 PaperAccount 仍是固定 universe 研究账户，因此动态跨日 universe、fill→Intent 状态推进和 D1/D2/D3+ 自动复盘列入 P8.8-C；真实券商继续留在 P13。
 
 ## 13. 一句话定义
 

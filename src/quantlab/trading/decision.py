@@ -10,7 +10,7 @@ ACTIONS = (
     'DISCOVERED','WATCH','READY','PLAN_OPEN','OPEN','ADD','HOLD','REDUCE','EXIT',
     'INVALIDATED','REJECTED','EXPIRED',
 )
-ROLES = ('human','chief_researcher','market_scanner','skeptic','quant_researcher','developer')
+ROLES = ('human','system','chief_researcher','market_scanner','skeptic','quant_researcher','developer')
 SYMBOL = re.compile(r'^(?:sh|sz|bj)\.\d{6}$')
 TEXT_FIELDS = (
     'theme','theme_role','machine_state','ai_thesis','buy_zone','confirm_trigger',

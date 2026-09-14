@@ -55,6 +55,7 @@ class TradingCockpitWidget(QWidget):
             ('行情快照',len(value.get('market_snapshots',[])),'MarketSnapshot，不自动联网刷新'),
             ('Agenda',agenda.get('total',0),'确定性待办，不自动执行'),
             ('Watch',len(watch['rows']),f"不可读 {watch['unreadable']}"),
+            ('Paper计划',len(value.get('paper_plans',[])),f"已执行 {value.get('paper_plan_executed',0)}"),
             ('风险项',len(value['risks']),'Decision + Theme 已保存风险'),
         ]))
         theme=Card('主线 / 市场事实')
@@ -80,6 +81,16 @@ class TradingCockpitWidget(QWidget):
         prows=[[d['symbol'],d['action'],d['trading_day'],d['frame'],d.get('transition_reason','')[:60],d.get('exit_condition','')[:60]] for d in value['plans']]
         plans.add(table(['证券','状态','业务日','Frame','转移理由','退出条件'],prows,lambda i:self.window.open_stock_dossier(value['plans'][i]['symbol'])),1)
         pair=row(candidates,plans);pair.layout().setStretch(0,1);pair.layout().setStretch(1,1);self.body.addWidget(pair)
+
+        paper=Card('PaperPlan / 模拟执行')
+        paper_rows=[]
+        for p in value.get('paper_plans',[])[:50]:
+            spec=p.get('spec') or {};execution=p.get('execution') or {}
+            paper_rows.append([p.get('status',''),spec.get('account_name',''),','.join(spec.get('universe_symbols') or []),
+                spec.get('selection_frame',''),execution.get('account_revision','—'),len(execution.get('new_fills') or [])])
+        paper.add(label('这里只展示已保存 PaperPlan/模拟成交回执；Cockpit 不会自动创建计划或执行账户。','note',True))
+        paper.add(table(['状态','账户','Universe','Selection Frame','账户Revision','本次成交'],paper_rows),1)
+        self.body.addWidget(paper)
 
         ai=Card('AI 结论 / 风险')
         ai_rows=[[d['symbol'],d['action'],d.get('theme',''),d.get('ai_thesis','')[:95],'/'.join(d.get('risk_flags') or []),d.get('invalidation','')[:70]] for d in value['ai_conclusions']]

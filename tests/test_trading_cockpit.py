@@ -40,7 +40,8 @@ class TradingCockpitTests(unittest.TestCase):
         self.assertEqual([t['theme'] for t in value['themes']],['银行']);self.assertEqual(value['theme_fact_snapshots'],1)
         self.assertEqual(value['watches']['rows'][0]['name'],'银行观察');self.assertGreaterEqual(value['agenda']['total'],1)
         self.assertEqual(before,after);self.assertEqual(value['new_research_jobs'],0);self.assertFalse(value['automatic_execution'])
-        self.assertIn('不跨主题加总',value['market_facts_policy'])
+        self.assertEqual(value['paper_plans'],[]);self.assertEqual(value['paper_plan_executed'],0)
+        self.assertFalse((self.root/'paper').exists());self.assertIn('不跨主题加总',value['market_facts_policy'])
 
     def test_default_day_uses_latest_workspace_evidence_not_fake_live_day(self):
         self.intent('2026-09-11T10:00:00+08:00','sh.600000','R1','WATCH')

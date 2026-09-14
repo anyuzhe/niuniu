@@ -15,14 +15,16 @@ def main(argv=None):
     group.add_argument('--init',action='store_true');group.add_argument('--tick',action='store_true')
     group.add_argument('--status',action='store_true');group.add_argument('--run',action='store_true')
     parser.add_argument('--as-of-session');parser.add_argument('--definition-id');parser.add_argument('--target-streak',type=int)
-    parser.add_argument('--allow-daily-market-capture',action='store_true');parser.add_argument('--poll-seconds',type=int,default=60)
+    parser.add_argument('--allow-daily-market-capture',action='store_true');parser.add_argument('--bridge-to-trading-desk',action='store_true')
+    parser.add_argument('--poll-seconds',type=int,default=60)
     args=parser.parse_args(argv)
     try:
         service=DailyPlaybookOrchestrator(Path(args.output),Path(args.data_root))
         if args.init:
             if not args.as_of_session or not args.definition_id:parser.error('--init 需要 --as-of-session 与 --definition-id')
             result=service.create_plan(args.trading_day,args.as_of_session,args.definition_id,
-                target_streak=args.target_streak,allow_daily_market_capture=args.allow_daily_market_capture)
+                target_streak=args.target_streak,allow_daily_market_capture=args.allow_daily_market_capture,
+                bridge_to_trading_desk=args.bridge_to_trading_desk)
         elif args.status:result=service.get(args.trading_day)
         elif args.tick:result=service.tick(args.trading_day)
         else:
