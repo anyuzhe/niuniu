@@ -10,6 +10,7 @@
 - 不使用向量库作为权威记忆；未来索引只能是可删除、可重建的检索缓存。
 - 当前交易知识架构必须同时读取 `architecture/trading_knowledge.md`；任何任务不得把单一交易者当系统一级模块。
 - Agent 评价/模型比较任务必须读取 `architecture/agent_scorecard.md`；Scorecard 不产生模型总分，也不得自动调权。
+- Dev Studio / 开发 Agent 任务必须读取 `architecture/dev_studio.md`；所有写入只能发生在隔离 worktree + path lease 内，Human Merge 不自动 push。
 
 ## 固定读取顺序
 

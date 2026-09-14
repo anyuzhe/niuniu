@@ -55,7 +55,7 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**861 passed / 0 failed / 0 skipped**。
+当前正式代码全仓基线：**862 passed / 0 failed / 0 skipped**。
 当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1。
 下一阶段：P11 System Health；其后 P12～P13。
 
@@ -322,7 +322,7 @@
 | 2026-09-14 | P8.8-A/B Decision Bridge + PaperPlan | **821 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.8-C Dynamic Paper / Fill Intent / Review / Rebalance | **842 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P9 Agent Scorecard v1 | **848 passed / 0 failed / 0 skipped** |
-| 2026-09-15 | P10 Dev Studio / Dynamic Agent Orchestrator v1 | **861 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | P10 Dev Studio / Dynamic Agent Orchestrator v1 | **862 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -478,5 +478,5 @@
 - 验收：frozen test argv + host实际输出 + Reviewer PASS 均绑定 final worktree fingerprint；diff变化后旧测试/Review 自动失效。Main Acceptance 重新核实际 diff，不相信模型自报 changed_files。
 - 发布边界：Human Merge 必须显式确认，main branch/base SHA 变化会阻断；merge 只创建本地 commit，不自动 push。Research Agent 无 Dev Studio 写/merge 工具。
 - 产品接入：新增 `niuniu-dev-studio` 和顶级“开发工作台”。
-- 测试/验收：P10专项13/13、Trading Desk导航2/2、CLI install/help通过；完整仓库 **861 tests / 0 failed / 0 skipped**，302.193秒。
+- 测试/验收：P10专项14/14、Trading Desk导航2/2、CLI install/help通过；完整仓库 **862 tests / 0 failed / 0 skipped**，298.180秒。
 - 后续事项：进入 P11 System Health；并行继续真实前瞻 Paper 样本、正式实时 MarketSnapshot provider、R2/R3 Orchestrator 与 Strict PIT 数据补齐。

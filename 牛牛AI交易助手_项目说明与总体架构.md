@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-15
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P10 Dev Studio / Dynamic Agent Orchestrator v1 已完成，全仓 `861 passed / 0 failed / 0 skipped`
+- 当前稳定基线：P10 Dev Studio / Dynamic Agent Orchestrator v1 已完成，全仓 `862 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -242,7 +242,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker | P13，尚未开始 |
 
-当前生产代码最近完整回归基线：**861 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**862 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 新版路线按“先让知识来源通用化，再让每日闭环自动运行”的顺序推进：

@@ -324,7 +324,7 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - `human_merge` 要求显式 confirmation，并再次校验 main branch 与 frozen base SHA；合并产生本地 commit，但 **不会 push**。主分支移动、路径越权、无变更等均拒绝。
 - Research Agent 工具表不包含 Dev Studio write/merge；P10 CLI 提供 create/status/list/run-main/run-ready/run-cycle/diff/merge/cleanup，但没有 push action。
 - 产品接入：桌面顶级导航新增“开发工作台”，展示 DevTask、Subtask、tests、Reviewer、diff scope 和 Human Merge 状态。
-- 测试/验收：P10 专项 **13/13**，Trading Desk 导航 **2/2**，editable install + `niuniu-dev-studio --help` 通过；完整仓库 **861 tests / 0 failed / 0 skipped**，耗时 302.193 秒。
+- 测试/验收：P10 专项 **14/14**，Trading Desk 导航 **2/2**，editable install + `niuniu-dev-studio --help` 通过；完整仓库 **862 tests / 0 failed / 0 skipped**，耗时 298.180 秒。
 ### P11 System Health
 - 统一服务、任务、日志、心跳、数据新鲜度、PIT blocker。
 - 不把“在线”当作“正确”。
@@ -631,4 +631,4 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 - 2026-09-14：P8.8-C 长期 Paper / 复盘闭环 v1 完成。新增独立 DynamicPaperAccount，不破坏固定-universe PaperAccount；跨日加入新证券时过去目标确定性补0并强校验历史 NAV/fill/order 前缀不变。PaperPlan 新增显式 dynamic 执行；真实 fill 经 host confirmation 才能推进 PLAN_OPEN→OPEN。新增 ADD/REDUCE/EXIT RebalancePlan 与成交结果桥、D1/D2/D3+ PaperOutcomeReview、auto_all 批量因果复盘和生命周期统计；AI/MCP 无长期 Paper 写/执行权限。完整仓库 842/0/0。下一阶段 P9 Agent Scorecard。
 
 
-- 2026-09-15：P10 Dev Studio v1 完成。新增隔离 detached worktree、Main Developer + depth-1 Dynamic Subagents、max_parallel≤3、path-scoped immutable write leases、frozen tests、独立 Reviewer、stale test/review fingerprint 检测和 Human Merge Gate。Main/Subagents 均无 git push 权；只有宿主显式确认后的 human merge 可在 main 创建 commit，且主分支/BASE SHA 变化即阻断。Research Agent 无 Dev Studio 写/merge 工具。新增桌面“开发工作台”和 `niuniu-dev-studio` CLI。专项13/13、Trading Desk导航2/2、完整仓库861/0/0。下一阶段 P11 System Health。
+- 2026-09-15：P10 Dev Studio v1 完成。新增隔离 detached worktree、Main Developer + depth-1 Dynamic Subagents、max_parallel≤3、path-scoped immutable write leases、frozen tests、独立 Reviewer、stale test/review fingerprint 检测和 Human Merge Gate。Main/Subagents 均无 git push 权；只有宿主显式确认后的 human merge 可在 main 创建 commit，且主分支/BASE SHA 变化即阻断。Research Agent 无 Dev Studio 写/merge 工具。新增桌面“开发工作台”和 `niuniu-dev-studio` CLI。专项14/14、Trading Desk导航2/2、完整仓库862/0/0。下一阶段 P11 System Health。

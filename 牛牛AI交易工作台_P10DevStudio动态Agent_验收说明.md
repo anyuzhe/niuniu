@@ -3,7 +3,7 @@
 - 阶段：P10 v1
 - 日期：2026-09-15
 - 基线：P9 `8562012`
-- 最终全仓：**861 tests / 0 failed / 0 skipped**
+- 最终全仓：**862 tests / 0 failed / 0 skipped**
 
 ## 1. 目标
 
@@ -60,7 +60,7 @@ Main Acceptance 重新核对：
 - P10 专项：**13/13 passed**
 - Trading Desk 导航：**2/2 passed**
 - editable install 与 `niuniu-dev-studio --help`：通过
-- 完整仓库：**861 tests / 0 failed / 0 skipped**，302.193 秒
+- 完整仓库：**862 tests / 0 failed / 0 skipped**，298.180 秒
 
 ## 8. v1 边界
 
