@@ -93,11 +93,15 @@ class AITeamWidget(QWidget):
             self.team_table.setCellWidget(i,1,enabled);self.team_table.setCellWidget(i,2,model);self.team_table.setCellWidget(i,3,effort)
             self.controls[role]=(enabled,model,effort)
         box.addWidget(self.team_table);self.status=label('Role 与模型分离；Developer 在 P10 前默认关闭。','muted',True);box.addWidget(self.status)
-        box.addWidget(row(button('保存 Team 配置',self.save_team),button('＋ 新建同行复核',self.new_task,True),button('刷新任务',self.reload)))
+        box.addWidget(row(button('保存 Team 配置',self.save_team),button('＋ 新建同行复核',self.new_task,True),button('Agent Scorecard',self.open_scorecard),button('刷新任务',self.reload)))
         self.table=QTableWidget();self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setHorizontalHeaderLabels(['状态','问题','Reviewers','轮数','Stop reason','创建时间']);box.addWidget(self.table,1)
         box.addWidget(row(button('启动选中 pending',self.launch,True),button('查看任务详情',self.open_task)))
         self.reload()
+
+    def open_scorecard(self):
+        from .agent_scorecard import AgentScorecardDialog
+        self.window.show_dialog(AgentScorecardDialog(self.window))
 
     def save_team(self):
         team=self.service.team.load();team={'version':team['version'],'roles':{}}

@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-14
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P8.8-A/B/C 核心长期 Paper 闭环已完成，全仓 `842 passed / 0 failed / 0 skipped`
+- 当前稳定基线：P9 Agent Scorecard v1 已完成，全仓 `848 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -234,7 +234,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 真实前瞻冻结与防历史回填 | 已完成并已启动样本积累 |
 | 通用 StrategySource 多来源对象 | **已完成 P8.6**：六类来源 + 多对多 PlaybookSourceLink |
 | 受控每日自动编排 PREP→AUCTION→R1 | **已完成 P8.7 v1**：持久计划、幂等 tick、恢复、错过窗口不回填 |
-| Agent Scorecard | P9，尚未完成 |
+| Agent Scorecard | **P9 v1 已完成**：按任务类型只读评价，样本不足 UNKNOWN，无总分/自动调权 |
 | Dynamic Agent Orchestrator / Dev Studio | P10，尚未完成 |
 | System Health | P11，尚未完成 |
 | 移动端 | P12，尚未完成 |
@@ -242,15 +242,14 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker | P13，尚未开始 |
 
-当前生产代码最近完整回归基线：**842 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**848 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 新版路线按“先让知识来源通用化，再让每日闭环自动运行”的顺序推进：
 
-1. **P9 Agent Scorecard**：开始按任务类型评价 Coverage、证据正确性、计划完整性、及时性、约束违规和后续跟踪；先展示，不自动调模型权重。
-2. **P10 Dev Studio + Dynamic Agent Orchestrator**：Main Agent、动态 Subagents、隔离 worktree、path lease、Tester、Reviewer、Human Merge。
-3. **P11 System Health → P12 移动端 → P13 Paper→Real**。
-4. 并行积累真实前瞻 Paper 日志，并继续补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 原始资料。
+1. **P10 Dev Studio + Dynamic Agent Orchestrator**：Main Agent、动态 Subagents、隔离 worktree、path lease、Tester、Reviewer、Human Merge。
+2. **P11 System Health → P12 移动端 → P13 Paper→Real**。
+3. 并行积累真实前瞻 Paper 日志，并继续补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 原始资料。
 
 并行继续补 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 

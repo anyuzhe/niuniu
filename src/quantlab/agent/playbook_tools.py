@@ -6,6 +6,7 @@ from quantlab.agent.theme_tools import ThemeResearchAPI
 from quantlab.storage.codec import encode
 from quantlab.trading.playbook_store import PlaybookError, PlaybookStore
 from quantlab.trading.market_snapshot import MarketSnapshotError,MarketSnapshotStore
+from quantlab.agent.scorecard import AgentScorecardError,AgentScorecardService
 
 TOOLS = [
     schema('get_playbook_overview','只读查看Playbook Lab对象数量和正式审计完成度。',{}),
@@ -24,6 +25,7 @@ TOOLS = [
     schema('get_symbol_playbook_history','查询股票历史进入哪些候选集、何时被选或未选。',{'symbol':TEXT}),
     schema('list_market_snapshots','只读查询已冻结MarketSnapshot；不会联网刷新行情。',{'trading_day':TEXT,'frame':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
     schema('get_market_snapshot','读取一个不可变MarketSnapshot及其捕获/PIT状态。',{'snapshot_id':TEXT}),
+    schema('get_agent_scorecard','只读查看按任务类型分离的Agent Scorecard；不产生模型总分，也不自动调权。',{}),
 ]
 
 
@@ -50,6 +52,8 @@ class PlaybookResearchAPI(ThemeResearchAPI):
                 result['data'].update(playbook_lab_available=True,playbook_write_model=False,
                     strategy_source_available=True,strategy_source_write_model=False,
                     market_snapshot_available=True,market_snapshot_write_model=False,
+                    agent_scorecard_available=True,agent_scorecard_write_model=False,
+                    agent_scorecard_composite_score=False,
                     tools=[tool['name'] for tool in self.schemas()])
             return result
         try:
@@ -102,6 +106,8 @@ class PlaybookResearchAPI(ThemeResearchAPI):
             elif name=='get_market_snapshot':
                 data=MarketSnapshotStore(self.output).get(arguments['snapshot_id'])
                 refs=[{'kind':'market_snapshot','snapshot_id':data['snapshot_id']}]
+            elif name=='get_agent_scorecard':
+                data=AgentScorecardService(self.output).build()
             else:
                 data={'symbol':arguments['symbol'],'records':store.symbol_history(arguments['symbol'])}
                 refs=[{'kind':'playbook_case','case_id':row['case_id']} for row in data['records']]
@@ -110,7 +116,7 @@ class PlaybookResearchAPI(ThemeResearchAPI):
             if len(encode(reply))>24000:
                 reply['data']={'omitted':True,'reason':'result_size_limit'}
             return json.loads(encode(reply))
-        except (PlaybookError,MarketSnapshotError,OSError,ValueError,TypeError,KeyError) as error:
+        except (PlaybookError,MarketSnapshotError,AgentScorecardError,OSError,ValueError,TypeError,KeyError) as error:
             return {'ok':False,'tool':name,'data':None,'evidence':[],'warnings':[],
                 'error':{'code':'PLAYBOOK_READ_FAILED','message':str(error)[:300]}}
 

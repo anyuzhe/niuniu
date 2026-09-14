@@ -271,7 +271,7 @@
 
 已完成：AI Research Chat、提案审批、AI Team、Peer Review、Git-first Agent Memory、标准 MCP、长期跟踪与受限自动化。
 
-仍未正式完成：P9 Agent Scorecard；P10 Dev Studio + Dynamic Agent Orchestrator 的产品化落地。
+已完成：P9 Agent Scorecard v1。仍未正式完成：P10 Dev Studio + Dynamic Agent Orchestrator 的产品化落地。
 
 ### 7.3 Research Lab
 
@@ -283,11 +283,10 @@
 
 已完成：ExpertSource 试点、来源归档、候选全集、selected/unselected、规则版本、历史回放、前瞻冻结、防回填、Selection/Execution Access 分离、PREP/AUCTION/R1 Scanner 与 DailyMarket 增量接力。
 
-当前架构已推进到 P8.8-C：StrategySource 通用来源、Daily Orchestrator 与 Prediction→Decision→动态 Paper→跨日复盘核心链路均已落地；下一阶段进入 P9 Agent Scorecard，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
+当前架构已推进到 P9：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘以及按任务类型 Agent Scorecard 均已落地；下一阶段进入 P10 Dev Studio + Dynamic Agent Orchestrator，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
 
 ## 8. 尚未完成的正式阶段
 
-- **P9 Agent Scorecard**：按任务类型评价 Coverage、证据正确性、计划完整性、及时性、约束违规和风险识别；只展示，不自动调模型权重。
 - **P8.7 扩展项（并行）**：R2/R3 自动编排与正式实时 MarketSnapshot provider 仍未产品化。
 - **P8.8 运行验证（并行）**：核心长期 Paper 闭环已实现，但仍需积累足够真实前瞻运行天数来评价稳定性和绩效。
 - **P10 Dev Studio + Dynamic Agent Orchestrator**：DevTask、隔离 worktree、Main Agent 动态 Subagent、path lease、Tester、Reviewer、Human Merge。
@@ -295,8 +294,8 @@
 
 ## 9. 当前推荐的后续主线
 
-1. 下一正式阶段做 P9 Agent Scorecard，基于已经分层保存的 Prediction / Decision / Paper / Review 证据按任务类型评分。
-2. 随后推进 P10 Dev Studio + Dynamic Agent Orchestrator、P11 System Health、P12 移动端。
+1. 下一正式阶段推进 P10 Dev Studio + Dynamic Agent Orchestrator。
+2. 随后推进 P11 System Health、P12 移动端。
 3. P13 真实账户最后单独评审，不把 Paper 成功直接外推到真实券商。
 4. 并行继续积累真实前瞻 Paper 样本，并补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
@@ -323,6 +322,7 @@
 | 2026-09-14 | P8.7 Daily Orchestrator v1 | **805 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.8-A/B Decision Bridge + PaperPlan | **821 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.8-C Dynamic Paper / Fill Intent / Review / Rebalance | **842 passed / 0 failed / 0 skipped** |
+| 2026-09-14 | P9 Agent Scorecard v1 | **848 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -452,3 +452,18 @@
 - 权限：新增宿主 CLI，AI/MCP 不获得 Paper 创建、执行、再平衡或 Intent 写权限；真实券商仍属于 P13。
 - 测试/验收：P8.8-C 联合链路 52/52 通过；动态账户/再平衡/复盘/权限专项继续全绿；最终完整仓库 **842 tests / 0 failed / 0 skipped**，耗时 292.278 秒。
 - 后续事项：进入 P9 Agent Scorecard；并行积累真实前瞻 Paper 样本，补 P8.7 R2/R3 与正式实时 MarketSnapshot provider。
+
+### 2026-09-14 23:20｜[功能] P9 Agent Scorecard v1
+
+- 模块：AI Team / Decision Ledger / Peer Review / Playbook / Paper Lifecycle / Scorecard。
+- Git：本条与功能代码同一提交发布，提交标题 `feat: 增加按任务类型Agent Scorecard`；SHA 以该提交 Git 历史为准。
+- 改动内容：新增只读 `AgentScorecardService`、`niuniu-agent-scorecard` 和 AI Team Scorecard 页面；按 Decision、独立 Peer Review、Chief Synthesis 三类任务分别展示指标，不生成跨任务模型总分。
+- Decision 指标：ON_TIME/off-window、证据链接、model/prompt identity、风险记录、计划完整性、跨日 follow-up 与 revision；字段齐全不等同于判断正确。
+- Peer Review 指标：completion/failure、tool use、显式 evidence、model identity；Chief 单独记录 reviewer input completion 与 synthesis completion，不以多数票作为正确性。
+- System baseline：Playbook Prediction 单独展示 FULL/STRICT_PIT/NO_TRADE；只有同一 CandidateSet 恰有唯一 OBSERVED_EXPERT 标签时才计算 Exact/Precision/Recall，并显式记录 false positive / false negative；Paper Lifecycle 仅为系统运行基线，不归因给某个 Agent。
+- 样本纪律：少于3个样本标记 INSUFFICIENT_SAMPLES；真实工作区当前 Agent Decision/Peer Review 为0样本，因此保持 NO_SAMPLES。Playbook 有3条 SYSTEM_PREDICTION 但0条 observed label，匹配率保持 None。
+- 约束边界：宿主拦截但未持久化的违规尝试不可观察，Scorecard 不臆造 violation 次数；证据正确性、Alpha、盈利不自动评分。
+- 防迎合：AI Research 可只读查询 Scorecard，但第一轮 Reviewer 的 SAFE_TOOLS 明确排除 Scorecard。
+- 真实烟测：Scorecard 运行前后 artifacts 文件数 77006→77006，无写入副作用；AI 工具响应约7.7KB，未触发结果截断。
+- 测试/验收：P9/AI Team/Playbook 专项 **21/21 passed**；editable install + CLI 真实运行通过；最终全仓 **848 tests / 0 failed / 0 skipped**，耗时 291.473 秒。
+- 后续事项：进入 P10 Dev Studio + Dynamic Agent Orchestrator；并行继续真实前瞻 Paper 样本、R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 数据补齐。

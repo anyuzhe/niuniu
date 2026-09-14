@@ -20,7 +20,9 @@ class PlaybookToolTests(unittest.TestCase):
         api=PlaybookResearchAPI(self.root);names={tool['name'] for tool in api.schemas()}
         self.assertIn('get_playbook_overview',names);self.assertIn('list_expert_sources',names)
         self.assertIn('list_strategy_sources',names);self.assertIn('get_playbook_definition_sources',names)
+        self.assertIn('get_agent_scorecard',names)
         self.assertFalse(any(name.startswith(('create_playbook','save_playbook','record_playbook')) for name in names))
+        score=api.call('get_agent_scorecard',{});self.assertTrue(score['ok']);self.assertFalse(score['data']['policy']['composite_score'])
         listed=api.call('list_expert_sources',{'query':'期末' if False else '原始','offset':0,'limit':20})
         self.assertTrue(listed['ok']);self.assertEqual(listed['data']['total'],1)
         got=api.call('get_expert_source',{'source_id':source['source_id']})
@@ -54,6 +56,7 @@ class PlaybookToolTests(unittest.TestCase):
         api=ReviewReadOnlyAPI(self.root,self.root);names={tool['name'] for tool in api.schemas()}
         self.assertIn('get_playbook_overview',names);self.assertIn('get_playbook_case_bundle',names)
         self.assertIn('list_strategy_sources',names);self.assertIn('list_playbook_source_links',names)
+        self.assertNotIn('get_agent_scorecard',names)
         result=api.call('get_playbook_overview',{})
         self.assertTrue(result['ok']);self.assertEqual(result['data']['sources'],0)
         denied=api.call('create_playbook_definition',{})

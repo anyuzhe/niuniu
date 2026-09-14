@@ -19,6 +19,7 @@ from quantlab.storage.codec import digest,encode
 MAX_QUESTION=12_000
 MAX_CONTEXT=12_000
 MAX_REVIEWERS=3
+# Scorecard intentionally excluded: reviewers must not condition first-round opinions on evaluation metrics.
 SAFE_TOOLS={
     'get_capabilities','search_factors','describe_factor','list_experiments','get_experiment','get_job',
     'qualify_research_data','get_proposal','search_research_memory','get_research_memory','inspect_research_evidence',

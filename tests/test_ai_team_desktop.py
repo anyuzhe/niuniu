@@ -4,9 +4,10 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication,QPushButton,QTabWidget
 
 from quantlab.desktop.ai_team import AITeamWidget,PeerReviewCreateDialog,PeerReviewLaunchDialog
+from quantlab.desktop.agent_scorecard import AgentScorecardDialog
 from quantlab.desktop.app import MainWindow
 
 
@@ -24,6 +25,13 @@ class AITeamDesktopTests(unittest.TestCase):
         widget=self.widget();self.assertIsNotNone(widget);self.assertFalse((self.root/'_jobs').exists())
         self.assertEqual(widget.service.list()['tasks'],[])
         self.assertFalse(widget.controls['developer'][0].isEnabled())
+
+    def test_scorecard_opens_read_only_without_total_ranking(self):
+        widget=self.widget();buttons=widget.findChildren(QPushButton);control=next(b for b in buttons if b.text()=='Agent Scorecard')
+        before_jobs=(self.root/'_jobs').exists();control.click();QTest.qWait(20)
+        dialog=self.window.dialogs[-1];self.assertIsInstance(dialog,AgentScorecardDialog)
+        tabs=dialog.findChild(QTabWidget);self.assertEqual(tabs.count(),2)
+        self.assertFalse(dialog.value['policy']['composite_score']);self.assertEqual((self.root/'_jobs').exists(),before_jobs)
 
     def test_team_model_override_saves_without_secret_or_model_call(self):
         widget=self.widget();widget.controls['skeptic'][1].setText('skeptic-model');widget.controls['skeptic'][2].setCurrentIndex(widget.controls['skeptic'][2].findData('high'))

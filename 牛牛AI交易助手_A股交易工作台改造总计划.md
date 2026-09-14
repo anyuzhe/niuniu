@@ -304,9 +304,15 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - **P8.8-B 已完成**：新增显式 `PaperPlan`。只有当前 PLAN_OPEN + host confirmation 才能冻结计划并用完成 bars + dated MarketRules 调用 PaperAccount；模拟成交不自动推进 OPEN；固定 universe 不兼容 fail-closed；崩溃后可从 reservation 恢复成交 receipt。全仓 **821/0/0**。
 - **P8.8-C 已完成（v1）**：新增独立 `DynamicPaperAccount`，支持跨日动态 universe 且强制历史 NAV/fill/order 前缀不变；PaperPlan 可显式选择 dynamic backend。真实 fill 可在 host confirmation 后推进 PLAN_OPEN→OPEN；ADD/REDUCE/EXIT 通过独立 RebalancePlan 驱动并在实际成交后回写 HOLD/退出完成状态。新增 D1/D2/D3+ `PaperOutcomeReview` 与生命周期统计，明确区分 NO_TRADE、未成交、拒单、费用、滑点、Paper收益和复盘。完整仓库 **842/0/0**。真实券商不在本阶段。
 
-### P9 Agent Scorecard
-- 评价 Coverage、证据正确、计划完整、及时性、修订纪律、约束违规、后续跟踪，以及 Playbook 候选覆盖/漏选/错误升级。
-- 第一阶段只展示，不自动调模型权重；Scorecard 必须按任务类型评价，不做一个“模型总分”。
+### P9 Agent Scorecard（v1 已完成）
+- 按任务类型分开评价 Decision、独立 Peer Review 与 Chief Synthesis，不做跨任务“模型总分”；Developer 在 P10 前不参与评分。
+- Decision 可观察指标：ON_TIME/off-window、证据链接、model/prompt identity、风险记录、计划完整性、跨日 follow-up 与 revision 次数。
+- Peer Review 可观察指标：completion/failure、tool use、显式 evidence、model identity；Chief 单独记录 reviewer input completion 与 synthesis completion，不按多数票得分。
+- System baseline 单独展示 Playbook SYSTEM_PREDICTION 的 FULL/STRICT_PIT/NO_TRADE，以及在唯一 OBSERVED_EXPERT 标签下的 Exact/Precision/Recall、false positive/false negative；Paper 生命周期也只作系统基线，不能归因给某个 Agent。
+- 证据内容正确性、宿主拦截但未持久化的违规尝试、Alpha/盈利不自动评分；样本少于3个保持 `INSUFFICIENT_SAMPLES`。
+- AI Research 可只读查询 Scorecard；第一轮 Reviewer 明确看不到 Scorecard，避免迎合评分。
+- 产品接入：AI Team 新增只读 Scorecard 页面和 `niuniu-agent-scorecard` CLI；不自动调模型权重。
+- 完整仓库 **848/0/0**。
 
 ### P10 Dev Studio + Dynamic Agent Orchestrator
 - DevTask、isolated worktree、Main Developer Agent、动态 Subagents、tests、Reviewer、人工 merge。
@@ -541,12 +547,10 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 完成 P8.5-E1 与架构升级后，后续优先级调整为：
 
-1. **P9 Agent Scorecard**：基于已经形成的 Prediction→Decision→Paper→Review 分层证据，先做按任务类型评价，不自动调模型权重。
-2. **P10 Dev Studio + Dynamic Agent Orchestrator**。
-3. P11 System Health。
-4. P12 移动端。
-5. P13 Paper→Real；真实券商最后单独评审。
-6. P13 Paper → Real 渐进交易层，真实券商最后单独评审。
+1. **P10 Dev Studio + Dynamic Agent Orchestrator**。
+2. P11 System Health。
+3. P12 移动端。
+4. P13 Paper→Real；真实券商最后单独评审。
 
 并行继续 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
 
