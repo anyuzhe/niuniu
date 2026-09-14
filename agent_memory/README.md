@@ -18,3 +18,8 @@
 5. 任务明确相关的 `experience/` 或 `incidents/`
 
 任何记忆修改都必须保留 Git diff；Research Agent 默认只读。
+## 长期开发史
+
+牛牛的产品开发过程、功能变更、阶段时间、测试基线和关键 Git 提交统一记录在仓库根目录：`牛牛AI交易助手_开发历程与功能变更总档案.md`。
+
+所有 Agent 必须遵守 `rules/development_history.md`；完成有意义的功能/架构/权限/研究语义/部署变更后，应在任务收尾前同步追加开发史。
