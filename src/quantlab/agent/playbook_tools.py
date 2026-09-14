@@ -1,4 +1,4 @@
-"""Read-only AI access to host-managed Expert Playbook Lab evidence."""
+"""Read-only AI access to host-managed Trading Knowledge / Playbook Lab evidence."""
 import json
 
 from quantlab.agent.catalog import schema, TEXT, LIMIT, OFFSET, compact
@@ -11,6 +11,10 @@ TOOLS = [
     schema('get_playbook_overview','只读查看Playbook Lab对象数量和正式审计完成度。',{}),
     schema('list_expert_sources','只读检索高手原始来源；VERIFIED表示来源元数据和哈希完整，不代表玩法有效。',{'query':TEXT,'offset':OFFSET,'limit':LIMIT}),
     schema('get_expert_source','读取一个ExpertSource的时间、哈希、归档引用和完整性。',{'source_id':TEXT}),
+    schema('list_strategy_sources','统一只读检索交易知识来源；旧ExpertSource会投影为TRADER。',{'query':TEXT,'source_kind':TEXT,'offset':OFFSET,'limit':LIMIT}),
+    schema('get_strategy_source','读取一个StrategySource；兼容旧ExpertSource UUID。',{'strategy_source_id':TEXT}),
+    schema('list_playbook_source_links','读取Playbook与StrategySource的多对多证据关系。',{'definition_id':TEXT,'strategy_source_id':TEXT,'relation':TEXT,'offset':OFFSET,'limit':LIMIT}),
+    schema('get_playbook_definition_sources','读取玩法定义及旧正式来源/新StrategySource关系。',{'definition_id':TEXT}),
     schema('list_playbook_definitions','只读检索玩法定义与冻结状态。',{'query':TEXT,'offset':OFFSET,'limit':LIMIT}),
     schema('get_playbook_definition','读取一个版本化PlaybookDefinition。',{'definition_id':TEXT}),
     schema('list_playbook_cases','列出指定定义的历史案例；空definition_id表示全部。',{'definition_id':TEXT,'trading_day':TEXT,'offset':OFFSET,'limit':LIMIT}),
@@ -44,6 +48,7 @@ class PlaybookResearchAPI(ThemeResearchAPI):
             result=super().call(name,arguments)
             if name=='get_capabilities' and result.get('ok'):
                 result['data'].update(playbook_lab_available=True,playbook_write_model=False,
+                    strategy_source_available=True,strategy_source_write_model=False,
                     market_snapshot_available=True,market_snapshot_write_model=False,
                     tools=[tool['name'] for tool in self.schemas()])
             return result
@@ -55,6 +60,22 @@ class PlaybookResearchAPI(ThemeResearchAPI):
                 refs=[{'kind':'expert_source','source_id':row['source_id']} for row in data['records']]
             elif name=='get_expert_source':
                 data=store.get_source(arguments['source_id']);refs=[{'kind':'expert_source','source_id':data['source_id']}]
+            elif name=='list_strategy_sources':
+                data=store.list_strategy_sources(query=arguments['query'],source_kind=arguments['source_kind'],
+                    offset=arguments['offset'],limit=arguments['limit'])
+                refs=[{'kind':'strategy_source','strategy_source_id':row['strategy_source_id']} for row in data['records']]
+            elif name=='get_strategy_source':
+                data=store.get_strategy_source(arguments['strategy_source_id'])
+                refs=[{'kind':'strategy_source','strategy_source_id':data['strategy_source_id']}]
+            elif name=='list_playbook_source_links':
+                data=store.list_source_links(definition_id=arguments['definition_id'],strategy_source_id=arguments['strategy_source_id'],
+                    relation=arguments['relation'],offset=arguments['offset'],limit=arguments['limit'])
+                refs=[{'kind':'playbook_source_link','link_id':row['link_id']} for row in data['records']]
+            elif name=='get_playbook_definition_sources':
+                data=store.definition_source_bundle(arguments['definition_id'])
+                refs=[{'kind':'playbook_definition','definition_id':arguments['definition_id']}]
+                refs.extend({'kind':'strategy_source','strategy_source_id':item['source']['strategy_source_id']}
+                    for item in data['strategy_source_links'])
             elif name=='list_playbook_definitions':
                 data=store.list_definitions(query=arguments['query'],offset=arguments['offset'],limit=arguments['limit'])
                 refs=[{'kind':'playbook_definition','definition_id':row['definition_id']} for row in data['records']]

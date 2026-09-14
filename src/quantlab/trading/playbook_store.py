@@ -1,4 +1,4 @@
-"""Immutable, checksum-verified storage and audit logic for Expert Playbook Lab."""
+"""Immutable, checksum-verified storage and audit logic for Trading Knowledge / Playbook Lab."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -11,9 +11,9 @@ import sqlite3
 
 from quantlab.storage.codec import digest, encode
 from .playbook import (
-    VALIDATION_METHODS, normalize_candidate_set, normalize_expert_source,
+    VALIDATION_METHODS, normalize_candidate_set, normalize_expert_source, normalize_strategy_source,
     normalize_playbook_case, normalize_playbook_definition, normalize_selection,
-    normalize_validation,
+    normalize_validation, normalize_playbook_source_link,
 )
 
 
@@ -48,6 +48,8 @@ SPECS = {
     'candidate_sets': ('candidate_set_id', {'candidate_set_id':'id','request_id':'request_id','input_hash':'input_hash','case_id':'case_id','definition_id':'definition_id','completeness':'completeness','pit_status':'pit_status','candidate_hash':'candidate_hash'}),
     'selections': ('selection_id', {'selection_id':'id','request_id':'request_id','input_hash':'input_hash','candidate_set_id':'candidate_set_id','kind':'kind'}),
     'validations': ('validation_id', {'validation_id':'id','request_id':'request_id','input_hash':'input_hash','definition_id':'definition_id','method':'method','status':'status'}),
+    'strategy_sources': ('strategy_source_id', {'strategy_source_id':'id','request_id':'request_id','input_hash':'input_hash','source_key':'source_key','source_kind':'source_kind','completeness':'completeness','available_at':'available_at'}),
+    'source_links': ('link_id', {'link_id':'id','request_id':'request_id','input_hash':'input_hash','definition_id':'definition_id','strategy_source_id':'strategy_source_id','relation':'relation'}),
 }
 
 
@@ -72,7 +74,7 @@ class PlaybookStore:
         db.row_factory = sqlite3.Row
         try:
             version = db.execute('PRAGMA user_version').fetchone()[0]
-            if version not in (0,1):
+            if version not in (0,1,2):
                 raise PlaybookError('SCHEMA_VERSION','Playbook Lab 版本不受支持。')
             db.execute('BEGIN IMMEDIATE' if write else 'BEGIN')
             if write:
@@ -98,7 +100,11 @@ class PlaybookStore:
         db.execute('CREATE INDEX IF NOT EXISTS selection_lookup ON selections(candidate_set_id,kind)')
         db.execute('CREATE TABLE IF NOT EXISTS validations (id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL, input_hash TEXT NOT NULL, definition_id TEXT NOT NULL, method TEXT NOT NULL, status TEXT NOT NULL, search_text TEXT NOT NULL, payload TEXT NOT NULL, checksum TEXT NOT NULL)')
         db.execute('CREATE INDEX IF NOT EXISTS validation_lookup ON validations(definition_id,method,status)')
-        db.execute('PRAGMA user_version=1')
+        db.execute('CREATE TABLE IF NOT EXISTS strategy_sources (id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL, input_hash TEXT NOT NULL, source_key TEXT NOT NULL, source_kind TEXT NOT NULL, completeness TEXT NOT NULL, available_at TEXT, search_text TEXT NOT NULL, payload TEXT NOT NULL, checksum TEXT NOT NULL)')
+        db.execute('CREATE INDEX IF NOT EXISTS strategy_source_lookup ON strategy_sources(source_kind,source_key,completeness,available_at)')
+        db.execute('CREATE TABLE IF NOT EXISTS source_links (id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL, input_hash TEXT NOT NULL, definition_id TEXT NOT NULL, strategy_source_id TEXT NOT NULL, relation TEXT NOT NULL, search_text TEXT NOT NULL, payload TEXT NOT NULL, checksum TEXT NOT NULL, UNIQUE(definition_id,strategy_source_id,relation))')
+        db.execute('CREATE INDEX IF NOT EXISTS source_link_lookup ON source_links(definition_id,strategy_source_id,relation)')
+        db.execute('PRAGMA user_version=2')
 
     @staticmethod
     def _decode(row, table):
@@ -130,12 +136,85 @@ class PlaybookStore:
         with self.connection() as db:
             return self._get_in_db(db,table,record_id)
 
+    @staticmethod
+    def _table_exists(db, table):
+        return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone() is not None
+
+    @staticmethod
+    def _project_expert_source(value):
+        return {
+            'strategy_source_id':value['source_id'],'source_key':value['expert_key'],'source_kind':'TRADER',
+            'title':value['title'],'locator':value['locator'],'published_at':value.get('published_at'),
+            'available_at':value.get('available_at'),'content_hash':value.get('content_hash',''),
+            'archive_ref':value.get('archive_ref',''),'completeness':value['completeness'],
+            'notes':value.get('notes',''),'evidence_ids':[],
+            'legacy_expert_source_id':value['source_id'],'legacy_source_type':value['source_type'],
+            'compatibility':'EXPERT_SOURCE_PROJECTION','created_at':value.get('captured_at'),
+        }
+
+    def _get_strategy_source_in_db(self, db, source_id):
+        identifier(source_id,'strategy_source_id')
+        if self._table_exists(db,'strategy_sources'):
+            row=db.execute('SELECT * FROM strategy_sources WHERE id=?',(source_id,)).fetchone()
+            if row is not None:return self._decode(row,'strategy_sources')
+        row=db.execute('SELECT * FROM sources WHERE id=?',(source_id,)).fetchone()
+        if row is not None:return self._project_expert_source(self._decode(row,'sources'))
+        raise PlaybookError('NOT_FOUND','StrategySource 不存在。')
+
     def get_source(self, source_id): return self._get('sources',source_id)
     def get_definition(self, definition_id): return self._get('definitions',definition_id)
     def get_case(self, case_id): return self._get('cases',case_id)
     def get_candidate_set(self, candidate_set_id): return self._get('candidate_sets',candidate_set_id)
     def get_selection(self, selection_id): return self._get('selections',selection_id)
     def get_validation(self, validation_id): return self._get('validations',validation_id)
+
+    def get_strategy_source(self, strategy_source_id):
+        if self.path.is_symlink():raise PlaybookError('INVALID_WORKSPACE','Playbook Lab 数据库不能为符号链接。')
+        with self.connection() as db:return self._get_strategy_source_in_db(db,strategy_source_id)
+
+    def get_source_link(self, link_id): return self._get('source_links',link_id)
+
+    def create_strategy_source(self, request_id, content):
+        identifier(request_id,'request_id')
+        try:normalized=normalize_strategy_source(content)
+        except ValueError as exc:raise PlaybookError('INVALID_ARGUMENT',str(exc)) from None
+        input_hash=digest(normalized);created=now_iso(self.now_fn)
+        with self.connection(write=True) as db:
+            old=self._existing_request(db,'strategy_sources',request_id,input_hash)
+            if old is not None:return old
+            if db.execute('SELECT COUNT(*) FROM strategy_sources').fetchone()[0]>=100000:
+                raise PlaybookError('BUDGET_EXCEEDED','StrategySource 已达十万条。')
+            value={**normalized,'strategy_source_id':str(uuid4()),'request_id':request_id,
+                'input_hash':input_hash,'created_at':created}
+            search=' '.join(str(value.get(k,'') or '') for k in
+                ('source_key','source_kind','title','locator','completeness','notes')).casefold()
+            db.execute('INSERT INTO strategy_sources VALUES (?,?,?,?,?,?,?,?,?,?)',(
+                value['strategy_source_id'],request_id,input_hash,value['source_key'],value['source_kind'],
+                value['completeness'],value['available_at'],search,encode(value),digest(value)))
+            return value
+
+    def create_source_link(self, request_id, content):
+        identifier(request_id,'request_id')
+        try:normalized=normalize_playbook_source_link(content)
+        except ValueError as exc:raise PlaybookError('INVALID_ARGUMENT',str(exc)) from None
+        input_hash=digest(normalized);created=now_iso(self.now_fn)
+        with self.connection(write=True) as db:
+            old=self._existing_request(db,'source_links',request_id,input_hash)
+            if old is not None:return old
+            definition=self._get_in_db(db,'definitions',normalized['definition_id'])
+            source=self._get_strategy_source_in_db(db,normalized['strategy_source_id'])
+            value={**normalized,'link_id':str(uuid4()),'request_id':request_id,'input_hash':input_hash,
+                'definition_hash':definition['definition_hash'],'strategy_source_snapshot_hash':digest(source),
+                'created_at':created}
+            search=' '.join((definition['playbook_key'],source['source_key'],source['source_kind'],
+                value['relation'],value['notes'])).casefold()
+            try:
+                db.execute('INSERT INTO source_links VALUES (?,?,?,?,?,?,?,?,?)',(
+                    value['link_id'],request_id,input_hash,value['definition_id'],value['strategy_source_id'],
+                    value['relation'],search,encode(value),digest(value)))
+            except sqlite3.IntegrityError as exc:
+                raise PlaybookError('LINK_EXISTS','同一 PlaybookDefinition/StrategySource/relation 已存在。') from exc
+            return value
 
     def create_source(self, request_id, content):
         identifier(request_id,'request_id')
@@ -424,6 +503,53 @@ class PlaybookStore:
             if value: clauses.append(column+'=?');values.append(value)
         return self._list('sources',clauses,values,query,offset,limit)
 
+    def list_strategy_sources(self, query='', source_kind='', completeness='', offset=0, limit=200):
+        if not isinstance(query,str) or len(query)>200 or type(offset) is not int or not 0<=offset<=100000:
+            raise PlaybookError('INVALID_ARGUMENT','检索参数无效。')
+        if type(limit) is not int or not 1<=limit<=2000:
+            raise PlaybookError('INVALID_ARGUMENT','limit 必须为 1–2000。')
+        if source_kind and source_kind not in ('TRADER','USER_EXPERIENCE','PUBLIC_METHOD','HISTORICAL_CASE','STATISTICAL_DISCOVERY','SYSTEM_REVIEW'):
+            raise PlaybookError('INVALID_ARGUMENT','source_kind 无效。')
+        if completeness and completeness not in ('PENDING','PARTIAL','VERIFIED'):
+            raise PlaybookError('INVALID_ARGUMENT','completeness 无效。')
+        if not self.path.exists():return {'records':[],'total':0,'offset':offset,'next_offset':None}
+        with self.connection() as db:
+            records=[]
+            if self._table_exists(db,'strategy_sources'):
+                rows=db.execute('SELECT * FROM strategy_sources ORDER BY rowid DESC')
+                records.extend(self._decode(row,'strategy_sources') for row in rows)
+            rows=db.execute('SELECT * FROM sources ORDER BY rowid DESC')
+            records.extend(self._project_expert_source(self._decode(row,'sources')) for row in rows)
+        needle=query.casefold()
+        def match(row):
+            text=' '.join(str(row.get(k,'') or '') for k in ('source_key','source_kind','title','locator','notes')).casefold()
+            return (not needle or needle in text) and (not source_kind or row['source_kind']==source_kind) and (not completeness or row['completeness']==completeness)
+        records=[row for row in records if match(row)]
+        records.sort(key=lambda row:(row.get('created_at') or '',row['strategy_source_id']),reverse=True)
+        total=len(records);page=records[offset:offset+limit]
+        return {'records':page,'total':total,'offset':offset,'next_offset':offset+limit if offset+limit<total else None}
+
+    def list_source_links(self, definition_id='', strategy_source_id='', relation='', offset=0, limit=200):
+        if not self.path.exists():return {'records':[],'total':0,'offset':offset,'next_offset':None}
+        with self.connection() as db:
+            if not self._table_exists(db,'source_links'):
+                return {'records':[],'total':0,'offset':offset,'next_offset':None}
+        clauses=[];values=[]
+        for column,value in (('definition_id',definition_id),('strategy_source_id',strategy_source_id),('relation',relation)):
+            if value:clauses.append(column+'=?');values.append(value)
+        return self._list('source_links',clauses,values,'',offset,limit)
+
+    def definition_source_bundle(self, definition_id):
+        definition=self.get_definition(definition_id)
+        links=self.list_source_links(definition_id=definition_id,limit=2000)['records']
+        sources=[]
+        for link in links:
+            source=self.get_strategy_source(link['strategy_source_id'])
+            sources.append({'link':link,'source':source})
+        legacy=[self._project_expert_source(self.get_source(source_id)) for source_id in definition['source_ids']]
+        return {'definition':definition,'legacy_expert_sources':legacy,'strategy_source_links':sources,
+            'formal_validation_policy':'FROZEN/HOLDOUT continues to use legacy definition.source_ids until a separate validated migration.'}
+
     def list_definitions(self, query='', playbook_key='', state='', offset=0, limit=200):
         clauses=[];values=[]
         for column,value in (('playbook_key',playbook_key),('state',state)):
@@ -471,8 +597,10 @@ class PlaybookStore:
             from .market_snapshot import MarketSnapshotStore
             snapshot_store=MarketSnapshotStore(self.output)
             market_snapshots=[snapshot_store.get(snapshot_id) for snapshot_id in case['market_snapshot_ids']]
-        return {'case':case,'definition':definition,'sources':sources,'market_snapshots':market_snapshots,
-            'candidate_set':candidate,'selections':selections}
+        source_links=self.list_source_links(definition_id=definition['definition_id'],limit=2000)['records']
+        linked_sources=[{'link':link,'source':self.get_strategy_source(link['strategy_source_id'])} for link in source_links]
+        return {'case':case,'definition':definition,'sources':sources,'strategy_source_links':linked_sources,
+            'market_snapshots':market_snapshots,'candidate_set':candidate,'selections':selections}
 
     def symbol_history(self, symbol, limit=500):
         from .decision import SYMBOL
@@ -496,11 +624,16 @@ class PlaybookStore:
         if self.path.is_symlink():
             raise PlaybookError('INVALID_WORKSPACE','Playbook Lab 数据库不能为符号链接。')
         if not self.path.exists():
-            return {'sources':0,'definitions':0,'frozen_definitions':0,'cases':0,'candidate_sets':0,
+            return {'sources':0,'strategy_sources':0,'native_strategy_sources':0,'source_links':0,
+                'definitions':0,'frozen_definitions':0,'cases':0,'candidate_sets':0,
                 'full_candidate_sets':0,'selections':0,'validations':0,'audit_complete_validations':0}
         with self.connection() as db:
             count=lambda table: db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
-            return {'sources':count('sources'),'definitions':count('definitions'),
+            native=count('strategy_sources') if self._table_exists(db,'strategy_sources') else 0
+            links=count('source_links') if self._table_exists(db,'source_links') else 0
+            experts=count('sources')
+            return {'sources':experts,'strategy_sources':experts+native,'native_strategy_sources':native,'source_links':links,
+                'definitions':count('definitions'),
                 'frozen_definitions':db.execute("SELECT COUNT(*) FROM definitions WHERE state='FROZEN'").fetchone()[0],
                 'cases':count('cases'),'candidate_sets':count('candidate_sets'),
                 'full_candidate_sets':db.execute("SELECT COUNT(*) FROM candidate_sets WHERE completeness='FULL'").fetchone()[0],

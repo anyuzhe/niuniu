@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-14
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P8.5-E1 已完成，全仓 `784 passed / 0 failed / 0 skipped`
+- 当前稳定基线：P8.6 StrategySource 已完成，全仓 `793 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -228,11 +228,11 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | AI Team / Peer Review / Git-first Memory | 已完成主体 |
 | Research Lab / Strict PIT / Campaign / Factory / Watch | 已有成熟基础 |
 | Playbook Lab 六类结构化对象 | 已完成 |
-| `ExpertSource` 作为交易者来源 | 已完成；待兼容抽象为通用 StrategySource |
+| `ExpertSource` 作为交易者来源 | 已完成，并兼容投影为 StrategySource(TRADER) |
 | PREP 全市场扫描 / MarketSnapshot / AUCTION / R1 Scanner | 已完成 |
 | DailyMarket 全市场日增量归档 | 已完成 |
 | 真实前瞻冻结与防历史回填 | 已完成并已启动样本积累 |
-| 通用 StrategySource 多来源对象 | 尚未正式实现 |
+| 通用 StrategySource 多来源对象 | **已完成 P8.6**：六类来源 + 多对多 PlaybookSourceLink |
 | 受控每日自动编排 PREP→AUCTION→R1 | 尚未完成 |
 | Agent Scorecard | P9，尚未完成 |
 | Dynamic Agent Orchestrator / Dev Studio | P10，尚未完成 |
@@ -240,17 +240,16 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 移动端 | P12，尚未完成 |
 | 长期 Paper / Real Broker | P13，尚未完成 |
 
-当前生产代码最近完整回归基线：**784 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**793 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 新版路线按“先让知识来源通用化，再让每日闭环自动运行”的顺序推进：
 
-1. **P8.6 Trading Knowledge / StrategySource**：在不破坏 ExpertSource 历史对象的前提下增加通用来源模型，支持 TRADER / USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / STATISTICAL_DISCOVERY / SYSTEM_REVIEW。
-2. **P8.7 Daily Orchestrator**：收盘后 DailyMarket capture → 数据就绪 → PREP → 09:25 AUCTION → 09:35 R1 → R2/R3 的受控每日编排。
-3. **P8.8 Playbook → Trading Desk → Paper 接线**：把前瞻选择转成 Decision / Strategy Intent，并进入长期 Paper，而不是自动实盘。
-4. **P9 Agent Scorecard**：在有足够真实前瞻 Decision 后评价不同任务类型，不做模型总排行榜，也不自动调权。
-5. **P10 Dev Studio + Dynamic Agent Orchestrator**：Main Agent、动态 Subagents、隔离 worktree、path lease、Tester、Reviewer、Human Merge。
-6. **P11 System Health → P12 移动端 → P13 Paper→Real**。
+1. **P8.7 Daily Orchestrator**：收盘后 DailyMarket capture → 数据就绪 → PREP → 09:25 AUCTION → 09:35 R1 → R2/R3 的受控每日编排。
+2. **P8.8 Playbook → Trading Desk → Paper 接线**：把前瞻选择转成 Decision / Strategy Intent，并进入长期 Paper，而不是自动实盘。
+3. **P9 Agent Scorecard**：在有足够真实前瞻 Decision 后评价不同任务类型，不做模型总排行榜，也不自动调权。
+4. **P10 Dev Studio + Dynamic Agent Orchestrator**：Main Agent、动态 Subagents、隔离 worktree、path lease、Tester、Reviewer、Human Merge。
+5. **P11 System Health → P12 移动端 → P13 Paper→Real**。
 
 并行继续补 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 

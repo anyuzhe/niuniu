@@ -69,7 +69,7 @@ D1 / D2 / D3+ 复盘
 | 审计与复现 | K 线按日期定位、信号/事件/成交跳转、结构图层和实际周期切换；配置及产物归档、导出恢复和支持类型的数值复算 |
 | 任务与续算 | 本地持久化任务状态；经典缠论状态检查点、追加行情续算与中断恢复。其他算法并非全部支持通用续算 |
 | Trading Desk | 今日交易驾驶舱、Decision Ledger、Stock Dossier、Theme Matrix、Decision Frame、Strategy Intent 与跨日复盘；策略意图、Paper 与未来真实持仓严格分离 |
-| Trading Knowledge / Playbook Lab | 多来源策略假设、来源归档、完整 CandidateSet、selected/unselected、Selection/Veto、前瞻冻结、历史回放与执行访问分层；当前 `ExpertSource` 先兼容承担 TRADER 类型来源 |
+| Trading Knowledge / Playbook Lab | 已支持六类 `StrategySource`、旧 `ExpertSource→TRADER` 兼容投影、Playbook 多对多来源关系、完整 CandidateSet、selected/unselected、Selection/Veto、前瞻冻结、历史回放与执行访问分层 |
 | Daily Scanner / 市场证据 | PREP 全市场扫描、MarketSnapshot、AUCTION/R1 确定性扫描、DailyMarket 全市场日增量归档、近实时/回填资格与防历史回填 |
 | AI Team | Chief Researcher、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；第一轮独立判断，Chief 综合，不用多数票代替证据 |
 | AI 研究与自动化基础 | 结构化研究记忆、固定研究包、受限 DSL、Research Agenda、Safe Alpha Factory、Watch、标准 MCP 与受控后台调度；模型不能自行批准研究、写生产规则或自动实盘 |
@@ -331,7 +331,7 @@ python -m unittest discover -s tests -v
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；长期 Paper / Shadow 尚未形成每日持续闭环，按 P8.8 与 P13 渐进建设，不能把现有 Paper 代码描述成已持续运行。
-- 受控 Daily Orchestrator、通用 StrategySource、Agent Scorecard、Dynamic Agent Orchestrator、System Health 和移动端仍在后续计划。
+- 受控 Daily Orchestrator、Playbook→Paper 长期闭环、Agent Scorecard、Dynamic Agent Orchestrator、System Health 和移动端仍在后续计划。
 - 机器学习训练不是当前主线；真实券商连接与自动实盘最后单独立项。任何回测或前瞻样本都只是给定证据和执行假设下的研究结果。
 
 ## 深入文档与来源

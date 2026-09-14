@@ -29,12 +29,12 @@ class PlaybookLabDesktopTests(unittest.TestCase):
     def test_research_lab_has_playbook_entry_and_dialog_is_read_only_on_open(self):
         self.window.navigate_root(6);QTest.qWait(20)
         buttons=self.window.scroll.widget().findChildren(QPushButton)
-        entry=next(b for b in buttons if b.text()=='高手玩法 / Playbook Lab')
+        entry=next(b for b in buttons if b.text()=='交易知识 / Playbook Lab')
         entry.click();QTest.qWait(30)
         dialog=self.window.dialogs[-1];self.assertIsInstance(dialog,PlaybookLabDialog)
         tabs=dialog.findChild(QTabWidget);self.assertEqual(tabs.count(),5)
         self.assertEqual([tabs.tabText(i) for i in range(5)],
-            ['来源归档','玩法定义','案例 / 候选全集','历史验证','期末50分试点'])
+            ['交易知识来源','Playbook定义','案例 / 候选全集','历史验证','来源 / Playbook关系'])
         self.assertFalse((self.root/'_jobs').exists())
 
     def test_verified_source_appears_after_host_store_write(self):
@@ -46,6 +46,23 @@ class PlaybookLabDesktopTests(unittest.TestCase):
         dialog.reload();QTest.qWait(20)
         tables=dialog.findChildren(QTableWidget)
         self.assertTrue(any(t.rowCount()==1 and t.item(0,0) and t.item(0,0).text()=='qimofenshu' for t in tables))
+        self.assertFalse((self.root/'_jobs').exists())
+
+
+    def test_generic_and_legacy_sources_share_one_strategy_source_view(self):
+        self.window.playbook_lab();QTest.qWait(20);dialog=self.window.dialogs[-1]
+        store=PlaybookStore(self.root)
+        store.create_source(str(uuid4()),{'expert_key':'legacy-trader','title':'旧高手记录',
+            'source_type':'PUBLIC_POST','locator':'local:legacy','available_at':'2026-09-14T10:00:00+08:00',
+            'content_hash':'d'*64,'completeness':'VERIFIED','notes':''})
+        store.create_strategy_source(str(uuid4()),{'source_key':'my-note','source_kind':'USER_EXPERIENCE',
+            'title':'我的交易经验','locator':'local:user-note','available_at':'2026-09-14T11:00:00+08:00',
+            'content_hash':'e'*64,'archive_ref':'','completeness':'VERIFIED','notes':'','evidence_ids':[]})
+        dialog.reload();QTest.qWait(20)
+        first=dialog.tabs.widget(0).findChild(QTableWidget)
+        self.assertEqual(first.rowCount(),2)
+        kinds={first.item(i,1).text() for i in range(first.rowCount())}
+        self.assertEqual(kinds,{'TRADER','USER_EXPERIENCE'})
         self.assertFalse((self.root/'_jobs').exists())
 
 

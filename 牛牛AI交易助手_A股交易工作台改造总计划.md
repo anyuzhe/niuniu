@@ -280,12 +280,13 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 第一批“期末50分”研究继续作为历史试点，用于证明来源归档、10选2、Selection/Execution 分离和真正前瞻冻结链路。
 - 验收：规则版本、候选全集、未选/失败样本、样本外/走步、可成交收益、成本和 A 股制度约束均可审计；失败必须保留。
 
-### P8.6 StrategySource 通用来源层（下一架构升级）
+### P8.6 StrategySource 通用来源层（已完成，2026-09-14）
 - 新增通用 `StrategySource` 概念，支持 `TRADER / USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / STATISTICAL_DISCOVERY / SYSTEM_REVIEW`。
 - 一个来源可以支持多个 Playbook，一个 Playbook 也可以引用多个支持/反对来源；来源与规则采用多对多关系。
 - 当前 `ExpertSource` 兼容映射为 `StrategySource(type=TRADER)`，不破坏历史 source_id、Case、Validation、哈希和 Git 资料。
 - Playbook 名称逐步从“某某高手玩法”解耦成规则本身，如 high_low_switch / leader_reentry / mid_board_acceleration。
 - 验收：旧 ExpertSource 全部可读；新来源类型可统一归档、检索、引用和审计；任何新来源都不能绕过 DRAFT→验证→冻结门槛。
+- 实际交付：schema v2 新增 `strategy_sources / source_links`；旧库只读无需迁移，首次写新对象时兼容迁移；AI/MCP/Reviewer 只读，桌面宿主可人工导入。全仓 **793/0/0**。
 
 ### P8.7 Daily Orchestrator：每日受控运行闭环
 - 串起 DailyMarket 数据增量、就绪检查、PREP、09:25 AUCTION、09:35 R1，并继续支持 R2/R3。
@@ -536,14 +537,13 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 完成 P8.5-E1 与架构升级后，后续优先级调整为：
 
-1. **P8.6 StrategySource 通用来源层**：把当前 Trader/Expert 试点扩展为多来源交易知识模型，同时保持旧 ExpertSource 兼容。
-2. **P8.7 Daily Orchestrator**：DailyMarket capture/就绪检查 → PREP → 09:25 AUCTION → 09:35 R1 → R2/R3。
-3. **P8.8 Playbook → Trading Desk → Paper**：把前瞻判断接入 Decision/Strategy Intent/模拟成交与跨日复盘。
-4. **P9 Agent Scorecard**：等真实前瞻 Decision 样本足够后再做按任务类型评价，不自动调模型权重。
-5. **P10 Dev Studio + Dynamic Agent Orchestrator**。
-6. P11 System Health。
-7. P12 移动端。
-8. P13 Paper → Real 渐进交易层，真实券商最后单独评审。
+1. **P8.7 Daily Orchestrator**：DailyMarket capture/就绪检查 → PREP → 09:25 AUCTION → 09:35 R1 → R2/R3。
+2. **P8.8 Playbook → Trading Desk → Paper**：把前瞻判断接入 Decision/Strategy Intent/模拟成交与跨日复盘。
+3. **P9 Agent Scorecard**：等真实前瞻 Decision 样本足够后再做按任务类型评价，不自动调模型权重。
+4. **P10 Dev Studio + Dynamic Agent Orchestrator**。
+5. P11 System Health。
+6. P12 移动端。
+7. P13 Paper → Real 渐进交易层，真实券商最后单独评审。
 
 并行继续 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
 
@@ -611,3 +611,5 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 - 新增 P8.6 StrategySource、P8.7 Daily Orchestrator、P8.8 Playbook→Trading Desk→Paper；P9/P10 顺延到真实前瞻样本与每日闭环之后。
 - Git Markdown 与 Structured Evidence 双轨边界不变；ExpertSource 保持向后兼容，后续通用化不得破坏历史身份和证据哈希。
 - 本次仅调整 README / 项目架构 / 开发计划 / Agent Memory 文档，不修改生产代码；最近完整生产回归仍为 784/0/0。
+
+- 2026-09-14：P8.6 StrategySource 通用来源层完成。新增六类 StrategySource、旧 ExpertSource→TRADER 兼容投影与 PlaybookSourceLink 多对多关系；正式 FROZEN/HOLDOUT 合同仍沿用旧 VERIFIED ExpertSource，不允许新来源绕过验证门槛。真实旧库副本 v1→v2 迁移保持 42 Source / 17 Definition / 36 Case / 26 CandidateSet / 37 Selection / 2 Validation 的 payload+checksum 不变；全仓 793/0/0。下一阶段 P8.7 Daily Orchestrator。

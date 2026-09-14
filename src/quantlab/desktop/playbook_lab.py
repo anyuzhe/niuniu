@@ -11,11 +11,17 @@ from .widgets import button,kpis,label,row,table
 
 
 KINDS=[
-    ('ExpertSource','source'),('PlaybookDefinition','definition'),('PlaybookCase','case'),
+    ('StrategySource','strategy_source'),('PlaybookSourceLink','source_link'),('ExpertSource（兼容）','source'),
+    ('PlaybookDefinition','definition'),('PlaybookCase','case'),
     ('CandidateSet','candidate'),('SelectionDecision','selection'),('PlaybookValidation','validation'),
 ]
 
 TEMPLATES={
+    'strategy_source':{'source_key':'my-trading-note','source_kind':'USER_EXPERIENCE','title':'','locator':'local:note',
+        'published_at':None,'available_at':None,'content_hash':'','archive_ref':'','completeness':'PENDING',
+        'notes':'StrategySource只是来源；需要链接到Playbook并继续验证。','evidence_ids':[]},
+    'source_link':{'definition_id':'<UUID>','strategy_source_id':'<UUID>','relation':'SUPPORT',
+        'notes':'来源与Playbook的证据关系；不会自动改变规则状态。','evidence_ids':[]},
     'source':{'expert_key':'qimofenshu','title':'','source_type':'PUBLIC_POST','locator':'',
         'published_at':None,'available_at':None,'content_hash':'','archive_ref':'',
         'completeness':'PENDING','notes':'先登记来源；未核验前不得冻结规则。'},
@@ -41,7 +47,7 @@ TEMPLATES.update({
 class PlaybookRecordDialog(QDialog):
     def __init__(self, window, store, reload_callback):
         super().__init__(window);self.store=store;self.reload_callback=reload_callback
-        self.setWindowTitle('Playbook Lab · 严格对象导入');self.resize(900,720)
+        self.setWindowTitle('Trading Knowledge / Playbook Lab · 严格对象导入');self.resize(900,720)
         box=QVBoxLayout(self);self.kind=QComboBox()
         for title,key in KINDS:self.kind.addItem(title,key)
         box.addWidget(row(label('对象类型'),self.kind))
@@ -57,26 +63,27 @@ class PlaybookRecordDialog(QDialog):
     def save(self):
         try:
             value=json.loads(self.editor.toPlainText());request=str(uuid4());kind=self.kind.currentData()
-            methods={'source':self.store.create_source,'definition':self.store.create_definition,
+            methods={'strategy_source':self.store.create_strategy_source,'source_link':self.store.create_source_link,
+                'source':self.store.create_source,'definition':self.store.create_definition,
                 'case':self.store.create_case,'candidate':self.store.create_candidate_set,
                 'selection':self.store.create_selection,'validation':self.store.create_validation}
             saved=methods[kind](request,value)
         except (json.JSONDecodeError,PlaybookError,ValueError,OSError) as error:
             self.status.setText(str(error));return
         self.status.setText('已保存：'+next((str(saved.get(k)) for k in
-            ('source_id','definition_id','case_id','candidate_set_id','selection_id','validation_id') if saved.get(k)),'完成'))
+            ('strategy_source_id','link_id','source_id','definition_id','case_id','candidate_set_id','selection_id','validation_id') if saved.get(k)),'完成'))
         self.reload_callback();self.accept()
 
 
 class PlaybookLabDialog(QDialog):
     def __init__(self, window):
         super().__init__(window);self.window=window;self.store=PlaybookStore(window.output)
-        self.setWindowTitle('Expert Playbook Lab · 高手玩法研究');self.resize(1380,860)
+        self.setWindowTitle('Trading Knowledge / Playbook Lab · 多来源交易知识研究');self.resize(1380,860)
         self.box=QVBoxLayout(self);self.summary=QWidget();self.box.addWidget(self.summary)
         self.tabs=QTabWidget();self.box.addWidget(self.tabs,1)
         self.summary_box=QVBoxLayout(self.summary);self.summary_box.setContentsMargins(0,0,0,0)
         self.summary_box.addWidget(row(button('＋ 导入严格对象',self.open_import,True),
-            button('刷新',self.reload),label('Playbook-first 假设发现 + CandidateSet 全集 + Quant/PIT 验证','muted')))
+            button('刷新',self.reload),label('StrategySource → Playbook → CandidateSet → Validation → Daily Decision','muted')))
         self.reload()
 
     def open_import(self):
@@ -98,26 +105,29 @@ class PlaybookLabDialog(QDialog):
 
     def reload(self):
         overview=self.store.overview();self.tabs.clear()
-        self._replace_kpis([('来源',overview['sources'],'ExpertSource'),('玩法版本',overview['definitions'],'Definition'),
+        self._replace_kpis([('策略来源',overview['strategy_sources'],'含旧Expert投影'),('来源关系',overview['source_links'],'多对多'),
+            ('玩法版本',overview['definitions'],'Definition'),
             ('冻结规则',overview['frozen_definitions'],'FROZEN'),('历史案例',overview['cases'],'PlaybookCase'),
             ('完整候选集',overview['full_candidate_sets'],'FULL'),('正式审计',overview['audit_complete_validations'],'AUDIT_COMPLETE')])
-        self.render_sources();self.render_definitions();self.render_cases();self.render_validations();self.render_pilot()
+        self.render_sources();self.render_definitions();self.render_cases();self.render_validations();self.render_architecture()
 
     def render_sources(self):
-        rows=self.store.list_sources(limit=500)['records'];page,layout=self.page()
-        layout.addWidget(label('VERIFIED 只表示来源时间/哈希合同完整；不表示高手玩法有效。','note',True))
-        control=table(['高手','标题','类型','完整性','可用时间','SHA256'],[
-            [r['expert_key'],r['title'],r['source_type'],r['completeness'],r.get('available_at') or '—',
-                (r.get('content_hash') or '—')[:16]] for r in rows],lambda i:self.detail(rows[i],'ExpertSource'))
-        layout.addWidget(control,1);self.tabs.addTab(page,'来源归档')
+        rows=self.store.list_strategy_sources(limit=500)['records'];page,layout=self.page()
+        layout.addWidget(label('StrategySource 是来源，不是规则。旧 ExpertSource 会兼容投影为 TRADER；VERIFIED 也不代表 Playbook 有效。','note',True))
+        control=table(['来源Key','类别','标题','完整性','可用时间','兼容来源'],[
+            [r['source_key'],r['source_kind'],r['title'],r['completeness'],r.get('available_at') or '—',
+                'ExpertSource' if r.get('legacy_expert_source_id') else 'StrategySource'] for r in rows],
+            lambda i:self.detail(rows[i],'StrategySource'))
+        layout.addWidget(control,1);self.tabs.addTab(page,'交易知识来源')
 
     def render_definitions(self):
         rows=self.store.list_definitions(limit=500)['records'];page,layout=self.page()
-        layout.addWidget(label('规则变化必须新建 version；FROZEN 要求 VERIFIED 来源以及冻结 eligibility / selection。','note',True))
-        control=table(['玩法','Key','版本','状态','来源数','Definition Hash'],[
-            [r['name'],r['playbook_key'],r['version'],r['state'],len(r['source_ids']),r['definition_hash'][:16]]
-            for r in rows],lambda i:self.detail(rows[i],'PlaybookDefinition'))
-        layout.addWidget(control,1);self.tabs.addTab(page,'玩法定义')
+        bundles=[self.store.definition_source_bundle(r['definition_id']) for r in rows]
+        layout.addWidget(label('规则变化必须新建 version。P8.6 新 StrategySource 关系是补充证据；正式 FROZEN/HOLDOUT 仍沿用旧 VERIFIED source_ids 合同。','note',True))
+        control=table(['玩法','Key','版本','状态','正式旧来源','策略来源关系','Definition Hash'],[
+            [r['name'],r['playbook_key'],r['version'],r['state'],len(r['source_ids']),len(bundles[i]['strategy_source_links']),r['definition_hash'][:16]]
+            for i,r in enumerate(rows)],lambda i:self.detail(bundles[i],'PlaybookDefinition + StrategySources'))
+        layout.addWidget(control,1);self.tabs.addTab(page,'Playbook定义')
 
     def render_cases(self):
         rows=self.store.list_cases(limit=500)['records'];bundles=[self.store.case_bundle(r['case_id']) for r in rows]
@@ -146,14 +156,15 @@ class PlaybookLabDialog(QDialog):
             lambda i:self.detail(rows[i],'PlaybookValidation'))
         layout.addWidget(control,1);self.tabs.addTab(page,'历史验证')
 
-    def render_pilot(self):
+    def render_architecture(self):
         page,layout=self.page()
-        layout.addWidget(label('首个试点：期末50分','panelTitle'))
+        layout.addWidget(label('多来源交易知识架构','panelTitle'))
         layout.addWidget(label(
-            '当前只建立 source-first 研究骨架，不把二手总结写成正式交易规则。\n\n'
-            '启动顺序：原帖/实盘记录 → ExpertSource → DRAFT Definition → 历史 Case → FULL CandidateSet → '
-            '专家 Selection → 冻结规则 → SYSTEM_PREDICTION → HOLDOUT/WALK_FORWARD → A股执行审计。\n\n'
-            '正式研究的核心不是“买过哪些牛股”，而是同一时点所有符合资格的股票里为什么 10 选 2；'
-            '未选的 8 只同样必须进入证据。','note',True))
-        layout.addWidget(label('Git 规则入口：playbooks/qimofenshu/README.md 与 definition.json；结构化结果保存在工作空间 _playbooks/。','muted',True))
-        layout.addStretch();self.tabs.addTab(page,'期末50分试点')
+            'StrategySource 支持 TRADER / USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / '
+            'STATISTICAL_DISCOVERY / SYSTEM_REVIEW。来源只是证据入口，PlaybookDefinition 才是规则。\n\n'
+            '一个来源可以支持多个 Playbook，一个 Playbook 也可以绑定多个 ORIGIN / SUPPORT / CONTRADICT / '
+            'EXAMPLE / COUNTEREXAMPLE 关系。旧 ExpertSource 原样保留，并统一投影为 TRADER。\n\n'
+            'P8.6 不改变正式验证门槛：新的 StrategySource 关系不会自动让 DRAFT 变 FROZEN，也不会绕过 VERIFIED '
+            'ExpertSource、FULL CandidateSet、STRICT_PIT 或 SYSTEM_PREDICTION。','note',True))
+        layout.addWidget(label('期末50分只是首个历史 TRADER 来源试点；系统长期积累的是可版本化 Playbook。','muted',True))
+        layout.addStretch();self.tabs.addTab(page,'来源 / Playbook关系')

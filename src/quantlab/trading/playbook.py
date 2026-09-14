@@ -1,4 +1,4 @@
-"""Strict canonical contracts for Expert Playbook Lab records."""
+"""Strict canonical contracts for Trading Knowledge / Playbook Lab records."""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -10,6 +10,8 @@ from .decision import FRAMES, SYMBOL
 
 SOURCE_TYPES = ('PUBLIC_POST','LIVE_RECORD','BROKER_STATEMENT','INTERVIEW','VIDEO','OTHER')
 SOURCE_COMPLETENESS = ('PENDING','PARTIAL','VERIFIED')
+STRATEGY_SOURCE_KINDS = ('TRADER','USER_EXPERIENCE','PUBLIC_METHOD','HISTORICAL_CASE','STATISTICAL_DISCOVERY','SYSTEM_REVIEW')
+SOURCE_RELATIONS = ('ORIGIN','SUPPORT','CONTRADICT','EXAMPLE','COUNTEREXAMPLE')
 PLAYBOOK_STATES = ('DRAFT','FROZEN','RETIRED')
 CANDIDATE_COMPLETENESS = ('UNKNOWN','PARTIAL','FULL')
 PIT_STATUSES = ('UNKNOWN','RETROSPECTIVE_REFERENCE','STRICT_PIT')
@@ -150,6 +152,50 @@ def normalize_expert_source(content):
         'notes': _text(content.get('notes'), 'notes', 6000),
     }
 
+
+
+def normalize_strategy_source(content):
+    allowed = ('source_key','source_kind','title','locator','published_at','available_at',
+        'content_hash','archive_ref','completeness','notes','evidence_ids')
+    _reject_extra(content, allowed, 'StrategySource')
+    key = _text(content.get('source_key'), 'source_key', 64, True).lower()
+    if not SLUG.fullmatch(key):
+        raise ValueError('source_key 只能使用小写字母、数字、下划线或连字符。')
+    published = _moment(content.get('published_at'), 'published_at', False)
+    available = _moment(content.get('available_at'), 'available_at', False)
+    if published and available and datetime.fromisoformat(available) < datetime.fromisoformat(published):
+        raise ValueError('available_at 不能早于 published_at。')
+    completeness = _enum(content.get('completeness','PENDING'), 'completeness', SOURCE_COMPLETENESS)
+    content_hash = _text(content.get('content_hash'), 'content_hash', 64).lower()
+    if content_hash and not HASH.fullmatch(content_hash):
+        raise ValueError('content_hash 必须是 64 位小写 SHA256。')
+    if completeness == 'VERIFIED' and (not available or not content_hash):
+        raise ValueError('VERIFIED StrategySource 必须保存 available_at 与 content_hash。')
+    return {
+        'source_key': key,
+        'source_kind': _enum(content.get('source_kind'), 'source_kind', STRATEGY_SOURCE_KINDS),
+        'title': _text(content.get('title'), 'title', 300, True),
+        'locator': _text(content.get('locator'), 'locator', 2000, True),
+        'published_at': published,
+        'available_at': available,
+        'content_hash': content_hash,
+        'archive_ref': _text(content.get('archive_ref'), 'archive_ref', 2000),
+        'completeness': completeness,
+        'notes': _text(content.get('notes'), 'notes', 6000),
+        'evidence_ids': _text_list(content.get('evidence_ids'), 'evidence_ids', 200, 300),
+    }
+
+
+def normalize_playbook_source_link(content):
+    allowed = ('definition_id','strategy_source_id','relation','notes','evidence_ids')
+    _reject_extra(content, allowed, 'PlaybookSourceLink')
+    return {
+        'definition_id': _uuid(content.get('definition_id'), 'definition_id'),
+        'strategy_source_id': _uuid(content.get('strategy_source_id'), 'strategy_source_id'),
+        'relation': _enum(content.get('relation'), 'relation', SOURCE_RELATIONS),
+        'notes': _text(content.get('notes'), 'notes', 4000),
+        'evidence_ids': _text_list(content.get('evidence_ids'), 'evidence_ids', 200, 300),
+    }
 
 def normalize_playbook_definition(content):
     allowed = ('playbook_key','name','version','state','source_ids','market_context','eligibility',
@@ -313,8 +359,8 @@ def normalize_validation(content):
 
 
 __all__ = [
-    'SOURCE_TYPES','SOURCE_COMPLETENESS','PLAYBOOK_STATES','CANDIDATE_COMPLETENESS',
-    'PIT_STATUSES','SELECTION_KINDS','VALIDATION_METHODS','normalize_expert_source',
+    'SOURCE_TYPES','SOURCE_COMPLETENESS','STRATEGY_SOURCE_KINDS','SOURCE_RELATIONS','PLAYBOOK_STATES','CANDIDATE_COMPLETENESS',
+    'PIT_STATUSES','SELECTION_KINDS','VALIDATION_METHODS','normalize_expert_source','normalize_strategy_source',
     'normalize_playbook_definition','normalize_playbook_case','normalize_candidate_set',
-    'normalize_selection','normalize_validation',
+    'normalize_selection','normalize_validation','normalize_playbook_source_link',
 ]

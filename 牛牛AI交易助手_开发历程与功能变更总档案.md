@@ -55,9 +55,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**784 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1 的基础设施与首条真实前瞻链。
-下一架构阶段：P8.6 StrategySource → P8.7 Daily Orchestrator → P8.8 Playbook-to-Paper；其后 P9～P13。
+当前正式代码全仓基线：**793 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1，以及 P8.6 StrategySource 通用来源层。
+下一阶段：P8.7 Daily Orchestrator → P8.8 Playbook-to-Paper；其后 P9～P13。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -298,10 +298,10 @@
 
 1. 先做 P8.6，把“高手来源试点”升级为通用 StrategySource，但不破坏已有 ExpertSource 历史证据。
 2. 做 P8.7 Daily Orchestrator，让数据更新、PREP、AUCTION、R1/R2/R3 真正每天受控自动运行。
-3. 做 P8.8，把 Playbook 前瞻输出接入 Decision / Strategy Intent / 长期 Paper，并正式统计 NO_TRADE、未成交和退出。
-4. 在真实前瞻 Decision 足够后再做 P9 Agent Scorecard。
-5. 随后推进 P10 / P11 / P12；P13 真实账户最后单独评审。
-6. 并行继续 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
+2. 做 P8.8，把 Playbook 前瞻输出接入 Decision / Strategy Intent / 长期 Paper，并正式统计 NO_TRADE、未成交和退出。
+3. 在真实前瞻 Decision 足够后再做 P9 Agent Scorecard。
+4. 随后推进 P10 / P11 / P12；P13 真实账户最后单独评审。
+5. 并行继续 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
 ## 10. 关键测试基线演进
 
@@ -322,6 +322,7 @@
 | 2026-09-14 | P8.5-D1 MarketSnapshot / Daily Scanner | **769 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.5-D2 PREP 全市场扫描 | **777 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.5-E1 DailyMarket 增量 / PREP Overlay | **784 passed / 0 failed / 0 skipped** |
+| 2026-09-14 | P8.6 StrategySource 通用来源层 | **793 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -397,3 +398,15 @@
 - 知识边界：Git Markdown 与 Structured Evidence 双轨继续保持；多 Agent 一致不等于市场证据。
 - 路线调整：P8.6 StrategySource → P8.7 Daily Orchestrator → P8.8 Playbook-to-Paper → P9 Scorecard → P10 Dynamic Agent。
 - 测试/验收：本次仅改架构/计划/说明文档，不修改生产代码；沿用最近完整生产回归 **784/0/0**，发布前执行文档 diff/sensitive 检查。
+
+
+### 2026-09-14 18:30｜[功能] P8.6 StrategySource 通用来源层
+
+- 模块：Trading Knowledge / Playbook Lab / AI只读工具 / PyQt Research Lab。
+- Git：本条与功能代码同一提交发布，提交标题 `feat: 增加StrategySource通用交易知识来源`；SHA 以该提交 Git 历史为准。
+- 改动内容：新增六类 `StrategySource` 与 `PlaybookSourceLink` 多对多关系；旧 `ExpertSource` 无损投影为 `TRADER`，统一查询可同时看到旧高手来源与 USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / STATISTICAL_DISCOVERY / SYSTEM_REVIEW。
+- 兼容策略：PlaybookStore schema v2 增量增加新表；旧 v1 库只读无需迁移，首次写新对象时创建新表。真实旧库副本迁移后，42 Source / 17 Definition / 36 Case / 26 CandidateSet / 37 Selection / 2 Validation 的 payload+checksum 指纹全部不变。
+- 关键约束：P8.6 的新来源关系只是知识证据层；正式 FROZEN / HOLDOUT / WALK_FORWARD 仍使用旧 `definition.source_ids` + VERIFIED ExpertSource 合同，不能通过新增 StrategySource 绕过正式验证。
+- 产品接入：Playbook Lab 改为“交易知识 / Playbook Lab”，桌面宿主可导入 StrategySource/关系；AI Research、MCP、Peer Reviewer 只能只读查询统一来源与关系，无创建/链接工具。
+- 测试/验收：StrategySource 核心 7/7、产品专项 13/13、相关联合 41/41；完整仓库 **793 tests / 0 failed / 0 skipped**。
+- 后续事项：P8.7 Daily Orchestrator，将 DailyMarket → PREP → AUCTION → R1/R2/R3 串成受控、幂等、可恢复的每日运行链。
