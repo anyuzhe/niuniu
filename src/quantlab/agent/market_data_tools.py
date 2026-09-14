@@ -21,6 +21,7 @@ TOOLS=[
     schema('get_watch_refresh_readiness','使用已归档完整日历和带时区as_of检查日线跟踪到期候选，不下载、不批准、不运行。',{'watch_id':TEXT,'import_id':TEXT,'as_of':TEXT}),
     schema('list_market_snapshots','只读查询Trading Desk已冻结的MarketSnapshot；不会联网刷新行情。',{'trading_day':TEXT,'frame':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
     schema('get_market_snapshot','读取一个MarketSnapshot及其捕获状态、SHA256来源和证券快照。',{'snapshot_id':TEXT}),
+    schema('get_system_health','只读汇总System Health：任务、daemon、数据新鲜度、MarketSnapshot、PIT/Playbook、Paper、Dev Studio和日志元数据；不执行任何修复动作。',{}),
 ]
 
 
@@ -33,7 +34,7 @@ class MarketDataResearchAPI(ThemeResearchAPI):
             if name=='get_capabilities' and result.get('ok'):
                 result['data'].update(imported_market_data_available=True,data_download_tool=False,candidate_review_available=True,
                     calendar_readiness_available=True,controlled_tracking_available=True,managed_series_available=True,
-                    market_snapshot_available=True,market_snapshot_write_model=False,
+                    market_snapshot_available=True,market_snapshot_write_model=False,system_health_available=True,system_health_write_model=False,
                     tracking_authorization_host_only=True,tools=[t['name'] for t in self.schemas()])
             return result
         try:
@@ -86,6 +87,9 @@ class MarketDataResearchAPI(ThemeResearchAPI):
             elif name=='get_market_snapshot':
                 data=MarketSnapshotStore(self.output).get(arguments['snapshot_id'])
                 refs=[{'kind':'market_snapshot','snapshot_id':data['snapshot_id']}]
+            elif name=='get_system_health':
+                from quantlab.agent.system_health import SystemHealthService
+                data=SystemHealthService(self.output,self.data_root).build();refs=[]
             else:
                 directory,m=load_import(self.output,arguments['import_id'])
                 refs=[{'kind':'market_data','import_id':arguments['import_id']}]

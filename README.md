@@ -73,6 +73,7 @@ D1 / D2 / D3+ 复盘
 | Daily Scanner / 每日编排 | PREP 全市场扫描、MarketSnapshot、AUCTION/R1 确定性扫描、DailyMarket 全市场日增量归档，以及持久 `Daily Orchestrator` 将数据就绪→PREP→AUCTION→R1 串成幂等可恢复链路；错过窗口不回填 |
 | AI Team | Chief Researcher、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；第一轮独立判断，Chief 综合，不用多数票代替证据 |
 | AI 研究与自动化基础 | 结构化研究记忆、固定研究包、受限 DSL、Research Agenda、Safe Alpha Factory、Watch、标准 MCP 与受控后台调度；模型不能自行批准研究、写生产规则或自动实盘 |
+| System Health | P11 只读聚合 Workspace、Artifacts、JobQueue、daemon heartbeat、MCP adapter、Notifications、Market Data/Series、DailyMarket、MarketSnapshot、Orchestrator、PIT/Playbook、Paper、Dev Studio 与日志；运行在线和研究正确分轴展示，无健康总分/自动修复 |
 
 桌面端还提供 **老板键 F12**：在 Mac 上隐藏应用及弹窗，点击 Dock 图标恢复；后台计算与未提交配置保留。部分键盘需按 `Fn + F12`。其他窗口系统使用最小化方式；目前原生操作验收主要在 macOS 上进行。
 
@@ -103,7 +104,7 @@ Alpha 公式的计算需要可选依赖 `vnpy`；查看注册信息或运行基�
 │  ├─ Factor / Experiment / PIT / Campaign / Factory / Watch
 │  └─ Trading Knowledge / Playbook Lab
 ├─ Dev Studio（P10 v1 已完成）
-└─ System Center：Data / PIT / Jobs / MCP / daemon / health
+└─ System Center（P11 v1 已完成）：Data / PIT / Jobs / MCP / daemon / notifications / health
 ```
 
 ### 交易知识与决策循环
@@ -334,7 +335,7 @@ python -m unittest discover -s tests -v
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
-- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待产品化。P9 Agent Scorecard v1 已完成。P10 Dev Studio v1 也已完成：DevTask 使用隔离 worktree、depth-1 动态 Subagents、path-scoped write leases、frozen tests、独立 Reviewer 和 Human Merge Gate；任何 Agent 都没有自动 push 权。下一正式阶段是 P11 System Health。
+- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待产品化。P9 Agent Scorecard、P10 Dev Studio、P11 System Health v1 均已完成。System Health 只读分离 Runtime 与 Research Readiness，不用进程在线替代数据/PIT/研究正确，也不自动修复。下一正式阶段是 P12 移动端 / 机器人。
 - 机器学习训练不是当前主线；真实券商连接与自动实盘最后单独立项。任何回测或前瞻样本都只是给定证据和执行假设下的研究结果。
 
 ## 深入文档与来源
@@ -342,6 +343,8 @@ python -m unittest discover -s tests -v
 - [牛牛 AI 项目说明与总体架构](牛牛AI交易助手_项目说明与总体架构.md)：当前项目定位、StrategySource / Playbook / Daily Decision 主循环和完成度边界。
 - [A股交易工作台改造总计划](牛牛AI交易助手_A股交易工作台改造总计划.md)：P1～P13 与架构 v2 的正式开发路线。
 - [P9 Agent Scorecard 验收说明](牛牛AI交易工作台_P9AgentScorecard_验收说明.md)：按任务类型评价、样本门槛、System Baseline 与无总分/无自动调权边界。
+- [P10 Dev Studio 验收说明](牛牛AI交易工作台_P10DevStudio动态Agent_验收说明.md)：isolated worktree、动态 Subagents、path lease、frozen tests、Reviewer 与 Human Merge Gate。
+- [P11 System Health 验收说明](牛牛AI交易工作台_P11SystemHealth_验收说明.md)：Runtime/Research Readiness 双轴、服务/任务/数据/PIT/通知/Dev 只读健康证据与无自动修复边界。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。

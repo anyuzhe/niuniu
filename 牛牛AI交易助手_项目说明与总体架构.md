@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-15
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P10 Dev Studio / Dynamic Agent Orchestrator v1 已完成，全仓 `862 passed / 0 failed / 0 skipped`
+- 当前稳定基线：P11 System Health v1 已完成，全仓 `876 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -236,20 +236,19 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 受控每日自动编排 PREP→AUCTION→R1 | **已完成 P8.7 v1**：持久计划、幂等 tick、恢复、错过窗口不回填 |
 | Agent Scorecard | **P9 v1 已完成**：按任务类型只读评价，样本不足 UNKNOWN，无总分/自动调权 |
 | Dynamic Agent Orchestrator / Dev Studio | **P10 v1 已完成**：隔离 worktree + depth-1 动态 Subagent + path lease + Reviewer + Human Merge Gate |
-| System Health | P11，尚未完成 |
+| System Health | **P11 v1 已完成**：Runtime / Research Readiness 双轴，只读聚合服务、任务、数据新鲜度、PIT、通知、Dev 与日志；无健康总分/自动修复 |
 | 移动端 | P12，尚未完成 |
 | Prediction→Decision/Intent + PaperPlan | **P8.8-A/B 已完成** |
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker | P13，尚未开始 |
 
-当前生产代码最近完整回归基线：**862 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**876 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
-新版路线按“先让知识来源通用化，再让每日闭环自动运行”的顺序推进：
+P11 已完成后，正式路线进入客户端复用与最终交易边界：
 
-1. **P11 System Health**：统一服务、任务、日志、心跳、数据新鲜度、PIT blocker 和关键宿主运行状态。
-2. **P12 移动端 / 机器人**。
-3. **P13 Paper→Real**：真实券商最后单独评审。
+1. **P12 移动端 / 机器人**：复用同一 MCP/API、Stock Dossier、Decision Ledger、System Health 与统一状态源，不建立第二份记忆或第二份持仓状态。
+2. **P13 Paper→Real**：真实券商最后单独评审。
 - 并行积累真实前瞻 Paper 日志，并继续补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 原始资料。
 
 并行继续补 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。

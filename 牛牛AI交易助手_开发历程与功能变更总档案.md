@@ -41,7 +41,7 @@
 
 未来规则：**代码提交完成但本档案未同步更新时，该阶段不视为完整收尾。**
 
-## 3. 当前产品快照（2026-09-14）
+## 3. 当前产品快照（2026-09-15）
 
 当前牛牛已经从“因子实验平台”演进为一个以**多来源交易知识 → Playbook → 验证 → Daily Decision → Review**为研究主循环的个人 A 股交易研究系统。
 
@@ -51,13 +51,13 @@
 - **AI Team**：Chief、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；不采用多数票替代证据。
 - **Trading Knowledge / Playbook Lab**：当前已有 ExpertSource、候选全集、Selection、Validation、前瞻冻结；架构 v2 将其继续泛化为 StrategySource 多来源模型。
 - **Research Lab**：因子、理论、PIT、Campaign、Alpha Factory、Watch、统计验证、执行回测、数据归档。
-- **Dev Studio / System**：P10 Dev Studio / Dynamic Agent Orchestrator v1 已完成；System Center 已有部分能力，下一阶段统一为 P11 System Health。
+- **Dev Studio / System**：P10 Dev Studio / Dynamic Agent Orchestrator 与 P11 System Health v1 均已完成；System Center 已统一服务/任务/数据/PIT/通知/Dev/日志的只读可观察性。
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**862 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1。
-下一阶段：P11 System Health；其后 P12～P13。
+当前正式代码全仓基线：**876 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1。
+下一阶段：P12 移动端 / 机器人；其后 P13。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -271,7 +271,7 @@
 
 已完成：AI Research Chat、提案审批、AI Team、Peer Review、Git-first Agent Memory、标准 MCP、长期跟踪与受限自动化。
 
-已完成：P9 Agent Scorecard v1，以及 P10 Dev Studio + Dynamic Agent Orchestrator v1。下一正式阶段为 P11 System Health。
+已完成：P9 Agent Scorecard v1、P10 Dev Studio + Dynamic Agent Orchestrator v1，以及 P11 System Health v1。下一正式阶段为 P12 移动端 / 机器人。
 
 ### 7.3 Research Lab
 
@@ -283,20 +283,19 @@
 
 已完成：ExpertSource 试点、来源归档、候选全集、selected/unselected、规则版本、历史回放、前瞻冻结、防回填、Selection/Execution Access 分离、PREP/AUCTION/R1 Scanner 与 DailyMarket 增量接力。
 
-当前架构已推进到 P10：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘、按任务类型 Agent Scorecard 与 Dev Studio/Dynamic Agent Orchestrator 均已落地；下一阶段进入 P11 System Health，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
+当前架构已推进到 P11：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘、按任务类型 Agent Scorecard、Dev Studio/Dynamic Agent Orchestrator 与 System Health 均已落地；下一阶段进入 P12 移动端 / 机器人，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
 
 ## 8. 尚未完成的正式阶段
 
 - **P8.7 扩展项（并行）**：R2/R3 自动编排与正式实时 MarketSnapshot provider 仍未产品化。
 - **P8.8 运行验证（并行）**：核心长期 Paper 闭环已实现，但仍需积累足够真实前瞻运行天数来评价稳定性和绩效。
-- **P11 System Health / P12 移动端 / P13 Paper→Real**：依次推进；真实券商和自动实盘最后单独评审。
+- **P12 移动端 / 机器人 / P13 Paper→Real**：依次推进；真实券商和自动实盘最后单独评审。
 
 ## 9. 当前推荐的后续主线
 
-1. 下一正式阶段推进 P11 System Health。
-2. 随后推进 P12 移动端。
-3. P13 真实账户最后单独评审，不把 Paper 成功直接外推到真实券商。
-4. 并行继续积累真实前瞻 Paper 样本，并补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
+1. 下一正式阶段推进 P12 移动端 / 机器人，复用同一 MCP/API、Decision Ledger、Stock Dossier、System Health 和统一状态源。
+2. P13 真实账户最后单独评审，不把 Paper 成功直接外推到真实券商。
+3. 并行继续积累真实前瞻 Paper 样本，并补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
 ## 10. 关键测试基线演进
 
@@ -323,6 +322,7 @@
 | 2026-09-14 | P8.8-C Dynamic Paper / Fill Intent / Review / Rebalance | **842 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P9 Agent Scorecard v1 | **848 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P10 Dev Studio / Dynamic Agent Orchestrator v1 | **862 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | P11 System Health v1 | **876 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -480,3 +480,15 @@
 - 产品接入：新增 `niuniu-dev-studio` 和顶级“开发工作台”。
 - 测试/验收：P10专项14/14、Trading Desk导航2/2、CLI install/help通过；完整仓库 **862 tests / 0 failed / 0 skipped**，298.180秒。
 - 后续事项：进入 P11 System Health；并行继续真实前瞻 Paper 样本、正式实时 MarketSnapshot provider、R2/R3 Orchestrator 与 Strict PIT 数据补齐。
+
+### 2026-09-15 07:35｜[功能] P11 System Health v1
+
+- 模块：System Center / JobQueue / Tracking / MCP / Market Data / PIT / Paper / Dev Studio / Notifications。
+- 改动内容：新增只读 `SystemHealthService`、`niuniu-system-health`、桌面 `SystemHealthWidget` 与 AI/MCP `get_system_health`。统一聚合 Workspace、Artifact Growth、JobQueue、Tracking daemon、MCP adapter、Notifications、Market Data/Series、DailyMarket、MarketSnapshot、Daily Orchestrator、PIT/Playbook、Paper Lifecycle、Dev Studio 与日志元数据。
+- 状态语义：顶层分离 Runtime 与 Research Readiness，组件只用 OK/WARN/BLOCKED/UNKNOWN/NOT_CONFIGURED；`health_score=None`。进程/adapter 在线从不替代数据资格、PIT、策略正确性或盈利证据。
+- 关键修正：历史 Orchestrator BLOCKED/MISSED 降为 WARN，不永久阻断今天；当天 blocker 才进入当前 readiness。MCP 无持久 heartbeat 时明确 `server_liveness=None`。通知 Qt hand-off 不冒充用户已看见。
+- 性能：最初递归扫描约77006个 artifacts 文件使健康刷新约14秒，改成顶层 run/system 目录增长代理后真实 CLI 约0.82秒；磁盘剩余容量仍独立检查。
+- 权限：System Health 没有 restart/retry/download/接受修订/修改 PIT/merge/push/trade 动作；AI/MCP 仅可只读查询。
+- 真实烟测：真实 artifacts 文件数 77006→77006，无写入副作用；当前 Runtime=OK、Research Readiness=WARN、0 blocker，warning 为 no_frozen_playbook_definition；MCP adapter 工具数47。
+- 测试/验收：P11 专项+offscreen UI **14/14 passed**；最终完整仓库 **876 tests / 0 failed / 0 skipped**，299.890秒。
+- 后续事项：下一正式阶段 P12 移动端 / 机器人；必须复用同一 MCP/API、Decision Ledger、Stock Dossier、System Health、记忆与持仓状态源。

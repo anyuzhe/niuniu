@@ -84,10 +84,6 @@ def dev_studio_page(window):
 
 
 def system_center_page(window):
-    box=window.page('系统中心','数据、PIT、任务、服务和工作空间集中入口；在线状态不等于研究正确。')
-    box.addWidget(kpis([
-        ('研究产物',str(window.output.name),'当前 workspace'),('行情目录','已配置' if window.data_root else '未配置','研究执行输入'),
-        ('Decision Ledger',_store(window).list(limit=1)['total'],'append-only'),('研究任务','查看','JobQueue / archived jobs'),
-    ]))
-    box.addWidget(row(button('数据中心',lambda:window.navigate(1),True),button('运行任务',window.show_jobs),button('研究设置',lambda:window.navigate(11))))
-    box.addWidget(label('P11 再把 MCP、tracking daemon、数据更新、日志和心跳统一成 System Health；本阶段先统一入口。','note',True))
+    box=window.page('系统中心','P11 System Health · 服务、任务、数据、PIT、Paper、Dev 和日志统一只读健康证据；在线状态不等于研究正确。')
+    from .system_health import SystemHealthWidget
+    box.addWidget(SystemHealthWidget(window),1)

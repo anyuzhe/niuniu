@@ -11,6 +11,7 @@
 - 当前交易知识架构必须同时读取 `architecture/trading_knowledge.md`；任何任务不得把单一交易者当系统一级模块。
 - Agent 评价/模型比较任务必须读取 `architecture/agent_scorecard.md`；Scorecard 不产生模型总分，也不得自动调权。
 - Dev Studio / 开发 Agent 任务必须读取 `architecture/dev_studio.md`；所有写入只能发生在隔离 worktree + path lease 内，Human Merge 不自动 push。
+- System Health / 系统可观察性任务必须读取 `architecture/system_health.md`；运行在线与研究正确必须分轴表达，不允许自动修复或伪造健康总分。
 
 ## 固定读取顺序
 

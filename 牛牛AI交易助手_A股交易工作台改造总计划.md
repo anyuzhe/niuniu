@@ -325,9 +325,14 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - Research Agent 工具表不包含 Dev Studio write/merge；P10 CLI 提供 create/status/list/run-main/run-ready/run-cycle/diff/merge/cleanup，但没有 push action。
 - 产品接入：桌面顶级导航新增“开发工作台”，展示 DevTask、Subtask、tests、Reviewer、diff scope 和 Human Merge 状态。
 - 测试/验收：P10 专项 **14/14**，Trading Desk 导航 **2/2**，editable install + `niuniu-dev-studio --help` 通过；完整仓库 **862 tests / 0 failed / 0 skipped**，耗时 298.180 秒。
-### P11 System Health
-- 统一服务、任务、日志、心跳、数据新鲜度、PIT blocker。
-- 不把“在线”当作“正确”。
+### P11 System Health（v1 已完成，2026-09-15）
+- 统一只读聚合 Workspace / Artifact Growth、JobQueue、Tracking daemon、MCP adapter、Notifications、Market Data / Series、DailyMarket、MarketSnapshot、Daily Orchestrator、PIT / Playbook、Paper Lifecycle、Dev Studio 与后台日志。
+- 顶层严格分离 `runtime_status` 与 `research_readiness_status`；不生成 health score，不把“在线”当作“正确”。
+- MCP 只报告 adapter/transport/tool catalog；stdio/stateless HTTP 没有持久 heartbeat 时保持 `server_liveness=None`，不伪造服务在线。
+- 历史 Orchestrator BLOCKED/MISSED 只保留 WARN；只有当天计划 blocker 才阻断当前 readiness。
+- 产物增长采用 artifacts 顶层代理，避免递归扫描数万文件拖慢 System Center；磁盘容量另行报告。
+- AI/MCP 只有 `get_system_health` 只读工具；不提供 restart/retry/download/接受修订/修改 PIT/merge/push/trade 自动动作。
+- 真实工作区只读烟测 artifacts 文件数 **77006→77006**，刷新约0.82秒；专项+UI **14/14**，完整仓库 **876/0/0**。
 
 ### P12 移动端 / 机器人
 - 复用同一 MCP/API、Stock Dossier、Decision Ledger。
@@ -549,11 +554,10 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 ## 23. 2026-09-14 后续顺序调整（架构 v2）
 
-完成 P8.5-E1 与架构升级后，后续优先级调整为：
+完成 P11 后，后续优先级继续收敛为：
 
-1. **P11 System Health**。
-2. P12 移动端。
-3. P13 Paper→Real；真实券商最后单独评审。
+1. **P12 移动端 / 机器人**。
+2. P13 Paper→Real；真实券商最后单独评审。
 
 并行继续 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
 
@@ -632,3 +636,5 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 
 - 2026-09-15：P10 Dev Studio v1 完成。新增隔离 detached worktree、Main Developer + depth-1 Dynamic Subagents、max_parallel≤3、path-scoped immutable write leases、frozen tests、独立 Reviewer、stale test/review fingerprint 检测和 Human Merge Gate。Main/Subagents 均无 git push 权；只有宿主显式确认后的 human merge 可在 main 创建 commit，且主分支/BASE SHA 变化即阻断。Research Agent 无 Dev Studio 写/merge 工具。新增桌面“开发工作台”和 `niuniu-dev-studio` CLI。专项14/14、Trading Desk导航2/2、完整仓库862/0/0。下一阶段 P11 System Health。
+
+- 2026-09-15：P11 System Health v1 完成。系统中心新增只读 `SystemHealthService/SystemHealthWidget` 与 `niuniu-system-health`，统一聚合 Workspace、Artifact Growth、JobQueue、tracking daemon、MCP adapter、Notifications、Market Data/Series、DailyMarket、MarketSnapshot、Daily Orchestrator、PIT/Playbook、Paper Lifecycle、Dev Studio 和日志元数据。顶层严格分离 Runtime 与 Research Readiness，不生成健康总分；MCP 无持久 heartbeat 时明确 `server_liveness=None`；历史 Orchestrator blocker 仅 WARN，不永久阻断今天。AI/MCP 只有 `get_system_health` 只读入口，无自动修复权限。真实 artifacts 读取前后文件数 77006→77006，刷新约0.82秒；专项+UI 14/14，完整仓库 876/0/0。下一阶段 P12 移动端 / 机器人。
