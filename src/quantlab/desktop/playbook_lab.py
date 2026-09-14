@@ -25,7 +25,8 @@ TEMPLATES={
 }
 TEMPLATES.update({
     'case':{'definition_id':'<UUID>','trading_day':'2026-01-01','frame':'R1',
-        'as_of':'2026-01-01T09:35:00+08:00','source_ids':['<UUID>'],'summary':'','notes':''},
+        'as_of':'2026-01-01T09:35:00+08:00','source_ids':['<UUID>'],'market_snapshot_ids':[],
+        'summary':'','notes':''},
     'candidate':{'case_id':'<UUID>','definition_id':'<UUID>','trading_day':'2026-01-01','frame':'R1',
         'as_of':'2026-01-01T09:35:00+08:00','completeness':'UNKNOWN','pit_status':'UNKNOWN',
         'universe_source':'','generation_method':'','candidates':[],'evidence_ids':[]},

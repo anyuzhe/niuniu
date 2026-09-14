@@ -203,6 +203,19 @@ class PlaybookStore:
             if old is not None: return old
             definition = self._get_in_db(db,'definitions',normalized['definition_id'])
             self._verified_sources(db,normalized['source_ids'])
+            if normalized.get('market_snapshot_ids'):
+                from .decision import FRAME_ORDER
+                from .market_snapshot import MarketSnapshotStore,MarketSnapshotError
+                snapshots=MarketSnapshotStore(self.output)
+                for snapshot_id in normalized['market_snapshot_ids']:
+                    try:snapshot=snapshots.get(snapshot_id)
+                    except MarketSnapshotError as exc:raise PlaybookError('MARKET_SNAPSHOT_INVALID',str(exc)) from None
+                    if snapshot['trading_day']!=normalized['trading_day']:
+                        raise PlaybookError('MARKET_SNAPSHOT_MISMATCH','MarketSnapshot 与 PlaybookCase 交易日不一致。')
+                    if FRAME_ORDER.get(snapshot['frame'],-1)>FRAME_ORDER.get(normalized['frame'],-1):
+                        raise PlaybookError('LOOKAHEAD_BLOCKED','PlaybookCase 不能引用更晚 Frame 的 MarketSnapshot。')
+                    if _utc(snapshot['as_of'])>_utc(normalized['as_of']):
+                        raise PlaybookError('LOOKAHEAD_BLOCKED','PlaybookCase 不能引用 as_of 之后的 MarketSnapshot。')
             value = {**normalized,'case_id':str(uuid4()),'request_id':request_id,'input_hash':input_hash,
                 'playbook_key':definition['playbook_key'],'playbook_version':definition['version'],
                 'definition_hash':definition['definition_hash'],'created_at':created}
@@ -453,8 +466,13 @@ class PlaybookStore:
         selections = self.list_selections(candidate_set_id=candidate['candidate_set_id'],limit=200)['records'] if candidate else []
         definition = self.get_definition(case['definition_id'])
         sources = [self.get_source(source_id) for source_id in case['source_ids']]
-        return {'case':case,'definition':definition,'sources':sources,'candidate_set':candidate,
-            'selections':selections}
+        market_snapshots=[]
+        if case.get('market_snapshot_ids'):
+            from .market_snapshot import MarketSnapshotStore
+            snapshot_store=MarketSnapshotStore(self.output)
+            market_snapshots=[snapshot_store.get(snapshot_id) for snapshot_id in case['market_snapshot_ids']]
+        return {'case':case,'definition':definition,'sources':sources,'market_snapshots':market_snapshots,
+            'candidate_set':candidate,'selections':selections}
 
     def symbol_history(self, symbol, limit=500):
         from .decision import SYMBOL

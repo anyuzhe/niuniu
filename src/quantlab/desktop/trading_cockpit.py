@@ -52,6 +52,7 @@ class TradingCockpitWidget(QWidget):
             ('候选',len(value['candidates']),'DISCOVERED / WATCH / READY'),
             ('计划 / 持有',len(value['plans']),'Strategy Intent，不等于成交'),
             ('主线快照',len(value['themes']),f"有正式facts {value['theme_fact_snapshots']}"),
+            ('行情快照',len(value.get('market_snapshots',[])),'MarketSnapshot，不自动联网刷新'),
             ('Agenda',agenda.get('total',0),'确定性待办，不自动执行'),
             ('Watch',len(watch['rows']),f"不可读 {watch['unreadable']}"),
             ('风险项',len(value['risks']),'Decision + Theme 已保存风险'),
@@ -60,6 +61,17 @@ class TradingCockpitWidget(QWidget):
         theme_rows=[[r['theme'],r['machine_state'],r['ai_state'],fact_text(r),r.get('facts_source','') or '—',r.get('risk_review','')[:70]] for r in value['themes']]
         theme.add(label(value['market_facts_policy'],'note',True));theme.add(table(['主题','Machine','AI','正式 facts','来源','Risk Review'],theme_rows),1)
         self.body.addWidget(theme)
+
+        snapshots=Card('MarketSnapshot / 实时证据')
+        latest=value.get('latest_market_snapshots') or {}
+        snapshot_rows=[]
+        for frame in ('PREP','AUCTION','R1','R2','R3'):
+            r=latest.get(frame)
+            if r:snapshot_rows.append([frame,r['as_of'],r['provider'],r['completeness'],r['capture_status'],
+                '是' if r.get('strict_pit_eligible') else '否',len(r.get('instruments') or [])])
+        snapshots.add(label('这里只展示已冻结快照；打开首页不会联网刷新行情。','note',True))
+        snapshots.add(table(['Frame','as_of','Provider','完整性','捕获状态','Strict PIT候选','证券数'],snapshot_rows),1)
+        self.body.addWidget(snapshots)
 
         candidates=Card('候选股票')
         crows=[[d['symbol'],d['action'],d.get('theme',''),d['trading_day'],d['frame'],d.get('ai_thesis','')[:80]] for d in value['candidates']]

@@ -20,6 +20,8 @@ quantlab = "quantlab.cli:main"
 niuniu-mcp = "quantlab.agent.mcp_server:main"
 niuniu-tracking-daemon = "quantlab.agent.tracking_daemon:main"
 niuniu-playbook-forward = "quantlab.agent.playbook_forward_cli:main"
+niuniu-market-snapshot = "quantlab.agent.market_snapshot_cli:main"
+niuniu-daily-playbook-scan = "quantlab.agent.playbook_scan_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

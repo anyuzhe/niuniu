@@ -11,6 +11,7 @@ from quantlab.agent.watch_store import WatchStore
 from .decision import FRAME_ORDER
 from .decision_store import DecisionStore
 from .theme_store import ThemeStore
+from .market_snapshot import MarketSnapshotStore
 
 CANDIDATE_ACTIONS={'DISCOVERED','WATCH','READY'}
 PLAN_ACTIONS={'PLAN_OPEN','OPEN','ADD','HOLD','REDUCE','EXIT','INVALIDATED'}
@@ -22,6 +23,7 @@ class TradingCockpitService:
         self.output=Path(output).resolve();self.data_root=Path(data_root).resolve() if data_root else None
         if not self.output.is_dir():raise ValueError('Trading Cockpit workspace does not exist')
         self.decisions=DecisionStore(self.output);self.themes=ThemeStore(self.output);self.watches=WatchStore(self.output)
+        self.market_snapshots=MarketSnapshotStore(self.output)
 
     def _theme_records(self,day):
         try:return self.themes.list(start=day,end=day,limit=2000)['records']
@@ -62,6 +64,10 @@ class TradingCockpitService:
         saved_frame=next((name for name,index in FRAME_ORDER.items() if index==latest_frame),None)
         themes=self._theme_records(day)
         themes.sort(key=lambda r:(STATE_PRIORITY.get(r['machine_state'],0),STATE_PRIORITY.get(r['ai_state'],0),r['theme']),reverse=True)
+        try:market_snapshots=self.market_snapshots.list(trading_day=day,limit=100)['records']
+        except Exception:market_snapshots=[]
+        latest_market_snapshots={}
+        for snapshot in market_snapshots:latest_market_snapshots.setdefault(snapshot['frame'],snapshot)
         candidates=[d for d in current if d['action'] in CANDIDATE_ACTIONS]
         plans=[d for d in current if d['action'] in PLAN_ACTIONS]
         risks=[]
@@ -79,6 +85,7 @@ class TradingCockpitService:
             'current_states':current,'state_counts':dict(Counter(d['action'] for d in current)),
             'day_decisions':day_decisions,'candidates':candidates,'plans':plans,
             'themes':themes,'theme_fact_snapshots':sum(bool(t.get('facts')) for t in themes),
+            'market_snapshots':market_snapshots,'latest_market_snapshots':latest_market_snapshots,
             'ai_conclusions':[d for d in current if d.get('ai_thesis')][:12],
             'risks':risks[:30],'agenda':agenda,'watches':watch,
             'market_facts_policy':'只展示正式 Theme Snapshot 中带 facts_source/facts_as_of 的事实；不跨主题加总，不用 AI 文本补市场数字。',

@@ -133,3 +133,12 @@ v1 失败后建立 selection-hypothesis-v2 DRAFT：先看市场节点/新旧题�
 - 9/14 R1：FULL + STRICT_PIT，冻结选择为超声电子；中新赛克保留 `QUEUE_DEPENDENT`，不把通道成交能力当选股 Alpha。
 - 当前尚无 9/14 `OBSERVED_EXPERT` 标签，因此不得生成命中率或 Alpha 结论。
 - 完整仓库回归：**763 passed / 0 failed / 0 skipped**。
+
+## P8.5-D1：MarketSnapshot 与 Daily Scanner（2026-09-14）
+
+- 新增正式 `MarketSnapshotStore`：冻结交易日/Frame/captured_at/provider/字段口径/证券行情/原始SHA256/完整性；append-only + checksum 防篡改。
+- 近实时资格 fail-closed：未来时间拒绝，超过允许窗口的补录只标 BACKFILL，不可升级为 STRICT_PIT；PlaybookCase 可引用 `market_snapshot_ids`，旧 Case 保持兼容。
+- 新增 `DailyPlaybookScanner`：AUCTION 默认 `NO_AUCTION_ENTRY`；R1 第一版只在 STANDARD_ACCESS、正收益且相对竞价继续增强的候选中选择；候选快照不全时 `NO_TRADE`。
+- 新增 `niuniu-market-snapshot` / `niuniu-daily-playbook-scan`；Trading Cockpit、AI Research、Reviewer、标准 MCP 均只读接入 MarketSnapshot。
+- 9/14真实行情 BACKFILL 重放仍得到“超声电子第一且唯一选择”；只读扫描前后 PlaybookStore 计数不变。
+- 最终全仓：**769 tests / 0 failed / 0 skipped**。P8.5 下一步进入 D2：全市场 PREP 自动候选生成与市场节点/目标身位路由。

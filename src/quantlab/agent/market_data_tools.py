@@ -8,6 +8,7 @@ from quantlab.data.baostock_ingest import load_import
 from quantlab.data.baostock_dataset import dataset_manifest,read_table,responses,read_dataset_bytes
 from quantlab.agent.refresh_readiness import watch_readiness
 from quantlab.storage.codec import encode
+from quantlab.trading.market_snapshot import MarketSnapshotError,MarketSnapshotStore
 
 TOOLS=[
     schema('list_baostock_series','只读查询人工建立的数据更新通道；不接入批次或授权研究。',{'offset':OFFSET,'limit':LIMIT}),
@@ -18,6 +19,8 @@ TOOLS=[
     schema('get_baostock_import','核对一个批次的响应校验值和数据覆盖。抓取成功不等于PIT或真实交易规则认证。',{'import_id':TEXT}),
     schema('read_baostock_table','分页读取已归档数据表。table名称来自get_baostock_import，symbol留空不筛选。财报原始比例单位保持供应商口径；空值不填零。',{'import_id':TEXT,'table':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
     schema('get_watch_refresh_readiness','使用已归档完整日历和带时区as_of检查日线跟踪到期候选，不下载、不批准、不运行。',{'watch_id':TEXT,'import_id':TEXT,'as_of':TEXT}),
+    schema('list_market_snapshots','只读查询Trading Desk已冻结的MarketSnapshot；不会联网刷新行情。',{'trading_day':TEXT,'frame':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
+    schema('get_market_snapshot','读取一个MarketSnapshot及其捕获状态、SHA256来源和证券快照。',{'snapshot_id':TEXT}),
 ]
 
 
@@ -30,6 +33,7 @@ class MarketDataResearchAPI(ThemeResearchAPI):
             if name=='get_capabilities' and result.get('ok'):
                 result['data'].update(imported_market_data_available=True,data_download_tool=False,candidate_review_available=True,
                     calendar_readiness_available=True,controlled_tracking_available=True,managed_series_available=True,
+                    market_snapshot_available=True,market_snapshot_write_model=False,
                     tracking_authorization_host_only=True,tools=[t['name'] for t in self.schemas()])
             return result
         try:
@@ -75,6 +79,13 @@ class MarketDataResearchAPI(ThemeResearchAPI):
             elif name=='get_watch_refresh_readiness':
                 data=watch_readiness(self.output,**arguments)
                 refs=[{'kind':'watch','watch_id':arguments['watch_id']}]
+            elif name=='list_market_snapshots':
+                data=MarketSnapshotStore(self.output).list(trading_day=arguments['trading_day'],frame=arguments['frame'],
+                    symbol=arguments['symbol'],offset=arguments['offset'],limit=arguments['limit'])
+                refs=[{'kind':'market_snapshot','snapshot_id':r['snapshot_id']} for r in data['records']]
+            elif name=='get_market_snapshot':
+                data=MarketSnapshotStore(self.output).get(arguments['snapshot_id'])
+                refs=[{'kind':'market_snapshot','snapshot_id':data['snapshot_id']}]
             else:
                 directory,m=load_import(self.output,arguments['import_id'])
                 refs=[{'kind':'market_data','import_id':arguments['import_id']}]
@@ -102,7 +113,7 @@ class MarketDataResearchAPI(ThemeResearchAPI):
                 'warnings':['数据采集日期不是历史首次可用日期；不提供严格PIT、真实每日市值或官方价格限制认证。'],'error':None}
             if len(encode(result))>24000:result['data']={'omitted':True,'reason':'result_size_limit'}
             return json.loads(encode(result))
-        except (ValueError,TypeError,KeyError,OSError,pl.exceptions.PolarsError) as error:
+        except (ValueError,TypeError,KeyError,OSError,MarketSnapshotError,pl.exceptions.PolarsError) as error:
             return {'ok':False,'tool':name,'data':None,'evidence':[],'warnings':[],
                 'error':{'code':'MARKET_DATA_READ_FAILED','message':str(error)[:240]}}
 

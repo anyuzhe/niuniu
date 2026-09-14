@@ -16,6 +16,7 @@ PAYLOAD_FIELDS = {
     'definition_id','trading_day','frame','as_of','source_ids','summary','notes',
     'candidate_set','prediction',
 }
+OPTIONAL_PAYLOAD_FIELDS={'market_snapshot_ids'}
 
 
 def _request_id(kind, value):
@@ -53,8 +54,9 @@ def forward_frame_status(output, trading_day, frame, now_fn):
 
 
 def _payload(value):
-    if not isinstance(value,dict) or set(value)!=PAYLOAD_FIELDS:
+    if not isinstance(value,dict) or not PAYLOAD_FIELDS<=set(value) or set(value)-PAYLOAD_FIELDS-OPTIONAL_PAYLOAD_FIELDS:
         raise PlaybookError('INVALID_ARGUMENT','前瞻 payload 字段必须与合同完全一致。')
+    value=dict(value);value.setdefault('market_snapshot_ids',[])
     if value['frame'] not in FORWARD_FRAMES:
         raise PlaybookError('INVALID_ARGUMENT','前瞻 payload 只支持 PREP/AUCTION/R1。')
     for name in ('candidate_set','prediction'):
@@ -89,7 +91,7 @@ def _assert_live_as_of(status, as_of, now):
 def _case_content(value):
     return {'definition_id':value['definition_id'],'trading_day':value['trading_day'],
         'frame':value['frame'],'as_of':value['as_of'],'source_ids':value['source_ids'],
-        'summary':value['summary'],'notes':value['notes']}
+        'market_snapshot_ids':value['market_snapshot_ids'],'summary':value['summary'],'notes':value['notes']}
 
 def _candidate_content(value, case_id):
     item=value['candidate_set']

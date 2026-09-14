@@ -339,3 +339,14 @@
 - 后续事项：由 `agent_memory/rules/development_history.md` 对后续 Agent 强制提示该维护要求。
 - 测试/验收：本次仅新增文档与 Agent 维护规则，不修改生产代码；`git diff --check` 通过。
 - Git：本条记录随本总档案首次提交一并发布，具体 SHA 以该提交的 Git 历史为准。
+
+### 2026-09-14 12:15｜[功能] P8.5-D1 MarketSnapshot 与 Daily Playbook Scanner
+
+- 模块：实时市场证据 / Expert Playbook / Trading Cockpit / AI只读工具
+- Git：本条与功能代码同一提交发布，提交标题 `feat: 增加MarketSnapshot与Daily Playbook Scanner`；SHA 以该提交 Git 历史为准。
+- 改动内容：新增 append-only `MarketSnapshotStore`，把竞价/R1 等当时行情正式冻结为可哈希、可审计对象；新增 `DailyPlaybookScanner`，在已冻结 CandidateSet 内做 AUCTION/R1 确定性排序与选择。
+- 改动原因：9/14 第一条真实前瞻实验已经证明手工脚本可跑，但事实层仍是临时文件；需要把“抓到什么行情、何时抓到、是否完整、能否称实时”升级为产品合同。
+- 关键约束：未来时间拒绝；超过近实时窗口只能 BACKFILL；候选缺失 fail-closed；QUEUE_DEPENDENT 不冒充普通账户可成交；Scanner 默认只读，显式 `--freeze` 才能写 SYSTEM_PREDICTION。
+- 产品接入：新增 `niuniu-market-snapshot`、`niuniu-daily-playbook-scan`；Trading Cockpit、AI Research、Reviewer、标准 MCP 均可只读查看正式快照。
+- 测试/验收：9/14真实数据 BACKFILL 重放仍选择超声电子；新增6项核心测试；最终全仓 **769 tests / 0 failed / 0 skipped**；editable install 后两个新 CLI 已实际可运行。
+- 后续事项：P8.5-D2 自动化 PREP 全市场扫描、市场节点→目标身位路由和完整 CandidateSet 生成；official-rule 不足时保持 PARTIAL/UNKNOWN。

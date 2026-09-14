@@ -5,6 +5,7 @@ from quantlab.agent.catalog import schema, TEXT, LIMIT, OFFSET, compact
 from quantlab.agent.theme_tools import ThemeResearchAPI
 from quantlab.storage.codec import encode
 from quantlab.trading.playbook_store import PlaybookError, PlaybookStore
+from quantlab.trading.market_snapshot import MarketSnapshotError,MarketSnapshotStore
 
 TOOLS = [
     schema('get_playbook_overview','只读查看Playbook Lab对象数量和正式审计完成度。',{}),
@@ -17,6 +18,8 @@ TOOLS = [
     schema('list_playbook_validations','列出玩法验证记录；不会把描述性重建称为Alpha。',{'definition_id':TEXT,'method':TEXT,'offset':OFFSET,'limit':LIMIT}),
     schema('get_playbook_validation','读取选择匹配、PIT和执行审计状态。',{'validation_id':TEXT}),
     schema('get_symbol_playbook_history','查询股票历史进入哪些候选集、何时被选或未选。',{'symbol':TEXT}),
+    schema('list_market_snapshots','只读查询已冻结MarketSnapshot；不会联网刷新行情。',{'trading_day':TEXT,'frame':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
+    schema('get_market_snapshot','读取一个不可变MarketSnapshot及其捕获/PIT状态。',{'snapshot_id':TEXT}),
 ]
 
 
@@ -41,6 +44,7 @@ class PlaybookResearchAPI(ThemeResearchAPI):
             result=super().call(name,arguments)
             if name=='get_capabilities' and result.get('ok'):
                 result['data'].update(playbook_lab_available=True,playbook_write_model=False,
+                    market_snapshot_available=True,market_snapshot_write_model=False,
                     tools=[tool['name'] for tool in self.schemas()])
             return result
         try:
@@ -69,6 +73,14 @@ class PlaybookResearchAPI(ThemeResearchAPI):
             elif name=='get_playbook_validation':
                 data=store.get_validation(arguments['validation_id'])
                 refs=[{'kind':'playbook_validation','validation_id':data['validation_id']}]
+            elif name=='list_market_snapshots':
+                snapshots=MarketSnapshotStore(self.output)
+                data=snapshots.list(trading_day=arguments['trading_day'],frame=arguments['frame'],
+                    symbol=arguments['symbol'],offset=arguments['offset'],limit=arguments['limit'])
+                refs=[{'kind':'market_snapshot','snapshot_id':row['snapshot_id']} for row in data['records']]
+            elif name=='get_market_snapshot':
+                data=MarketSnapshotStore(self.output).get(arguments['snapshot_id'])
+                refs=[{'kind':'market_snapshot','snapshot_id':data['snapshot_id']}]
             else:
                 data={'symbol':arguments['symbol'],'records':store.symbol_history(arguments['symbol'])}
                 refs=[{'kind':'playbook_case','case_id':row['case_id']} for row in data['records']]
@@ -77,7 +89,7 @@ class PlaybookResearchAPI(ThemeResearchAPI):
             if len(encode(reply))>24000:
                 reply['data']={'omitted':True,'reason':'result_size_limit'}
             return json.loads(encode(reply))
-        except (PlaybookError,OSError,ValueError,TypeError,KeyError) as error:
+        except (PlaybookError,MarketSnapshotError,OSError,ValueError,TypeError,KeyError) as error:
             return {'ok':False,'tool':name,'data':None,'evidence':[],'warnings':[],
                 'error':{'code':'PLAYBOOK_READ_FAILED','message':str(error)[:300]}}
 

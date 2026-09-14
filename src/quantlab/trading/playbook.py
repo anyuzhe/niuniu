@@ -191,7 +191,7 @@ def normalize_playbook_definition(content):
 
 
 def normalize_playbook_case(content):
-    allowed = ('definition_id','trading_day','frame','as_of','source_ids','summary','notes')
+    allowed = ('definition_id','trading_day','frame','as_of','source_ids','market_snapshot_ids','summary','notes')
     _reject_extra(content, allowed, 'PlaybookCase')
     frame = _text(content.get('frame'), 'frame', 20, True).upper()
     if frame not in FRAMES:
@@ -202,6 +202,7 @@ def normalize_playbook_case(content):
         'frame': frame,
         'as_of': _moment(content.get('as_of'), 'as_of'),
         'source_ids': _uuid_list(content.get('source_ids'), 'source_ids', 100, True),
+        'market_snapshot_ids': _uuid_list(content.get('market_snapshot_ids'), 'market_snapshot_ids', 100),
         'summary': _text(content.get('summary'), 'summary', 6000, True),
         'notes': _text(content.get('notes'), 'notes', 8000),
     }

@@ -563,3 +563,12 @@ Playbook Lab 必须额外阻断：
 - 已将 2026-09-13 固定为 v3 research cutoff；9/14 起只允许前瞻评估，不允许用新结果回改 v3 后宣称样本外成功。
 - 9/14 已完成 PREP → AUCTION → R1 三段真实时间冻结；R1 `SYSTEM_PREDICTION` 选择超声电子，专家真实结果尚未知。
 - 新增 `niuniu-playbook-forward` 时间闸门执行器；全仓回归 **763 passed / 0 failed / 0 skipped**。
+
+### 2026-09-14：P8.5-D1 MarketSnapshot / Daily Scanner
+
+- 将 9/14 前瞻实验里临时抓取的竞价/分钟行情升级为正式 `MarketSnapshot`：append-only、checksum、captured_at、provider、expected/missing symbols、BACKFILL/近实时资格与原始哈希均可审计。
+- 新增 `DailyPlaybookScanner`：只消费冻结 CandidateSet + MarketSnapshot；AUCTION 默认只排序不入场，R1 第一版采用 STANDARD_ACCESS + 正收益 + 相对竞价主动增强；一字板保留为 QUEUE_DEPENDENT，不当成普通账户自动选择。
+- 新增 `niuniu-market-snapshot` 与 `niuniu-daily-playbook-scan`；默认扫描只读，只有显式 `--freeze` 才能进入原有 SYSTEM_PREDICTION 时间闸门。
+- Trading Cockpit、AI Research、Reviewer、标准 MCP 已接入 MarketSnapshot 只读查询；模型仍无行情写入、预测冻结、Strategy Intent 修改和自动交易权限。
+- 使用 9/14 实际行情 BACKFILL 重放仍选择超声电子；全仓 **769 tests / 0 failed / 0 skipped**。阶段说明见 `牛牛AI交易工作台_P8_5D实时快照与DailyScanner_验收说明.md`。
+- 下一步：P8.5-D2 全市场 PREP 自动扫描与市场节点→目标身位路由；逐日 official-rule 不足时保持 PARTIAL/UNKNOWN。
