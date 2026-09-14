@@ -24,6 +24,7 @@ niuniu-market-snapshot = "quantlab.agent.market_snapshot_cli:main"
 niuniu-daily-playbook-scan = "quantlab.agent.playbook_scan_cli:main"
 niuniu-prep-playbook-scan = "quantlab.agent.prep_scan_cli:main"
 niuniu-daily-market = "quantlab.agent.daily_market_cli:main"
+niuniu-daily-orchestrator = "quantlab.agent.daily_orchestrator_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

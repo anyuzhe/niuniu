@@ -55,9 +55,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**793 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1，以及 P8.6 StrategySource 通用来源层。
-下一阶段：P8.7 Daily Orchestrator → P8.8 Playbook-to-Paper；其后 P9～P13。
+当前正式代码全仓基线：**805 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource，以及 P8.7 Daily Orchestrator v1。
+下一阶段：P8.8 Playbook-to-Paper；其后 P9～P13。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -299,9 +299,9 @@
 1. 先做 P8.6，把“高手来源试点”升级为通用 StrategySource，但不破坏已有 ExpertSource 历史证据。
 2. 做 P8.7 Daily Orchestrator，让数据更新、PREP、AUCTION、R1/R2/R3 真正每天受控自动运行。
 2. 做 P8.8，把 Playbook 前瞻输出接入 Decision / Strategy Intent / 长期 Paper，并正式统计 NO_TRADE、未成交和退出。
-3. 在真实前瞻 Decision 足够后再做 P9 Agent Scorecard。
-4. 随后推进 P10 / P11 / P12；P13 真实账户最后单独评审。
-5. 并行继续 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
+2. 在真实前瞻 Decision 足够后再做 P9 Agent Scorecard。
+3. 随后推进 P10 / P11 / P12；P13 真实账户最后单独评审。
+4. 并行继续 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
 ## 10. 关键测试基线演进
 
@@ -323,6 +323,7 @@
 | 2026-09-14 | P8.5-D2 PREP 全市场扫描 | **777 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.5-E1 DailyMarket 增量 / PREP Overlay | **784 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.6 StrategySource 通用来源层 | **793 passed / 0 failed / 0 skipped** |
+| 2026-09-14 | P8.7 Daily Orchestrator v1 | **805 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -410,3 +411,18 @@
 - 产品接入：Playbook Lab 改为“交易知识 / Playbook Lab”，桌面宿主可导入 StrategySource/关系；AI Research、MCP、Peer Reviewer 只能只读查询统一来源与关系，无创建/链接工具。
 - 测试/验收：StrategySource 核心 7/7、产品专项 13/13、相关联合 41/41；完整仓库 **793 tests / 0 failed / 0 skipped**。
 - 后续事项：P8.7 Daily Orchestrator，将 DailyMarket → PREP → AUCTION → R1/R2/R3 串成受控、幂等、可恢复的每日运行链。
+
+
+### 2026-09-14 18:55｜[功能] P8.7 Daily Orchestrator v1
+
+- 模块：DailyMarket / PREP / MarketSnapshot / Daily Scanner / Forward Freeze / 宿主调度。
+- Git：本条与功能代码同一提交发布，提交标题 `feat: 增加Daily Playbook受控编排器`；SHA 以该提交 Git 历史为准。
+- 改动内容：新增持久 `DailyPlaybookOrchestrator` 与 `niuniu-daily-orchestrator`。宿主按交易日初始化计划后，可 `--tick` 单步或 `--run` 轮询；状态使用 checksum + 文件锁保存，重启可继续。
+- 数据阶段：默认绝不联网；显式 `allow_daily_market_capture` 后才允许在上一交易日18:30后抓 DailyMarket。失败15分钟冷却、最多8次；未确认 revision_review 阻断，人工接受后可恢复。
+- PREP：复用全市场 PrepScanner，预留 as_of/scan/snapshot request 后再写副作用；中断后重试复用同一 MarketSnapshot 与 Forward payload，不重复 Case/Selection。
+- AUCTION/R1：只消费正式 `LIVE_NEAR_REALTIME` MarketSnapshot。AUCTION只接受09:25–09:30快照；R1第一窗口只接受09:35–09:40。错过窗口写 MISSED，不历史补 SYSTEM_PREDICTION；AUCTION预测错过但当时实时竞价事实存在时，R1仍可继续。
+- Fail-closed：当前自动 PREP 在缺 PIT Universe/官方逐日规则时保持 PARTIAL，因此后续 R1 可以正常冻结但必须 NO_TRADE；编排器不会为了“自动选股”突破数据资格。
+- 权限：AI Research/MCP 没有 init/tick/run 工具；这是宿主编排器。真实工作区验收前后没有创建 `_daily_orchestrator` 状态，PlaybookStore 原计数保持 42/17/36/26/37/2。
+- 测试/验收：P8.7 自身12/12；DailyMarket+Orchestrator 16/16；Forward/Scanner联合36/36；editable install 与 CLI help 通过；完整仓库 **805 tests / 0 failed / 0 skipped**。
+- 已知边界：v1 仅 PREP/AUCTION/R1；R2/R3 仍 unsupported。AUCTION/R1 的正式实时 MarketSnapshot provider 尚未产品化，Orchestrator 不使用临时网页抓取替代。
+- 后续事项：P8.8 将已有前瞻预测接入 Decision Ledger → Strategy Intent → Paper/Execution → D1/D2/D3+ 复盘。

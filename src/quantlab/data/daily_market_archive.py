@@ -286,7 +286,9 @@ class DailyMarketArchive:
                 if not child.is_dir():continue
                 try:manifest,_=self._read_manifest(day,child.name)
                 except DailyMarketArchiveError:continue
-                revisions+=int(manifest['snapshot_id']!=accepted['snapshot_id'])
+                revisions+=int(manifest['snapshot_id']!=accepted['snapshot_id'] and
+                    manifest.get('capture_state')=='revision_review' and
+                    manifest.get('revision_of')==accepted['snapshot_id'])
             rows.append({'date':day.isoformat(),'snapshot_id':accepted['snapshot_id'],'rows':accepted['rows'],
                 'fetched_at':accepted['fetched_at'],'content_hash':accepted['content_hash'],'revision_candidates':revisions})
             if len(rows)>=limit:break

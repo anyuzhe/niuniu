@@ -59,6 +59,7 @@ class DailyMarketArchiveTests(unittest.TestCase):
         with self.assertRaises(DailyMarketArchiveError):self.store.accept_revision(self.day,revision['snapshot_id'])
         accepted=self.store.accept_revision(self.day,revision['snapshot_id'],confirmed=True)
         self.assertTrue(accepted['changed']);self.assertEqual(self.store.accepted(self.day)['snapshot_id'],revision['snapshot_id'])
+        self.assertEqual(self.store.list_days(limit=10)[0]['revision_candidates'],0)
 
     def test_tamper_and_schema_change_fail_closed(self):
         saved=self.store.capture(self.day,sdk=SDK(self.rows))

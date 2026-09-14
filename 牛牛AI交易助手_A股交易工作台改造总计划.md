@@ -288,11 +288,12 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 验收：旧 ExpertSource 全部可读；新来源类型可统一归档、检索、引用和审计；任何新来源都不能绕过 DRAFT→验证→冻结门槛。
 - 实际交付：schema v2 新增 `strategy_sources / source_links`；旧库只读无需迁移，首次写新对象时兼容迁移；AI/MCP/Reviewer 只读，桌面宿主可人工导入。全仓 **793/0/0**。
 
-### P8.7 Daily Orchestrator：每日受控运行闭环
+### P8.7 Daily Orchestrator：每日受控运行闭环（v1 已完成，2026-09-14）
 - 串起 DailyMarket 数据增量、就绪检查、PREP、09:25 AUCTION、09:35 R1，并继续支持 R2/R3。
 - 调度器只触发已定义的确定性阶段，不让模型自己修改时间窗、候选全集或历史结果。
 - 网络失败、行情过期、规则/PIT 缺失时必须明确 BLOCKED/UNKNOWN/NO_TRADE，不补造结果。
 - 验收：同一交易日重复启动幂等；错过实时窗口不能回填 SYSTEM_PREDICTION；每阶段都可追到具体 MarketSnapshot 和 source hash。
+- v1 实际交付：单交易日持久计划、checksum 状态、文件锁、DailyMarket 显式 capture 授权/冷却/修订审核、PREP 预留恢复、AUCTION/R1 实时快照等待与 MISSED_FRAME、`--tick/--run/--status` CLI。R2/R3 和正式实时 provider 仍未实现。全仓 **805/0/0**。
 
 ### P8.8 Playbook → Trading Desk → Paper 接线
 - Daily Scanner 输出进入 Decision Ledger，再通过合法状态迁移形成 Strategy Intent。
@@ -537,13 +538,12 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 完成 P8.5-E1 与架构升级后，后续优先级调整为：
 
-1. **P8.7 Daily Orchestrator**：DailyMarket capture/就绪检查 → PREP → 09:25 AUCTION → 09:35 R1 → R2/R3。
-2. **P8.8 Playbook → Trading Desk → Paper**：把前瞻判断接入 Decision/Strategy Intent/模拟成交与跨日复盘。
-3. **P9 Agent Scorecard**：等真实前瞻 Decision 样本足够后再做按任务类型评价，不自动调模型权重。
-4. **P10 Dev Studio + Dynamic Agent Orchestrator**。
-5. P11 System Health。
-6. P12 移动端。
-7. P13 Paper → Real 渐进交易层，真实券商最后单独评审。
+1. **P8.8 Playbook → Trading Desk → Paper**：把前瞻判断接入 Decision/Strategy Intent/模拟成交与跨日复盘。
+2. **P9 Agent Scorecard**：等真实前瞻 Decision 样本足够后再做按任务类型评价，不自动调模型权重。
+3. **P10 Dev Studio + Dynamic Agent Orchestrator**。
+4. P11 System Health。
+5. P12 移动端。
+6. P13 Paper → Real 渐进交易层，真实券商最后单独评审。
 
 并行继续 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
 
@@ -613,3 +613,5 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 - 本次仅调整 README / 项目架构 / 开发计划 / Agent Memory 文档，不修改生产代码；最近完整生产回归仍为 784/0/0。
 
 - 2026-09-14：P8.6 StrategySource 通用来源层完成。新增六类 StrategySource、旧 ExpertSource→TRADER 兼容投影与 PlaybookSourceLink 多对多关系；正式 FROZEN/HOLDOUT 合同仍沿用旧 VERIFIED ExpertSource，不允许新来源绕过验证门槛。真实旧库副本 v1→v2 迁移保持 42 Source / 17 Definition / 36 Case / 26 CandidateSet / 37 Selection / 2 Validation 的 payload+checksum 不变；全仓 793/0/0。下一阶段 P8.7 Daily Orchestrator。
+
+- 2026-09-14：P8.7 Daily Orchestrator v1 完成。新增单交易日受控状态机与 `niuniu-daily-orchestrator`；默认不联网，只有宿主计划显式授权才 capture DailyMarket；PREP/AUCTION/R1 复用现有 Scanner/Forward 合同，错过实时窗口记录 MISSED 而不回填。网络失败有15分钟冷却，DailyMarket revision_review 可人工确认后继续；中断后复用同一 reservation/snapshot。AUCTION/R1 仍依赖正式 LIVE_NEAR_REALTIME MarketSnapshot provider，R2/R3 未宣称支持。全仓 805/0/0。下一阶段 P8.8。
