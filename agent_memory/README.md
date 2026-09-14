@@ -8,6 +8,7 @@
 - 实验数值、PIT 资格、Decision、Theme Snapshot、Watch、成交与统计检验仍以结构化归档为权威源。
 - Markdown 可以引用研究 ID，但不能用文字覆盖原始数值证据。
 - 不使用向量库作为权威记忆；未来索引只能是可删除、可重建的检索缓存。
+- 当前交易知识架构必须同时读取 `architecture/trading_knowledge.md`；任何任务不得把单一交易者当系统一级模块。
 
 ## 固定读取顺序
 

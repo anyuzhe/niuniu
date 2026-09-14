@@ -6,19 +6,37 @@
 - 计划冻结时全仓基线：681 passed / 0 failed / 0 skipped
 - 计划性质：长期核对合同；阶段实现如需偏离，必须在本文件追加变更记录，不静默改目标
 
+## 2026-09-14 架构 v2：当前权威开发口径
+
+从本节起，牛牛的长期中心从“高手玩法试点”升级为 **Trading Knowledge / Strategy Source → Playbook → Validation → Daily Decision → Review**。若后续目标与早期 P8.5 文字冲突，以本节和《牛牛AI交易助手_项目说明与总体架构.md》为未来开发口径；早期文字保留为历史事实，不回写历史提交。
+
+核心变化：
+
+- “期末50分”只是 `StrategySource(type=TRADER)` 的首个试点，不是一级架构模块。
+- 来源扩展为：TRADER / USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / STATISTICAL_DISCOVERY / SYSTEM_REVIEW。
+- 一个来源可以支持多个 Playbook；一个 Playbook 可以引用多个支持/反对来源，未来采用多对多关系。
+- 当前 `ExpertSource` 保持兼容，不立即破坏性重命名；未来通用 `StrategySource` 必须保留现有 source/case/validation 的身份和哈希链。
+- Git/Markdown 只保存人类可读规则、经验、架构和 Agent Operating Memory；数值、时点、候选、预测、PIT、成交和收益继续以 Structured Evidence 为权威源。
+- AI Team 不做多数票系统；第一轮独立判断，Chief 综合证据并保留分歧。
+- Daily Scanner 是确定性规则运行层；证据不足时允许 UNKNOWN / NO_TRADE / PARTIAL，不为了每日输出而强制推荐。
+
+当前最近完整生产回归：**784 tests / 0 failed / 0 skipped**。
+
 ## 1. 改造目标
 
 将牛牛从“统一技术交易因子实验平台”升级为：
 
-> **牛牛 AI · 个人 A 股交易研究助手**
+> **一个把多来源交易知识持续形式化、结构化留证、数据验证化，并通过 Daily Scanner 与多 Agent 研究形成可追溯交易决策，再通过长期复盘把新经验沉淀回规则库的个人 A 股交易研究系统。**
 
-最终同时具备三类能力：
+最终形成四个相互连接的能力域：
 
-1. **Trading Desk**：每天面向 A 股市场、主线、股票、计划、持仓意图和复盘使用。
-2. **Research Lab**：保留并继续强化现有因子、实验、PIT、Alpha Factory、Campaign、Watch 等严谨研究能力，并新增面向 A 股短线的高手玩法 / Playbook Lab。
-3. **Dev Studio**：允许用户向开发助理提出修改牛牛本身的需求，在隔离 worktree 中开发、测试、复核，人工批准后再合并发布。
+1. **Trading Desk**：每天围绕市场、主线、股票、Decision、Strategy Intent、Paper 和复盘工作。
+2. **Trading Knowledge / Playbook Lab**：吸收交易者、用户经验、公开方法、历史案例、统计发现与系统复盘，形成可版本化 Playbook。
+3. **Research Lab**：保留 Factor / Experiment / PIT / Campaign / Factory / Watch / 统计和执行验证，作为 Playbook 的确定性验证内核。
+4. **AI / Dev 能力层**：AI Team 负责研究综合；未来 Dev Studio + Dynamic Agent Orchestrator 负责隔离开发。
 
-核心原则：**不推倒现有研究内核；交易产品层建立在现有严谨研究证据之上。**
+核心原则：**来源不是规则，规则不是 Alpha，选择能力不是成交能力，策略意图不是持仓；任何升级都必须有结构化证据。**
+
 ## 2. 必须保留的牛牛护城河
 
 以下能力不得因本轮产品化而削弱：
@@ -46,25 +64,23 @@
    │
 牛牛 AI
    ├─ Trading Desk
-   │   ├─ 今日交易
-   │   ├─ 主线市场 / Theme Matrix
-   │   ├─ 股票中心 / Stock Dossier
-   │   ├─ 持仓计划 / Position Intent
-   │   └─ 复盘中心 / Decision Timeline
+   │   ├─ 今日交易 / Theme Matrix / Stock Dossier
+   │   ├─ Decision Ledger / Strategy Intent
+   │   └─ 复盘 / Paper（逐步接入）
    ├─ AI Team
-   │   ├─ Chief Researcher
-   │   ├─ Market Scanner
-   │   ├─ Skeptic / Risk Reviewer
-   │   ├─ Quant Researcher
-   │   └─ Developer
+   │   └─ Chief + Scanner + Skeptic + Quant Researcher
    ├─ Research Lab
-   │   ├─ Factor / Experiment / PIT / Campaign / Factory / Watch
-   │   └─ Playbook Lab：高手玩法→候选全集→选择差异→历史验证
-   ├─ Dev Studio
-   │   └─ DevTask → Worktree → Tests → Review → Human Merge
+   │   ├─ Trading Knowledge / StrategySource / Playbook Lab
+   │   └─ Factor / Experiment / PIT / Campaign / Factory / Watch
+   ├─ Dev Studio（P10目标）
+   │   └─ Main Agent → Dynamic Subagents → Tests → Review → Human Merge
    └─ System Center
        └─ Data / PIT / Jobs / MCP / daemon / logs / health
 ```
+
+同时采用第二个视角描述知识流：
+
+`StrategySource → Playbook Hypothesis → Git+Structured Evidence → Validation → Daily Scanner → AI Team → Decision/Intent → Paper/Execution → D1/D2/D3+ Review → 新 StrategySource`。
 
 ## 5. 一级导航目标
 
@@ -258,13 +274,30 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 第一轮独立判断互不可见，复核轮才允许查看对方输出。
 - 验收：任务链有 task_id/parent/reviewer/stop_reason，不能出现无限对话。
 
-### P8.5 A股高手玩法 / Playbook Lab（新增优先阶段）
-- 将淘股吧等公开实盘高手的可核验玩法作为“研究假设来源”，不是直接当真理。
-- 先做 source archive / 交割记录 / 当时市场上下文，再抽取 eligibility、候选池、选择条件、否决条件、entry/confirm/invalidation/exit。
-- 核心研究问题从“这个因子有没有 Alpha”扩展为“同一时点符合玩法的 10 个候选，为什么高手选择其中 2 个；剩余 8 个是什么反例”。
-- Playbook 规则/经验的人类可读版本进入 Git；数值验证、候选全集、失败样本和收益仍进入结构化 Research Evidence。
-- 第一批可把“期末50分”作为试点，但只有拿到可核验原始记录后才建正式 Playbook，不凭二手总结补全规则。
-- 验收：完整候选集合、正负样本、规则版本、样本外/走步验证、可成交收益、成本与 A 股制度约束均可审计。
+### P8.5 Trading Knowledge / Playbook Lab 基础能力（已进入前瞻验证）
+- 把任何可核验交易经验都视为“研究假设来源”，不是直接当真理；实盘高手只是来源类型之一。
+- 现有正式对象继续保留 `ExpertSource / PlaybookDefinition / PlaybookCase / CandidateSet / SelectionDecision / PlaybookValidation`，完整候选集、正负样本、防回填和执行审计不变。
+- 第一批“期末50分”研究继续作为历史试点，用于证明来源归档、10选2、Selection/Execution 分离和真正前瞻冻结链路。
+- 验收：规则版本、候选全集、未选/失败样本、样本外/走步、可成交收益、成本和 A 股制度约束均可审计；失败必须保留。
+
+### P8.6 StrategySource 通用来源层（下一架构升级）
+- 新增通用 `StrategySource` 概念，支持 `TRADER / USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / STATISTICAL_DISCOVERY / SYSTEM_REVIEW`。
+- 一个来源可以支持多个 Playbook，一个 Playbook 也可以引用多个支持/反对来源；来源与规则采用多对多关系。
+- 当前 `ExpertSource` 兼容映射为 `StrategySource(type=TRADER)`，不破坏历史 source_id、Case、Validation、哈希和 Git 资料。
+- Playbook 名称逐步从“某某高手玩法”解耦成规则本身，如 high_low_switch / leader_reentry / mid_board_acceleration。
+- 验收：旧 ExpertSource 全部可读；新来源类型可统一归档、检索、引用和审计；任何新来源都不能绕过 DRAFT→验证→冻结门槛。
+
+### P8.7 Daily Orchestrator：每日受控运行闭环
+- 串起 DailyMarket 数据增量、就绪检查、PREP、09:25 AUCTION、09:35 R1，并继续支持 R2/R3。
+- 调度器只触发已定义的确定性阶段，不让模型自己修改时间窗、候选全集或历史结果。
+- 网络失败、行情过期、规则/PIT 缺失时必须明确 BLOCKED/UNKNOWN/NO_TRADE，不补造结果。
+- 验收：同一交易日重复启动幂等；错过实时窗口不能回填 SYSTEM_PREDICTION；每阶段都可追到具体 MarketSnapshot 和 source hash。
+
+### P8.8 Playbook → Trading Desk → Paper 接线
+- Daily Scanner 输出进入 Decision Ledger，再通过合法状态迁移形成 Strategy Intent。
+- `SYSTEM_PREDICTION` 不等于成交；Paper 只有模拟成交回执后才改变 Paper Position。
+- 建立 NO_TRADE、未成交、QUEUE_DEPENDENT、T+1、费用、滑点和退出条件的长期账户复盘。
+- 验收：判断、计划、订单、成交、持仓、收益和复盘全部分层；AI 无自动实盘权限。
 
 ### P9 Agent Scorecard
 - 评价 Coverage、证据正确、计划完整、及时性、修订纪律、约束违规、后续跟踪，以及 Playbook 候选覆盖/漏选/错误升级。
@@ -424,115 +457,95 @@ Subagent 返回“完成”只表示自己的局部任务结束。只有 Main Ag
 
 P8 Peer Review 不改成“共享答案一起讨论”。P8 保留独立 Reviewer → Chief synthesis，用于高风险交易/研究判断。Dynamic Orchestrator 是更通用的任务执行层：在 Dev Studio 中允许共享 worktree；在 Research 中共享只读 evidence，不破坏独立判断。
 
-## 22. A股高手玩法 / Expert Playbook Lab
+## 22. Trading Knowledge / StrategySource / Playbook Lab
 
-新增研究主线：对于 A 股短线主线、情绪周期、龙头、弱转强、分歧转一致、二波/龙回头等高度条件化模式，**高手玩法比单一通用因子更接近日常交易问题的形态**。牛牛因此从 Factor-first 调整为：
+牛牛的长期研究中心不是“研究某一个高手”，而是建立一个能够持续吸收、反驳、验证和迭代交易经验的通用知识层。
 
-> **Playbook-first hypothesis discovery + deterministic market facts + Quant/PIT validation**
+> **StrategySource → Playbook Hypothesis → Structured Validation → Daily Decision → Review → New StrategySource**
 
-因子不删除，也不降级为无用；它从“唯一中心”变成 Playbook 的特征、控制变量、对照和增量验证工具之一。
+因子、理论和高手案例都只是来源或验证工具之一；系统真正长期积累的是可版本化、可验证、可前瞻检验的 Playbook。
 
-### 22.1 研究对象
+### 22.1 StrategySource 通用来源模型
 
-第一版新增正式对象：
+目标来源类型：
 
-- `ExpertSource`：高手、原帖/实盘赛/交割记录、来源 URL/文件、发布时间、可用时间、完整性说明。
-- `PlaybookDefinition`：玩法定义、市场上下文、eligibility、候选生成、选择条件、否决条件、entry、confirm、invalidation、hold/add/reduce/exit。
-- `PlaybookCase`：一次历史事件/交易案例，绑定当时可见数据和原始来源。
-- `CandidateSet`：在当时规则下**所有**符合 eligibility 的股票，不只保存最终买入者。
-- `SelectionDecision`：高手/系统从 CandidateSet 中选择谁、没选谁，以及能否从当时证据解释差异。
-- `PlaybookValidation`：冻结版本后的历史验证、样本外、walk-forward、执行收益、失败样本与局限。
+- `TRADER`：可核验实盘交易者、比赛、交割或公开原帖；
+- `USER_EXPERIENCE`：用户自己的长期交易经验和人工规则；
+- `PUBLIC_METHOD`：书籍、课程、文章或公开交易方法；
+- `HISTORICAL_CASE`：历史行情案例和失败案例；
+- `STATISTICAL_DISCOVERY`：Quant/Research Lab 得到的市场统计规律；
+- `SYSTEM_REVIEW`：牛牛自身真实前瞻运行和复盘产生的新经验。
 
-### 22.2 “10选2”是核心问题，不只是规则命中率
+当前代码已有 `ExpertSource`，先视为 `StrategySource(type=TRADER)` 的兼容实现；后续通用化不得破坏已有 ID、哈希、Case 和 Validation。
 
-如果某玩法一天筛出 10 只而高手只选 2 只，研究必须保留全部 10 只。不能只拿 2 个赢家反推规则。
+### 22.2 Playbook 是来源之上的独立对象
 
-验证拆成两层：
+一个来源可以支持多个 Playbook，一个 Playbook 也可以由多个来源共同支持或反对。长期目标不是“期末50分策略”“某某高手策略”，而是独立的规则对象，例如 high_low_switch、leader_reentry、mid_board_theme_leader_acceleration。
 
-1. **Eligibility**：哪些股票在当时确实符合这套玩法；规则负责召回。
-2. **Selection**：为什么选择 A/B 而不选择其余 8 只；可能涉及主线强度、龙头身份、主动性、带动性、竞价、换手、市场节点和相对排序。
+现有正式对象继续复用：`PlaybookDefinition / PlaybookCase / CandidateSet / SelectionDecision / PlaybookValidation`。
 
-Selection 可以使用 deterministic features、pairwise/ranking 分析和 AI 条件解释，但最终必须在冻结候选全集上验证，不能看完结果再补选择条件。
+研究必须同时回答：Eligibility（谁进入候选）、Selection（为什么选A不选B）、Veto/NO_TRADE（为什么不做）、Execution（普通账户能否成交）、P&L（成本后结果）。
 
-### 22.3 高手经验进入 Git，但收益事实不进 Markdown
+### 22.3 双轨知识存储
 
-建议新增：
+Git + Markdown 保存人类可读规则、概念、版本理由、经验和复盘；Structured Evidence 保存来源哈希、候选全集、时点事实、预测、PIT、实验、成交和收益。
 
-```text
-playbooks/
-  README.md
-  qimofenshu/
-    README.md          # 人类可读玩法假设、来源和版本历史
-    definition.json    # 受 schema 约束的机器规则
-    notes/             # 公开资料的摘要/人工标注，不替代原始来源
-```
-
-Git 保存规则、概念定义、变更理由和人工复盘。大体积/受版权约束的原始材料只保存引用、哈希和合法本地归档位置；交易结果、CandidateSet、回测和统计证据继续进入结构化 Research Evidence。
+Markdown 可以总结结构化证据，但不能覆盖它；向量/全文索引未来只能作为可重建检索加速层。
 
 ### 22.4 正式研究流程
 
 ```text
-原始高手资料/交割记录
-  ↓ 来源归档 + 时间戳
-概念抽取 / 术语统一
+StrategySource 归档 / 时间戳 / 完整性
   ↓
-Playbook hypothesis v0
+概念抽取与术语统一
   ↓
-历史候选全集重建（含未选/失败样本）
+Playbook DRAFT
   ↓
-机器事实 + 主线/情绪/龙头上下文
+历史 CandidateSet 全集（含未选/失败/NO_TRADE）
   ↓
 冻结 eligibility / selection / veto / action rules
   ↓
-训练期探索 + holdout / walk-forward
-  ↓
-A股可成交执行：涨跌停、停牌、T+1、费用、滑点、资金占用
+Holdout / Walk-forward / Strict PIT / 执行验证
   ↓
 PlaybookValidation
   ↓
-通过后进入 Daily Scanner / Decision Ledger
+Daily Scanner / Decision Ledger
   ↓
-D1/D2/D3+ 复盘 → 规则版本迭代
+D1/D2/D3+ 复盘
+  ↓
+新 StrategySource / 新 Playbook 版本
 ```
 
-### 22.5 防止“高手幸存者偏差 / 事后神化”
+### 22.5 防止事后偏差与经验神化
 
-Playbook Lab 必须额外阻断：
+必须阻断：只收集赢家；只保存最终买入者；用后来总结替代当时信息；看到结果后反复加条件再称样本外；用理论最高价代替可成交收益；因为来源知名就直接升级规则；因为多个 Agent 一致就把意见当独立证据。
 
-- 只选知名高手成功交易、不保存其失败交易。
-- 只保存最终买入股票、不保存当时同样符合条件的其他候选。
-- 用后来总结替代当时公开/可见的信息。
-- 看到历史结果后不断添加规则，再把同一历史区间当验证。
-- 用次日最高价/理论涨幅代替可执行账户收益。
-- 因为某高手长期赚钱就直接推导“玩法已被牛牛提取成功”。
+失败样本、反例、未知、不可交易和正确 NO_TRADE 都是正式研究数据。
 
 ### 22.6 与现有牛牛模块的连接
 
-- Theme Matrix：提供主线/情绪上下文。
-- Stock Dossier：显示该股票历史命中过哪些 Playbook、何时被选/未选。
-- Decision Ledger：保存系统在当时基于 Playbook 的真实判断，不能事后覆盖。
-- Strategy Intent：Playbook 命中只能产生候选/计划，不等于成交。
-- Research Lab：因子、事件研究、Campaign、Factory 可作为验证器。
-- Strict PIT：决定某次历史重建能否称严格时点验证。
-- AI Team：Scanner 防漏候选，Skeptic 找反例，Quant Researcher 做正式验证；Chief 最终综合。
-- Agent Scorecard：以后评价谁在 Playbook 候选覆盖、选择、风险识别上更可靠。
+Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历史；Decision Ledger 保存当时真实判断；Strategy Intent 表达计划而非成交；Research Lab 提供因子/统计/执行验证；Strict PIT 决定证据级别；AI Team 负责覆盖、反例、量化证据与综合。
 
-### 22.7 首个试点：期末50分
+### 22.7 首个历史试点：期末50分
 
-“期末50分”只作为第一批试点方向，不把当前二手描述直接固化为交易规则。正式启动条件：拿到足够可核验的原帖/实盘记录/交易时间/候选上下文；先重建若干真实案例，再判断能否形成稳定 Playbook。第一阶段目标不是证明能赚钱，而是回答：**规则能不能稳定重建候选集合，以及系统能不能解释并样本外验证‘为什么10选2’。**
+“期末50分”保留为第一批 `TRADER` 来源试点，已经帮助牛牛建立候选全集、10选2、防历史回填、Selection/Execution Access 分层和真实 PREP→AUCTION→R1 前瞻链。
 
-## 23. 2026-09-13 后续顺序调整
+这些成果验证的是**系统如何吸收外部交易经验**，不意味着期末50分成为系统中心，也不意味着其 DRAFT Playbook 已证明存在 Alpha。
 
-完成 P8 后，后续优先级调整为：
+## 23. 2026-09-14 后续顺序调整（架构 v2）
 
-1. **P8.5 Expert Playbook Lab**：先建立 A 股高手玩法的数据合同和首个试点。
-2. **P9 Agent Scorecard**：有真实 Playbook/Decision 使用后再评价 Agent，避免空跑排行榜。
-3. **P10 Dev Studio + Dynamic Agent Orchestrator**：把主 Agent 动态拆任务、Shared Worktree、Subagent 工具/路径权限正式产品化。
-4. P11 System Health。
-5. P12 移动端。
-6. P13 Paper → Real 渐进交易层。
+完成 P8.5-E1 与架构升级后，后续优先级调整为：
 
-并行继续 Research Lab 基础设施线（approval-time freeze、Session Grant、Strict PIT 数据补齐、Watch 序贯统计）。
+1. **P8.6 StrategySource 通用来源层**：把当前 Trader/Expert 试点扩展为多来源交易知识模型，同时保持旧 ExpertSource 兼容。
+2. **P8.7 Daily Orchestrator**：DailyMarket capture/就绪检查 → PREP → 09:25 AUCTION → 09:35 R1 → R2/R3。
+3. **P8.8 Playbook → Trading Desk → Paper**：把前瞻判断接入 Decision/Strategy Intent/模拟成交与跨日复盘。
+4. **P9 Agent Scorecard**：等真实前瞻 Decision 样本足够后再做按任务类型评价，不自动调模型权重。
+5. **P10 Dev Studio + Dynamic Agent Orchestrator**。
+6. P11 System Health。
+7. P12 移动端。
+8. P13 Paper → Real 渐进交易层，真实券商最后单独评审。
+
+并行继续 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
 
 - 2026-09-13：根据新增对标信息，确认“主 Agent 动态拆 Subagent + Shared Workspace + Main Agent 最终验收”主要借鉴到 P10 Dev Studio，并抽象为 Research/Dev 两种 profile；同时新增 P8.5 Expert Playbook Lab，把 A 股短线模式发现从 Factor-first 调整为 Playbook-first + Quant Validation。
 - 2026-09-13：P8.5-A Expert Playbook Lab 基础框架完成。新增 ExpertSource / PlaybookDefinition / PlaybookCase / CandidateSet / SelectionDecision / PlaybookValidation 六类严格对象；完整候选全集、selected/unselected、冻结时点 SYSTEM_PREDICTION、FROZEN/FULL/STRICT_PIT/VERIFIED 正式验证门槛和 A 股执行审计均已落地。AI Team 仅获得 Playbook 只读证据工具；Research Lab 与 Stock Dossier 已接入。`playbooks/qimofenshu/` 仍固定为 SOURCE_REQUIRED，不用二手总结填充正式规则。最终全仓 750 项通过。阶段说明见 `牛牛AI交易工作台_P8_5PlaybookLab基础框架_验收说明.md`。P8.5 尚未整体结束，下一步仍是取得可核验“期末50分”原始资料并重建第一批真实 Case/CandidateSet。
@@ -581,6 +594,7 @@ Playbook Lab 必须额外阻断：
 - 真实 5215 只扫描约17.7秒；本地日线最新仍为 2026-09-04，请求9/11会约6.3秒 fail-fast 为 DATA_NOT_UPDATED。
 - D2 新增8项测试；完整仓库 **777 passed / 0 failed / 0 skipped**。
 - 下一实际优先级：把现有 Baostock/数据更新链接到每日 PREP 前置流程，确保最近交易日数据可用，再继续 Trading Cockpit → Strategy Intent → Paper 闭环。
+
 ### 2026-09-14：P8.5-E1 每日全市场增量归档与 PREP 接力
 
 - 新增 DailyMarket 日增量归档层，不再要求为了更新一个交易日重写约 2.5GB / 5215 只单股历史湖。
@@ -589,3 +603,11 @@ Playbook Lab 必须额外阻断：
 - DailyMarket 只补市场事实，不替代 PIT Universe 或交易所逐日 official MarketRules；证据不足时继续保持 PARTIAL / RETROSPECTIVE_REFERENCE。
 - 新增 `niuniu-daily-market`；`capture` 是唯一联网动作，默认查询只读。
 - 本阶段全仓 **784 tests / 0 failed / 0 skipped**。下一阶段进入受控每日编排：收盘后 capture/就绪检查 → PREP → 09:25 AUCTION → 09:35 R1。
+
+### 2026-09-14：架构 v2 文档升级
+
+- 项目说明从“高手玩法优先”升级为多来源 `StrategySource → Playbook → Validation → Daily Decision → Review`。
+- “期末50分”保留为历史首个 TRADER 来源试点，不再作为一级架构节点。
+- 新增 P8.6 StrategySource、P8.7 Daily Orchestrator、P8.8 Playbook→Trading Desk→Paper；P9/P10 顺延到真实前瞻样本与每日闭环之后。
+- Git Markdown 与 Structured Evidence 双轨边界不变；ExpertSource 保持向后兼容，后续通用化不得破坏历史身份和证据哈希。
+- 本次仅调整 README / 项目架构 / 开发计划 / Agent Memory 文档，不修改生产代码；最近完整生产回归仍为 784/0/0。

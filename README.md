@@ -1,16 +1,44 @@
-# 牛牛 · 统一技术交易因子实验平台
+# 牛牛 AI · 个人 A 股交易研究助手
 
 **简体中文** | [English](README.en.md)
 
 <p align="center"><img src="src/quantlab/desktop/assets/niuniu_mascot_banner.png" alt="牛牛平台" width="480"></p>
 
-**将交易理论拆成可计算、可检验、可回放的研究链路。**
+**把多来源交易知识持续形式化、数据验证化，并形成可追溯的每日交易研究闭环。**
 
-牛牛是一个面向股票技术分析与量化研究的本地 Python 平台，提供 **PyQt6 原生桌面客户端、命令行研究内核和本地 Web 工作台**。它把行情、历史股票池、市场状态、结构、事件、序列、规则评分和独立成交回测接到同一套实验与归档体系中，帮助研究者回答：一个形态何时真正被确认？它在哪种市场状态下有效？组合是否优于单个输入？扣除交易成本后结果如何？
+牛牛是一个面向个人 A 股交易研究的本地 AI 系统，提供 **Trading Desk、AI Team、Trading Knowledge / Playbook Lab、Research Lab、PyQt6 桌面客户端、CLI、MCP 与本地 Web 工作台**。它不把某位高手、某个因子或某套理论当作系统中心，而是把实盘交易者、用户经验、公开方法、历史案例、统计发现和系统复盘统一视为“策略来源”，经过规则化、结构化留证、历史/前瞻验证、Daily Scanner、AI 研究、Decision Ledger 与复盘后持续迭代。
 
-当前版本为 `0.1.0`，仍在持续开发。默认研究口径是**前复权（qfq）**；本项目以规则研究与离线验证为主，机器学习训练与实盘交易不在当前交付范围内。
+原有严谨量化研究内核完整保留，继续负责 Factor、Experiment、PIT、Campaign、Alpha Factory、Watch、统计和独立成交验证。当前版本仍在持续开发；默认研究口径为**前复权（qfq）**。自动实盘和真实券商接入不是当前默认能力，策略意图、Paper Position 与未来 Real Position 始终分离。
 
 [快速开始](#快速开始) · [功能](#核心功能) · [研究流程](#典型研究流程) · [数据要求](#数据要求与计算口径) · [当前边界](#当前边界)
+
+## 当前产品定位
+
+牛牛当前采用两套互补视角：**产品模块架构**回答“软件怎么组织”，**交易知识与决策循环**回答“知识怎样进入系统并形成交易判断”。
+
+```text
+交易知识 / 策略来源
+  ↓
+Playbook Hypothesis / 规则化
+  ↓
+Git Markdown + Structured Evidence 双轨存储
+  ↓
+历史数据 / Strict PIT / 执行验证
+  ↓
+Daily Scanner：PREP → AUCTION → R1/R2/R3
+  ↓
+AI Team 独立研究 + Chief 综合
+  ↓
+Decision Ledger / Strategy Intent
+  ↓
+Paper / Execution
+  ↓
+D1 / D2 / D3+ 复盘
+  ↓
+新经验 / 新反例 / 新规则版本
+```
+
+“期末50分”只是当前第一个 `TRADER` 类型来源试点，不是一级架构模块。真正长期积累的是可版本化、可验证、可前瞻检验的 Playbook。完整架构见 [项目说明与总体架构](牛牛AI交易助手_项目说明与总体架构.md)。
 
 ## 这个库解决什么问题
 
@@ -40,7 +68,11 @@
 | 独立成交回测 | 下一根开盘模拟、现金与持仓、整手、T+1、费用和滑点、规则约束、目标与实际持仓差异、成交/拒单账本与净值 |
 | 审计与复现 | K 线按日期定位、信号/事件/成交跳转、结构图层和实际周期切换；配置及产物归档、导出恢复和支持类型的数值复算 |
 | 任务与续算 | 本地持久化任务状态；经典缠论状态检查点、追加行情续算与中断恢复。其他算法并非全部支持通用续算 |
-| AI 研究助手 | 结构化研究记忆、固定研究包、受限 DSL 候选、Research Agenda、Safe Alpha Factory、长期跟踪、Expert Playbook Lab（完整候选集/10选2/严格 PIT 验证）、标准 MCP 与受控后台调度；模型不能自行批准研究、写入 Playbook 或自动晋级观察池 |
+| Trading Desk | 今日交易驾驶舱、Decision Ledger、Stock Dossier、Theme Matrix、Decision Frame、Strategy Intent 与跨日复盘；策略意图、Paper 与未来真实持仓严格分离 |
+| Trading Knowledge / Playbook Lab | 多来源策略假设、来源归档、完整 CandidateSet、selected/unselected、Selection/Veto、前瞻冻结、历史回放与执行访问分层；当前 `ExpertSource` 先兼容承担 TRADER 类型来源 |
+| Daily Scanner / 市场证据 | PREP 全市场扫描、MarketSnapshot、AUCTION/R1 确定性扫描、DailyMarket 全市场日增量归档、近实时/回填资格与防历史回填 |
+| AI Team | Chief Researcher、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；第一轮独立判断，Chief 综合，不用多数票代替证据 |
+| AI 研究与自动化基础 | 结构化研究记忆、固定研究包、受限 DSL、Research Agenda、Safe Alpha Factory、Watch、标准 MCP 与受控后台调度；模型不能自行批准研究、写生产规则或自动实盘 |
 
 桌面端还提供 **老板键 F12**：在 Mac 上隐藏应用及弹窗，点击 Dock 图标恢复；后台计算与未提交配置保留。部分键盘需按 `Fn + F12`。其他窗口系统使用最小化方式；目前原生操作验收主要在 macOS 上进行。
 
@@ -61,22 +93,39 @@ Alpha 公式的计算需要可选依赖 `vnpy`；查看注册信息或运行基�
 
 ## 架构
 
-```mermaid
-flowchart TD
-    UI[PyQt6 桌面 / CLI / 本地 Web] --> APP[实验编排]
-    DATA[只读行情 / 历史资格 / 固定快照] --> FACTOR[因子与市场状态]
-    FACTOR --> OBJECTS[结构 / 区域 / 事件]
-    OBJECTS --> SEQUENCE[序列 / 理论规则]
-    SEQUENCE --> MODEL[条件组合 / 评分模型]
-    APP --> FACTOR
-    MODEL --> RESEARCH[统计 / 消融 / 样本外 / 滚动研究]
-    MODEL --> EXEC[信号 / 组合 / 风控 / 成交回测]
-    RESEARCH --> STORE[实验归档 / 报告 / 复算]
-    EXEC --> STORE
-    STORE --> REPLAY[K 线与成交审计回放]
+### 产品模块架构
+
+```text
+牛牛 AI
+├─ Trading Desk：今日交易 / 主线市场 / 股票中心 / 持仓计划 / 复盘
+├─ AI Team：Chief / Scanner / Skeptic / Quant Researcher
+├─ Research Lab
+│  ├─ Factor / Experiment / PIT / Campaign / Factory / Watch
+│  └─ Trading Knowledge / Playbook Lab
+├─ Dev Studio（P10，目标能力）
+└─ System Center：Data / PIT / Jobs / MCP / daemon / health
 ```
 
-研究核心与 GUI、具体数据源及交易适配器分离。`src/quantlab/app.py` 负责组装默认注册表和运行器，`experiments/` 编排研究，`execution/` 计算交易账务，`storage/` 保存可追溯产物。`vn.py` 是可选离线适配器，不是桌面客户端框架。
+### 交易知识与决策循环
+
+```mermaid
+flowchart TD
+    SOURCE[StrategySource 多来源交易知识] --> PB[Playbook Hypothesis / 规则化]
+    PB --> MEMORY[Git Markdown + Structured Evidence]
+    MEMORY --> VERIFY[历史 / PIT / 执行验证]
+    VERIFY --> SCAN[Daily Scanner PREP / AUCTION / R1-R3]
+    SCAN --> TEAM[AI Team 独立研究 + Chief 综合]
+    TEAM --> DECISION[Decision Ledger / Strategy Intent]
+    DECISION --> EXEC[Paper / Execution]
+    EXEC --> REVIEW[D1 / D2 / D3+ 评价与复盘]
+    REVIEW --> SOURCE
+```
+
+### Research Lab 确定性内核
+
+原来的量化实验架构仍完整保留，只是从“整个产品本身”下沉为 Research Lab：行情与资格 → 因子/状态 → 结构/事件 → 序列/规则 → 组合模型 → 统计/样本外/执行 → 归档复算。
+
+研究核心与 GUI、具体数据源及交易适配器分离。`src/quantlab/app.py` 负责组装默认注册表和运行器，`experiments/` 编排研究，`execution/` 计算交易账务，`storage/` 保存可追溯产物；Trading Desk / Playbook / Agent 层引用这些确定性证据，而不复制一套数值研究逻辑。`vn.py` 是可选离线适配器，不是桌面客户端框架。
 
 ## 快速开始
 
@@ -168,15 +217,20 @@ quantlab run \
 
 ## 典型研究流程
 
-1. **数据中心**：确定股票、日期、周期和复权方式，检查缺失数据、历史上市资格和规则覆盖。
-2. **市场状态与结构**：设定趋势/区间背景，选择已确认结构或事件，明确发生时间、确认时间与失效规则。
-3. **序列与模型**：把事件组合成顺序链路，再构建条件组合或评分模型；模型在此指规则模型。
-4. **科研验证**：先做单组件与完整组合对比，再做消融、样本外、滚动和多重检验；保存全部试验而非只保留优胜结果。
-5. **策略回测**：配置组合、费用、滑点、交易限制及执行后端，检查真实持仓相对目标的偏差与拒单原因。
-6. **客户端回放**：从日期、信号、事件或成交直接跳转 K 线；查看当时已经可用的结构和序列证据。
-7. **归档复算**：保存配置及数据依赖，通过实验报告和支持的归档复算入口检查结果一致性。
+### 交易知识到每日决策
 
-缠论和威克夫可以走同一条链路；理论名称本身不会自动定义交易策略，仍需明确输入、评分、入场/退出和费用假设。
+1. **来源归档**：记录交易者、用户经验、公开方法、历史案例、统计发现或系统复盘来源；来源不是规则本身。
+2. **Playbook 提炼**：抽取市场上下文、eligibility、selection、veto、entry/confirm/invalidation/exit，先保存为 DRAFT。
+3. **双轨留证**：人类可读规则进入 Git/Markdown；候选全集、时点事实、预测、验证、成交和收益进入 Structured Evidence。
+4. **历史与执行验证**：重建完整 CandidateSet，区分 Eligibility、Selection、Execution Access 和账户收益，按需要使用 Strict PIT、Holdout、Walk-forward、成本和 A 股制度审计。
+5. **Daily Scanner**：PREP 生成市场节点/目标身位/候选全集，AUCTION 与 R1/R2/R3 只消费当时可见快照，证据不足则 UNKNOWN/NO_TRADE。
+6. **AI Team**：多个角色独立检查覆盖、反例和量化证据，Chief 综合并保留分歧，不采用简单投票。
+7. **Decision / Intent**：当时判断写入 append-only Decision Ledger，再形成 WATCH/READY/PLAN_OPEN/HOLD/EXIT 等 Strategy Intent。
+8. **执行与复盘**：Paper/Execution 独立处理成交限制，D1/D2/D3+ 对照原判；新经验作为新的 StrategySource 回到下一版 Playbook。
+
+### Research Lab 子流程
+
+原有因子/理论研究仍按“数据资格 → 状态/结构/事件 → 序列/模型 → 科研验证 → 成交回测 → 回放 → 归档复算”运行。缠论、威克夫、Brooks、ICT/SMC 和因子研究都是 Playbook 的证据与特征来源之一，不自动等于生产交易策略。
 
 ## 数据要求与计算口径
 
@@ -276,11 +330,14 @@ python -m unittest discover -s tests -v
 - 官方逐日涨跌停价及特殊上市/退市规则覆盖尚不完整；合成规则回测不等于完整真实市场规则验收。
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
-- Tick/L2 与 OrderFlow 暂不推进；连续 Paper 的后续建设已暂停。已有 Paper 代码保留，但不作为当前持续运行交付承诺。
-- 机器学习训练和实盘连接不在当前范围。任何回测结果都只是给定数据和假设下的研究结果。
+- Tick/L2 与 OrderFlow 暂不推进；长期 Paper / Shadow 尚未形成每日持续闭环，按 P8.8 与 P13 渐进建设，不能把现有 Paper 代码描述成已持续运行。
+- 受控 Daily Orchestrator、通用 StrategySource、Agent Scorecard、Dynamic Agent Orchestrator、System Health 和移动端仍在后续计划。
+- 机器学习训练不是当前主线；真实券商连接与自动实盘最后单独立项。任何回测或前瞻样本都只是给定证据和执行假设下的研究结果。
 
 ## 深入文档与来源
 
+- [牛牛 AI 项目说明与总体架构](牛牛AI交易助手_项目说明与总体架构.md)：当前项目定位、StrategySource / Playbook / Daily Decision 主循环和完成度边界。
+- [A股交易工作台改造总计划](牛牛AI交易助手_A股交易工作台改造总计划.md)：P1～P13 与架构 v2 的正式开发路线。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。

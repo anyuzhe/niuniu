@@ -1,5 +1,7 @@
 # 牛牛 AI 研究工作台：架构、开发顺序与实施方案
 
+> **当前架构提示（2026-09-14）**：本文主体保留历史实施过程与当时计划。牛牛当前产品定位和未来开发顺序已升级为多来源 `StrategySource → Playbook → Validation → Daily Decision → Review`。当前权威说明请先读 [`牛牛AI交易助手_项目说明与总体架构.md`](牛牛AI交易助手_项目说明与总体架构.md) 和 [`牛牛AI交易助手_A股交易工作台改造总计划.md`](牛牛AI交易助手_A股交易工作台改造总计划.md)。
+
 ## 当前交付索引（2026-09-12，A股数据资格层）
 
 原八步 AI-native 改造及 Research Agenda / Safe Alpha Factory 已完成。本轮补齐原设计的**请求级数据资格与阻断层**：研究可声明 `research_only / retrospective_reference / strict_pit / official_rule_covered`；AI、Proposal、批准、JobQueue 与桌面共用同一资格合同，严格请求缺资料时直接阻断，不能静默降级。现有真实 Baostock qfq 与 BAO 估值被正确识别为回顾性资料而非 strict PIT；另增加交易所规则原文 HTTPS 归档、SHA256 与 MarketRules 快照绑定。详见《AI研究助手_A股数据资格与StrictPIT_验收说明.md》。

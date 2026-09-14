@@ -43,15 +43,22 @@
 
 ## 3. 当前产品快照（2026-09-14）
 
-当前牛牛已经从“因子实验平台”演进为三层体系：
+当前牛牛已经从“因子实验平台”演进为一个以**多来源交易知识 → Playbook → 验证 → Daily Decision → Review**为研究主循环的个人 A 股交易研究系统。
 
-- **Trading Desk**：今日交易、主线市场、股票中心、持仓计划、复盘、Decision Frame、Strategy Intent。
-- **AI / Playbook 层**：AI Team、Peer Review、Git-first Agent Memory、Expert Playbook Lab、前瞻预测冻结。
+产品模块仍分层组织：
+
+- **Trading Desk**：今日交易、主线市场、股票中心、Decision Frame、Strategy Intent、复盘。
+- **AI Team**：Chief、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；不采用多数票替代证据。
+- **Trading Knowledge / Playbook Lab**：当前已有 ExpertSource、候选全集、Selection、Validation、前瞻冻结；架构 v2 将其继续泛化为 StrategySource 多来源模型。
 - **Research Lab**：因子、理论、PIT、Campaign、Alpha Factory、Watch、统计验证、执行回测、数据归档。
+- **System / Dev 目标层**：System Center 已有部分能力；P10 Dev Studio / Dynamic Agent 仍未正式产品化。
 
-当前正式代码全仓基线：**763 passed / 0 failed / 0 skipped**。
-当前已完成阶段：P1～P8；P8.5 已进入 C 阶段的真实前瞻验证。
-尚未正式完成：P9 Agent Scorecard、P10 Dev Studio、P11 System Health、P12 移动端、P13 Paper→Real 完整交易闭环。
+知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
+
+当前正式代码全仓基线：**784 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1 的基础设施与首条真实前瞻链。
+下一架构阶段：P8.6 StrategySource → P8.7 Daily Orchestrator → P8.8 Playbook-to-Paper；其后 P9～P13。
+
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
 ### 2026-09-10 18:53｜初始研究平台导入
@@ -272,28 +279,30 @@
 
 仍需加强：approval-time actual-byte freeze、Research Session Grant、更多 Strict PIT 历史原始资料、Watch 序贯统计。
 
-### 7.4 Expert Playbook Lab
+### 7.4 Trading Knowledge / Playbook Lab
 
-已完成：来源归档、候选全集、selected/unselected、规则版本、历史回放、前瞻冻结、防回填、Selection/Execution Access 分离。
+已完成：ExpertSource 试点、来源归档、候选全集、selected/unselected、规则版本、历史回放、前瞻冻结、防回填、Selection/Execution Access 分离、PREP/AUCTION/R1 Scanner 与 DailyMarket 增量接力。
 
-当前阶段：P8.5-C 前瞻验证刚开始，需要积累连续真实样本后才能评价稳定性。
+当前架构升级：`ExpertSource` 先作为 `StrategySource(type=TRADER)` 的兼容实现；下一步增加 USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / STATISTICAL_DISCOVERY / SYSTEM_REVIEW 等通用来源，同时继续积累真实前瞻样本。
 
 ## 8. 尚未完成的正式阶段
 
-- **P9 Agent Scorecard**：按任务类型评价 Coverage、证据正确性、计划完整性、及时性、约束违规、Playbook 候选覆盖与风险识别；第一阶段只展示，不自动调模型权重。
-- **P10 Dev Studio + Dynamic Agent Orchestrator**：DevTask、隔离 worktree、Main Agent 动态拆 Subagent、path lease、Tester、Reviewer、Human Merge。
-- **P11 System Health**：统一展示数据新鲜度、PIT blocker、JobQueue、daemon、MCP、日志、通知、磁盘与最近错误。
-- **P12 移动端 / 机器人**：复用同一 MCP/API/Decision/Stock Dossier，不建立第二份交易状态。
-- **P13 Paper → Real**：先长期 Paper / Shadow，再单独立项真实券商接入；自动实盘不是当前默认能力。
+- **P8.6 StrategySource 通用来源层**：多来源类型、多对多来源↔Playbook、ExpertSource 向后兼容。
+- **P8.7 Daily Orchestrator**：DailyMarket 数据就绪 → PREP → 09:25 AUCTION → 09:35 R1 → R2/R3 的受控调度。
+- **P8.8 Playbook → Trading Desk → Paper**：把预测、Decision、Strategy Intent、模拟订单/成交/持仓和跨日复盘接成长期闭环。
+- **P9 Agent Scorecard**：按任务类型评价 Coverage、证据正确性、计划完整性、及时性、约束违规和风险识别；只展示，不自动调模型权重。
+- **P10 Dev Studio + Dynamic Agent Orchestrator**：DevTask、隔离 worktree、Main Agent 动态 Subagent、path lease、Tester、Reviewer、Human Merge。
+- **P11 System Health / P12 移动端 / P13 Paper→Real**：依次推进；真实券商和自动实盘最后单独评审。
 
 ## 9. 当前推荐的后续主线
 
-1. 连续运行 P8.5-C，积累真正“先预测、后揭晓”的样本。
-2. 建立正式 Real-time Market Snapshot 服务，统一竞价、盘口、分钟行情时间戳与哈希。
-3. 建 Daily Playbook Scanner：市场节点 → 目标身位 → 全候选 → AUCTION/R1 相对选择。
-4. 把 Playbook 输出接入 Trading Cockpit、Strategy Intent 和 Paper Account，形成每日自动闭环。
-5. 样本足够后再做 P9 Agent Scorecard。
-6. 随后推进 P10 / P11 / P12；P13 真实账户最后单独评审。
+1. 先做 P8.6，把“高手来源试点”升级为通用 StrategySource，但不破坏已有 ExpertSource 历史证据。
+2. 做 P8.7 Daily Orchestrator，让数据更新、PREP、AUCTION、R1/R2/R3 真正每天受控自动运行。
+3. 做 P8.8，把 Playbook 前瞻输出接入 Decision / Strategy Intent / 长期 Paper，并正式统计 NO_TRADE、未成交和退出。
+4. 在真实前瞻 Decision 足够后再做 P9 Agent Scorecard。
+5. 随后推进 P10 / P11 / P12；P13 真实账户最后单独评审。
+6. 并行继续 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
+
 ## 10. 关键测试基线演进
 
 | 日期 | 阶段 | 全仓结果 |
@@ -310,6 +319,9 @@
 | 2026-09-13 | P8.5-B 首批完整候选池 | 756 passed |
 | 2026-09-13 | Selection 外推 / 防回填 | 758 passed |
 | 2026-09-14 | 前瞻冻结执行器 | **763 passed / 0 failed / 0 skipped** |
+| 2026-09-14 | P8.5-D1 MarketSnapshot / Daily Scanner | **769 passed / 0 failed / 0 skipped** |
+| 2026-09-14 | P8.5-D2 PREP 全市场扫描 | **777 passed / 0 failed / 0 skipped** |
+| 2026-09-14 | P8.5-E1 DailyMarket 增量 / PREP Overlay | **784 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -375,3 +387,13 @@
 - 测试/验收：DailyMarket + PREP 联合专项 **15/15 passed**；完整仓库 **784 tests / 0 failed / 0 skipped**；editable install 与 CLI smoke 通过。
 - 已知限制：本次会话真实 Baostock provider 请求未成功返回，网络可用性仍为运行期依赖；SDK 函数/字段合同来自本机安装包源码及 demo，联网路径由 fixture 测试覆盖。
 - 后续事项：另起阶段实现受控每日编排（收盘 capture → 数据就绪 → PREP → 09:25 AUCTION → 09:35 R1）。
+### 2026-09-14 17:35｜[架构] Trading Knowledge / StrategySource 架构 v2
+
+- 模块：项目定位 / Trading Knowledge / Playbook / 开发路线。
+- Git：本条与 README、项目总体架构和总开发计划同一文档提交发布；SHA 以 Git 历史为准。
+- 改动内容：将“高手玩法/期末50分试点”上收为通用 `StrategySource → Playbook → Validation → Daily Decision → Review` 架构；期末50分明确降为首个 `TRADER` 类型来源样本。
+- 新来源模型：目标支持 TRADER / USER_EXPERIENCE / PUBLIC_METHOD / HISTORICAL_CASE / STATISTICAL_DISCOVERY / SYSTEM_REVIEW；来源与 Playbook 为多对多。
+- 兼容边界：当前 `ExpertSource` 不破坏性重命名，先兼容映射为 TRADER；结构化历史 ID、Case、Validation 和来源哈希必须保持可追溯。
+- 知识边界：Git Markdown 与 Structured Evidence 双轨继续保持；多 Agent 一致不等于市场证据。
+- 路线调整：P8.6 StrategySource → P8.7 Daily Orchestrator → P8.8 Playbook-to-Paper → P9 Scorecard → P10 Dynamic Agent。
+- 测试/验收：本次仅改架构/计划/说明文档，不修改生产代码；沿用最近完整生产回归 **784/0/0**，发布前执行文档 diff/sensitive 检查。
