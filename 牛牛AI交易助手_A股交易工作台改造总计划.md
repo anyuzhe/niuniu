@@ -314,13 +314,17 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 产品接入：AI Team 新增只读 Scorecard 页面和 `niuniu-agent-scorecard` CLI；不自动调模型权重。
 - 完整仓库 **848/0/0**。
 
-### P10 Dev Studio + Dynamic Agent Orchestrator
-- DevTask、isolated worktree、Main Developer Agent、动态 Subagents、tests、Reviewer、人工 merge。
-- 主 Agent 负责理解需求、冻结验收标准、决定是否拆分、分配工具/路径/预算、汇总结果、最终验收；不满意可以在预算内重新规划。
-- 子 Agent 按任务动态创建，不固定长期常驻；典型分工为代码检索、资料/接口核对、局部实现、测试/分析、diff review。
-- 同一 DevTask 共享一个隔离 worktree，但写入必须 path-scoped lease；禁止两个子 Agent 同时修改同一文件/目录。默认 Explorer/Reviewer 只读，只有明确 Implementer 获得分配路径写权限。
-- 子 Agent 不得自行 commit/push；Main Agent 负责最终 diff、测试证据和验收，仍需人工批准后才能 merge/push main。
-- 验收：研究 Agent 无 repo write 权；开发 Agent 无生产 main 自动发布权；任务树、subtask、workspace lease、changed files、tests、review、stop_reason 全部可追溯。
+### P10 Dev Studio + Dynamic Agent Orchestrator（v1 已完成）
+- 新增 `DevTask`、隔离 detached git worktree、Main Developer Agent、动态 depth-1 Subagents、frozen tests、独立 Reviewer 与 Human Merge Gate。
+- Main Agent 只通过 Dev Studio 安全工具拆分任务、读取 diff/证据、创建子任务、重开子任务和最终 ACCEPT/REPLAN/BLOCK；没有 shell、直接文件写、commit、push 或 merge 权限。
+- 子 Agent 角色为 `EXPLORER / IMPLEMENTER / TESTER / REVIEWER`；默认只读，只有 IMPLEMENTER 可以持有不可变 `path-scoped lease` 并通过 CAS 写文件。最大并行子 Agent 固定为1–3，v1 不允许递归子 Agent。
+- 同一 DevTask 共享一个 isolated worktree；冲突 write lease、越出 DevTask allowed_paths、越出 Implementer lease、symlink/path escape、`.git` 写入全部 fail-closed。
+- frozen test command 由宿主在 DevTask 创建时确定；Tester 只能运行这些 argv，不能自行换更容易的测试。任何最终 diff 变化都会让旧 test PASS / Reviewer PASS 失效。
+- Reviewer 只读且必须覆盖当前最终 worktree fingerprint；Main Acceptance 重新核实际 changed files、lease、test evidence 和 Reviewer PASS，不能相信 Subagent 自报 changed_files。
+- `human_merge` 要求显式 confirmation，并再次校验 main branch 与 frozen base SHA；合并产生本地 commit，但 **不会 push**。主分支移动、路径越权、无变更等均拒绝。
+- Research Agent 工具表不包含 Dev Studio write/merge；P10 CLI 提供 create/status/list/run-main/run-ready/run-cycle/diff/merge/cleanup，但没有 push action。
+- 产品接入：桌面顶级导航新增“开发工作台”，展示 DevTask、Subtask、tests、Reviewer、diff scope 和 Human Merge 状态。
+- 测试/验收：P10 专项 **13/13**，Trading Desk 导航 **2/2**，editable install + `niuniu-dev-studio --help` 通过；完整仓库 **861 tests / 0 failed / 0 skipped**，耗时 302.193 秒。
 ### P11 System Health
 - 统一服务、任务、日志、心跳、数据新鲜度、PIT blocker。
 - 不把“在线”当作“正确”。
@@ -547,10 +551,9 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 完成 P8.5-E1 与架构升级后，后续优先级调整为：
 
-1. **P10 Dev Studio + Dynamic Agent Orchestrator**。
-2. P11 System Health。
-3. P12 移动端。
-4. P13 Paper→Real；真实券商最后单独评审。
+1. **P11 System Health**。
+2. P12 移动端。
+3. P13 Paper→Real；真实券商最后单独评审。
 
 并行继续 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
 
@@ -623,5 +626,9 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 - 2026-09-14：P8.7 Daily Orchestrator v1 完成。新增单交易日受控状态机与 `niuniu-daily-orchestrator`；默认不联网，只有宿主计划显式授权才 capture DailyMarket；PREP/AUCTION/R1 复用现有 Scanner/Forward 合同，错过实时窗口记录 MISSED 而不回填。网络失败有15分钟冷却，DailyMarket revision_review 可人工确认后继续；中断后复用同一 reservation/snapshot。AUCTION/R1 仍依赖正式 LIVE_NEAR_REALTIME MarketSnapshot provider，R2/R3 未宣称支持。全仓 805/0/0。下一阶段 P8.8。
 
-- 2026-09-14：P8.8-A/B 核心接线完成。SYSTEM_PREDICTION 通过保守 Decision Bridge 最多自动进入 WATCH/READY；NO_TRADE 不制造股票状态，人工/已有计划不被覆盖。PLAN_OPEN 经 host confirmation 可冻结 PaperPlan，并在显式完成 bars + dated MarketRules 下调用固定-universe PaperAccount；模拟成交成功也不自动改 Intent=OPEN。新增崩溃后成交 receipt 恢复，Trading Cockpit 只读展示 PaperPlan。全仓 821/0/0。P8.8-C 继续做动态 universe、fill→Intent 和 D1/D2/D3+ 自动复盘。
+- 2026-09-14：P8.8-A/B 核心接线完成。SYSTEM_PREDICTION 通过保守 Decision Bridge 最多自动进入 WATCH/READY；NO_TRADE 不制造股票状态，人工/已有计划不被覆盖。PLAN_OPEN 经 host confirmation 可冻结 PaperPlan，并在显式完成 bars + dated MarketRules 下调用固定-universe PaperAccount；模拟成交成功也不自动改 Intent=OPEN。新增崩溃后成交 receipt 恢复，Trading Cockpit 只读展示 PaperPlan。全仓 821/0/0。
+- 2026-09-14：P8.8-C v1 完成。新增独立 DynamicPaperAccount 支持跨日动态 universe，历史目标对后来新增股票只补零权重并要求旧 NAV/fill/order 前缀不变；PaperPlan 增加显式 dynamic 执行。fill receipt 只有在宿主确认且原 PLAN_OPEN 仍当前有效时才推进 OPEN；ADD/REDUCE/EXIT 通过 RebalancePlan 驱动实际动态账户目标，成交后按严格合同回 HOLD/确认退出。新增 D1/D2/D3+ 因果 PaperOutcomeReview、批量 auto_all 和 NO_TRADE/未成交/费用/滑点/拒单/复盘分层统计。AI/MCP 无任何长期 Paper 写工具。全仓 842/0/0。
 - 2026-09-14：P8.8-C 长期 Paper / 复盘闭环 v1 完成。新增独立 DynamicPaperAccount，不破坏固定-universe PaperAccount；跨日加入新证券时过去目标确定性补0并强校验历史 NAV/fill/order 前缀不变。PaperPlan 新增显式 dynamic 执行；真实 fill 经 host confirmation 才能推进 PLAN_OPEN→OPEN。新增 ADD/REDUCE/EXIT RebalancePlan 与成交结果桥、D1/D2/D3+ PaperOutcomeReview、auto_all 批量因果复盘和生命周期统计；AI/MCP 无长期 Paper 写/执行权限。完整仓库 842/0/0。下一阶段 P9 Agent Scorecard。
+
+
+- 2026-09-15：P10 Dev Studio v1 完成。新增隔离 detached worktree、Main Developer + depth-1 Dynamic Subagents、max_parallel≤3、path-scoped immutable write leases、frozen tests、独立 Reviewer、stale test/review fingerprint 检测和 Human Merge Gate。Main/Subagents 均无 git push 权；只有宿主显式确认后的 human merge 可在 main 创建 commit，且主分支/BASE SHA 变化即阻断。Research Agent 无 Dev Studio 写/merge 工具。新增桌面“开发工作台”和 `niuniu-dev-studio` CLI。专项13/13、Trading Desk导航2/2、完整仓库861/0/0。下一阶段 P11 System Health。

@@ -29,8 +29,8 @@ class TradingDeskDesktopTests(unittest.TestCase):
         self.window.close();QTest.qWait(10);self.temp.cleanup()
 
     def test_new_business_navigation_and_legacy_routes_both_work(self):
-        self.assertEqual(NAV,['今日交易','主线市场','股票中心','持仓计划','复盘中心','AI 团队','研究实验室','系统中心'])
-        self.assertEqual(len(self.window.nav),8);self.assertEqual(len(LEGACY_NAV),12)
+        self.assertEqual(NAV,['今日交易','主线市场','股票中心','持仓计划','复盘中心','AI 团队','研究实验室','开发工作台','系统中心'])
+        self.assertEqual(len(self.window.nav),9);self.assertEqual(len(LEGACY_NAV),12)
         for index,title in enumerate(NAV):
             QTest.mouseClick(self.window.nav[index],Qt.MouseButton.LeftButton);QTest.qWait(20)
             self.assertTrue(self.window.nav[index].isChecked());self.assertEqual(self.window.root_current,index)

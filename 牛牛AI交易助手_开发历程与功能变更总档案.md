@@ -51,13 +51,13 @@
 - **AI Team**：Chief、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；不采用多数票替代证据。
 - **Trading Knowledge / Playbook Lab**：当前已有 ExpertSource、候选全集、Selection、Validation、前瞻冻结；架构 v2 将其继续泛化为 StrategySource 多来源模型。
 - **Research Lab**：因子、理论、PIT、Campaign、Alpha Factory、Watch、统计验证、执行回测、数据归档。
-- **System / Dev 目标层**：System Center 已有部分能力；P10 Dev Studio / Dynamic Agent 仍未正式产品化。
+- **Dev Studio / System**：P10 Dev Studio / Dynamic Agent Orchestrator v1 已完成；System Center 已有部分能力，下一阶段统一为 P11 System Health。
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**805 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource，以及 P8.7 Daily Orchestrator v1。
-下一阶段：P8.8 Playbook-to-Paper；其后 P9～P13。
+当前正式代码全仓基线：**861 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1。
+下一阶段：P11 System Health；其后 P12～P13。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -271,7 +271,7 @@
 
 已完成：AI Research Chat、提案审批、AI Team、Peer Review、Git-first Agent Memory、标准 MCP、长期跟踪与受限自动化。
 
-已完成：P9 Agent Scorecard v1。仍未正式完成：P10 Dev Studio + Dynamic Agent Orchestrator 的产品化落地。
+已完成：P9 Agent Scorecard v1，以及 P10 Dev Studio + Dynamic Agent Orchestrator v1。下一正式阶段为 P11 System Health。
 
 ### 7.3 Research Lab
 
@@ -283,19 +283,18 @@
 
 已完成：ExpertSource 试点、来源归档、候选全集、selected/unselected、规则版本、历史回放、前瞻冻结、防回填、Selection/Execution Access 分离、PREP/AUCTION/R1 Scanner 与 DailyMarket 增量接力。
 
-当前架构已推进到 P9：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘以及按任务类型 Agent Scorecard 均已落地；下一阶段进入 P10 Dev Studio + Dynamic Agent Orchestrator，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
+当前架构已推进到 P10：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘、按任务类型 Agent Scorecard 与 Dev Studio/Dynamic Agent Orchestrator 均已落地；下一阶段进入 P11 System Health，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
 
 ## 8. 尚未完成的正式阶段
 
 - **P8.7 扩展项（并行）**：R2/R3 自动编排与正式实时 MarketSnapshot provider 仍未产品化。
 - **P8.8 运行验证（并行）**：核心长期 Paper 闭环已实现，但仍需积累足够真实前瞻运行天数来评价稳定性和绩效。
-- **P10 Dev Studio + Dynamic Agent Orchestrator**：DevTask、隔离 worktree、Main Agent 动态 Subagent、path lease、Tester、Reviewer、Human Merge。
 - **P11 System Health / P12 移动端 / P13 Paper→Real**：依次推进；真实券商和自动实盘最后单独评审。
 
 ## 9. 当前推荐的后续主线
 
-1. 下一正式阶段推进 P10 Dev Studio + Dynamic Agent Orchestrator。
-2. 随后推进 P11 System Health、P12 移动端。
+1. 下一正式阶段推进 P11 System Health。
+2. 随后推进 P12 移动端。
 3. P13 真实账户最后单独评审，不把 Paper 成功直接外推到真实券商。
 4. 并行继续积累真实前瞻 Paper 样本，并补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
@@ -323,6 +322,7 @@
 | 2026-09-14 | P8.8-A/B Decision Bridge + PaperPlan | **821 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P8.8-C Dynamic Paper / Fill Intent / Review / Rebalance | **842 passed / 0 failed / 0 skipped** |
 | 2026-09-14 | P9 Agent Scorecard v1 | **848 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | P10 Dev Studio / Dynamic Agent Orchestrator v1 | **861 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -467,3 +467,16 @@
 - 真实烟测：Scorecard 运行前后 artifacts 文件数 77006→77006，无写入副作用；AI 工具响应约7.7KB，未触发结果截断。
 - 测试/验收：P9/AI Team/Playbook 专项 **21/21 passed**；editable install + CLI 真实运行通过；最终全仓 **848 tests / 0 failed / 0 skipped**，耗时 291.473 秒。
 - 后续事项：进入 P10 Dev Studio + Dynamic Agent Orchestrator；并行继续真实前瞻 Paper 样本、R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 数据补齐。
+
+
+### 2026-09-15 01:10｜[功能] P10 Dev Studio + Dynamic Agent Orchestrator v1
+
+- 模块：DevTask / isolated worktree / Main Developer / Dynamic Subagents / Tester / Reviewer / Human Merge。
+- 改动内容：新增 P10 Dev Studio 核心、role-scoped tools、Codex runtime、宿主 CLI 和桌面“开发工作台”。
+- 权限模型：Main Agent 无 shell/直接写/commit/push/merge；EXPLORER/TESTER/REVIEWER 只读；IMPLEMENTER 只能在不可变 path-scoped lease 内写。动态深度固定1，并行上限3。
+- 工作区：每个 DevTask 使用仓库外 detached worktree，冻结 base SHA/branch；symlink、path escape、`.git`、越出 allowed_paths/lease 均 fail-closed。
+- 验收：frozen test argv + host实际输出 + Reviewer PASS 均绑定 final worktree fingerprint；diff变化后旧测试/Review 自动失效。Main Acceptance 重新核实际 diff，不相信模型自报 changed_files。
+- 发布边界：Human Merge 必须显式确认，main branch/base SHA 变化会阻断；merge 只创建本地 commit，不自动 push。Research Agent 无 Dev Studio 写/merge 工具。
+- 产品接入：新增 `niuniu-dev-studio` 和顶级“开发工作台”。
+- 测试/验收：P10专项13/13、Trading Desk导航2/2、CLI install/help通过；完整仓库 **861 tests / 0 failed / 0 skipped**，302.193秒。
+- 后续事项：进入 P11 System Health；并行继续真实前瞻 Paper 样本、正式实时 MarketSnapshot provider、R2/R3 Orchestrator 与 Strict PIT 数据补齐。

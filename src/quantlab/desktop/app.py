@@ -25,8 +25,8 @@ from .business_view import BusinessDetails
 
 LEGACY_NAV = ['研究工作台','数据中心','因子库','市场状态','结构与事件','序列构建器',
        '理论实验室','实验中心','组合与模型','策略回测','结果对比','系统设置']
-NAV = ['今日交易','主线市场','股票中心','持仓计划','复盘中心','AI 团队','研究实验室','系统中心']
-ICONS = ['⌂','▦','◎','◉','↺','✦','▤','⚙']
+NAV = ['今日交易','主线市场','股票中心','持仓计划','复盘中心','AI 团队','研究实验室','开发工作台','系统中心']
+ICONS = ['⌂','▦','◎','◉','↺','✦','▤','⌘','⚙']
 KINDS = {'campaign':'固定研究包','alpha_factory':'Alpha Factory','factor':'因子实验','execution':'独立成交回测','ablation':'消融研究',
     'holdout':'样本外验证','walkforward':'滚动验证','sweep':'参数扫描','theory_study':'理论全流程','trial_registry':'跨实验登记检验族','return_family':'固定净收益检验族','return_increment':'净收益增量比较','stability':'参数与子样本比较','residual_alpha':'残差研究','correlation':'因子相关与去重','correlation_holdout':'样本外相关性','correlation_walkforward':'滚动相关性'}
 MODES = [('single','单因子 / 条件 / 组合'),('holdout','固定样本外'),('walkforward','滚动验证'),
@@ -185,8 +185,8 @@ class MainWindow(QMainWindow):
         for i,b in enumerate(self.nav):
             b.blockSignals(True);b.setChecked(i==index);b.blockSignals(False)
         from .trading_pages import (today_page,theme_page,stock_page,position_page,review_page,
-            ai_team_page,research_lab_page,system_center_page)
-        handlers=[today_page,theme_page,stock_page,position_page,review_page,ai_team_page,research_lab_page,system_center_page]
+            ai_team_page,research_lab_page,dev_studio_page,system_center_page)
+        handlers=[today_page,theme_page,stock_page,position_page,review_page,ai_team_page,research_lab_page,dev_studio_page,system_center_page]
         handlers[index](self)
 
     def navigate(self,index):

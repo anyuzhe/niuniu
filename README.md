@@ -102,7 +102,7 @@ Alpha 公式的计算需要可选依赖 `vnpy`；查看注册信息或运行基�
 ├─ Research Lab
 │  ├─ Factor / Experiment / PIT / Campaign / Factory / Watch
 │  └─ Trading Knowledge / Playbook Lab
-├─ Dev Studio（P10，目标能力）
+├─ Dev Studio（P10 v1 已完成）
 └─ System Center：Data / PIT / Jobs / MCP / daemon / health
 ```
 
@@ -334,7 +334,7 @@ python -m unittest discover -s tests -v
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
-- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待产品化。P9 Agent Scorecard v1 已完成，只读按 task type 展示运行纪律/证据覆盖，样本不足保持 UNKNOWN，无模型总分或自动调权；下一正式阶段是 P10 Dev Studio + Dynamic Agent Orchestrator。
+- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待产品化。P9 Agent Scorecard v1 已完成。P10 Dev Studio v1 也已完成：DevTask 使用隔离 worktree、depth-1 动态 Subagents、path-scoped write leases、frozen tests、独立 Reviewer 和 Human Merge Gate；任何 Agent 都没有自动 push 权。下一正式阶段是 P11 System Health。
 - 机器学习训练不是当前主线；真实券商连接与自动实盘最后单独立项。任何回测或前瞻样本都只是给定证据和执行假设下的研究结果。
 
 ## 深入文档与来源

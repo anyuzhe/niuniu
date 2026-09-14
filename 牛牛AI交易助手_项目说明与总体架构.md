@@ -1,9 +1,9 @@
 # 牛牛 AI 交易助手：项目说明与总体架构
 
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
-- 架构口径更新：2026-09-14
+- 架构口径更新：2026-09-15
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P9 Agent Scorecard v1 已完成，全仓 `848 passed / 0 failed / 0 skipped`
+- 当前稳定基线：P10 Dev Studio / Dynamic Agent Orchestrator v1 已完成，全仓 `861 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -32,7 +32,7 @@
 ├─ Research Lab
 │  ├─ Factor / Experiment / PIT / Campaign / Factory / Watch
 │  └─ Trading Knowledge / Playbook Lab
-├─ Dev Studio（P10，尚未产品化完成）
+├─ Dev Studio（P10 v1 已完成）
 └─ System Center
 ```
 
@@ -171,10 +171,10 @@ Strategy Intent
 
 `Daily Scanner` 是规则运行器，不是模型自由选股器。它读取冻结事实和冻结规则；证据不足时输出 `UNKNOWN / NO_TRADE / PARTIAL`，不得为了每天有结果而强行推荐股票。
 
-当前已完成 PREP 全市场扫描、MarketSnapshot、AUCTION/R1 Scanner 和 DailyMarket 增量归档；受控每日编排仍是下一阶段。
+当前已完成 PREP 全市场扫描、MarketSnapshot、AUCTION/R1 Scanner、DailyMarket 增量归档与 P8.7 受控 Daily Orchestrator v1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待后续产品化。
 ## 8. AI Team：独立研究，不做投票系统
 
-当前正式角色包括 Chief Researcher、Market Scanner、Skeptic / Risk Reviewer、Quant Researcher；Developer 只属于未来 Dev Studio。
+AI Team 当前正式研究角色包括 Chief Researcher、Market Scanner、Skeptic / Risk Reviewer、Quant Researcher；Developer 属于已落地的 P10 Dev Studio 开发 profile，不进入交易研究投票或判断链。
 
 AI Team 的正确流程是：
 
@@ -192,7 +192,7 @@ Decision
 
 多 Agent 一致不能当作独立市场证据，也不采用“多数票=正确”。高风险任务才按需 Peer Review；第一轮互盲，Chief 负责综合证据和保留分歧。
 
-未来 P10 的 Main Agent + Dynamic Subagents 是通用任务编排层，不等于当前 P8 已完成能力。Research Profile 共享只读 evidence；Dev Profile 才允许隔离 worktree 内受 path lease 约束的写入。
+P10 已落地 Main Developer Agent + Dynamic Subagents 开发编排层，并与 AI Team 研究链保持权限分离：Research Profile 继续只读 evidence；Dev Profile 只允许在隔离 worktree 内按 path-scoped lease 受控写入，最终发布仍停在人工 Merge Gate。
 ## 9. Decision、Strategy Intent 与执行层
 
 牛牛必须区分四类状态：
@@ -235,21 +235,22 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 通用 StrategySource 多来源对象 | **已完成 P8.6**：六类来源 + 多对多 PlaybookSourceLink |
 | 受控每日自动编排 PREP→AUCTION→R1 | **已完成 P8.7 v1**：持久计划、幂等 tick、恢复、错过窗口不回填 |
 | Agent Scorecard | **P9 v1 已完成**：按任务类型只读评价，样本不足 UNKNOWN，无总分/自动调权 |
-| Dynamic Agent Orchestrator / Dev Studio | P10，尚未完成 |
+| Dynamic Agent Orchestrator / Dev Studio | **P10 v1 已完成**：隔离 worktree + depth-1 动态 Subagent + path lease + Reviewer + Human Merge Gate |
 | System Health | P11，尚未完成 |
 | 移动端 | P12，尚未完成 |
 | Prediction→Decision/Intent + PaperPlan | **P8.8-A/B 已完成** |
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker | P13，尚未开始 |
 
-当前生产代码最近完整回归基线：**848 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**861 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 新版路线按“先让知识来源通用化，再让每日闭环自动运行”的顺序推进：
 
-1. **P10 Dev Studio + Dynamic Agent Orchestrator**：Main Agent、动态 Subagents、隔离 worktree、path lease、Tester、Reviewer、Human Merge。
-2. **P11 System Health → P12 移动端 → P13 Paper→Real**。
-3. 并行积累真实前瞻 Paper 日志，并继续补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 原始资料。
+1. **P11 System Health**：统一服务、任务、日志、心跳、数据新鲜度、PIT blocker 和关键宿主运行状态。
+2. **P12 移动端 / 机器人**。
+3. **P13 Paper→Real**：真实券商最后单独评审。
+- 并行积累真实前瞻 Paper 日志，并继续补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 原始资料。
 
 并行继续补 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 

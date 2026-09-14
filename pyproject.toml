@@ -31,6 +31,7 @@ niuniu-paper-fill-intent = "quantlab.agent.paper_fill_intent_cli:main"
 niuniu-paper-review = "quantlab.agent.paper_review_cli:main"
 niuniu-paper-lifecycle = "quantlab.agent.paper_lifecycle_cli:main"
 niuniu-agent-scorecard = "quantlab.agent.scorecard_cli:main"
+niuniu-dev-studio = "quantlab.agent.dev_studio_cli:main"
 niuniu-paper-rebalance = "quantlab.agent.paper_rebalance_cli:main"
 niuniu-paper-rebalance-outcome = "quantlab.agent.paper_rebalance_outcome_cli:main"
 

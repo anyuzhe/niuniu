@@ -77,6 +77,12 @@ def research_lab_page(window):
     box.addWidget(grid,1)
 
 
+def dev_studio_page(window):
+    box=window.page('开发工作台','P10 Dev Studio · DevTask → Main Agent → Dynamic Subagents → Reviewer → Human Merge Gate。')
+    from .dev_studio import DevStudioWidget
+    box.addWidget(DevStudioWidget(window),1)
+
+
 def system_center_page(window):
     box=window.page('系统中心','数据、PIT、任务、服务和工作空间集中入口；在线状态不等于研究正确。')
     box.addWidget(kpis([
