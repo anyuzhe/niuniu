@@ -38,3 +38,19 @@ v3 仍是 DRAFT，不代表已经证明 Alpha；但它的规则形成期到 2026
 只有累积到预先约定的一批前瞻样本后，才允许总结失败模式并创建 **v4**；v3 原定义、预测与失败记录永久保留。
 
 FROZEN / HOLDOUT / WALK_FORWARD 仍需满足 Playbook Lab 已有的 VERIFIED 来源、FULL CandidateSet、STRICT_PIT 与执行审计门槛。
+
+## 宿主前瞻冻结命令
+
+生产入口：`niuniu-playbook-forward`。它**不下载行情、不替模型选股**，只负责时间闸门、合同校验与安全续写。
+
+查询当前 Frame 是否允许冻结：
+
+```bash
+niuniu-playbook-forward --output artifacts --trading-day 2026-09-14 --frame AUCTION --status
+```
+
+AUCTION 虽属于 09:15–09:30 Decision Frame，但前瞻数据必须等到 **09:25** 才视为 ready；R1 必须等到 **09:35** 第一根完整5分钟K线后才视为 ready。
+
+实际冻结使用 `--payload snapshot.json`；payload 必须引用当时已经归档的 ExpertSource，并同时冻结 Case、CandidateSet 与唯一 SYSTEM_PREDICTION。
+
+相同 payload 重试会安全续写；同一 definition/day/frame 若想换另一份候选或预测会被拒绝。快照超过数据时点10分钟才提交也会被拒绝，不能事后冒充前瞻预测。

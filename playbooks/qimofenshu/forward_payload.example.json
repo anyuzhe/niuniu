@@ -1,0 +1,27 @@
+{
+  "definition_id": "00000000-0000-0000-0000-000000000001",
+  "trading_day": "2099-01-01",
+  "frame": "AUCTION",
+  "as_of": "2099-01-01T09:25:00+08:00",
+  "source_ids": ["00000000-0000-0000-0000-000000000002"],
+  "summary": "当时可见竞价快照；示例文件不能直接提交。",
+  "notes": "先登记真实 ExpertSource，再替换 definition/source IDs。",
+  "candidate_set": {
+    "completeness": "FULL",
+    "pit_status": "UNKNOWN",
+    "universe_source": "archived-live-snapshot",
+    "generation_method": "frozen playbook eligibility",
+    "candidates": [
+      {"symbol": "sh.600000", "eligibility_reasons": ["满足冻结资格"], "features": {"auction_gap_pct": 3.2}, "evidence_ids": ["snapshot-ref"]},
+      {"symbol": "sz.000001", "eligibility_reasons": ["满足冻结资格"], "features": {"auction_gap_pct": 1.4}, "evidence_ids": ["snapshot-ref"]}
+    ],
+    "evidence_ids": ["snapshot-ref"]
+  },
+  "prediction": {
+    "selected_symbols": ["sh.600000"],
+    "ranked_symbols": ["sh.600000", "sz.000001"],
+    "reasons": {"sh.600000": ["按冻结规则排名更高"]},
+    "evidence_ids": ["snapshot-ref"],
+    "notes": "只记录当时判断，不使用未来结果。"
+  }
+}
