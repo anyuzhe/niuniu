@@ -557,3 +557,9 @@ Playbook Lab 必须额外阻断：
 - 桂林旅游 9/10 建立 FULL 4只3板候选全集与强交叉 `OBSERVED_EXPERT`：账户已验证截图、9/10华安买入、9/11同席位卖出及候选竞价全部可核。
 - 龙版传媒 9/4 建立 FULL 2只4板候选全集，但因华安数据来自9/7三日榜，精确买入日不可确认，只保存 `HUMAN_RECONSTRUCTION`；9/8清仓与9/9空仓作为直接事实来源。
 - 新建 `mid-board-theme-leader-acceleration-hypothesis-v1`，继续保持 DRAFT / RETROSPECTIVE_REFERENCE；9/13 cutoff 后的前瞻统计不纳入上述旧样本。
+
+### P8.5-C：真正前瞻验证启动（2026-09-14）
+
+- 已将 2026-09-13 固定为 v3 research cutoff；9/14 起只允许前瞻评估，不允许用新结果回改 v3 后宣称样本外成功。
+- 9/14 已完成 PREP → AUCTION → R1 三段真实时间冻结；R1 `SYSTEM_PREDICTION` 选择超声电子，专家真实结果尚未知。
+- 新增 `niuniu-playbook-forward` 时间闸门执行器；全仓回归 **763 passed / 0 failed / 0 skipped**。

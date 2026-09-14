@@ -125,3 +125,11 @@ v1 失败后建立 selection-hypothesis-v2 DRAFT：先看市场节点/新旧题�
 - 桂林旅游：9/9四只3板全集，9/10竞价唯一涨停；9/10华安武汉百步亭买入、9/11同席位卖出与账户已验证截图闭合，写入 `OBSERVED_EXPERT`。
 - 龙版传媒：9/3两只4板全集，9/4 09:35历史回放选择龙版；因三日龙虎榜不能确定专家精确买入日，只写 `HUMAN_RECONSTRUCTION`，不生成专家目标标签。
 - 原始账户截图、网页和龙虎榜快照继续只保存在 `source_raw/`，Git 仅保存研究结论与方法。
+
+## 2026-09-14 前瞻验证补充验收
+
+- `niuniu-playbook-forward` 已加入：PREP / AUCTION / R1 数据就绪时间闸门、10分钟近实时限制、幂等恢复、同 Frame 防改写。
+- 9/14 AUCTION：FULL + STRICT_PIT，4只候选，冻结结论为 `NO_AUCTION_ENTRY`。
+- 9/14 R1：FULL + STRICT_PIT，冻结选择为超声电子；中新赛克保留 `QUEUE_DEPENDENT`，不把通道成交能力当选股 Alpha。
+- 当前尚无 9/14 `OBSERVED_EXPERT` 标签，因此不得生成命中率或 Alpha 结论。
+- 完整仓库回归：**763 passed / 0 failed / 0 skipped**。
