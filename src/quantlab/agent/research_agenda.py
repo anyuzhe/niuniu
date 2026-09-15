@@ -65,10 +65,15 @@ class ResearchAgendaService:
                 items.append(agenda_item('watch_integrity',row['name'],'观察池来源状态为 '+integrity,
                     '先核对来源或做基准换版，不继续解释最新指标',100,ref));continue
             latest=value.get('latest') or {};alerts=latest.get('alerts') or []
-            reviews=[a for a in alerts if a.get('severity')=='review']
-            if reviews:
+            revisions=[a for a in alerts if a.get('kind')=='historical_input_revision']
+            decay=[a for a in alerts if a.get('kind')=='sequential_rank_ic_degradation']
+            if revisions:
                 items.append(agenda_item('watch_review',row['name'],'观察池出现需要人工复核的历史输入修订',
                     '核对修订来源并决定是否重建基准',95,ref))
+            elif decay:
+                horizons=','.join(str(a.get('horizon')) for a in decay)
+                items.append(agenda_item('watch_decay_evidence',row['name'],'Sequential Monitor在horizon '+horizons+' 出现持续Rank IC衰减证据',
+                    '核对新成熟样本、市场状态、执行成本和因子机制；不要自动停用或换参数',92,ref))
             elif alerts:
                 items.append(agenda_item('watch_notice',row['name'],'观察池存在 '+str(len(alerts))+' 条数据/样本提醒',
                     '查看成熟样本、水位与缺失情况',65,ref))

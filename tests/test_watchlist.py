@@ -111,6 +111,39 @@ class WatchlistTests(unittest.TestCase):
         for name in ('create_watch','refresh_watch','approve_refresh'):
             self.assertFalse(api.call(name,{})['ok'])
         self.assertFalse(list(self.output.glob('_jobs/*.json')))
+    def test_new_watch_freezes_sequential_settings_and_model_cannot_act_on_decay(self):
+        created=self.service.create('序贯动量',self.source.run_id,windows=[5],min_dates=1,
+            sequential_alpha=.04,sequential_min_effect=.03,sequential_min_new_dates=5,sequential_block_sessions=5)
+        watch=created['watch_id'];value=self.service.get(watch);seq=value['definition']['sequential_monitor']
+        self.assertTrue(value['sequential_monitor_configured']);self.assertEqual(seq['family_alpha'],.04)
+        self.assertEqual(seq['min_effect'],.03);self.assertEqual(seq['min_new_dates'],5);self.assertEqual(seq['block_sessions'],5)
+        self.assertIn(created['snapshot']['sequential_monitor']['status'],('INSUFFICIENT','NO_DECISIVE_CHANGE'))
+        from quantlab.agent.watch_tools import WatchResearchAPI
+        api=WatchResearchAPI(self.output,self.root);reply=api.call('get_factor_watch',{'watch_id':watch})
+        self.assertTrue(reply['ok']);self.assertTrue(reply['data']['sequential_monitor_configured'])
+        self.assertIn('sequential_monitor',reply['data']['latest'])
+        names={row['name'] for row in api.schemas()}
+        self.assertFalse({'pause_factor_for_decay','accept_decay','change_factor_parameters'} & names)
+
+    def test_real_refresh_only_adds_post_baseline_mature_sessions_and_keeps_short_tail_pending(self):
+        created=self.service.create('成熟日序贯',self.source.run_id,windows=[5],min_dates=1,
+            sequential_min_new_dates=2,sequential_block_sessions=5)
+        later=self.later();fresh=self.service.observe(created['watch_id'],later.run_id)
+        seq=fresh['snapshot']['sequential_monitor'];item=seq['horizons']['1']
+        self.assertGreater(item['new_mature_sessions'],0)
+        self.assertEqual(item['complete_blocks'],item['new_mature_sessions']//5)
+        self.assertEqual(item['pending_block_sessions'],item['new_mature_sessions']%5)
+        if item['complete_blocks']==0:self.assertEqual(item['current_e_value'],1.0)
+        self.assertNotEqual(item['status'],'DEGRADATION_EVIDENCE')
+
+    def test_legacy_watch_can_continue_without_silent_sequential_upgrade(self):
+        created=self.service.create('旧口径',self.source.run_id,windows=[5],min_dates=1,enable_sequential=False)
+        watch=created['watch_id'];definition,_=self.service.store.read(watch)
+        self.assertIsNone(definition['sequential_monitor']);self.assertEqual(definition['version'],1)
+        later=self.later();fresh=self.service.observe(watch,later.run_id)
+        self.assertEqual(fresh['snapshot']['sequential_monitor']['status'],'LEGACY_NOT_CONFIGURED')
+        self.assertFalse(self.service.get(watch)['sequential_monitor_configured'])
+
     def test_changed_statistical_implementation_requires_new_watch(self):
         from unittest.mock import patch
         watch = self.create()['watch_id']

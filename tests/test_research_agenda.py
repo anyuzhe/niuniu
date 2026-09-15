@@ -1,6 +1,7 @@
 from uuid import uuid4
 import json
 import unittest
+from unittest.mock import patch
 
 from test_alpha_factory import AlphaFactoryTests
 from quantlab.agent.research_agenda import ResearchAgendaService
@@ -31,6 +32,19 @@ class ResearchAgendaTests(unittest.TestCase):
         self.assertIn('factory_approval',kinds);self.assertIn('open_hypothesis',kinds)
         factory=next(r for r in result['items'] if r['kind']=='factory_approval')
         self.assertEqual(factory['evidence'][0]['proposal_id'],proposal['proposal_id'])
+
+    def test_sequential_decay_evidence_becomes_review_agenda_not_action(self):
+        class Store:
+            def list(self):return {'watches':[{'watch_id':'00000000-0000-0000-0000-000000000001','name':'衰减监控'}],'unreadable':0}
+        class Service:
+            store=Store()
+            def get(self,_):
+                return {'source_integrity':'verified','latest':{'alerts':[{'kind':'sequential_rank_ic_degradation','severity':'review','horizon':'5'}]},
+                    'active':True}
+        with patch('quantlab.agent.research_agenda.WatchService',return_value=Service()):
+            items=self.agenda._watch_items()
+        self.assertEqual(len(items),1);self.assertEqual(items[0]['kind'],'watch_decay_evidence')
+        self.assertIn('不要自动停用',items[0]['action']);self.assertEqual(items[0]['priority'],92)
 
     def test_agent_can_read_agenda_and_factory_but_not_execute(self):
         api=MarketDataResearchAPI(self.fx.output,self.fx.fx.root)

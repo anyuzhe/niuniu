@@ -72,7 +72,7 @@ D1 / D2 / D3+ 复盘
 | Trading Knowledge / Playbook Lab | 已支持六类 `StrategySource`、旧 `ExpertSource→TRADER` 兼容投影、Playbook 多对多来源关系、完整 CandidateSet、selected/unselected、Selection/Veto、前瞻冻结、历史回放与执行访问分层 |
 | Daily Scanner / 每日编排 | PREP 全市场扫描、MarketSnapshot、AUCTION/R1/R2/R3 确定性扫描、DailyMarket 全市场日增量归档，以及持久 `Daily Orchestrator` 五阶段幂等可恢复链路；腾讯主源+东财第二源+新浪备用校验的 live Provider 已接入；错过窗口不回填 |
 | AI Team | Chief Researcher、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；第一轮独立判断，Chief 综合，不用多数票代替证据 |
-| AI 研究与自动化基础 | 结构化研究记忆、固定研究包、受限 DSL、Research Agenda、Safe Alpha Factory、Watch、标准 MCP、approval-time actual-byte freeze 与 Research Session Grant；宿主可授予有限自主研究，但模型不能创建/扩大授权、写生产规则或自动实盘 |
+| AI 研究与自动化基础 | 结构化研究记忆、固定研究包、受限 DSL、Research Agenda、Safe Alpha Factory、Watch + Sequential Monitor、标准 MCP、approval-time actual-byte freeze 与 Research Session Grant；新 Watch 可冻结序贯 Rank IC 衰减门槛，但模型不能自动停因子、换参数、扩大授权或实盘 |
 | System Health | P11 只读聚合 Workspace、Artifacts、JobQueue、daemon heartbeat、MCP adapter、Notifications、Market Data/Series、DailyMarket、MarketSnapshot、Orchestrator、PIT/Playbook、Paper、Dev Studio 与日志；运行在线和研究正确分轴展示，无健康总分/自动修复 |
 | Mobile / Bot | P12 轻客户端：同一 Workbench 提供 `/mobile` 与只读 JSON API，MCP/CLI 提供 Mobile Brief；直接复用 Decision Ledger、Stock Dossier、Paper、System Health 与统一记忆/状态源，不建立手机端第二数据库或第二份持仓 |
 | Broker Shadow | P13-A 只读券商证据层：脱敏账户快照 append-only 保存，与 Dynamic Paper 比较持仓/现金；MCP 只读查询，无券商登录、认证保存、下单、撤单或资金划转 |
@@ -344,6 +344,7 @@ python -m unittest discover -s tests -v
 - P8.7 Daily Orchestrator 已完成 PREP/AUCTION/R1/R2/R3；`public-web-consensus-v1` 已接入腾讯/东财/新浪三源实时行情。三源至少两源一致才可用，单源异常可剔除；该层适合当前研发/个人自用，但无交易所级 SLA，且固定 `strict_pit_source_verified=false`。P9 Agent Scorecard、P10 Dev Studio、P11 System Health、P12 Mobile / Bot、P13-A Broker Shadow 与 P13-B0 RealTrade Readiness v1 均已完成。B0 已把当前“没有具体券商通道”编码为 `NO_LIVE_BROKER_CHANNEL`。
 - 下一层 P13-B1 只有出现明确可用的具体券商实时**只读**通道后才开始；认证/密钥、真实资金与任何下单/撤单/资金划转仍未启用。B2/B3 若涉及风险门、kill switch、逐单人工确认、订单 Gateway 或真实订单，必须继续单独评审。任何 Paper/Shadow/完整 policy/Agent 判断都不能自动外推为实盘权限。
 - Research Proposal 已完成 approval-time actual-byte freeze；Research Session Grant v1 也已完成：宿主可按证券/日期/周期/因子/模式/有效期与总预算授予有限自主研究，模型只能在该范围内向同一 JobQueue 提交任务，每项仍冻结实际输入；撤销/过期后新任务立即禁止、运行任务在 checkpoint 取消。
+- Watch Sequential Monitor v1 已完成：新 Watch 创建时冻结 family alpha、最小 Rank IC 衰减幅度、新增成熟日期门槛与非重叠 block；重复查看使用 e-process 控制，历史修订/样本不足 fail-closed。旧 Watch 不静默升级，衰减证据只进入人工复核 Agenda，不自动停用/换参数。
 
 ## 深入文档与来源
 
@@ -359,6 +360,7 @@ python -m unittest discover -s tests -v
 - [三源实时 MarketSnapshot Provider v1 验收说明](牛牛AI交易工作台_三源实时MarketSnapshotProvider_验收说明.md)：腾讯主源、东财第二源、新浪备用校验、两源共识、时间戳防脏数据、Strict PIT 边界与 Orchestrator 显式联网授权。
 - [Approval-time Actual-byte Freeze 验收说明](牛牛AI交易工作台_ApprovalTimeActualByteFreeze_验收说明.md)：宿主批准时冻结实际研究输入字节、Universe mask、qfq/raw/context，并从冻结包执行/恢复。
 - [Research Session Grant v1 验收说明](牛牛AI交易工作台_ResearchSessionGrant_验收说明.md)：宿主有限授权、预算/范围/有效期、共享 JobQueue、逐任务实际输入冻结、撤销/过期 fail-closed。
+- [Watch 序贯统计与 Alpha 衰减监测 v1 验收说明](牛牛AI交易工作台_Watch序贯统计与Alpha衰减监测_验收说明.md)：冻结经验基线、非重叠 block、anytime-valid e-process、legacy Watch 兼容与无自动停用边界。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。

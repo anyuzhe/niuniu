@@ -3,7 +3,7 @@ import re
 from uuid import uuid4
 from PyQt6 import sip
 from PyQt6.QtCore import QDate
-from PyQt6.QtWidgets import QDialog,QVBoxLayout,QFormLayout,QComboBox,QLineEdit,QSpinBox,QDateEdit
+from PyQt6.QtWidgets import QDialog,QVBoxLayout,QFormLayout,QComboBox,QLineEdit,QSpinBox,QDoubleSpinBox,QDateEdit
 from quantlab.agent.watchlist import WatchService
 from quantlab.storage.codec import encode
 from .business_view import BusinessDetails
@@ -25,6 +25,14 @@ class FactorWatchDialog(QDialog):
         self.windows=QLineEdit('20 60 120'); form.addRow('观察窗口（已观察日期数）',self.windows)
         self.minimum=QSpinBox(); self.minimum.setRange(1,1000); self.minimum.setValue(20)
         form.addRow('最少有效 IC 日期',self.minimum)
+        self.seq_alpha=QDoubleSpinBox();self.seq_alpha.setRange(.001,.2);self.seq_alpha.setDecimals(3);self.seq_alpha.setSingleStep(.005);self.seq_alpha.setValue(.05)
+        form.addRow('序贯 family alpha',self.seq_alpha)
+        self.seq_effect=QDoubleSpinBox();self.seq_effect.setRange(0,.5);self.seq_effect.setDecimals(3);self.seq_effect.setSingleStep(.005);self.seq_effect.setValue(.02)
+        form.addRow('最小 Rank IC 衰减幅度',self.seq_effect)
+        self.seq_dates=QSpinBox();self.seq_dates.setRange(1,1000);self.seq_dates.setValue(10)
+        form.addRow('最少新增成熟日期',self.seq_dates)
+        self.seq_block=QSpinBox();self.seq_block.setRange(1,20);self.seq_block.setValue(5)
+        form.addRow('序贯非重叠Block交易日',self.seq_block)
         self.create_button=button('从归档创建跟踪',self.create_watch,True)
         self.reload_button=button('刷新目录',self.reload)
         box.addWidget(row(self.create_button,self.reload_button))
@@ -42,7 +50,7 @@ class FactorWatchDialog(QDialog):
         self.history=QComboBox(); box.addWidget(row(label('历史快照（最近20次）'),self.history))
         self.details=BusinessDetails({}); box.addWidget(self.details,1)
         self.status=label('正在读取目录…','muted',True); box.addWidget(self.status)
-        self.controls=[self.source,self.name,self.windows,self.minimum,self.create_button,
+        self.controls=[self.source,self.name,self.windows,self.minimum,self.seq_alpha,self.seq_effect,self.seq_dates,self.seq_block,self.create_button,
             self.reload_button,self.watches,self.end,self.propose_button,self.requests,
             self.sync_button,self.attach_button,self.pause_button,self.open_button,self.history]
         self.watches.currentIndexChanged.connect(self.select_watch)
@@ -104,10 +112,12 @@ class FactorWatchDialog(QDialog):
         try: windows=[int(x) for x in re.split(r'[\s,，]+',self.windows.text().strip()) if x]
         except ValueError: self.status.setText('窗口须为整数。'); return
         name=self.name.text(); run_id=self.source.currentData(); minimum=self.minimum.value()
-        key=(name,run_id,tuple(windows),minimum)
+        alpha=self.seq_alpha.value();effect=self.seq_effect.value();new_dates=self.seq_dates.value();block=self.seq_block.value()
+        key=(name,run_id,tuple(windows),minimum,alpha,effect,new_dates,block)
         if key!=self.create_key: self.create_key=key; self.create_id=str(uuid4())
         identifier=self.create_id
-        self.work(lambda:self.service.create(name,run_id,windows=windows,min_dates=minimum,watch_id=identifier),
+        self.work(lambda:self.service.create(name,run_id,windows=windows,min_dates=minimum,watch_id=identifier,
+            sequential_alpha=alpha,sequential_min_effect=effect,sequential_min_new_dates=new_dates,sequential_block_sessions=block),
                   lambda result:self.reload(result['watch_id']))
     def attach(self):
         watch_id=self.watches.currentData(); run_id=self.source.currentData()

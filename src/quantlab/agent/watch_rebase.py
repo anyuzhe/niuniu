@@ -107,6 +107,9 @@ class WatchRebaseService:
                 snapshot_tree(self.output,candidate_run_id)) != preview['source_fingerprint']:
             raise ValueError('归档在核对过程中发生变化')
         identity = {'source_watch':watch_id,'candidate':candidate_run_id,'name':name.strip()}
+        seq=definition.get('sequential_monitor')
+        sequential_settings=None if not seq else {'family_alpha':seq['family_alpha'],'min_effect':seq['min_effect'],
+            'min_new_dates':seq['min_new_dates'],'block_sessions':seq.get('block_sessions',5)}
         return {'version':1,'watch_id':watch_id,'candidate_run_id':candidate_run_id,
             'new_watch_id':str(uuid5(UUID(watch_id),'baseline:'+digest(identity))),
             'name':name.strip(),'old_run_id':old['run_id'],
@@ -115,7 +118,7 @@ class WatchRebaseService:
             'new_source_hash':preview['source_fingerprint'],
             'old_runtime':old['manifest']['runtime'],'runtime':runtime_fingerprint(),
             'workspace':workspace_identity(self.output),'checks':checks,
-            'windows':definition['windows'],'min_dates':definition['min_dates'],
+            'windows':definition['windows'],'min_dates':definition['min_dates'],'sequential_settings':sequential_settings,
             'limitations':['只证明本次同区间归档数值一致，不证明所有输入下算法等价或未来盈利。',
                 '旧快照不拼接到新统计；新跟踪完成创建后暂停，不继承研究授权。',
                 '行情修订、因子代码变化或区间变化须另建研究，不能走等值换版。']}
@@ -159,8 +162,14 @@ class WatchRebaseService:
                 if not existing_state['history']:
                     self.watch.store.set_active(plan['new_watch_id'],True)
             try:
+                seq=plan.get('sequential_settings')
                 result = self.watch.create(plan['name'],plan['candidate_run_id'],
-                    windows=plan['windows'],min_dates=plan['min_dates'],watch_id=plan['new_watch_id'])
+                    windows=plan['windows'],min_dates=plan['min_dates'],watch_id=plan['new_watch_id'],
+                    enable_sequential=seq is not None,
+                    sequential_alpha=seq['family_alpha'] if seq else .05,
+                    sequential_min_effect=seq['min_effect'] if seq else .02,
+                    sequential_min_new_dates=seq['min_new_dates'] if seq else 10,
+                    sequential_block_sessions=seq.get('block_sessions',5) if seq else 5)
                 if result['snapshot']['preview']['source_fingerprint'] != plan['new_source_hash'] or digest(snapshot_tree(self.output,plan['old_run_id'])) != plan['old_source_hash']:
                     raise ValueError('换版期间来源变化，未完成记录，新跟踪保持暂停')
             finally:

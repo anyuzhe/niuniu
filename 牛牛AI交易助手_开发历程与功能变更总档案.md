@@ -56,9 +56,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**935 passed / 0 failed / 0 skipped**。
+当前正式代码全仓基线：**945 passed / 0 failed / 0 skipped**。
 当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1。
-外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：Strict PIT 原始历史资料与 Watch 序贯/在线衰减统计。
+外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：Strict PIT 历史原始资料补齐。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -278,7 +278,7 @@
 
 已完成：数据/PIT、Factor、理论、结构事件、组合评分、Holdout、Walk-forward、Bootstrap、多重检验、独立成交回测、Campaign、Alpha Factory、Watch、复算归档、Approval-time Actual-byte Freeze 与 Research Session Grant。
 
-仍需加强：更多 Strict PIT 历史原始资料、Watch 序贯/在线衰减统计。
+仍需加强：更多 Strict PIT 历史原始资料；Watch 序贯/在线衰减统计 v1 已完成。
 
 ### 7.4 Trading Knowledge / Playbook Lab
 
@@ -295,7 +295,7 @@
 ## 9. 当前推荐的后续主线
 
 1. 出现具体券商通道后推进 P13-B1，只做实时只读 Adapter；不把 Paper/Mobile/Broker Snapshot/Shadow MATCH/完整 policy 自动外推为订单权限。
-2. 无 B1 通道期间，R2/R3 Orchestrator、三源实时 MarketSnapshot、approval-time actual-byte freeze 与 Research Session Grant 已补齐；下一优先级为 Strict PIT 原始资料与 Watch 序贯/在线衰减统计，同时继续积累真实前瞻 Paper 样本。
+2. 无 B1 通道期间，R2/R3 Orchestrator、三源实时 MarketSnapshot、approval-time actual-byte freeze、Research Session Grant 与 Watch Sequential Monitor 已补齐；下一内部优先级收敛到 Strict PIT 历史原始资料，同时继续积累真实前瞻 Paper 样本。
 
 ## 10. 关键测试基线演进
 
@@ -330,6 +330,7 @@
 | 2026-09-15 | Approval-time Actual-byte Freeze v1 | **912 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Research Session Grant v1 | **925 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | 三源实时 MarketSnapshot Provider v1 | **935 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | Watch Sequential Monitor v1 | **945 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -581,3 +582,14 @@
 - 真实烟测：盘中两只股票曾由腾讯/东财/新浪 3/3 共识；随后一次东财临时无有效返回，腾讯+新浪仍以2/2形成 FULL 共识并把东财缺失留在 source health。只读 smoke `artifacts` **77006→77006**。
 - 测试/验收：Provider+PublicWeb+Orchestrator 专项 **28/28**；MarketSnapshot/Scanner/PREP/Orchestrator/System Health 联合 **74/74**；完整仓库 **935 tests / 0 failed / 0 skipped**，332.681秒。
 - 后续事项：内部主线继续 Strict PIT 原始历史资料与 Watch 序贯/在线衰减统计；外部有条件时用 QMT/XtQuant/券商级行情替换实时主源，并保留三家公开源做备份校验。
+### 2026-09-15 14:30｜[研究统计] Watch Sequential Monitor v1
+
+- 模块：Factor Watch / Tracking / Research Agenda / AI只读工具 / PyQt Watch。
+- 改动内容：新 Watch 创建时冻结经验 Rank IC 基线、family alpha、最小实际衰减、最少新增成熟日期、固定非重叠 block 与序贯算法指纹；后续只消费基线截止后成熟的每日 Rank IC。
+- 统计方法：默认5个交易日组成非重叠 block，尾部不足 block 不进入证据；完整 block 使用 fixed-lambda mixture e-process，同一 Watch 多次查看不重复消耗一次性检验。family alpha 在 horizons 间预先分配。
+- 状态：样本不足保持 INSUFFICIENT；未越界为 NO_DECISIVE_CHANGE；越过预先冻结 e-value 阈值才为 DEGRADATION_EVIDENCE。历史输入 revision 直接 HISTORICAL_REVISION_BLOCKED。
+- 兼容性：旧 Watch 继续 LEGACY_NOT_CONFIGURED，不静默升级；正式 Rebase 保留原序贯设置，算法 hash 变化要求新 Watch/换版。
+- 权限：衰减证据只追加 review alert 并进入 Research Agenda；模型没有自动停用、接受衰减、改因子参数或交易动作工具。
+- 解释边界：e-process 相对冻结经验基线，不把样本均值冒充总体真值；跨多个事后选择 Watch 不共享一次全局 family-alpha 认证。
+- 验收：Watch/Tracking/Agenda/Factory/System Health 联合 **99/99**；真实工作区 Watch=0，只读查询 artifacts **77006→77006**；完整仓库 **945 tests / 0 failed / 0 skipped**，376.376秒。
+- 后续事项：内部主线集中到 Strict PIT 历史原始资料补齐；外部继续等待券商/QMT级行情和 P13-B1，并持续积累真实前瞻 Paper 样本。

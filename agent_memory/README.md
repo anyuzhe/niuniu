@@ -18,6 +18,7 @@
 - Daily Orchestrator / 日内 Scanner 任务必须读取 `architecture/daily_orchestrator.md`；MarketSnapshot 数据源任务同时读取 `architecture/market_snapshot_provider.md`，不得把手工/BACKFILL 快照冒充 live provider。
 - Research Proposal / JobQueue / Campaign 审批任务必须读取 `architecture/approval_input_freeze.md`；人工批准后的实际输入以 approval freeze 为执行权威，禁止回退变化后的 live data。
 - Research Session Grant / 有限自主研究任务必须读取 `architecture/research_session_grant.md`；Grant 只扩大精确范围内的本地研究执行，不得扩展到 Shell、下载、代码写、Campaign/Execution 或真实交易。
+- Watch / Tracking / Alpha 衰减监测任务必须读取 `architecture/watch_sequential.md`；序贯证据只相对冻结经验基线，不得自动停用因子、换参数或扩大交易权限。
 
 ## 固定读取顺序
 

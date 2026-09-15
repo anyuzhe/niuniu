@@ -6,6 +6,7 @@ from uuid import uuid4
 import polars as pl
 from quantlab.agent.watch_store import WatchStore, now
 from quantlab.agent.tracking_preview import tracking_preview, tracking_fingerprint
+from quantlab.agent.watch_sequential import build_baseline as build_sequential_baseline, monitor as monitor_sequential, sequential_fingerprint
 from quantlab.storage.artifact_integrity import snapshot_tree
 from quantlab.storage.codec import digest
 from quantlab.experiments.runner import runtime_fingerprint
@@ -44,16 +45,22 @@ class WatchService:
         if preview['source_fingerprint'] != digest(tree):
             raise ValueError('Source changed while preparing watch evidence')
         return record, preview
-    def create(self, name, run_id, *, windows=(20,60,120), min_dates=20, watch_id=None):
+    def create(self, name, run_id, *, windows=(20,60,120), min_dates=20, watch_id=None,
+               sequential_alpha=0.05, sequential_min_effect=0.02, sequential_min_new_dates=10, sequential_block_sessions=5, enable_sequential=True):
         if not isinstance(name,str) or not name.strip() or len(name)>120:
             raise ValueError('Watch name must contain 1–120 characters')
         watch_id = watch_id or str(uuid4())
         record, result = self.capture(run_id,None,windows,min_dates)
-        definition = {'version':1,'watch_id':watch_id,'name':name.strip(),
+        sequential=None
+        if enable_sequential:
+            sequential=build_sequential_baseline(self.output,run_id,result['as_of'],result['source_fingerprint'],min_dates,
+                family_alpha=sequential_alpha,min_effect=sequential_min_effect,min_new_dates=sequential_min_new_dates,
+                block_sessions=sequential_block_sessions)
+        definition = {'version':2 if sequential else 1,'watch_id':watch_id,'name':name.strip(),
             'base_run_id':run_id,'rule':rule_identity(record),'windows':list(windows),
             'min_dates':min_dates,'base_fingerprint':result['source_fingerprint'],
-            'tracking_algorithm':result['tracking_source_hash'],
-            'scope':'Fixed rule and start date, human-approved refresh, descriptive gross metrics only'}
+            'tracking_algorithm':result['tracking_source_hash'],'sequential_monitor':sequential,
+            'scope':'Fixed rule/start date; human-approved refresh; gross metrics plus optional frozen-reference sequential Rank-IC monitor'}
         self.store.initialize(watch_id,definition)
         _, existing = self.store.read(watch_id)
         if existing['history']:
@@ -100,13 +107,26 @@ class WatchService:
                 if not enough:
                     alerts.append({'kind':'insufficient_mature_dates','window':window,
                         'horizon':horizon,'severity':'sample_notice'})
+        sequential={'status':'LEGACY_NOT_CONFIGURED','version':None,'horizons':{},
+            'limitations':['This legacy Watch predates Sequential Monitor v1; descriptive tracking remains unchanged.']}
+        if definition.get('sequential_monitor'):
+            if definition['sequential_monitor'].get('algorithm')!=sequential_fingerprint():
+                raise ValueError('Sequential monitor algorithm changed; create a new watch or use formal rebase')
+            sequential=monitor_sequential(self.output,run_id,result['as_of'],result['source_fingerprint'],
+                definition['sequential_monitor'],historical_revision=change['historical_revision'])
+            for horizon in sequential.get('degraded_horizons',[]):
+                row=sequential['horizons'][horizon]
+                alerts.append({'kind':'sequential_rank_ic_degradation','severity':'review','horizon':horizon,
+                    'e_value':row['max_e_value'],'evidence_threshold':row['evidence_threshold'],
+                    'observed_drop':row['observed_drop']})
         key = digest({'watch_id':watch_id,'source':result['source_fingerprint'],
-            'as_of':result['as_of'],'algorithm':result['tracking_source_hash']})
+            'as_of':result['as_of'],'algorithm':result['tracking_source_hash'],
+            'sequential_algorithm':definition.get('sequential_monitor',{}).get('algorithm') if definition.get('sequential_monitor') else None})
         value = {'snapshot_id':key,'watch_id':watch_id,'created_at':now(),
             'previous_snapshot_id':latest,'source_run_id':run_id,'preview':result,
-            'change':change,'baseline_differences':differences,'alerts':alerts,
-            'limitations':['Persistent manual monitoring, not scheduled execution or investment approval.',
-                'Window differences are descriptive, not decay significance or sequential tests.',
+            'change':change,'baseline_differences':differences,'sequential_monitor':sequential,'alerts':alerts,
+            'limitations':['Persistent manual monitoring, not investment approval or automatic factor disablement.',
+                'Window differences remain descriptive; Sequential Monitor evidence is only relative to its frozen empirical reference.',
                 'Missing/ineligible observations are combined; no complete exchange calendar is inferred.']}
         saved, created = self.store.publish(watch_id,value,latest)
         return {'watch_id':watch_id,'snapshot':saved,'created':created,'new_research_jobs':0}
@@ -123,6 +143,7 @@ class WatchService:
         from quantlab.agent.tracking_control_store import ControlStore,control_summary
         control=control_summary(ControlStore(self.output).get(watch_id))
         return {'definition':definition,'active':state['active'],'latest':latest,
+            'sequential_monitor_configured':bool(definition.get('sequential_monitor')),
             'tracking_control':control,
             'source_integrity':integrity,'snapshot_count':len(state['history']),
             'history':[{'snapshot_id':r['snapshot_id'],'source_run_id':r['source_run_id'],
