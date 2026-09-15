@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>牛牛 Mobile</title>
+<link rel="stylesheet" href="/mobile.css">
+</head>
+<body>
+<header><img src="/assets/niuniu_logo_icon.png" alt=""><div><b>牛牛 Mobile</b><small>同一状态源 · 只读</small></div></header>
+<main>
+<section class="controls"><input id="day" type="date"><input id="symbol" placeholder="sh.600000"><button id="refresh">刷新</button></section>
+<div id="notice" class="notice">读取中…</div>
+<section id="summary" class="grid"></section>
+<section><h2>候选 / 计划</h2><div id="actions" class="stack"></div></section>
+<section><h2>主线 / 风险</h2><div id="themes" class="stack"></div></section>
+<section id="stock-section" hidden><h2>股票档案</h2><div id="stock" class="stack"></div></section>
+<footer>手机端不保存第二份 Decision、持仓或记忆；远程访问需使用安全隧道或有认证的反向代理。</footer>
+</main>
+<script src="/mobile.js"></script>
+</body></html>

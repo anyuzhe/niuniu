@@ -12,6 +12,7 @@
 - Agent 评价/模型比较任务必须读取 `architecture/agent_scorecard.md`；Scorecard 不产生模型总分，也不得自动调权。
 - Dev Studio / 开发 Agent 任务必须读取 `architecture/dev_studio.md`；所有写入只能发生在隔离 worktree + path lease 内，Human Merge 不自动 push。
 - System Health / 系统可观察性任务必须读取 `architecture/system_health.md`；运行在线与研究正确必须分轴表达，不允许自动修复或伪造健康总分。
+- Mobile / Bot 任务必须读取 `architecture/mobile.md`；手机/机器人只复用现有状态源，禁止建立第二份 Decision、持仓、记忆或移动端数据库。
 
 ## 固定读取顺序
 

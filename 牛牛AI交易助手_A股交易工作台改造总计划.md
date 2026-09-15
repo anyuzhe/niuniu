@@ -334,14 +334,21 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - AI/MCP 只有 `get_system_health` 只读工具；不提供 restart/retry/download/接受修订/修改 PIT/merge/push/trade 自动动作。
 - 真实工作区只读烟测 artifacts 文件数 **77006→77006**，刷新约0.82秒；专项+UI **14/14**，完整仓库 **876/0/0**。
 
-### P12 移动端 / 机器人
-- 复用同一 MCP/API、Stock Dossier、Decision Ledger。
-- 手机端不得建立第二套独立记忆或第二份持仓状态。
+### P12 移动端 / 机器人（v1 已完成，2026-09-15）
+- 新增 `MobileBriefService`：手机/机器人直接读取同一 Decision Ledger、Theme、Paper Lifecycle、System Health；不建立 `_mobile`、mobile SQLite、第二份 Decision、第二份持仓或第二套 Agent Memory。
+- 同一 loopback Workbench 新增 `/mobile`、`/api/mobile/brief`、`/api/mobile/stock`、`/api/mobile/decisions`、`/api/mobile/system-health`；全部 GET 只读，未新增 mobile POST 写端点。
+- MCP 增加 `get_mobile_brief`，CLI 增加 `niuniu-mobile-brief`；能力声明明确 `mobile_brief_write_model=false`、`mobile_has_independent_state=false`。
+- Workbench 继续只监听 `127.0.0.1`；P12 不为手机方便而开放无认证 LAN/公网监听，跨设备使用安全隧道或有认证反向代理。
+- 首屏采用轻量同源聚合，不自动扫描全历史实验；真实工作区 Direct+MCP 连续两次约1.02秒。完整 Stock Dossier 的历史实验关联只在用户主动查股票时按需读取。
+- 真实烟测 artifacts 文件数 **77006→77006**；MCP `sh.600000` 完整紧凑档案约12KB，未触发24KB结果限制。
+- 新增专项 **6/6 passed**，P12相关联合回归 **18/18 passed**；完整仓库 **882/0/0**。
 
-### P13 Paper → Real 的渐进式交易层
-- 先把现有模拟账户完整绑定 Decision Ledger。
-- 再做 Shadow/Paper 长期运行。
-- 真实券商接入、实盘资金与自动交易最后单独立项，不属于本轮默认自动开启范围。
+### P13 Paper → Real 的渐进式交易层（尚未启动；需单独评审）
+- P8.8 已完成 Decision / Strategy Intent → Dynamic Paper → fill receipt → Rebalance → D1/D2/D3+ Review 的工程闭环；P12 也只是同源只读客户端，这些完成项都**不自动授权真实交易**。
+- P13 开始前必须单独冻结：券商/账户范围、认证与密钥存放、允许的订单类型、资金/单票/日损/总敞口上限、T+1/停牌/涨跌停约束、人工确认点、kill switch、审计/回执/对账和故障恢复。
+- 第一层只能做 Broker Adapter / account read-only / shadow reconciliation；任何真实下单必须是后续显式启用的独立能力，默认关闭。
+- 不得把 Paper fill、Mobile 按钮、AI Decision 或 Agent 共识直接映射为真实订单。
+- 真实券商接入、实盘资金与自动交易最后单独立项，不属于当前自动继续范围。
 
 ## 16. Research Lab 基础设施并行线
 
@@ -554,10 +561,9 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 
 ## 23. 2026-09-14 后续顺序调整（架构 v2）
 
-完成 P11 后，后续优先级继续收敛为：
+完成 P12 后，正式产品路线只剩最终真实交易边界：
 
-1. **P12 移动端 / 机器人**。
-2. P13 Paper→Real；真实券商最后单独评审。
+1. **P13 Paper→Real**：真实券商、真实资金与任何自动下单继续单独评审，不因 Paper / Mobile 已完成而默认开启。
 
 并行继续 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
 
@@ -638,3 +644,4 @@ Theme Matrix 提供市场上下文；Stock Dossier 聚合股票的 Playbook 历�
 - 2026-09-15：P10 Dev Studio v1 完成。新增隔离 detached worktree、Main Developer + depth-1 Dynamic Subagents、max_parallel≤3、path-scoped immutable write leases、frozen tests、独立 Reviewer、stale test/review fingerprint 检测和 Human Merge Gate。Main/Subagents 均无 git push 权；只有宿主显式确认后的 human merge 可在 main 创建 commit，且主分支/BASE SHA 变化即阻断。Research Agent 无 Dev Studio 写/merge 工具。新增桌面“开发工作台”和 `niuniu-dev-studio` CLI。专项14/14、Trading Desk导航2/2、完整仓库862/0/0。下一阶段 P11 System Health。
 
 - 2026-09-15：P11 System Health v1 完成。系统中心新增只读 `SystemHealthService/SystemHealthWidget` 与 `niuniu-system-health`，统一聚合 Workspace、Artifact Growth、JobQueue、tracking daemon、MCP adapter、Notifications、Market Data/Series、DailyMarket、MarketSnapshot、Daily Orchestrator、PIT/Playbook、Paper Lifecycle、Dev Studio 和日志元数据。顶层严格分离 Runtime 与 Research Readiness，不生成健康总分；MCP 无持久 heartbeat 时明确 `server_liveness=None`；历史 Orchestrator blocker 仅 WARN，不永久阻断今天。AI/MCP 只有 `get_system_health` 只读入口，无自动修复权限。真实 artifacts 读取前后文件数 77006→77006，刷新约0.82秒；专项+UI 14/14，完整仓库 876/0/0。下一阶段 P12 移动端 / 机器人。
+- 2026-09-15：P12 Mobile / Bot v1 完成。新增 `MobileBriefService`、同一 Workbench `/mobile` 与四个只读 mobile JSON API、MCP `get_mobile_brief`、`niuniu-mobile-brief` CLI；全部复用 Decision Ledger、Stock Dossier、Theme、Paper Lifecycle、System Health 与既有 MCP/API，不创建第二数据库/持仓/记忆。Workbench 继续 loopback-only，无 mobile POST 写端点。真实 artifacts 读取前后 77006→77006；首屏 Direct+MCP 两次约1.02秒，`sh.600000` 完整紧凑 Dossier MCP 响应约12KB。专项6/6、联合18/18、完整仓库882/0/0。下一阶段 P13 真实券商/真实资金必须单独评审。

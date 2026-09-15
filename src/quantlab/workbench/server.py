@@ -169,7 +169,8 @@ def make_server(root, port=8765, data_root=None):
                 offset, limit = int(arg('offset','0')), int(arg('limit','30'))
                 if offset < 0 or not 1 <= limit <= 200:
                     raise ValueError('Invalid page bounds')
-                assets = {'/':('index.html','text/html; charset=utf-8'),'/app.js':('app.js','text/javascript; charset=utf-8'),'/replay.js':('replay.js','text/javascript; charset=utf-8'),'/launcher.js':('launcher.js','text/javascript; charset=utf-8'),'/style.css':('style.css','text/css; charset=utf-8')}
+                assets = {'/':('index.html','text/html; charset=utf-8'),'/app.js':('app.js','text/javascript; charset=utf-8'),'/replay.js':('replay.js','text/javascript; charset=utf-8'),'/launcher.js':('launcher.js','text/javascript; charset=utf-8'),'/style.css':('style.css','text/css; charset=utf-8'),
+                    '/mobile':('mobile.html','text/html; charset=utf-8'),'/mobile.js':('mobile.js','text/javascript; charset=utf-8'),'/mobile.css':('mobile.css','text/css; charset=utf-8')}
                 assets.update({'/workspace.js':('workspace.js','text/javascript; charset=utf-8'),
                     '/assets/niuniu_logo_icon.png':('assets/niuniu_logo_icon.png','image/png'),
                     '/assets/niuniu_mascot_banner.png':('assets/niuniu_mascot_banner.png','image/png')})
@@ -191,6 +192,18 @@ def make_server(root, port=8765, data_root=None):
                                     'orders':state['orders'][offset:offset+limit],'total_orders':len(state['orders'])})
                             except (ValueError,KeyError,OSError):continue
                     result={'accounts':accounts,'offset':offset}
+                elif route == '/api/mobile/brief':
+                    from quantlab.trading.mobile import MobileBriefService
+                    result=MobileBriefService(catalog.root,data_root).build(arg('trading_day'),arg('symbol'))
+                elif route == '/api/mobile/stock':
+                    from quantlab.trading.mobile import MobileBriefService
+                    result=MobileBriefService(catalog.root,data_root).stock(arg('symbol'))
+                elif route == '/api/mobile/decisions':
+                    from quantlab.trading.mobile import MobileBriefService
+                    result=MobileBriefService(catalog.root,data_root).decisions(arg('symbol'),limit)
+                elif route == '/api/mobile/system-health':
+                    from quantlab.trading.mobile import MobileBriefService
+                    result=MobileBriefService(catalog.root,data_root).system_health()
                 elif route == '/api/catalog':
                     result = {'factors':default_registry().describe(),'theories':templates()}
                 elif route == '/api/settings':

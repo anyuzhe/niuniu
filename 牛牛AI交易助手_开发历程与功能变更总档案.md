@@ -55,9 +55,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**876 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1。
-下一阶段：P12 移动端 / 机器人；其后 P13。
+当前正式代码全仓基线：**882 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1。
+下一阶段：P13 Paper→Real；真实券商/真实资金必须单独评审。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -271,7 +271,7 @@
 
 已完成：AI Research Chat、提案审批、AI Team、Peer Review、Git-first Agent Memory、标准 MCP、长期跟踪与受限自动化。
 
-已完成：P9 Agent Scorecard v1、P10 Dev Studio + Dynamic Agent Orchestrator v1，以及 P11 System Health v1。下一正式阶段为 P12 移动端 / 机器人。
+已完成：P9 Agent Scorecard v1、P10 Dev Studio + Dynamic Agent Orchestrator v1、P11 System Health v1 与 P12 Mobile / Bot v1。下一正式阶段为 P13 Paper→Real，真实券商/真实资金单独评审。
 
 ### 7.3 Research Lab
 
@@ -283,19 +283,18 @@
 
 已完成：ExpertSource 试点、来源归档、候选全集、selected/unselected、规则版本、历史回放、前瞻冻结、防回填、Selection/Execution Access 分离、PREP/AUCTION/R1 Scanner 与 DailyMarket 增量接力。
 
-当前架构已推进到 P11：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘、按任务类型 Agent Scorecard、Dev Studio/Dynamic Agent Orchestrator 与 System Health 均已落地；下一阶段进入 P12 移动端 / 机器人，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
+当前架构已推进到 P12：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘、Agent Scorecard、Dev Studio、System Health 与同源 Mobile/Bot 均已落地；下一正式阶段仅剩 P13 Paper→Real，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
 
 ## 8. 尚未完成的正式阶段
 
 - **P8.7 扩展项（并行）**：R2/R3 自动编排与正式实时 MarketSnapshot provider 仍未产品化。
 - **P8.8 运行验证（并行）**：核心长期 Paper 闭环已实现，但仍需积累足够真实前瞻运行天数来评价稳定性和绩效。
-- **P12 移动端 / 机器人 / P13 Paper→Real**：依次推进；真实券商和自动实盘最后单独评审。
+- **P13 Paper→Real**：尚未启动；真实券商、真实资金和任何自动下单必须单独评审。
 
 ## 9. 当前推荐的后续主线
 
-1. 下一正式阶段推进 P12 移动端 / 机器人，复用同一 MCP/API、Decision Ledger、Stock Dossier、System Health 和统一状态源。
-2. P13 真实账户最后单独评审，不把 Paper 成功直接外推到真实券商。
-3. 并行继续积累真实前瞻 Paper 样本，并补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
+1. P13 真实账户最后单独评审，不把 Paper/Mobile 成功直接外推到真实券商或自动实盘。
+2. 并行继续积累真实前瞻 Paper 样本，并补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
 ## 10. 关键测试基线演进
 
@@ -323,6 +322,7 @@
 | 2026-09-14 | P9 Agent Scorecard v1 | **848 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P10 Dev Studio / Dynamic Agent Orchestrator v1 | **862 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P11 System Health v1 | **876 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | P12 Mobile / Bot v1 | **882 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -492,3 +492,14 @@
 - 真实烟测：真实 artifacts 文件数 77006→77006，无写入副作用；当前 Runtime=OK、Research Readiness=WARN、0 blocker，warning 为 no_frozen_playbook_definition；MCP adapter 工具数47。
 - 测试/验收：P11 专项+offscreen UI **14/14 passed**；最终完整仓库 **876 tests / 0 failed / 0 skipped**，299.890秒。
 - 后续事项：下一正式阶段 P12 移动端 / 机器人；必须复用同一 MCP/API、Decision Ledger、Stock Dossier、System Health、记忆与持仓状态源。
+
+### 2026-09-15 08:10｜[功能] P12 Mobile / Bot v1
+
+- 模块：Mobile Brief / Workbench Mobile / Stock Dossier / Decision Ledger / System Health / MCP。
+- 改动内容：新增 `MobileBriefService`、`niuniu-mobile-brief`、MCP `get_mobile_brief` 与同一 Workbench `/mobile`；移动 JSON API 覆盖 brief、stock、decisions、system-health。
+- 单一状态源：手机/机器人不创建 `_mobile`、mobile SQLite、第二份 Decision、第二份持仓、第二套 Strategy Intent 或第二套 Agent Memory；所有内容直接读取原有权威存储。
+- 安全边界：Workbench 继续只监听 127.0.0.1；mobile API 全部 GET 只读，无 POST 写端点；跨设备必须通过安全隧道或有认证反向代理。P12 不开启真实券商或自动实盘。
+- 性能：首版复用完整 Trading Cockpit 导致真实 brief 约7.8秒；定位到 Agenda/Watch 重聚合后改为直接读取同一 Decision/Theme/Paper/Health 存储并复用业务常量，Direct+MCP 连续两次约1.02秒。Stock Dossier 全历史实验关联约7–8秒，仅按需加载且不另建手机缓存库。
+- 真实烟测：CLI 与 HTTP `/mobile` 读取真实 artifacts 前后文件数 77006→77006；空股票简报约2.5–2.8KB，`sh.600000` 完整紧凑档案约12KB，均未触发24KB工具结果限制。
+- 测试/验收：P12新增专项 **6/6 passed**，相关联合回归 **18/18 passed**；最终完整仓库 **882 tests / 0 failed / 0 skipped**，305.026秒。
+- 后续事项：P13 真实券商/真实资金/自动下单按原路线单独评审，不自动启动。

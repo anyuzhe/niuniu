@@ -52,3 +52,7 @@ from .paper_rebalance_outcome import PaperRebalanceOutcomeError,PaperRebalanceOu
 
 __all__ += ['PaperFillIntentError','PaperFillIntentBridge','PaperReviewError','PaperReviewService','PaperLifecycleAnalytics',
     'PaperRebalanceError','PaperRebalancePlanService','PaperRebalanceOutcomeError','PaperRebalanceOutcomeBridge']
+
+from .mobile import MobileBriefService
+
+__all__.append('MobileBriefService')
