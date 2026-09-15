@@ -641,3 +641,16 @@
 - 真实 smoke：每个3日窗口命中2个 strict status observations，整段窗口仍不完整，符合 fail-closed。
 - 测试：SecurityStatus/PREP/Coverage 20/20；相关联合71/71；完整仓库 **961 tests / 0 failed / 0 skipped**，381.649秒。
 - 后续：继续收集官方状态事件形成更连续的 SecurityStatus 链，再进入历史行业变更与每日真实市值。
+
+### 2026-09-15 19:34｜[数据资格] Strict PIT SecurityStatus 第二批真实证据
+
+- 模块：PIT Evidence / SecurityStatus / Coverage / PREP / Agent Operating Memory。
+- Git：本条与验收文档同一提交发布，提交标题 `data: 扩充Strict PIT证券状态证据`；SHA 以该提交 Git 历史为准。
+- 数据：在独立数据根新增东旭蓝天、易事特、得润电子、合力泰4份深交所官方公告，归档8条停牌/复牌及ST生效 statement；累计由3只/6条提升到7只/14条。
+- 时间证据：发布时间取自深交所公告查询接口精确 `publishTime`，每份 PDF 原文字节、来源 URL、SHA256、`published_at/available_at/effective_at` 与 receipt checksum 绑定；归档前已备份 receipts、parquet 与 manifest。
+- 派生层：`security_status.parquet` 重物化为14行，table SHA256=`9fb12ec9731d28d5078a878c51bdce9e98a0ee78c642e6968b1fd5dee556b4e1`，evidence digest=`e75bd80794ab3651303c7ceb1bf8034bb30e7c248aa080a9492bc55000969bf5`。
+- 验证：深度审计 stored/verified/invalid=`14/14/0`；7只指定证券均有 SecurityStatus evidence presence，其它三类仍为0。`sz.300376` PREP 烟测消费2条新 evidence，但因完整状态链、官方 MarketRules 与 PIT Universe 缺失保持 `PARTIAL/RETROSPECTIVE_REFERENCE`。
+- 测试：SecurityStatus/Coverage/PREP 专项 **20/20 passed**；完整仓库 **961 tests / 0 failed / 0 skipped**，354.598秒。
+- 文档纪律：按宿主要求新增本批验收说明，更新 README、总体架构、总计划与 Agent Memory；以后每个完成任务都同步文档并形成独立 Git commit。
+- 边界：14条稀疏事件不等于完整历史状态链或数据集证书；不推断逐日涨跌停，不改变 Playbook/Paper/实盘权限。
+- 后续：继续补同证券进入/持续/撤销状态链，并建设官方逐日 MarketRules receipt；随后推进历史行业与每日真实市值。

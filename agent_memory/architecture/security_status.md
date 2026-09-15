@@ -15,4 +15,4 @@
 
 ## 当前真实数据
 
-当前 `/Volumes/Lexar/niuniu-data` 已归档 3 份深交所官方公告，对应 `sz.002512 / sz.002538 / sz.300081` 共 6 条 security_status evidence，覆盖各自停牌日与复牌/ST 生效日。它们是第一批真实样本，不代表全市场或完整历史状态链。
+当前 `/Volumes/Lexar/niuniu-data` 已归档 7 份深交所官方公告，对应 `sz.000040 / sz.002055 / sz.002217 / sz.002512 / sz.002538 / sz.300081 / sz.300376` 共 14 条 security_status evidence，覆盖各自明确的停牌日与复牌/ST 生效日。它们仍是稀疏真实样本，不代表全市场或任一证券的完整历史状态链；第二批来源、哈希与验收见 `../../牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md`。

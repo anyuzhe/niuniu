@@ -4,7 +4,7 @@
 - 架构口径更新：2026-09-15
 - 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：Strict PIT SecurityStatus v1 首批真实接入已完成，全仓 `961 passed / 0 failed / 0 skipped`
+- 当前稳定基线：Strict PIT SecurityStatus 第二批真实证据已接入（7只证券/14条 verified receipt），全仓 `961 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -234,9 +234,9 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Approval-time Actual-byte Freeze | **已完成 v1**：人工批准时冻结实际规范化研究输入、qfq/raw/context 与 Universe mask；执行/恢复不再读取变化后的源数据 |
 | Research Session Grant | **已完成 v1**：宿主显式授权证券/日期/周期/因子/模式/有效期与总计算预算；AI 可在范围内提交有限研究，使用同一 JobQueue 和逐任务 input freeze，可撤销 |
 | Watch Sequential Monitor | **已完成 v1**：新 Watch 冻结 family alpha / min_effect / min_new_dates / block_sessions，新增成熟日进入非重叠 block + mixture e-process；legacy Watch 不静默升级，越界只触发人工复核 |
-| Strict PIT Evidence Archive | **已完成 v1 基础设施**：支持 Universe / SecurityStatus / Industry / Daily Market Cap 四类 statement；当前 `niuniu-data` 已有 SecurityStatus 6条/3只股票，其它三类仍为0 |
-| Strict PIT Coverage | **已完成 v1**：深度验证 receipt 后按年份/证券/字段展示 evidence presence，并分开展示回顾性 inventory 与 gap；不生成数据集总覆盖率；当前 SecurityStatus 有6条 verified evidence，其它三类仍缺 |
-| Strict PIT SecurityStatus | **首批真实接入完成**：3份深交所官方公告→6条状态事件→silver派生表→PREP消费；稀疏 receipt 只证明明确生效日，不跨日外推，不替代 MarketRules |
+| Strict PIT Evidence Archive | **已完成 v1 基础设施**：支持 Universe / SecurityStatus / Industry / Daily Market Cap 四类 statement；当前 `niuniu-data` 已有 SecurityStatus 14条/7只股票，其它三类仍为0 |
+| Strict PIT Coverage | **已完成 v1**：深度验证 receipt 后按年份/证券/字段展示 evidence presence，并分开展示回顾性 inventory 与 gap；不生成数据集总覆盖率；当前 SecurityStatus 有14条 verified evidence，其它三类仍缺 |
+| Strict PIT SecurityStatus | **第二批真实资料已接入**：累计7份深交所官方公告→14条状态事件→silver派生表→PREP消费；稀疏 receipt 只证明明确生效日，不跨日外推，不替代 MarketRules |
 | Playbook Lab 六类结构化对象 | 已完成 |
 | `ExpertSource` 作为交易者来源 | 已完成，并兼容投影为 StrategySource(TRADER) |
 | PREP 全市场扫描 / MarketSnapshot / AUCTION / R1 Scanner | 已完成 |
@@ -264,7 +264,7 @@ P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
 3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已补齐。后续外部数据升级目标是券商/QMT/交易所级行情；内部 Research Lab 下一主线转为**真实官方历史资料归档与 receipt coverage 提升**，而不是再改 Strict PIT/Coverage 引擎。
 
-Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；当前内部主线是继续扩充 **真实官方 SecurityStatus 历史事件链**，随后补历史行业与每日真实市值；稀疏 receipt 不视为完整覆盖。
+Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。当前内部主线仍是继续扩充 **真实官方 SecurityStatus 历史事件链**并接入官方逐日 MarketRules，随后补历史行业与每日真实市值；稀疏 receipt 不视为完整覆盖。
 
 ### P8.7 当前边界
 

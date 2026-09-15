@@ -20,4 +20,4 @@ Strict PIT 不是“记录里写了官方 URL”就成立。任何历史资格�
 - `niuniu-pit-evidence` 是宿主工具；archive 必须显式 `--confirm-publication-time`，CLI 不自动下载官方网页。
 - System Health 的 PIT/Playbook 组件显示 receipt 数量；receipt 损坏显示 WARN，不能静默当作空库。
 
-当前独立数据根 `/Volumes/Lexar/niuniu-data` 已有首批 6 条 `security_status` verified receipt（3只深市股票的停牌/复牌ST生效事件）；其它三类仍为 0。禁止把这批样本写成“历史 Strict PIT 覆盖已完成”。
+当前独立数据根 `/Volumes/Lexar/niuniu-data` 已有 14 条 `security_status` verified receipt（7只深市股票的明确停牌/复牌及 ST 生效事件）；其它三类仍为 0。禁止把这些稀疏事件写成“历史 Strict PIT 覆盖已完成”。

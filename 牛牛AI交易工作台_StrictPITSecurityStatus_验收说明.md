@@ -2,6 +2,8 @@
 
 日期：2026-09-15
 
+> 后续更新：第二批真实资料已使当前数据根累计达到7只证券、14条 verified receipt；首批验收数字保留为当时基线，新增来源与哈希见《牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md》。
+
 ## 目标
 
 把第一批真实官方 ST / 其他风险警示 / 停复牌资料接入牛牛独立数据根，并形成可校验、可物化、可被 PREP Scanner 使用的 Strict PIT `security_status` 证据链。

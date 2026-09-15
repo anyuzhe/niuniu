@@ -336,8 +336,8 @@ python -m unittest discover -s tests -v
 ## 当前边界
 
 - 部分复杂业务表单尚未逐项完成真实客户端验收。
-- Strict PIT Evidence Archive v1 已支持四类 statement：PIT Universe、SecurityStatus、历史行业、每日市值。当前 `/Volumes/Lexar/niuniu-data` 已有首批 `security_status=6` verified receipts（3只深市股票的停牌/复牌ST生效事件），其它三类仍为0；这不代表历史状态链完整。季度股本不能直接当成每日股本。
-- Strict PIT Coverage v1 已完成：按年份/证券/字段统计经过深度校验的 evidence presence，并把 `stock_basic`、单快照行业、历史 bar lake 等回顾性资料单独列为 inventory。当前日线仍是5215个证券文件、17,075,243行（1990-12-19～2026-09-04），bar lake 本身无 `tradestatus/isST`；新增的6条 SecurityStatus 只覆盖3只股票的明确事件日，Coverage 不输出伪造总完成率。
+- Strict PIT Evidence Archive v1 已支持四类 statement：PIT Universe、SecurityStatus、历史行业、每日市值。当前 `/Volumes/Lexar/niuniu-data` 已有 `security_status=14` verified receipts（7只深市股票的明确停牌/复牌及 ST 生效事件），其它三类仍为0；这不代表历史状态链完整。季度股本不能直接当成每日股本。
+- Strict PIT Coverage v1 已完成：按年份/证券/字段统计经过深度校验的 evidence presence，并把 `stock_basic`、单快照行业、历史 bar lake 等回顾性资料单独列为 inventory。当前日线仍是5215个证券文件、17,075,243行（1990-12-19～2026-09-04），bar lake 本身无 `tradestatus/isST`；现有14条 SecurityStatus 只覆盖7只股票的明确事件日，Coverage 不输出伪造总完成率。
 - 官方逐日涨跌停价及特殊上市/退市规则覆盖尚不完整；合成规则回测不等于完整真实市场规则验收。
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
@@ -365,6 +365,7 @@ python -m unittest discover -s tests -v
 - [Strict PIT Evidence Archive v1 验收说明](牛牛AI交易工作台_StrictPITEvidenceArchive_验收说明.md)：历史资格/行业/市值 statement 与官方原文 SHA256、publication time 的 receipt 绑定、Strict PIT 升级门和真实覆盖仍为 0 的边界。
 - [Strict PIT Coverage v1 验收说明](牛牛AI交易工作台_StrictPITCoverage_验收说明.md)：按年份/证券的 strict evidence presence、真实 MQC 回顾性 inventory、gap codes、只读 CLI/AI/UI 与无总完成率边界。
 - [Strict PIT SecurityStatus v1 验收说明](牛牛AI交易工作台_StrictPITSecurityStatus_验收说明.md)：首批真实ST/停复牌官方证据、派生表、PREP接线、稀疏事件不跨日外推与无价格规则推断边界。
+- [Strict PIT SecurityStatus 第二批验收说明](牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md)：新增4份深交所公告、8条 verified receipt，累计7只证券/14条事件及真实 PREP fail-closed 烟测。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。
