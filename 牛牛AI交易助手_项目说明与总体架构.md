@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-15
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：Strict PIT Evidence Archive v1 已完成，全仓 `950 passed / 0 failed / 0 skipped`
+- 当前稳定基线：Strict PIT Coverage v1 已完成，全仓 `956 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -234,6 +234,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Research Session Grant | **已完成 v1**：宿主显式授权证券/日期/周期/因子/模式/有效期与总计算预算；AI 可在范围内提交有限研究，使用同一 JobQueue 和逐任务 input freeze，可撤销 |
 | Watch Sequential Monitor | **已完成 v1**：新 Watch 冻结 family alpha / min_effect / min_new_dates / block_sessions，新增成熟日进入非重叠 block + mixture e-process；legacy Watch 不静默升级，越界只触发人工复核 |
 | Strict PIT Evidence Archive | **已完成 v1 基础设施**：PIT Universe / 历史行业 / 每日市值 statement 只有绑定权威 URL、本地官方原文字节 SHA256、确认 `published_at` 的 receipt 后才能升级严格资格；真实 MQC 当前 receipt=0，覆盖资料仍待补 |
+| Strict PIT Coverage | **已完成 v1**：深度验证 receipt 后按年份/证券/字段展示 evidence presence，并分开展示回顾性 bars/basic/industry inventory 与 gap；不生成数据集总覆盖率，真实 MQC 三类 strict receipt 仍为 0 |
 | Playbook Lab 六类结构化对象 | 已完成 |
 | `ExpertSource` 作为交易者来源 | 已完成，并兼容投影为 StrategySource(TRADER) |
 | PREP 全市场扫描 / MarketSnapshot / AUCTION / R1 Scanner | 已完成 |
@@ -252,16 +253,16 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**950 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**956 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：
 
 1. **P13-B1 Live Read-only Broker Adapter**：只有出现明确可用的具体券商实时只读通道后才开始；目标是账户/持仓/资金/回执只读连接，不默认包含订单权限。
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
-3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot、Watch Sequential Monitor 与 Strict PIT Evidence Archive 基础设施均已补齐。后续外部数据升级目标是券商/QMT/交易所级行情；内部 Research Lab 下一主线转为**真实官方历史资料归档与 coverage 提升**，而不是再改 Strict PIT 引擎。
+3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已补齐。后续外部数据升级目标是券商/QMT/交易所级行情；内部 Research Lab 下一主线转为**真实官方历史资料归档与 receipt coverage 提升**，而不是再改 Strict PIT/Coverage 引擎。
 
-Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor 与 Strict PIT Evidence Archive v1 均已完成；当前内部主线是逐步归档 **真实官方历史资格 / 行业 / 每日市值资料并量化 coverage**。
+Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；当前内部主线是逐步归档 **真实官方历史资格 / ST/停牌 / 行业 / 每日市值资料并提高 verified receipt presence**。
 
 ### P8.7 当前边界
 

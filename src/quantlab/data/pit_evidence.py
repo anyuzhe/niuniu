@@ -155,5 +155,20 @@ def list_pit_evidence(root):
         'evidence_ids':[r.get('evidence_id') for r in value['records'][-100:]],'omitted':max(0,len(value['records'])-100)}
 
 
+def audit_pit_evidence(root):
+    """Deep-verify every stored receipt and referenced document byte stream."""
+    value=_load(root);valid=[];invalid=[]
+    for record in value['records']:
+        try:
+            kind=record.get('kind');statement=record.get('statement')
+            ok=kind in KINDS and _verified_record(root,record,kind,statement)
+        except (OSError,ValueError,TypeError,KeyError):ok=False
+        if ok:valid.append(record)
+        else:invalid.append(record.get('evidence_id'))
+    return {'format':'niuniu-pit-evidence-audit-v1','stored_records':len(value['records']),
+        'verified_records':len(valid),'invalid_records':len(invalid),'records':valid,
+        'invalid_evidence_ids':invalid[:100],'invalid_omitted':max(0,len(invalid)-100)}
+
+
 __all__=['FORMAT','KINDS','AUTHORITATIVE_PIT_HOSTS','authoritative_pit_source','normalize_statement','statement_id',
-    'verify_pit_statements','archive_pit_evidence','list_pit_evidence']
+    'verify_pit_statements','archive_pit_evidence','list_pit_evidence','audit_pit_evidence']

@@ -20,6 +20,27 @@ class ReferenceDialog(QDialog):
         self.status=label('尚未抓取。','muted',True);box.addWidget(self.status)
         self.results=table(['文件','记录数','接收状态'],[]);box.addWidget(self.results,1)
         box.addWidget(button('核对已归档资料的研究覆盖',self.inspect_archive))
+        box.addWidget(button('查看当前 Strict PIT Coverage',self.inspect_strict_pit))
+
+    def inspect_strict_pit(self):
+        if not self.window.data_root:
+            self.status.setText('请先配置行情数据目录。');return
+        self.status.setText('正在读取严格回执与回顾性候选数据 inventory…')
+        def done(result,error):
+            if sip.isdeleted(self):return
+            if error:self.status.setText('Strict PIT Coverage 读取失败：'+error);return
+            self.results.setColumnCount(5);self.results.setHorizontalHeaderLabels(['证据类型','Strict回执','证券数','effective范围','说明'])
+            self.results.setRowCount(0)
+            from PyQt6.QtWidgets import QTableWidgetItem
+            labels={'universe_eligibility':'历史资格','industry_membership':'历史行业','daily_market_cap':'每日市值'}
+            for kind,item in result['strict_evidence']['by_kind'].items():
+                i=self.results.rowCount();self.results.insertRow(i);span=item['effective_date_range']
+                values=(labels[kind],item['verified_statements'],item['unique_symbols'],str(span['min'])+' ~ '+str(span['max']),'严格证据 presence，不代表完整历史链')
+                for j,value in enumerate(values):self.results.setItem(i,j,QTableWidgetItem(str(value)))
+            bars=result['retrospective_inventory']['bars'];industry=result['retrospective_inventory']['industry']
+            self.status.setText(f"{result['status']}；历史bars={bars['files']}只/{bars['rows']}行；行业快照={industry.get('snapshot_dates',[])}；gap={len(result['gaps'])}。具体研究仍须单独 qualification。")
+        from quantlab.data.pit_coverage import strict_pit_coverage
+        self.window.async_call(lambda:strict_pit_coverage(self.window.data_root,detail_limit=50),done,guarded=False)
 
     def inspect_archive(self):
         path,_=QFileDialog.getOpenFileName(self,'选择 Baostock 资料 manifest.json',str(self.window.output),'JSON (*.json)')

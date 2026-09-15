@@ -10,6 +10,7 @@ import test_baostock_data as fixture
 from quantlab.desktop.data_workbench import DataConnectedWorkbench,DataResearchChatDialog
 from quantlab.desktop.baostock_data import BaostockDataDialog
 from quantlab.desktop.refresh_readiness import RefreshReadinessDialog
+from quantlab.desktop.reference_tools import ReferenceDialog
 
 
 class BaostockDesktopTests(unittest.TestCase):
@@ -67,6 +68,14 @@ class BaostockDesktopTests(unittest.TestCase):
         source=self.fixture.directory/'dataset/research/profit.parquet';source.write_bytes(b'changed')
         with self.assertRaises(ValueError):self.window.select_baostock_dataset(self.fixture.identifier)
         self.assertEqual(self.window.data_root,original)
+    def test_strict_pit_coverage_is_read_only_and_visible(self):
+        before={p.relative_to(self.fixture.root) for p in self.fixture.root.rglob('*')}
+        dialog=ReferenceDialog(self.window);self.window.show_dialog(dialog)
+        dialog.inspect_strict_pit();self.wait(lambda:not self.window.callbacks)
+        self.assertIn('NO_STRICT_EVIDENCE',dialog.status.text())
+        self.assertEqual(dialog.results.rowCount(),3)
+        self.assertEqual({p.relative_to(self.fixture.root) for p in self.fixture.root.rglob('*')},before)
+
     def test_missing_watch_does_not_schedule(self):
         dialog=RefreshReadinessDialog(self.window);self.window.show_dialog(dialog)
         self.wait(lambda:not self.window.callbacks)

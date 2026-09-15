@@ -56,9 +56,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**950 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive v1。
-外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：归档真实官方历史资格/行业/每日市值资料并提升 Strict PIT coverage。
+当前正式代码全仓基线：**956 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive v1、Strict PIT Coverage v1。
+外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：按 Coverage gap 归档真实官方历史资格/ST/停牌、行业与每日市值资料，提升 verified receipt presence。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -332,6 +332,7 @@
 | 2026-09-15 | 三源实时 MarketSnapshot Provider v1 | **935 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Watch Sequential Monitor v1 | **945 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Strict PIT Evidence Archive v1 | **950 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | Strict PIT Coverage v1 | **956 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -607,3 +608,15 @@
 - 真实烟测：`/Volumes/Lexar/MQC-DATA` 当前 receipt **0**，因此没有虚假升级 Strict PIT；只读 list/System Health 前后 `artifacts` **77006→77006**。
 - 测试/验收：PIT Evidence + Qualification + Universe **15/15**；Qualification/Neutralization/Approval Freeze/Proposal/System Health/Session Grant 联合 **75/75**；完整仓库 **950 tests / 0 failed / 0 skipped**，443.920秒。
 - 后续事项：框架已收尾；下一内部工作是实际归档官方历史资格、行业变更和每日市值资料，并按证券/交易日/statement 类型量化 coverage。
+### 2026-09-15 16:15｜[数据资格] Strict PIT Coverage v1
+
+- 模块：Strict PIT / Evidence Archive / MQC inventory / System Health / AI只读工具 / 桌面历史资料。
+- 改动内容：新增 `strict_pit_coverage()`、`niuniu-pit-coverage`、AI/MCP `get_strict_pit_coverage` 和桌面“查看当前 Strict PIT Coverage”。
+- 统计合同：只统计深度验证通过的 `universe_eligibility / industry_membership / daily_market_cap` receipt；支持按年份、证券、日期范围看 evidence presence，并单独展示回顾性 source inventory。
+- 防误导：`overall_strict_pit_coverage_ratio=None`、`dataset_strict_pit_certified=false`；receipt presence 不证明没有漏掉其他历史变更，只有具体研究通过 `qualify_research_data` 才能叫 strict PIT。
+- 真实性：官方原文被篡改后 receipt 自动从 verified coverage 剔除；模型没有 archive/download/certify/write 工具。
+- 真实性能：真实 MQC 优先使用只读 `catalog/mqc.duckdb`，完整 inventory 查询约2.8秒；System Health 只显示轻量 receipt 摘要，不在刷新时深扫数据湖。
+- 真实基线：Baostock 日线 5215 个证券文件、17,075,243 行、1990-12-19～2026-09-04；bar lake `tradestatus/isST` 均为0；stock_basic 8940行；industry 5546行且只有2026-08-31单快照；三类 strict receipt=0。
+- 真实烟测：指定 `sh.600000 / sz.000001`、2025-01-01～2026-09-15，三类均明确列为 missing evidence；`artifacts` **77006→77006**。
+- 测试/验收：Coverage+Evidence+Qualification 18/18，Coverage+System Health/UI 19/19，相关 Baostock/Series/Session/MCP 回归全绿；完整仓库 **956 tests / 0 failed / 0 skipped**，412.711秒。
+- 后续事项：不再扩 Coverage 框架；直接按 gap 收集并归档真实官方历史资料，优先历史资格/ST/停牌，其次行业变更、每日市值和逐日特殊交易制度。

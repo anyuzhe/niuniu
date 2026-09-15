@@ -355,16 +355,19 @@ class SystemHealthService:
     def _pit_playbook(self,now):
         from quantlab.trading.playbook_store import PlaybookStore,PlaybookError
         store=PlaybookStore(self.output);pit_evidence={'records':0,'counts':{}};pit_warning=[]
+        pit_coverage={'available':bool(self.data_root),'claim':'evidence_presence_only_not_dataset_certificate'}
         if self.data_root:
             try:
                 from quantlab.data.pit_evidence import list_pit_evidence
                 pit_evidence=list_pit_evidence(self.data_root)
+                pit_coverage.update(strict_receipts=pit_evidence.get('records',0),by_kind=pit_evidence.get('counts',{}),
+                    full_inventory_requires_explicit_call=True,tool='get_strict_pit_coverage',cli='niuniu-pit-coverage')
             except (OSError,ValueError,KeyError,TypeError) as exc:
                 pit_evidence={'error':type(exc).__name__+': '+str(exc)[:300]};pit_warning=['pit_evidence_receipts_unreadable']
         try:overview=store.overview();sets=store.list_candidate_sets(limit=2000)['records'] if overview['candidate_sets'] else []
         except (PlaybookError,OSError,ValueError,KeyError,TypeError) as exc:
             return _component('BLOCKED','Playbook/PIT 结构化证据不可读。',blockers=['playbook_store_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300],'pit_evidence':pit_evidence})
-        if not sets:return _component('WARN' if pit_warning else 'NOT_CONFIGURED','尚无 CandidateSet/PIT 证据。',evidence={'overview':overview,'pit_evidence':pit_evidence},warnings=pit_warning)
+        if not sets:return _component('WARN' if pit_warning else 'NOT_CONFIGURED','尚无 CandidateSet/PIT 证据。',evidence={'overview':overview,'pit_evidence':pit_evidence,'pit_coverage':pit_coverage},warnings=pit_warning)
         counts=Counter((row.get('completeness','UNKNOWN'),row.get('pit_status','UNKNOWN')) for row in sets)
         latest=max(sets,key=lambda r:(r.get('as_of',''),r.get('candidate_set_id','')))
         strict=latest.get('completeness')=='FULL' and latest.get('pit_status')=='STRICT_PIT';warnings=list(pit_warning)
@@ -374,7 +377,7 @@ class SystemHealthService:
         return _component(status,f"最新 CandidateSet={latest.get('completeness')}/{latest.get('pit_status')}；FROZEN definitions={overview.get('frozen_definitions',0)}。",
             evidence={'overview':overview,'latest_candidate_set':{'id':latest.get('candidate_set_id'),'trading_day':latest.get('trading_day'),
                 'frame':latest.get('frame'),'as_of':latest.get('as_of'),'completeness':latest.get('completeness'),'pit_status':latest.get('pit_status')},
-                'candidate_quality_counts':{f'{a}/{b}':n for (a,b),n in counts.items()},'pit_evidence':pit_evidence,
+                'candidate_quality_counts':{f'{a}/{b}':n for (a,b),n in counts.items()},'pit_evidence':pit_evidence,'pit_coverage':pit_coverage,
                 'official_rule_receipt_present':bool(self.data_root and (self.data_root/'research'/'official_market_rules.json').is_file())},
             warnings=warnings,limitations=['CandidateSet PIT is case-specific and never certifies the whole provider or data lake.'])
 
