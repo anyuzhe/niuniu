@@ -70,7 +70,7 @@ D1 / D2 / D3+ 复盘
 | 任务与续算 | 本地持久化任务状态；经典缠论状态检查点、追加行情续算与中断恢复。其他算法并非全部支持通用续算 |
 | Trading Desk | 今日交易驾驶舱、Decision Ledger、Stock Dossier、Theme Matrix、Decision Frame、Strategy Intent、Playbook Decision Bridge 与 PaperPlan 只读状态；预测、策略意图、模拟成交与未来真实持仓严格分离 |
 | Trading Knowledge / Playbook Lab | 已支持六类 `StrategySource`、旧 `ExpertSource→TRADER` 兼容投影、Playbook 多对多来源关系、完整 CandidateSet、selected/unselected、Selection/Veto、前瞻冻结、历史回放与执行访问分层 |
-| Daily Scanner / 每日编排 | PREP 全市场扫描、MarketSnapshot、AUCTION/R1/R2/R3 确定性扫描、DailyMarket 全市场日增量归档，以及持久 `Daily Orchestrator` 五阶段幂等可恢复链路；腾讯主源+东财第二源+新浪备用校验的 live Provider 已接入；错过窗口不回填 |
+| Daily Scanner / 每日编排 | PREP 全市场扫描、MarketSnapshot、AUCTION/R1/R2/R3 确定性扫描、DailyMarket 全市场日增量归档，以及持久 `Daily Orchestrator` 五阶段幂等可恢复链路；腾讯主源+东财第二源+新浪备用校验的 live Provider 已接入；错过窗口不回填；空 PREP CandidateSet 以 `COMPLETE_NO_TRADE` 正常结束 |
 | AI Team | Chief Researcher、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；第一轮独立判断，Chief 综合，不用多数票代替证据 |
 | AI 研究与自动化基础 | 结构化研究记忆、固定研究包、受限 DSL、Research Agenda、Safe Alpha Factory、Watch + Sequential Monitor、标准 MCP、approval-time actual-byte freeze 与 Research Session Grant；新 Watch 可冻结序贯 Rank IC 衰减门槛，但模型不能自动停因子、换参数、扩大授权或实盘 |
 | System Health | P11 只读聚合 Workspace、Artifacts、JobQueue、daemon heartbeat、MCP adapter、Notifications、Market Data/Series、DailyMarket、MarketSnapshot、Orchestrator、PIT/Playbook、Paper、Dev Studio 与日志；运行在线和研究正确分轴展示，无健康总分/自动修复 |
@@ -177,7 +177,7 @@ quantlab desktop --output ./artifacts
 桌面退出后可运行 `niuniu-tracking-daemon --output ./artifacts --data-root /path/to/data`。守护进程只执行已经由宿主保存的跟踪授权，并与桌面共享原 `JobQueue` 单 worker 边界。`quantlab tracking-launchd-write ...` 可以生成 macOS LaunchAgent plist，但不会自动加载或创建授权。
 
 
-每日 Playbook 编排使用 `niuniu-daily-orchestrator`。宿主先用 `--init` 为**单个交易日**冻结 definition、上一交易日和可选 target_streak；默认不联网，只有显式 `--allow-daily-market-capture` 才允许在数据就绪后抓取 DailyMarket。之后可用 `--tick` 单步运行或 `--run` 以固定轮询持续到该日终态。当前已编排 PREP/AUCTION/R1/R2/R3：R2 在 11:30 午间收盘复核，R3 在 15:00 收盘定稿；R2/R3 必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只延续其中已选标的，不新增股票。实时行情现已可由 `public-web-consensus-v1` 生成：腾讯主源、东方财富第二源、新浪备用校验；至少两源一致才形成可用证券快照。Daily Orchestrator 默认仍不联网，初始化计划时显式 `--allow-market-snapshot-capture` 才会自动抓 AUCTION/R1/R2/R3。公开网页行情固定不认证 Strict PIT，未来券商/QMT 可替代为正式主源。
+每日 Playbook 编排使用 `niuniu-daily-orchestrator`。宿主先用 `--init` 为**单个交易日**冻结 definition、上一交易日和可选 target_streak；默认不联网，只有显式 `--allow-daily-market-capture` 才允许在数据就绪后抓取 DailyMarket。之后可用 `--tick` 单步运行或 `--run` 以固定轮询持续到该日终态。当前已编排 PREP/AUCTION/R1/R2/R3：R2 在 11:30 午间收盘复核，R3 在 15:00 收盘定稿；R2/R3 必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只延续其中已选标的，不新增股票。实时行情现已可由 `public-web-consensus-v1` 生成：腾讯主源、东方财富第二源、新浪备用校验；至少两源一致才形成可用证券快照。Daily Orchestrator 默认仍不联网，初始化计划时显式 `--allow-market-snapshot-capture` 才会自动抓 AUCTION/R1/R2/R3。PREP CandidateSet 为空时，系统先保存可选的 Trading Desk NO_TRADE receipt，再以 `COMPLETE_NO_TRADE` 终止并把后续 Frame 标为 `SKIPPED_NO_TRADE`，不会请求无标的实时行情；这与“CandidateSet 非空但 PREP 暂不提前选具体股票”严格区分。公开网页行情固定不认证 Strict PIT，未来券商/QMT 可替代为正式主源。
 
 ### 3. 接入自己的本地行情
 
@@ -335,6 +335,7 @@ python -m unittest discover -s tests -v
 
 ## 当前边界
 
+- 2026-09-15 已接受首个当前工作空间 DailyMarket day（5,219行）并在合法 PREP 时间窗冻结 2026-09-16 前瞻结果；市场节点为 `EXTREME_RISK`，空 CandidateSet 正常进入 `COMPLETE_NO_TRADE`。该样本为 `PARTIAL / RETROSPECTIVE_REFERENCE`，没有 PaperPlan/成交，也不证明 Strict PIT 或策略有效。
 - 部分复杂业务表单尚未逐项完成真实客户端验收。
 - Strict PIT Evidence Archive v1 已支持四类 statement：PIT Universe、SecurityStatus、历史行业、每日市值。当前 `/Volumes/Lexar/niuniu-data` 已有 `security_status=14` verified receipts（7只深市股票的明确停牌/复牌及 ST 生效事件），其它三类仍为0；这不代表历史状态链完整。季度股本不能直接当成每日股本。
 - Strict PIT Coverage v1 已完成：按年份/证券/字段统计经过深度校验的 evidence presence，并把 `stock_basic`、单快照行业、历史 bar lake 等回顾性资料单独列为 inventory。当前日线仍是5215个证券文件、17,075,243行（1990-12-19～2026-09-04），bar lake 本身无 `tradestatus/isST`；现有14条 SecurityStatus 只覆盖7只股票的明确事件日，Coverage 不输出伪造总完成率。
@@ -366,6 +367,7 @@ python -m unittest discover -s tests -v
 - [Strict PIT Coverage v1 验收说明](牛牛AI交易工作台_StrictPITCoverage_验收说明.md)：按年份/证券的 strict evidence presence、真实 MQC 回顾性 inventory、gap codes、只读 CLI/AI/UI 与无总完成率边界。
 - [Strict PIT SecurityStatus v1 验收说明](牛牛AI交易工作台_StrictPITSecurityStatus_验收说明.md)：首批真实ST/停复牌官方证据、派生表、PREP接线、稀疏事件不跨日外推与无价格规则推断边界。
 - [Strict PIT SecurityStatus 第二批验收说明](牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md)：新增4份深交所公告、8条 verified receipt，累计7只证券/14条事件及真实 PREP fail-closed 烟测。
+- [首轮 Daily Orchestrator 前瞻 NO_TRADE 验收说明](牛牛AI交易工作台_首轮DailyOrchestrator前瞻NoTrade_验收说明.md)：2026-09-15 DailyMarket、2026-09-16 PREP 前瞻冻结、空候选终态、NO_TRADE bridge、幂等和数据资格边界。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。

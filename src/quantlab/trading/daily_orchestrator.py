@@ -30,7 +30,7 @@ R2_SNAPSHOT_READY=time(11,30)
 R2_SNAPSHOT_CUTOFF=time(11,40)
 R3_SNAPSHOT_READY=time(15,0)
 R3_SNAPSHOT_CUTOFF=time(15,10)
-TERMINAL={'COMPLETE','COMPLETE_WITH_MISSED','BLOCKED_PREP_MISSED','BLOCKED_ROUTE_UNKNOWN','BLOCKED_CAPTURE_BUDGET'}
+TERMINAL={'COMPLETE','COMPLETE_NO_TRADE','COMPLETE_WITH_MISSED','BLOCKED_PREP_MISSED','BLOCKED_ROUTE_UNKNOWN','BLOCKED_CAPTURE_BUDGET'}
 
 
 class DailyOrchestratorError(ValueError):
@@ -362,6 +362,15 @@ class DailyPlaybookOrchestrator:
             try:
                 if not self._ensure_daily_market(state,stamp,sdk=daily_market_sdk):self._save(state);return state
                 if not self._prep(state,stamp):self._save(state);return state
+                if state['prep'].get('scan',{}).get('candidate_count')==0:
+                    if state.get('bridge_to_trading_desk',False) and not self._bridge_stage(state,'prep',stamp):
+                        self._save(state);return state
+                    for name in ('auction','r1','r2','r3'):
+                        if state[name].get('status')=='PENDING':
+                            state[name].update(status='SKIPPED_NO_TRADE',reason='EMPTY_PREP_CANDIDATE_SET')
+                    self._event(state,stamp,'COMPLETE_NO_TRADE',
+                        'PREP CandidateSet 为空；保留已冻结 NO_TRADE，不抓取无标的盘中快照。')
+                    self._save(state);return state
                 self._auction(state,stamp)
                 if state['auction'].get('status') not in ('FROZEN','MISSED'):
                     self._save(state);return state

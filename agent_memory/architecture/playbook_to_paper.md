@@ -4,7 +4,7 @@ P8.8 继续坚持四层分离：`SYSTEM_PREDICTION != Decision != Strategy Inten
 
 - `PlaybookDecisionBridge` 只接受真实 SYSTEM_PREDICTION；历史回放不能自动进入 Trading Desk。
 - 首次系统选择最多自动写 WATCH；不得直接写 PLAN_OPEN/OPEN。
-- NO_TRADE 保存 receipt，但不制造虚假股票 Decision。
+- NO_TRADE 保存 receipt，但不制造虚假股票 Decision；空 PREP CandidateSet 可使 Orchestrator 正常终止，不能为积累 Paper 样本而伪造计划或成交。
 - 已有人工同 Frame Decision、PLAN_OPEN/OPEN/ADD/HOLD/REDUCE/EXIT 不由 bridge 覆盖。
 - Orchestrator bridge 默认关闭，只有宿主创建计划时显式开启。
 

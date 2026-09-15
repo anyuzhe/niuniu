@@ -18,3 +18,10 @@
 正式 `ExpertSource` 至少保存来源定位、可用时间与内容 SHA256。只有达到 `VERIFIED` 的来源，才允许支撑 FROZEN PlaybookDefinition。
 
 原始大体积或受版权限制材料不复制进 Git；Git 只保存引用、哈希、合法本地归档说明和研究摘要。
+
+## 当前前瞻样本
+
+- `notes/forward_prediction_20260914_prep.md`：v3 建立后的首个 PREP 前瞻样本；非空候选集，盘前不提前选具体股票。
+- `notes/forward_prediction_20260916_prep.md`：2026-09-15 accepted DailyMarket 驱动的 `EXTREME_RISK / NO_TRADE`；CandidateSet 为空，Orchestrator 正常进入 `COMPLETE_NO_TRADE`。
+
+这些记录只证明预测是在目标交易日前冻结，不改变本 Playbook 的 `SOURCE_REQUIRED / DRAFT` 边界，也不证明 Strict PIT、Alpha 或可交易收益。

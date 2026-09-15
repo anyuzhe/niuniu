@@ -116,6 +116,25 @@ class DailyOrchestratorTests(unittest.TestCase):
         after=PlaybookStore(self.output).overview();self.assertEqual(before,after);self.assertEqual(sdk.calls,1)
         self.assertEqual(state2['status'],'WAIT_AUCTION_DATA_READY')
 
+    def test_empty_prep_candidate_set_completes_no_trade_without_live_capture(self):
+        self.accept_daily();now=datetime.fromisoformat('2026-09-13T18:31:00+08:00')
+        self.service(now).create_plan('2026-09-14','2026-09-11',self.definition['definition_id'],
+            target_streak=3,allow_market_snapshot_capture=True,bridge_to_trading_desk=True)
+        with patch('quantlab.trading.public_web_market_snapshot.PublicWebConsensusProvider.capture',
+                side_effect=AssertionError('empty PREP must not request live quotes')):
+            state=self.service(now).tick('2026-09-14',now=now)
+        self.assertEqual(state['status'],'COMPLETE_NO_TRADE');self.assertEqual(state['prep']['status'],'FROZEN')
+        self.assertEqual(state['prep']['scan']['candidate_count'],0)
+        self.assertTrue(state['prep']['decision_bridge']['no_trade']);self.assertEqual(state['prep']['decision_bridge']['decisions'],[])
+        self.assertFalse((self.output/'_trading/decision_ledger.sqlite3').exists())
+        for name in ('auction','r1','r2','r3'):
+            self.assertEqual(state[name]['status'],'SKIPPED_NO_TRADE')
+            self.assertEqual(state[name]['reason'],'EMPTY_PREP_CANDIDATE_SET')
+        overview=PlaybookStore(self.output).overview();bridges=len(list((self.output/'_trading/playbook_bridge').glob('*.json')))
+        again=self.service(now).tick('2026-09-14',now=now)
+        self.assertEqual(again,state);self.assertEqual(PlaybookStore(self.output).overview(),overview)
+        self.assertEqual(len(list((self.output/'_trading/playbook_bridge').glob('*.json'))),bridges)
+
     def test_capture_failure_uses_cooldown_before_retry(self):
         class FailingSDK(SDK):
             def login(self):

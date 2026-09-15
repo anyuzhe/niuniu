@@ -56,9 +56,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**961 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive v1、Strict PIT Coverage v1、Strict PIT SecurityStatus v1 首批真实接入。
-外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：继续扩充官方 SecurityStatus 历史事件覆盖，再推进历史行业与每日真实市值。
+当前正式代码全仓基线：**962 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive v1、Strict PIT Coverage v1、Strict PIT SecurityStatus 两批真实接入。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证。
+外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部并行主线：持续真实前瞻每日运行，继续扩充官方 SecurityStatus/MarketRules/PIT Universe，再推进历史行业与每日真实市值。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -334,6 +334,7 @@
 | 2026-09-15 | Strict PIT Evidence Archive v1 | **950 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Strict PIT Coverage v1 | **956 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Strict PIT SecurityStatus v1 | **961 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | 首轮 Daily Orchestrator 前瞻 NO_TRADE / 空候选终态 | **962 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -654,3 +655,17 @@
 - 文档纪律：按宿主要求新增本批验收说明，更新 README、总体架构、总计划与 Agent Memory；以后每个完成任务都同步文档并形成独立 Git commit。
 - 边界：14条稀疏事件不等于完整历史状态链或数据集证书；不推断逐日涨跌停，不改变 Playbook/Paper/实盘权限。
 - 后续：继续补同证券进入/持续/撤销状态链，并建设官方逐日 MarketRules receipt；随后推进历史行业与每日真实市值。
+
+### 2026-09-15 20:05｜[真实前瞻运行/状态机] 首轮 Daily Orchestrator PREP NO_TRADE
+
+- 模块：DailyMarket / PREP Scanner / Daily Orchestrator / Playbook Forward / Trading Desk Bridge / Agent Operating Memory。
+- Git：本条与代码及验收文档同一提交发布，提交标题 `feat: 完成首轮前瞻NO_TRADE闭环`；SHA 以该提交 Git 历史为准。
+- DailyMarket：第一次 Baostock 调用接收超时并保留 `PROVIDER_ERROR`；20秒后重试成功，接受 2026-09-15 全市场 5,219 行，snapshot=`b042c420-4bde-5a63-b745-99470e66ed0d`，revision=0。
+- 前瞻时间：2026-09-15 19:45:59 +08:00 为 2026-09-16 PREP 合法窗口内，MarketSnapshot 为 `ON_TIME / LIVE_NEAR_REALTIME`；引用 DRAFT `meta-playbook-hypothesis-v3`，research cutoff 仍为 2026-09-13。
+- 事实与结论：上涨1,054、下跌4,103、估计涨停34/跌停32、最高2板；工程 Router 给出 `EXTREME_RISK / NO_TRADE`。CandidateSet 为 `PARTIAL / RETROSPECTIVE_REFERENCE` 且为空，保留 `official_market_rules_missing / historical_st_tradestatus_missing / pit_universe_not_certified`。
+- 状态机修正：空 PREP CandidateSet 先按显式配置写 NO_TRADE bridge receipt，再进入 `COMPLETE_NO_TRADE`；AUCTION/R1/R2/R3 为 `SKIPPED_NO_TRADE`，不再请求无标的实时行情。非空 CandidateSet 的 PREP 空选择仍继续等待 AUCTION，二者不得混淆。
+- 结果边界：0股票 Decision、0 PaperPlan、0执行、0动态账户；不为了积累 Paper 样本伪造交易。该记录不是 Strict PIT、Alpha 或实盘证明。
+- 幂等：终态重复 tick 前后状态文件 SHA256=`5a9e2a5461d7446f7a02bf778b3e363da6339981fa709e7b1ca869b01ad0fee0`，mtime、Prediction ID 与 bridge receipt 数量均不变。
+- 验证：Orchestrator+Bridge+Health 专项 **38/38 passed**；完整仓库 **962 tests / 0 failed / 0 skipped**，345.160秒。System Health Runtime/DailyMarket/Orchestrator 为 OK，Research Readiness 因最新 CandidateSet 非 FULL/STRICT_PIT 且无 FROZEN Playbook 保持 WARN。
+- 文档：新增《牛牛AI交易工作台_首轮DailyOrchestrator前瞻NoTrade_验收说明.md》和 `playbooks/qimofenshu/notes/forward_prediction_20260916_prep.md`，同步 README、总体架构、总计划、核心进度与 Agent Memory。
+- 后续：该交易日已正确终止，不在 9/16 补造盘中预测；下一交易日重新接受 DailyMarket 并独立建计划，只有非空 CandidateSet 才进入 live Frame。并行继续官方 MarketRules、PIT Universe 与 SecurityStatus 完整链建设。
