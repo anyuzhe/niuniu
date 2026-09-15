@@ -71,12 +71,16 @@ def normalize_broker_snapshot(raw):
     return {**core,'snapshot_hash':digest(core)}
 
 class ReadOnlyBrokerAdapter(Protocol):
-    """Future broker-specific adapters may only expose normalized read-only snapshots in P13-A."""
+    """Future broker-specific adapters expose capability metadata and read-only snapshots."""
+    def capabilities(self)->dict: ...
     def snapshot(self)->dict: ...
 
 class JsonBrokerExportAdapter:
     """Read a user-exported JSON snapshot; never connects to a broker."""
     def __init__(self,path):self.path=Path(path).expanduser().absolute()
+    def capabilities(self):
+        from .readiness import json_export_capabilities
+        return json_export_capabilities()
     def snapshot(self):
         if self.path.is_symlink() or not self.path.is_file():
             raise BrokerSnapshotError('INVALID_SOURCE','Broker export 文件不存在或是符号链接。')

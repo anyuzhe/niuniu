@@ -14,6 +14,7 @@
 - System Health / 系统可观察性任务必须读取 `architecture/system_health.md`；运行在线与研究正确必须分轴表达，不允许自动修复或伪造健康总分。
 - Mobile / Bot 任务必须读取 `architecture/mobile.md`；手机/机器人只复用现有状态源，禁止建立第二份 Decision、持仓、记忆或移动端数据库。
 - Broker / Shadow / P13 任务必须读取 `architecture/broker_shadow.md`；P13-A 只允许只读券商证据和 Shadow 对账，任何真实连接、认证、资金或订单能力必须单独评审。
+- RealTrade / P13-B0+ 任务必须读取 `architecture/real_trade_readiness.md`；没有明确券商通道时必须 fail-closed，不能用完整 policy、Shadow MATCH 或 Agent 判断替代真实 Adapter/认证/订单安全门。
 
 ## 固定读取顺序
 

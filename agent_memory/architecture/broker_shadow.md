@@ -9,4 +9,5 @@ P13-A 只允许保存**脱敏、只读**券商账户证据并与 Dynamic Paper �
 - Shadow Reconciliation 只比较 Broker 与 Dynamic Paper 的持仓数量和现金；权益差因估值时点可能不同，仅描述不作为 MATCH 判据。
 - `get_broker_shadow` 是 AI/MCP 唯一 Broker 工具，只读查询；不存在 connect/place_order/cancel_order/transfer_funds。
 - 导入券商导出文件不等于建立实时连接，System Health 的 `real_broker_connected` 必须继续为 false。
-- P13-B+ 若要连接具体券商、保存认证信息或产生真实订单，必须先单独冻结账户范围、风险限额、人工确认点、kill switch、对账和故障恢复合同。
+- P13-B0 RealTrade Readiness 规则另见 `real_trade_readiness.md`；它已经把无券商通道、认证/kill switch/风险门/确认 Gate/订单 Gateway/回执链缺失全部做成 fail-closed blocker。
+- P13-B1 若要连接具体券商，必须先有明确可用的实时只读通道；认证持久化、真实资金或订单能力继续在 B2/B3 单独冻结账户范围、风险限额、人工确认点、kill switch、对账和故障恢复合同。

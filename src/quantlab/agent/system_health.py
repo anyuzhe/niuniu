@@ -337,6 +337,19 @@ class SystemHealthService:
                 'position_count':len(latest['positions']),'real_broker_connected':False,'order_submission':False},warnings=warnings,
             limitations=['Imported account exports are read-only evidence; they do not prove a live broker connection or authorize orders.'])
 
+    def _real_trade_readiness(self,now):
+        from quantlab.broker import RealTradeReadinessService
+        try:value=RealTradeReadinessService(self.output,self.data_root,now_fn=lambda:now).build()
+        except (OSError,ValueError,KeyError,TypeError) as exc:
+            return _component('WARN','RealTrade readiness 无法读取。',warnings=['real_trade_readiness_read_failed'],
+                evidence={'error':type(exc).__name__+': '+str(exc)[:300]})
+        codes={row['code'] for row in value['blockers']}
+        no_channel='NO_LIVE_BROKER_CHANNEL' in codes
+        status='NOT_CONFIGURED' if no_channel else ('WARN' if value['status']=='BLOCKED' else 'OK')
+        return _component(status,'RealTrade readiness='+value['status']+'；当前无实盘连接/订单能力。',
+            evidence=value,warnings=[] if no_channel else (['real_trade_readiness_blocked_by_design'] if value['status']=='BLOCKED' else []),
+            limitations=['Readiness blockers are evidence for future P13-B+ review; they do not make normal research/Paper operation unhealthy.'])
+
     def _devstudio(self,now):
         from quantlab.devstudio.store import DevTaskStore,DevTaskError
         try:tasks=DevTaskStore(self.output).list(limit=2000)
@@ -380,7 +393,7 @@ class SystemHealthService:
             'market_data_series':self._market_data_series(now),'daily_market':self._daily_market(now),'market_snapshots':self._market_snapshots(now),
             'daily_orchestrator':self._orchestrator(now),'pit_playbook':self._pit_playbook(now),
             'paper_lifecycle':self._paper(now),'broker_shadow':self._broker_shadow(now),
-            'dev_studio':self._devstudio(now),'logs':self._logs(now)}
+            'real_trade_readiness':self._real_trade_readiness(now),'dev_studio':self._devstudio(now),'logs':self._logs(now)}
         runtime=('workspace','artifact_growth','jobs','tracking_daemon','mcp','notifications','dev_studio','logs')
         readiness=('market_data_series','daily_market','market_snapshots','daily_orchestrator','pit_playbook','paper_lifecycle')
         blockers=[];warnings=[]

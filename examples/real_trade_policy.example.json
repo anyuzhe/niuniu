@@ -1,0 +1,20 @@
+{
+  "policy_name": "example-disabled-policy",
+  "enabled": false,
+  "broker_adapter_id": "",
+  "account_alias": "",
+  "paper_account": "",
+  "manual_confirmation_required": true,
+  "kill_switch_required": true,
+  "shadow_required": true,
+  "strict_pit_required": true,
+  "system_health_required": true,
+  "snapshot_max_age_seconds": null,
+  "max_order_notional": null,
+  "max_single_position_ratio": null,
+  "max_gross_exposure": null,
+  "max_daily_loss": null,
+  "max_orders_per_day": null,
+  "allowed_order_types": [],
+  "source_ref": "Example only. Fill limits only after P13-B+ review."
+}

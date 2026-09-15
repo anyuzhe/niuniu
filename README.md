@@ -76,6 +76,7 @@ D1 / D2 / D3+ 复盘
 | System Health | P11 只读聚合 Workspace、Artifacts、JobQueue、daemon heartbeat、MCP adapter、Notifications、Market Data/Series、DailyMarket、MarketSnapshot、Orchestrator、PIT/Playbook、Paper、Dev Studio 与日志；运行在线和研究正确分轴展示，无健康总分/自动修复 |
 | Mobile / Bot | P12 轻客户端：同一 Workbench 提供 `/mobile` 与只读 JSON API，MCP/CLI 提供 Mobile Brief；直接复用 Decision Ledger、Stock Dossier、Paper、System Health 与统一记忆/状态源，不建立手机端第二数据库或第二份持仓 |
 | Broker Shadow | P13-A 只读券商证据层：脱敏账户快照 append-only 保存，与 Dynamic Paper 比较持仓/现金；MCP 只读查询，无券商登录、认证保存、下单、撤单或资金划转 |
+| RealTrade Readiness | P13-B0 fail-closed 实盘安全门：Broker capability、禁用态 safety policy、账户快照新鲜度、Shadow、认证/kill switch/风险限额/人工确认/订单 Gateway/回执链 blocker；当前无券商通道时始终 BLOCKED |
 
 桌面端还提供 **老板键 F12**：在 Mac 上隐藏应用及弹窗，点击 Dock 图标恢复；后台计算与未提交配置保留。部分键盘需按 `Fn + F12`。其他窗口系统使用最小化方式；目前原生操作验收主要在 macOS 上进行。
 
@@ -108,7 +109,8 @@ Alpha 公式的计算需要可选依赖 `vnpy`；查看注册信息或运行基�
 ├─ Dev Studio（P10 v1 已完成）
 ├─ System Center（P11 v1 已完成）：Data / PIT / Jobs / MCP / daemon / notifications / health
 ├─ Mobile / Bot（P12 v1 已完成）：同源只读 Brief / Stock Dossier / Decision / Health
-└─ Broker Shadow（P13-A v1 已完成）：只读账户快照 / Dynamic Paper 对账；无实盘连接与订单
+├─ Broker Shadow（P13-A v1 已完成）：只读账户快照 / Dynamic Paper 对账；无实盘连接与订单
+└─ RealTrade Readiness（P13-B0 v1 已完成）：无券商通道时 fail-closed；B1 等待具体实时只读通道
 ```
 
 ### 交易知识与决策循环
@@ -339,8 +341,8 @@ python -m unittest discover -s tests -v
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
-- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待产品化。P9 Agent Scorecard、P10 Dev Studio、P11 System Health、P12 Mobile / Bot v1 均已完成。P13-A 也已完成脱敏 Broker Snapshot + Dynamic Paper Shadow 对账，但它只处理用户导出的只读账户证据，`real_broker_connected` 仍为 false。
-- P13-B+ 的具体券商实时连接、认证/密钥、真实资金与任何下单/撤单/资金划转仍未启用，必须单独评审账户范围、风险限额、人工确认、kill switch、审计和故障恢复。任何 Paper/Shadow/前瞻结果都不能自动外推为实盘权限。
+- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待产品化。P9 Agent Scorecard、P10 Dev Studio、P11 System Health、P12 Mobile / Bot、P13-A Broker Shadow 与 P13-B0 RealTrade Readiness v1 均已完成。B0 已把当前“没有具体券商通道”编码为 `NO_LIVE_BROKER_CHANNEL`，所以 `ready_for_live_connection=false`、`ready_for_real_orders=false`、`real_broker_connected=false`。
+- 下一层 P13-B1 只有出现明确可用的具体券商实时**只读**通道后才开始；认证/密钥、真实资金与任何下单/撤单/资金划转仍未启用。B2/B3 若涉及风险门、kill switch、逐单人工确认、订单 Gateway 或真实订单，必须继续单独评审。任何 Paper/Shadow/完整 policy/Agent 判断都不能自动外推为实盘权限。
 
 ## 深入文档与来源
 
@@ -351,6 +353,7 @@ python -m unittest discover -s tests -v
 - [P11 System Health 验收说明](牛牛AI交易工作台_P11SystemHealth_验收说明.md)：Runtime/Research Readiness 双轴、服务/任务/数据/PIT/通知/Dev 只读健康证据与无自动修复边界。
 - [P12 移动端 / 机器人验收说明](牛牛AI交易工作台_P12移动端与机器人_验收说明.md)：同源 Mobile Brief、手机 Web、Stock Dossier、Decision/System Health JSON API、MCP/CLI 与无第二状态边界。
 - [P13-A 券商只读与 Shadow 对账验收说明](牛牛AI交易工作台_P13A券商只读与Shadow对账_验收说明.md)：脱敏账户快照、append-only Broker evidence、Dynamic Paper 对账、MCP 只读和无实盘权限边界。
+- [P13-B0 实盘安全门验收说明](牛牛AI交易工作台_P13B0实盘安全门_验收说明.md)：Broker capability、禁用态 safety policy、fail-closed readiness、无券商通道 blocker 与 B1/B2/B3 后续分层。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。
