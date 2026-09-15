@@ -21,7 +21,7 @@ class ChatSignals(QObject):
 class ResearchChatDialog(QDialog):
     def __init__(self,window):
         super().__init__(window);self.window=window;self.output=window.output;self.data_root=window.data_root
-        self.runtime=ChatRuntime(self.output,self.data_root);self.busy=False;self.close_requested=False
+        self.runtime=ChatRuntime(self.output,self.data_root,getattr(window,'get_research_queue',None));self.busy=False;self.close_requested=False
         self.stop_event=Event();self.references={};self.session_id=None
         self.setWindowTitle('牛牛 · AI 研究助手');self.resize(1180,900)
         box=QVBoxLayout(self)
@@ -53,6 +53,7 @@ class ResearchChatDialog(QDialog):
         self.evidence=QListWidget();self.evidence.setMaximumHeight(150);right_box.addWidget(self.evidence)
         self.open_button=button('打开选中的真实引用',self.open_reference);right_box.addWidget(self.open_button)
         self.approvals_button=button('打开人工提案审批',self.open_proposals);right_box.addWidget(self.approvals_button)
+        self.grant_button=button('研究会话授权',self.open_session_grant);right_box.addWidget(self.grant_button)
         split.addWidget(right);split.setSizes([700,400]);box.addWidget(split,1)
         self.status=label('尚未调用模型。Codex 登录连接仍使用上游模型服务，不是离线推理。','muted',True)
         box.addWidget(self.status);self.signals=ChatSignals(self);self.signals.event.connect(lambda kind,value:self.receive(kind,value) if self.busy else None)
@@ -70,7 +71,7 @@ class ResearchChatDialog(QDialog):
     def set_busy(self,busy):
         self.busy=busy
         for control in (self.sessions,self.new_button,self.save_button,self.probe_button,self.group,
-            self.consent,self.input,self.send_button,self.open_button,self.approvals_button):control.setEnabled(not busy)
+            self.consent,self.input,self.send_button,self.open_button,self.approvals_button,self.grant_button):control.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
 
     def refresh_sessions(self,selected):
@@ -182,6 +183,12 @@ class ResearchChatDialog(QDialog):
         dialog=ProposalDialog(self.window,selected_id=identifier)
         self.window.show_dialog(dialog)
 
+    def open_session_grant(self):
+        if self.busy:return
+        if self.data_root is None:self.status.setText('请先指定行情目录，再建立 Research Session Grant。');return
+        from .research_session_grant import ResearchSessionGrantDialog
+        self.window.show_dialog(ResearchSessionGrantDialog(self.window))
+
     def open_reference(self):
         if self.busy:return
         item=self.evidence.currentItem()
@@ -197,6 +204,7 @@ class ResearchChatDialog(QDialog):
                 self.hide();self.window.registry_page('factor',query=ref['factor_id'])
             elif ref['kind']=='watch':self.window.factor_watches(ref['watch_id'])
             elif ref['kind']=='job':self.hide();self.window.show_jobs()
+            elif ref['kind']=='research_session_grant':self.open_session_grant()
             elif ref['kind']=='theme_snapshot':self.hide();self.window.navigate_root(1)
         except Exception as error:self.status.setText('引用未打开：'+str(error))
 

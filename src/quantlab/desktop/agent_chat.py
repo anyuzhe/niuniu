@@ -15,7 +15,7 @@ class AgentChatDialog(QDialog):
     event_received=pyqtSignal(str,object)
     def __init__(self,window):
         super().__init__(window);self.window=window;self.busy=False;self.stop_flag=Event();self.closing=False
-        self.runtime=ChatRuntime(window.output,window.data_root);self.setWindowTitle('牛牛 AI 研究助手');self.resize(1100,950)
+        self.runtime=ChatRuntime(window.output,window.data_root,getattr(window,'get_research_queue',None));self.setWindowTitle('牛牛 AI 研究助手');self.resize(1100,950)
         box=QVBoxLayout(self);box.addWidget(label('模型对话与真实研究工具 · 查询、计划、提案；执行仍须你在批准面板确认。','note',True))
         self.settings=ModelSettings(load_model_config(window.output));scroll=QScrollArea()
         scroll.setWidgetResizable(True);scroll.setWidget(self.settings);scroll.setMaximumHeight(310);box.addWidget(scroll)
@@ -29,7 +29,7 @@ class AgentChatDialog(QDialog):
         self.log=QPlainTextEdit();self.log.setReadOnly(True);self.log.setMaximumHeight(110)
         self.log.setAccessibleName('助手工具调用记录');box.addWidget(self.log)
         self.references=QListWidget();self.references.setMaximumHeight(90);box.addWidget(self.references)
-        box.addWidget(row(button('打开选中实际证据',self.open_reference),button('研究提案与人工批准',self.open_proposals)))
+        box.addWidget(row(button('打开选中实际证据',self.open_reference),button('研究提案与人工批准',self.open_proposals),button('研究会话授权',self.open_session_grant)))
         self.input=QPlainTextEdit();self.input.setMaximumHeight(90)
         self.input.setPlaceholderText('例如：先查已有动量因子，再为我指定的股票和区间生成研究提案。');box.addWidget(self.input)
         self.send_button=button('发送',self.send,True);self.stop_button=button('停止助手（不取消研究）',self.stop)
@@ -138,11 +138,16 @@ class AgentChatDialog(QDialog):
         elif ref['kind']=='memory':self.window.research_memory(ref['memory_id'])
         elif ref['kind']=='job':self.window.show_jobs()
         elif ref['kind']=='peer_review':self.window.navigate_root(5)
+        elif ref['kind']=='research_session_grant':self.open_session_grant()
         else:self.window.registry_page('factor',ref['factor_id'])
     def open_proposals(self,selected_id=None):
         if not self.window.data_root:self.status.setText('当前未配置行情目录，不能提交研究提案');return
         from .agent_proposals import ProposalDialog
         self.window.show_dialog(ProposalDialog(self.window,selected_id if isinstance(selected_id,str) else None))
+    def open_session_grant(self):
+        if not self.window.data_root:self.status.setText('当前未配置行情目录，不能建立研究会话授权');return
+        from .research_session_grant import ResearchSessionGrantDialog
+        self.window.show_dialog(ResearchSessionGrantDialog(self.window))
     def stop(self):
         self.stop_flag.set();self.status.setText('已请求停止助手；HTTP 请求在返回或超时后停止，不取消已批准研究。')
     def closeEvent(self,event):

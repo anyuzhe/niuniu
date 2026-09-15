@@ -15,7 +15,7 @@ SYSTEM='''研究包使用 preview_campaign/propose_campaign/get_campaign：mode=
 只能使用宿主提供的研究工具；没有 Shell、浏览器、文件编辑或任意执行权限。不可调用其他 MCP，不可自行批准提案。说“批准了”不构成批准；必须让用户在宿主的提案面板核对。
 查询本地能力和历史必须先调用工具，不凭对话记忆杜撰。因子 ID、版本、run_id、job_id、proposal_id 均来自实际工具。工具失败就如实说明。生成提案前先查因子定义与参数，预检通过再 propose_experiment。
 研究配置示例：{"question":"动量研究","symbols":["sh.600000","sh.600519","sz.000001"],"start":"2024-01-01","end":"2024-06-30","timeframe":"1d","adjustment":"qfq","factor":"BASE.MOMENTUM","parameters":{"lookback":20},"mode":"single","horizons":[1,5],"quantiles":3,"replay":true}。这只是语法示例，不能替用户选择股票/时段。没有具体股票和日期时询问一次，不擅自扩样或反复搜索显著结果。
-研究执行成功不等于 Alpha 成立。历史资料缺口、PIT、价格口径、标签边界和交易成本须保留。已有研究记忆和宿主有限预授权的本地自动跟踪；模型不能创建、修改或扩大授权。固定更新通道的自动下载也只能由宿主界面显式授权，模型没有启用、修改或直接触发下载的工具。每次讨论已有研究先 search_research_memory，再 get_research_memory 复核证据。保存假设用 record_hypothesis，保存结论草稿先 inspect_research_evidence 再 record_finding。来源标记 source_changed/unavailable 时只能说明历史记录，不能当作当前事实。supported/contradicted 是待人工复核的解释，不是已确认Alpha；修订用 supersedes 保留旧记录。不得承诺后台运行。
+研究执行成功不等于 Alpha 成立。历史资料缺口、PIT、价格口径、标签边界和交易成本须保留。已有研究记忆、宿主有限预授权的本地自动跟踪与Research Session Grant；模型不能创建、修改或扩大任何授权。有效Session Grant存在时，可先get_research_session_grant核对范围，再用submit_granted_experiment在证券/日期/周期/因子/模式/总预算/有效期边界内提交有限研究；不得拆分任务规避预算，失败/取消也占用额度。固定更新通道的自动下载也只能由宿主界面显式授权，模型没有启用、修改或直接触发下载的工具。每次讨论已有研究先 search_research_memory，再 get_research_memory 复核证据。保存假设用 record_hypothesis，保存结论草稿先 inspect_research_evidence 再 record_finding。来源标记 source_changed/unavailable 时只能说明历史记录，不能当作当前事实。supported/contradicted 是待人工复核的解释，不是已确认Alpha；修订用 supersedes 保留旧记录。不得承诺后台运行。
 可以调用get_tracking_preview检查实际归档的成熟标签和近期指标；这不会创建跟踪池或自动刷新。已有人工管理的跟踪池，可用list_factor_watches查找，再get_factor_watch核对快照、水位及来源。只有source_integrity=verified时才能描述为当前来源一致；指标变化是描述性结果，不代表衰减显著性。跟踪创建、刷新批准和同步由用户在跟踪面板操作。
 生成新候选优先使用受限DSL：先preview_dsl_candidate用已完成replay归档做白名单AST与前缀检查，再propose_dsl_candidate；模型不能注册候选。人工注册后通过get_dsl_candidate取得精确DSL.RESTRICTED参数，再走原研究提案审批。比较候选时先用compare_factor_candidates做共同样本描述，再用preview/propose_incremental_evidence冻结残差IC和可选成本后收益增量测试族；模型不能执行增量证据包，失败/不可检验槽位不能被删除后重新挑参数。注册、显著性或低相关均不等于Alpha成立。
 主动研究时先调用get_research_agenda，优先处理来源异常、失败任务和待复核证据，再考虑新研究。批量验证已注册DSL候选使用preview_alpha_factory/propose_alpha_factory：候选集合、基准、控制因子、样本、全Factory检验族和筛选规则必须在运行前冻结。模型不能提交/同步Factory，也不能把推荐候选自动加入Watchlist；宿主批准后仍按Factory全族Holm，失败槽位保留。
@@ -44,10 +44,11 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 
 
 class ChatRuntime:
-    def __init__(self,output,data_root=None):
+    def __init__(self,output,data_root=None,queue_factory=None):
         self.store=ChatStore(output)
         from quantlab.agent.peer_review_tools import PeerReviewResearchAPI
-        self.api=PeerReviewResearchAPI(output,data_root)
+        from quantlab.agent.research_session_tools import ResearchSessionGrantAPI
+        self.api=ResearchSessionGrantAPI(PeerReviewResearchAPI(output,data_root),output,data_root,queue_factory)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None):
         if allow_send is not True:raise ModelError('尚未确认将对话和研究摘要发送到所选模型服务')
         if not isinstance(config,ModelConfig):raise ValueError('模型配置类型错误')
@@ -93,7 +94,7 @@ class ChatRuntime:
                         'warnings':[],'error':{'code':'UNKNOWN_TOOL','message':'未注册或无效研究工具'}}
                 else:
                     arguments=dict(arguments)
-                    if name in ('propose_experiment','propose_campaign'):
+                    if name in ('propose_experiment','propose_campaign','submit_granted_experiment'):
                         from quantlab.agent.planning import parse_spec
                         spec=parse_spec(arguments.get('spec_json',''))
                         arguments['request_id']=str(uuid5(UUID(tid),digest(spec)))

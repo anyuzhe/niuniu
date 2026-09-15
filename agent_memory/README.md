@@ -17,6 +17,7 @@
 - RealTrade / P13-B0+ 任务必须读取 `architecture/real_trade_readiness.md`；没有明确券商通道时必须 fail-closed，不能用完整 policy、Shadow MATCH 或 Agent 判断替代真实 Adapter/认证/订单安全门。
 - Daily Orchestrator / 日内 Scanner 任务必须读取 `architecture/daily_orchestrator.md`；MarketSnapshot 数据源任务同时读取 `architecture/market_snapshot_provider.md`，不得把手工/BACKFILL 快照冒充 live provider。
 - Research Proposal / JobQueue / Campaign 审批任务必须读取 `architecture/approval_input_freeze.md`；人工批准后的实际输入以 approval freeze 为执行权威，禁止回退变化后的 live data。
+- Research Session Grant / 有限自主研究任务必须读取 `architecture/research_session_grant.md`；Grant 只扩大精确范围内的本地研究执行，不得扩展到 Shell、下载、代码写、Campaign/Execution 或真实交易。
 
 ## 固定读取顺序
 

@@ -173,6 +173,25 @@ class SystemHealthService:
                 'latest_freeze_id':latest_id,'latest_captured_at':latest.isoformat() if latest else None},warnings=warnings,
             limitations=['System Health checks freeze manifest/file presence only; submit/resume/run re-hash every frozen data file before use.'])
 
+    def _research_session_grant(self,now):
+        from quantlab.agent.research_session_grant import grant_status
+        try:value=grant_status(self.output,self.data_root,now=now)
+        except (OSError,ValueError,KeyError,TypeError) as exc:
+            return _component('BLOCKED','Research Session Grant 状态不可读。',blockers=['research_session_grant_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300]})
+        if value['status']=='not_configured':return _component('NOT_CONFIGURED','尚无 Research Session Grant。')
+        blockers=[];warnings=[]
+        if value.get('enabled') and value.get('binding_ok') is False:blockers.append('research_session_grant_binding_stale')
+        if value['status']=='expired':warnings.append('research_session_grant_expired')
+        expires=_parse(value.get('expires_at'));remaining=None
+        if expires:remaining=max(0.0,(expires-now).total_seconds())
+        if value.get('enabled') and remaining is not None and remaining<900:warnings.append('research_session_grant_expires_soon')
+        status='BLOCKED' if blockers else ('WARN' if warnings else ('OK' if value.get('enabled') else 'NOT_CONFIGURED'))
+        grant=value.get('grant') or {};used=value.get('used') or {};left=value.get('remaining') or {}
+        return _component(status,f"Research Session Grant {value['status']}；jobs={used.get('jobs',0)} used / {left.get('jobs',0)} remaining。",
+            evidence={'grant_id':grant.get('grant_id'),'status':value['status'],'enabled':value.get('enabled'),'expires_at':value.get('expires_at'),
+                'seconds_remaining':remaining,'binding_ok':value.get('binding_ok'),'used':used,'remaining':left,'job_count':len(value.get('jobs') or [])},
+            blockers=blockers,warnings=warnings,limitations=['Grant only authorizes bounded local research; it never authorizes shell, downloads, production writes or real trading.'])
+
     def _tracking_daemon(self,now):
         from quantlab.agent.tracking_daemon import daemon_status
         try:value=daemon_status(self.output)
@@ -435,7 +454,7 @@ class SystemHealthService:
     def build(self):
         now=_aware(self.now_fn());components={
             'workspace':self._workspace(now),'artifact_growth':self._artifact_growth(now),'jobs':self._jobs(now),
-            'approval_input_freezes':self._approval_input_freezes(now),'tracking_daemon':self._tracking_daemon(now),'mcp':self._mcp(now),'notifications':self._notifications(now),
+            'approval_input_freezes':self._approval_input_freezes(now),'research_session_grant':self._research_session_grant(now),'tracking_daemon':self._tracking_daemon(now),'mcp':self._mcp(now),'notifications':self._notifications(now),
             'market_data_series':self._market_data_series(now),'daily_market':self._daily_market(now),'market_snapshots':self._market_snapshots(now),
             'market_snapshot_provider':self._market_snapshot_provider(now),'daily_orchestrator':self._orchestrator(now),'pit_playbook':self._pit_playbook(now),
             'paper_lifecycle':self._paper(now),'broker_shadow':self._broker_shadow(now),

@@ -219,7 +219,7 @@ def execute(submission, data_root, artifact_root, *, campaign_job_id=None):
 
 def validate_execution_guard(guard):
     if guard is None: return
-    base={'runtime','cooperative_seconds','max_active_jobs'};optional={'input_signature','approval_freeze'}
+    base={'runtime','cooperative_seconds','max_active_jobs'};optional={'input_signature','approval_freeze','session_grant'}
     if not isinstance(guard,dict) or not base<=set(guard) or set(guard)-base-optional:
         raise ValueError('Invalid approved execution guard')
     if 'input_signature' in guard and (not isinstance(guard['input_signature'],str) or not re.fullmatch(r'[0-9a-f]{64}',guard['input_signature'])):
@@ -227,6 +227,9 @@ def validate_execution_guard(guard):
     if 'approval_freeze' in guard:
         from quantlab.storage.approval_inputs import validate_approval_freeze_receipt
         validate_approval_freeze_receipt(guard['approval_freeze'])
+    if 'session_grant' in guard:
+        from quantlab.agent.research_session_grant import validate_grant_receipt
+        validate_grant_receipt(guard['session_grant'])
     if type(guard['max_active_jobs']) is not int or guard['max_active_jobs'] < 1:
         raise ValueError('Invalid approved active-job budget')
     seconds = guard['cooperative_seconds']
@@ -294,6 +297,9 @@ class JobQueue:
         spec = json.loads(encode(spec))
         execution_guard = json.loads(encode(execution_guard))
         validate_execution_guard(execution_guard)
+        if execution_guard and 'session_grant' in execution_guard:
+            from quantlab.agent.research_session_grant import assert_grant_active
+            assert_grant_active(self.root,self.data_root,execution_guard['session_grant'])
         with self.lock:
             if self.closed:
                 raise ValueError('服务正在关闭，不再接收任务')
@@ -334,6 +340,9 @@ class JobQueue:
             validate_execution_guard(record.get('execution_guard'))
             submission=prepare(record['spec'])
             guard=record.get('execution_guard')
+            if guard and 'session_grant' in guard:
+                from quantlab.agent.research_session_grant import assert_grant_active
+                assert_grant_active(self.root,self.data_root,guard['session_grant'])
             if guard and 'approval_freeze' in guard:
                 from quantlab.storage.approval_inputs import ApprovalInputFreezeStore
                 frozen=ApprovalInputFreezeStore(self.root,self.data_root).verify(guard['approval_freeze'],record['spec'])
@@ -392,6 +401,10 @@ class JobQueue:
             from quantlab.progress import research_progress,ResearchCancelled
             import time
             guard = record.get('execution_guard'); validate_execution_guard(guard)
+            if guard and 'session_grant' in guard:
+                from quantlab.agent.research_session_grant import assert_grant_active
+                try:assert_grant_active(self.root,self.data_root,guard['session_grant'])
+                except ValueError as error:raise ResearchCancelled('Research Session Grant 已失效：'+str(error)) from error
             deadline = time.monotonic()+guard['cooperative_seconds'] if guard else None
             effective_data_root=self.data_root
             if guard and 'approval_freeze' in guard:
@@ -401,6 +414,10 @@ class JobQueue:
                     raise ValueError('审批冻结的数据资格回执与任务记录不一致')
                 effective_data_root=frozen['path']
             def check_inputs():
+                if guard and 'session_grant' in guard:
+                    from quantlab.agent.research_session_grant import assert_grant_active
+                    try:assert_grant_active(self.root,self.data_root,guard['session_grant'])
+                    except ValueError as error:raise ResearchCancelled('Research Session Grant 已失效：'+str(error)) from error
                 if guard and 'approval_freeze' in guard:
                     from quantlab.storage.approval_inputs import ApprovalInputFreezeStore
                     frozen_now=ApprovalInputFreezeStore(self.root,self.data_root).verify(guard['approval_freeze'],record['spec'])
@@ -417,6 +434,10 @@ class JobQueue:
                     if digest(input_signature(record['spec'],self.data_root))!=guard['input_signature']:
                         raise ValueError('受控任务的行情或资格输入已变化；停止自动纳入跟踪')
             def progress(stage,completed,total):
+                if guard and 'session_grant' in guard:
+                    from quantlab.agent.research_session_grant import assert_grant_active
+                    try:assert_grant_active(self.root,self.data_root,guard['session_grant'])
+                    except ValueError as error:raise ResearchCancelled('Research Session Grant 已失效：'+str(error)) from error
                 if self.cancellations[job_id].is_set():raise ResearchCancelled('用户取消；已完成的子实验与缓存保留')
                 if deadline is not None and time.monotonic() >= deadline:
                     raise TimeoutError('已到批准的研究执行时限；在检查点停止，已有归档和断点保留')
