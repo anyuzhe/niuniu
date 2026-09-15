@@ -4,7 +4,7 @@
 - 架构口径更新：2026-09-15
 - 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：Strict PIT SecurityStatus 第二批真实证据已接入（7只证券/14条 verified receipt）；首轮 2026-09-16 Daily Orchestrator 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `962 passed / 0 failed / 0 skipped`
+- 当前稳定基线：SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `964 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -146,7 +146,8 @@ Playbook 不能只靠文字经验进入当天交易。任何规则都必须经�
 - 候选全集重建，保留 selected / unselected / no-trade / 失败样本；
 - Holdout / Walk-forward / Campaign / Bootstrap / 多重检验；
 - T+1、停牌、涨跌停、费用、滑点、资金占用与成交可达性；
-- 前瞻 `SYSTEM_PREDICTION` 与历史 `HUMAN_RECONSTRUCTION` 严格分离。
+- 前瞻 `SYSTEM_PREDICTION` 与历史 `HUMAN_RECONSTRUCTION` 严格分离；
+- Official MarketRules 按 snapshot append-only 保存实际 records、官方原文 SHA256 与宿主确认的 publication time，`published_at > available_at` 时 fail-closed。
 
 验证目标至少拆成三件事：
 
@@ -236,7 +237,8 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Watch Sequential Monitor | **已完成 v1**：新 Watch 冻结 family alpha / min_effect / min_new_dates / block_sessions，新增成熟日进入非重叠 block + mixture e-process；legacy Watch 不静默升级，越界只触发人工复核 |
 | Strict PIT Evidence Archive | **已完成 v1 基础设施**：支持 Universe / SecurityStatus / Industry / Daily Market Cap 四类 statement；当前 `niuniu-data` 已有 SecurityStatus 14条/7只股票，其它三类仍为0 |
 | Strict PIT Coverage | **已完成 v1**：深度验证 receipt 后按年份/证券/字段展示 evidence presence，并分开展示回顾性 inventory 与 gap；不生成数据集总覆盖率；当前 SecurityStatus 有14条 verified evidence，其它三类仍缺 |
-| Strict PIT SecurityStatus | **第二批真实资料已接入**：累计7份深交所官方公告→14条状态事件→silver派生表→PREP消费；稀疏 receipt 只证明明确生效日，不跨日外推，不替代 MarketRules |
+| Strict PIT SecurityStatus | **第二批真实资料已接入**：累计7份深交所官方公告→14条状态事件→silver派生表→PREP消费；稀疏 receipt 只证明明确生效日，不跨日外推 |
+| Official MarketRules Receipt | **v2 与首批真实资料已完成**：按 snapshot append-only 保存 records/官方原文/`published_at`；当前仅7只股票各1个停牌 session，复牌 exact 涨跌停价和全市场覆盖仍缺 |
 | Playbook Lab 六类结构化对象 | 已完成 |
 | `ExpertSource` 作为交易者来源 | 已完成，并兼容投影为 StrategySource(TRADER) |
 | PREP 全市场扫描 / MarketSnapshot / AUCTION / R1 Scanner | 已完成 |
@@ -255,7 +257,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**962 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**964 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：
@@ -264,7 +266,7 @@ P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
 3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已补齐。后续外部数据升级目标是券商/QMT/交易所级行情；内部 Research Lab 下一主线转为**真实官方历史资料归档与 receipt coverage 提升**，而不是再改 Strict PIT/Coverage 引擎。
 
-Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。当前内部主线仍是继续扩充 **真实官方 SecurityStatus 历史事件链**并接入官方逐日 MarketRules，随后补历史行业与每日真实市值；稀疏 receipt 不视为完整覆盖。
+Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。Official MarketRules publication receipt v2 已落地，并把同7份公告映射为7个明确停牌 session；当前内部主线继续扩充 **真实官方 SecurityStatus 历史事件链**，补复牌日 exact 价格边界与更多逐日 MarketRules/PIT Universe，随后补历史行业与每日真实市值。任何稀疏 receipt 均不视为完整覆盖。
 
 ### P8.7 当前边界
 

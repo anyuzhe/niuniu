@@ -65,12 +65,13 @@ class PrepScannerTests(unittest.TestCase):
         return rules
 
     def archive_rules(self,rules):
-        snapshot=MarketRules(rules).snapshot_id;research=self.data/'research';research.mkdir(exist_ok=True)
-        document=research/'exchange_rule_evidence.bin';payload=b'official test evidence';document.write_bytes(payload)
-        receipt={'format':'official-market-rules-v1','rules_snapshot':snapshot,'sources':[
+        snapshot=MarketRules(rules).snapshot_id;research=self.data/'research';receipt_dir=research/'official_market_rules'
+        receipt_dir.mkdir(parents=True);document=research/'exchange_rule_evidence.bin';payload=b'official test evidence';document.write_bytes(payload)
+        receipt={'format':'official-market-rules-v2','rules_snapshot':snapshot,'rules':rules,'sources':[
             {'url':'https://www.sse.com.cn/test','path':'research/exchange_rule_evidence.bin',
-             'sha256':hashlib.sha256(payload).hexdigest(),'fetched_at':'2026-09-09T16:00:00+08:00'}]}
-        (research/'official_market_rules.json').write_text(json.dumps(receipt));return snapshot
+             'sha256':hashlib.sha256(payload).hexdigest(),'fetched_at':'2026-09-09T16:00:00+08:00',
+             'published_at':'2026-09-06T16:00:00+08:00','publication_time_confirmed':True}]}
+        (receipt_dir/(snapshot+'.json')).write_text(json.dumps(receipt));return snapshot
 
     def archive_security_status(self,symbol,rows):
         document=self.root/'status-evidence.pdf';document.write_bytes(b'%PDF strict status fixture')

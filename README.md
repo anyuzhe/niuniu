@@ -58,7 +58,7 @@ D1 / D2 / D3+ 复盘
 |---|---|
 | 原生桌面客户端 | 数据中心、因子库、市场状态、结构与事件、序列构建器、理论实验室、实验中心、组合与模型、策略回测和结果对比；业务表单、参数配置、任务状态与报告入口 |
 | 数据与股票池 | MQC Parquet 只读读取、raw/qfq、数据质量审计、固定版本行情、历史上市区间、PIT 资格流水接口及 Baostock 参考资料归档 |
-| 数据资格 | 请求级 `research_only / retrospective_reference / strict_pit / official_rule_covered`；严格请求按 bar vintage、复权信息、外部字段、PIT 股票池/中性化控制和逐日官方规则阻断；PIT Universe/SecurityStatus/行业/市值可通过本地官方原文 + publication-time receipt 形成严格证据；Coverage 可按年/证券显示 evidence presence 与回顾性 inventory，但不生成数据集总证书 |
+| 数据资格 | 请求级 `research_only / retrospective_reference / strict_pit / official_rule_covered`；严格请求按 bar vintage、复权信息、外部字段、PIT 股票池/中性化控制和逐日官方规则阻断；PIT Universe/SecurityStatus/行业/市值及 MarketRules 都必须绑定本地官方原文 + publication-time receipt；Coverage 只显示 evidence presence 与回顾性 inventory，不生成数据集总证书 |
 | 因子注册与计算 | 版本化 FactorPack、默认参数和依赖追踪；表达式及自定义计算路径；内容缓存与部分增量计算 |
 | 市场状态与多周期 | 规则化趋势/区间、方向与波动状态；日线背景过滤；高周期信息按可用时间对齐；由 5m 合成完整交易时段的 15m/30m/60m |
 | 结构、事件与序列 | 确认拐点、突破与失败突破、FVG、BOS、OB 等明确规则；顺序匹配、重复步骤、超时、失效、嵌套及事件链去重 |
@@ -339,7 +339,7 @@ python -m unittest discover -s tests -v
 - 部分复杂业务表单尚未逐项完成真实客户端验收。
 - Strict PIT Evidence Archive v1 已支持四类 statement：PIT Universe、SecurityStatus、历史行业、每日市值。当前 `/Volumes/Lexar/niuniu-data` 已有 `security_status=14` verified receipts（7只深市股票的明确停牌/复牌及 ST 生效事件），其它三类仍为0；这不代表历史状态链完整。季度股本不能直接当成每日股本。
 - Strict PIT Coverage v1 已完成：按年份/证券/字段统计经过深度校验的 evidence presence，并把 `stock_basic`、单快照行业、历史 bar lake 等回顾性资料单独列为 inventory。当前日线仍是5215个证券文件、17,075,243行（1990-12-19～2026-09-04），bar lake 本身无 `tradestatus/isST`；现有14条 SecurityStatus 只覆盖7只股票的明确事件日，Coverage 不输出伪造总完成率。
-- 官方逐日涨跌停价及特殊上市/退市规则覆盖尚不完整；合成规则回测不等于完整真实市场规则验收。
+- Official MarketRules publication receipt v2 已完成 append-only、实际 records、官方原文 SHA256 与 `published_at <= available_at` 验证；当前真实数据仅有1个 snapshot、7只证券各1个明确停牌 session（7/7 audit covered）。复牌/ST 的 exact 涨跌停价、全市场逐日价格边界及特殊上市/退市规则仍缺，合成规则回测不等于完整真实市场规则验收。
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
@@ -368,6 +368,7 @@ python -m unittest discover -s tests -v
 - [Strict PIT SecurityStatus v1 验收说明](牛牛AI交易工作台_StrictPITSecurityStatus_验收说明.md)：首批真实ST/停复牌官方证据、派生表、PREP接线、稀疏事件不跨日外推与无价格规则推断边界。
 - [Strict PIT SecurityStatus 第二批验收说明](牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md)：新增4份深交所公告、8条 verified receipt，累计7只证券/14条事件及真实 PREP fail-closed 烟测。
 - [首轮 Daily Orchestrator 前瞻 NO_TRADE 验收说明](牛牛AI交易工作台_首轮DailyOrchestrator前瞻NoTrade_验收说明.md)：2026-09-15 DailyMarket、2026-09-16 PREP 前瞻冻结、空候选终态、NO_TRADE bridge、幂等和数据资格边界。
+- [Official MarketRules Publication Receipt v2 验收说明](牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md)：append-only 规则快照、publication-time 防回填、首批7个真实停牌 session、篡改/幂等验证与未覆盖边界。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。

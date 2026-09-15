@@ -5,7 +5,7 @@ from quantlab.storage.codec import digest
 
 
 def audit_market_rules(rules,symbols,trading_dates):
-    gaps=[];covered=0;late=0;unbounded=0;sources=set()
+    gaps=[];covered=0;late=0;unbounded=0;suspended=0;suspended_without_bounds=0;sources=set()
     for day in sorted(set(trading_dates)):
         opening=datetime.combine(day,time(9,30),ZoneInfo('Asia/Shanghai'))
         closing=opening.replace(hour=15)
@@ -19,9 +19,13 @@ def audit_market_rules(rules,symbols,trading_dates):
             # A rule expiring during the session cannot establish full-session coverage.
             if rule['expires_at']<=closing:
                 gaps.append({'symbol':symbol,'session':day,'reason':'expires_before_session_end'});continue
-            covered+=1;sources.add(rule['source']);unbounded+=rule['limit_up'] is None
+            covered+=1;sources.add(rule['source']);suspended+=rule['suspended']
+            if rule['limit_up'] is None:
+                if rule['suspended']:suspended_without_bounds+=1
+                else:unbounded+=1
     expected=len(set(symbols))*len(set(trading_dates))
     return {'status':'covered' if expected and not gaps else 'incomplete','expected_symbol_sessions':expected,
         'covered_symbol_sessions':covered,'late_available_sessions':late,'explicitly_unbounded_sessions':unbounded,
+        'suspended_sessions':suspended,'suspended_sessions_without_price_bounds':suspended_without_bounds,
         'gaps':gaps,'rule_snapshot':rules.snapshot_id,'sources':sorted(sources),
         'scope':'Schema and supplied time coverage only. Does not certify that prices/status/provenance are official; missing rules are never inferred from a percentage.'}

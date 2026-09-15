@@ -124,3 +124,5 @@ DailyMarket 原始响应、Parquet、Orchestrator state、MarketSnapshot、Playb
 2. 下一交易日收盘后继续接受新的 DailyMarket day，重新运行独立 PREP；只有非空 CandidateSet 才进入 live Frame 抓取。
 3. 持续建设官方逐日 MarketRules、完整 SecurityStatus 链与 PIT Universe；在此之前 CandidateSet 继续 fail-closed。
 4. 只有真实 PLAN_OPEN 且宿主另行确认，才允许创建并执行 Dynamic Paper；不得为了积累成交样本绕过 NO_TRADE。
+
+后续同日已完成 Official MarketRules publication receipt v2，并归档7个历史停牌 session；这些 records 不覆盖 2026-09-15 全市场，因此本次 PREP 的三个 blocker 与 `PARTIAL / RETROSPECTIVE_REFERENCE` 结论保持不变。

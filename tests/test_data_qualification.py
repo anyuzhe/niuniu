@@ -70,7 +70,8 @@ class DataQualificationTests(unittest.TestCase):
             self.assertTrue(result['qualified'],result);self.assertEqual(result['status'],'qualified_strict_pit')
             self.assertEqual(result['components']['bars']['status'],'strict_pit')
 
-    def test_official_rule_covered_requires_hashed_official_receipt(self):
+    def test_official_rule_covered_requires_publication_time_receipt(self):
+        from quantlab.data.official_rule_archive import archive_official_rules
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);batch=self.trusted_batch(root);(root/'research/rules').mkdir(parents=True)
             url='https://www.sse.com.cn/lawandrules/sselawsrules2025/stocks/exchange/c/c_20260424_10816482.shtml'
@@ -89,27 +90,63 @@ class DataQualificationTests(unittest.TestCase):
                 'url':url,'path':'research/rules/sse-rule.html','sha256':hashlib.sha256(document.read_bytes()).hexdigest(),
                 'fetched_at':'2026-09-12T10:00:00+00:00'}]}
             (root/'research/official_market_rules.json').write_text(json.dumps(receipt))
-            with patch('quantlab.data.provider.local_data_provider',return_value=provider):second=qualify_research(root,spec)
-            self.assertTrue(second['qualified'],second);self.assertEqual(second['components']['official_rules']['status'],'official_rule_covered')
+            with patch('quantlab.data.provider.local_data_provider',return_value=provider):legacy=qualify_research(root,spec)
+            self.assertFalse(legacy['qualified']);self.assertIn('official_rule_publication_time_unverified',legacy['blockers'])
+            class Response:
+                def geturl(self):return url
+                def read(self,_n):return b'official exchange document v2 fixture'
+            archive_official_rules(root,rules,[url],{url:'2024-12-31T18:00:00+08:00'},
+                confirm_publication_time=True,opener=lambda *_a,**_k:Response())
+            with patch('quantlab.data.provider.local_data_provider',return_value=provider):good=qualify_research(root,spec)
+            self.assertTrue(good['qualified'],good);self.assertEqual(good['components']['official_rules']['status'],'official_rule_covered')
 
-    def test_official_rule_archive_downloads_only_exchange_urls_and_is_idempotent(self):
+    def test_official_rule_archive_is_append_only_publication_bound_and_idempotent(self):
         from quantlab.data.official_rule_archive import archive_official_rules
         with tempfile.TemporaryDirectory() as temp:
-            root=Path(temp);url='https://www.sse.com.cn/lawandrules/sselawsrules2025/stocks/exchange/c/c_20260424_10816482.shtml'
-            rules=[{'symbol':'sh.600000','effective_at':'2025-01-01T00:00:00+08:00','available_at':'2025-01-01T00:00:00+08:00',
+            root=Path(temp);url='https://disc.static.szse.cn/download/disc/rule.PDF';published='2024-12-31T18:00:00+08:00'
+            rules=[{'symbol':'sz.000001','effective_at':'2025-01-01T00:00:00+08:00','available_at':'2025-01-01T00:00:00+08:00',
                 'expires_at':'2025-01-04T23:00:00+08:00','suspended':False,'st':False,'limit_up':11.0,'limit_down':9.0,
                 'commission_bps':3,'minimum_commission':5,'sell_tax_bps':0,'transfer_bps':0,'source':url}]
+            calls=[]
+            class Response:
+                def geturl(self):return url
+                def read(self,_n):calls.append(url);return b'official exchange document fixture'
+            opener=lambda *_a,**_k:Response()
+            with self.assertRaisesRegex(ValueError,'显式确认'):
+                archive_official_rules(root,rules,[url],{url:published},opener=opener)
+            first=archive_official_rules(root,rules,[url],{url:published},confirm_publication_time=True,opener=opener)
+            second=archive_official_rules(root,rules,[url],{url:published},confirm_publication_time=True,opener=opener)
+            self.assertTrue(first['created']);self.assertFalse(second['created']);self.assertEqual(len(calls),1)
+            path=root/'research/official_market_rules'/(MarketRules(rules).snapshot_id+'.json')
+            self.assertTrue(path.is_file());self.assertEqual(json.loads(path.read_text())['format'],'official-market-rules-v2')
+            other=[{**rules[0],'symbol':'sz.000002'}]
+            third=archive_official_rules(root,other,[url],{url:published},confirm_publication_time=True,opener=opener)
+            self.assertTrue(third['created']);self.assertEqual(len(list(path.parent.glob('*.json'))),2)
+            bad=[{**rules[0],'source':'https://example.com/rule'}]
+            with self.assertRaisesRegex(ValueError,'上交所'):
+                archive_official_rules(root,bad,['https://example.com/rule'],{'https://example.com/rule':published},
+                    confirm_publication_time=True,opener=opener)
+
+    def test_official_rule_archive_rejects_hindsight_availability_and_tampering(self):
+        from quantlab.data.official_rule_archive import archive_official_rules
+        from quantlab.data.qualification import _official_rule_receipt
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);url='https://www.szse.cn/lawrules/rule/stock/trade/rule.html'
+            rules=[{'symbol':'sz.000001','effective_at':'2025-01-02T09:30:00+08:00','available_at':'2025-01-01T12:00:00+08:00',
+                'expires_at':'2025-01-03T00:00:00+08:00','suspended':True,'st':False,'limit_up':None,'limit_down':None,
+                'commission_bps':0,'minimum_commission':0,'sell_tax_bps':0,'transfer_bps':0,'source':url}]
             class Response:
                 def geturl(self):return url
                 def read(self,_n):return b'official exchange document fixture'
-            opener=lambda *_a,**_k:Response()
-            first=archive_official_rules(root,rules,[url],opener=opener)
-            second=archive_official_rules(root,rules,[url],opener=opener)
-            self.assertTrue(first['created']);self.assertFalse(second['created'])
-            self.assertTrue((root/'research/official_market_rules.json').is_file())
-            bad=[{**rules[0],'source':'https://example.com/rule'}]
-            with self.assertRaisesRegex(ValueError,'上交所'):
-                archive_official_rules(root,bad,['https://example.com/rule'],opener=opener)
+            with self.assertRaisesRegex(ValueError,'available_at'):
+                archive_official_rules(root,rules,[url],{url:'2025-01-01T13:00:00+08:00'},
+                    confirm_publication_time=True,opener=lambda *_a,**_k:Response())
+            result=archive_official_rules(root,rules,[url],{url:'2025-01-01T11:00:00+08:00'},
+                confirm_publication_time=True,opener=lambda *_a,**_k:Response())
+            path=Path(result['path']);value=json.loads(path.read_text());value['rules'][0]['suspended']=False
+            path.write_text(json.dumps(value))
+            check=_official_rule_receipt(root,result['rules_snapshot'])
+            self.assertFalse(check['verified']);self.assertEqual(check['reason'],'official_rule_records_snapshot_mismatch')
 
 
     def test_pit_universe_requires_archived_authoritative_publication_receipt(self):

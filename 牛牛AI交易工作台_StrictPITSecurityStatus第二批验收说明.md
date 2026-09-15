@@ -95,3 +95,5 @@
 ## 7. 下一步
 
 继续按 Coverage gap 归档可核验的 SecurityStatus 事件，优先形成同一证券的进入、持续与撤销状态链；同时设计并接入独立的官方逐日 `MarketRules` receipt，之后再推进历史行业变更与每日真实市值。所有后续批次继续要求文档同步和独立 Git 提交。
+
+> 2026-09-15 后续：Official MarketRules publication receipt v2 已完成，并用这7份公告归档7个明确停牌 session；复牌/ST session 的 exact 价格上下限仍未补齐，原 PREP blocker 不因此消失。详见《牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md》。

@@ -11,6 +11,7 @@
 - `niuniu-security-status` 只允许宿主执行 `status/materialize`，不联网下载，也不创建事实。
 - PREP Scanner 可以消费该派生表，但在没有“完整状态事件链”证明前，只把 receipt 明确 `effective_at` 的交易日视为 Strict 状态证据；不得把最近一次状态无限向前/向后传播成严格覆盖。
 - 已验证 ST/停牌状态不等于官方逐日涨跌停规则。缺 MarketRules 时，PREP 即使拥有 Strict status evidence 也保持 `RETROSPECTIVE_REFERENCE`。
+- 当前7份公告已另形成 MarketRules v2 的7个停牌-session records；这只认证停牌当日没有可执行价格，不认证次日5%/20%的 exact `limit_up/limit_down`，不得由百分比和回顾性前收盘自动补齐。
 - SecurityStatus 不等于 PIT Universe：是否属于研究股票池与是否 ST/停牌是不同维度，禁止自动合并。
 
 ## 当前真实数据

@@ -19,7 +19,7 @@
 - 上交所《上海证券交易所交易规则（2026年修订）》：2026-07-06 起实施；普通股票价格涨跌幅限制通常为 10%，IPO 上市后的前 5 个交易日等情形不限幅；2026 修订将主板风险警示股票涨跌幅由 5% 调整为 10%。
   - https://www.sse.com.cn/lawandrules/sselawsrules2025/stocks/exchange/c/c_20260424_10816482.shtml
 - 深交所《深圳证券交易所交易规则（2026年修订）》：主板股票 10%，创业板股票 20%，IPO 上市后的前 5 个交易日等情形不限幅。
-  - https://docs.static.szse.cn/www/lawrules/rule/trade/current/W020260424690713155663.pdf
+  - https://docs.static.szse.cn/www/lawrules/rule/stock/trade/W020260424690713155663.pdf
 - 北交所交易规则：股票竞价交易通常实行 30% 涨跌幅限制，公开发行上市交易首日等情形不限幅。
   - https://www.bse.cn/jygl_list/200028217.html
 
@@ -43,12 +43,14 @@
 quantlab official-rule-archive \
   --data-root /path/to/data \
   --market-rules market-rules.json \
-  --url https://www.sse.com.cn/...
+  --url https://www.sse.com.cn/... \
+  --published-at '<host-confirmed ISO-8601 timestamp>' \
+  --confirm-publication-time
 ```
 
-只允许上交所、深交所、北交所 HTTPS 地址。下载后的原文按 SHA256 保存，并生成 `research/official_market_rules.json`，绑定完整 `MarketRules.snapshot_id`。同一快照和相同原文重复运行幂等；不同规则回执不会静默覆盖。
+当前 v2 只允许上交所、深交所、北交所 HTTPS 地址；每个 URL 必须提供宿主确认的带时区 `published_at`，未确认时不联网。下载后的原文按 SHA256 保存，每个 snapshot 独立生成 `research/official_market_rules/<rules_snapshot>.json`，同时保存实际 MarketRules records。相同快照重复运行幂等且不重新联网，不同快照可 append-only 并存。record 的 `available_at` 早于来源 `published_at`、原文/record 被篡改或来源缺失均 fail-closed。旧 `official-market-rules-v1` 单文件仍可读，但因没有 publication time 不再通过新的最高资格门。
 
-本轮真实联网测试已成功归档上交所 2026 交易规则页面。该回执证明“本地规则快照绑定了所列官方原文”，不证明手填价格界限数值本身正确；`official_rule_covered` 仍要求显式逐日规则覆盖且其他 strict PIT 组件同时通过。
+首批真实 v2 数据已归档7份深交所公告对应的7个明确停牌 session；该回执证明“本地规则 records 绑定了所列官方原文及发布时间”，仍不自动证明人工语义映射、复牌日 exact 价格界限或费用假设正确。`official_rule_covered` 继续要求请求内逐证券逐日规则全覆盖且其他 strict PIT 组件同时通过。
 
 ## 五、执行链
 

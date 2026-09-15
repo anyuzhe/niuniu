@@ -91,6 +91,14 @@ class DividendTests(unittest.TestCase):
 
 
 class RulesAuditTests(unittest.TestCase):
+    def test_suspended_session_without_price_bounds_is_not_called_unbounded(self):
+        from quantlab.execution.rules_audit import audit_market_rules
+        market,_,records,_=fixture();record={**records[0],'suspended':True,'limit_up':None,'limit_down':None}
+        result=audit_market_rules(MarketRules([record]),[record['symbol']],[market['datetime'][0].date()])
+        self.assertEqual(result['status'],'covered');self.assertEqual(result['suspended_sessions'],1)
+        self.assertEqual(result['suspended_sessions_without_price_bounds'],1)
+        self.assertEqual(result['explicitly_unbounded_sessions'],0)
+
     def test_no_order_sessions_and_late_rules_are_counted(self):
         from quantlab.execution.rules_audit import audit_market_rules
         market,_,records,_=fixture()

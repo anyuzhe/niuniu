@@ -7,7 +7,8 @@ import polars as pl
 
 LEVELS=('research_only','retrospective_reference','strict_pit','official_rule_covered')
 BAR_FIELDS={'open','high','low','close','volume','turnover','adj_factor'}
-OFFICIAL_HOSTS={'sse.com.cn','www.sse.com.cn','star.sse.com.cn','szse.cn','www.szse.cn','bse.cn','www.bse.cn'}
+OFFICIAL_HOSTS={'sse.com.cn','www.sse.com.cn','star.sse.com.cn','szse.cn','www.szse.cn',
+    'docs.static.szse.cn','disc.static.szse.cn','reportdocs.static.szse.cn','bse.cn','www.bse.cn'}
 AUTHORITATIVE_PIT_HOSTS=OFFICIAL_HOSTS|{'cninfo.com.cn','www.cninfo.com.cn'}
 
 
@@ -37,28 +38,59 @@ def _authoritative_pit_source(value):
 
 
 def _official_rule_receipt(root,snapshot_id):
-    path=Path(root)/'research/official_market_rules.json'
+    root=Path(root).resolve()
+    if not isinstance(snapshot_id,str) or len(snapshot_id)!=64 or any(c not in '0123456789abcdef' for c in snapshot_id):
+        return {'verified':False,'reason':'official_rule_snapshot_invalid'}
+    scoped=root/'research/official_market_rules'/(snapshot_id+'.json')
+    legacy=root/'research/official_market_rules.json';path=scoped if scoped.exists() or scoped.is_symlink() else legacy
     if path.is_symlink() or not path.is_file():return {'verified':False,'reason':'official_rule_receipt_missing'}
     try:value=json.loads(path.read_text())
     except (OSError,ValueError,TypeError):return {'verified':False,'reason':'official_rule_receipt_invalid_json'}
-    if not isinstance(value,dict) or set(value)!={'format','rules_snapshot','sources'} or value['format']!='official-market-rules-v1':
-        return {'verified':False,'reason':'official_rule_receipt_schema_invalid'}
+    if not isinstance(value,dict):return {'verified':False,'reason':'official_rule_receipt_schema_invalid'}
+    format_=value.get('format')
+    schemas={'official-market-rules-v1':{'format','rules_snapshot','sources'},
+        'official-market-rules-v2':{'format','rules_snapshot','rules','sources'}}
+    if format_ not in schemas or set(value)!=schemas[format_]:return {'verified':False,'reason':'official_rule_receipt_schema_invalid'}
     if value['rules_snapshot']!=snapshot_id:return {'verified':False,'reason':'official_rule_snapshot_mismatch'}
     if not isinstance(value['sources'],list) or not value['sources']:return {'verified':False,'reason':'official_rule_sources_missing'}
-    evidence=[]
+    evidence=[];published={}
     for item in value['sources']:
-        if not isinstance(item,dict) or set(item)!={'url','path','sha256','fetched_at'} or not _official_source(item['url']):
+        expected={'url','path','sha256','fetched_at'} if format_=='official-market-rules-v1' else \
+            {'url','path','sha256','fetched_at','published_at','publication_time_confirmed'}
+        if not isinstance(item,dict) or set(item)!=expected or not _official_source(item.get('url')):
             return {'verified':False,'reason':'official_rule_source_invalid'}
-        fetched=datetime.fromisoformat(item['fetched_at'])
+        try:fetched=datetime.fromisoformat(item['fetched_at'])
+        except (TypeError,ValueError):return {'verified':False,'reason':'official_rule_fetch_time_invalid'}
         if fetched.tzinfo is None:return {'verified':False,'reason':'official_rule_fetch_time_missing_timezone'}
+        if format_=='official-market-rules-v2':
+            try:publication=datetime.fromisoformat(item['published_at'])
+            except (TypeError,ValueError):return {'verified':False,'reason':'official_rule_publication_time_invalid'}
+            if publication.tzinfo is None or item['publication_time_confirmed'] is not True:
+                return {'verified':False,'reason':'official_rule_publication_time_unverified'}
+            if publication>fetched:return {'verified':False,'reason':'official_rule_publication_after_fetch'}
+            published[item['url']]=publication
         relative=Path(item['path'])
         if relative.is_absolute() or '..' in relative.parts:return {'verified':False,'reason':'official_rule_document_path_invalid'}
-        document=(Path(root)/relative).resolve()
-        if not document.is_relative_to(Path(root).resolve()) or not document.is_file():return {'verified':False,'reason':'official_rule_document_missing'}
-        payload=document.read_bytes()
+        document=(root/relative).resolve()
+        if not document.is_relative_to(root) or not document.is_file():return {'verified':False,'reason':'official_rule_document_missing'}
+        try:payload=document.read_bytes()
+        except OSError:return {'verified':False,'reason':'official_rule_document_unreadable'}
         if hashlib.sha256(payload).hexdigest()!=item['sha256']:return {'verified':False,'reason':'official_rule_document_hash_mismatch'}
-        evidence.append({'url':item['url'],'path':str(relative),'sha256':item['sha256'],'fetched_at':item['fetched_at']})
-    return {'verified':True,'reason':'verified_official_rule_documents','sources':evidence}
+        evidence.append({key:item[key] for key in sorted(expected)})
+    if format_=='official-market-rules-v1':
+        return {'verified':False,'reason':'official_rule_publication_time_unverified','legacy_format':format_,
+            'receipt_path':str(path.relative_to(root)),'sources':evidence}
+    try:
+        from quantlab.execution.rules import MarketRules
+        rules=MarketRules(value['rules'])
+    except (TypeError,ValueError,KeyError):return {'verified':False,'reason':'official_rule_records_invalid'}
+    if rules.snapshot_id!=snapshot_id:return {'verified':False,'reason':'official_rule_records_snapshot_mismatch'}
+    for record in rules.records:
+        publication=published.get(record['source'])
+        if publication is None:return {'verified':False,'reason':'official_rule_record_source_unarchived'}
+        if publication>record['available_at']:return {'verified':False,'reason':'official_rule_available_before_publication'}
+    return {'verified':True,'reason':'verified_official_rule_publication_receipt','format':format_,
+        'receipt_path':str(path.relative_to(root)),'rules':len(rules.records),'sources':evidence}
 
 def qualify_research(data_root,spec):
     from quantlab.workbench.jobs import prepare
@@ -171,9 +203,9 @@ def qualify_research(data_root,spec):
             if not receipt['verified']:result['blockers'].append(receipt['reason'])
             result['components']['official_rules']=_component(
                 'official_rule_covered' if audit['status']=='covered' and not unofficial and receipt['verified'] else 'incomplete',
-                'Exact supplied per-session bounds/status must be fully covered and tied to hashed locally archived official exchange documents.',
+                'Exact supplied per-session bounds/status must be fully covered and tied to publication-time-confirmed, hashed local official exchange documents.',
                 [audit,{'unofficial_sources':unofficial},receipt],
-                ['This certifies the supplied price/status rule record coverage only; brokerage fee assumptions remain separate.'])
+                ['This verifies source bytes, publication timing and supplied record coverage; semantic mapping and brokerage fee assumptions remain separate.'])
     strict_blockers=list(result['blockers'])
     if level=='retrospective_reference':
         result['qualified']=not bars.is_empty()

@@ -56,9 +56,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**962 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive v1、Strict PIT Coverage v1、Strict PIT SecurityStatus 两批真实接入。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证。
-外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部并行主线：持续真实前瞻每日运行，继续扩充官方 SecurityStatus/MarketRules/PIT Universe，再推进历史行业与每日真实市值。
+当前正式代码全仓基线：**964 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive/Coverage/SecurityStatus 和 Official MarketRules publication receipt v2。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session。
+外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部并行主线：持续真实前瞻每日运行，补复牌 exact 价格边界、连续 SecurityStatus/PIT Universe，再推进历史行业与每日真实市值。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -335,6 +335,7 @@
 | 2026-09-15 | Strict PIT Coverage v1 | **956 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Strict PIT SecurityStatus v1 | **961 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | 首轮 Daily Orchestrator 前瞻 NO_TRADE / 空候选终态 | **962 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | Official MarketRules Publication Receipt v2 / 首批7个停牌 session | **964 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -669,3 +670,18 @@
 - 验证：Orchestrator+Bridge+Health 专项 **38/38 passed**；完整仓库 **962 tests / 0 failed / 0 skipped**，345.160秒。System Health Runtime/DailyMarket/Orchestrator 为 OK，Research Readiness 因最新 CandidateSet 非 FULL/STRICT_PIT 且无 FROZEN Playbook 保持 WARN。
 - 文档：新增《牛牛AI交易工作台_首轮DailyOrchestrator前瞻NoTrade_验收说明.md》和 `playbooks/qimofenshu/notes/forward_prediction_20260916_prep.md`，同步 README、总体架构、总计划、核心进度与 Agent Memory。
 - 后续：该交易日已正确终止，不在 9/16 补造盘中预测；下一交易日重新接受 DailyMarket 并独立建计划，只有非空 CandidateSet 才进入 live Frame。并行继续官方 MarketRules、PIT Universe 与 SecurityStatus 完整链建设。
+
+### 2026-09-15 20:40｜[数据资格/真实证据] Official MarketRules Publication Receipt v2
+
+- 模块：Official Rule Archive / MarketRules / Data Qualification / Rules Audit / CLI / Agent Operating Memory。
+- Git：本条与代码及验收文档同一提交发布，提交标题 `data: 增强MarketRules发布时间证据`；SHA 以该提交 Git 历史为准。
+- v2 合同：每个 snapshot 在 `research/official_market_rules/<rules_snapshot>.json` append-only 保存实际 records、官方原文字节 SHA256、`published_at/fetched_at` 与宿主 publication-time confirmation；同一数据根可持有多个 snapshot。
+- 防回填：每个 record 的 `available_at` 不得早于其 source `published_at`；CLI 未提供逐URL `--published-at` 或未显式 `--confirm-publication-time` 时在联网前拒绝。旧 v1 单文件仍可读，但因没有 publication time 返回 `official_rule_publication_time_unverified`，不能再通过新的 `official_rule_covered` gate。
+- 来源：官方域名白名单补入深交所 `docs.static / disc.static / reportdocs.static`；非交易所域名、非官方跳转、原文哈希/record snapshot 篡改继续 fail-closed。
+- 真实数据：复用并重新下载7份已核验深交所公告，形成7条明确停牌 MarketRules；snapshot=`94b7cfedb136ecd83566ac04d5adaf2776e1b57232537839179005e507bbe1a1`，receipt SHA256=`28ad3f2d81a3286999b0a6960fe73a6f7c12b8415734f3d29dfa5fd6391933f8`。7个下载哈希与 SecurityStatus archive 逐项一致。
+- 审计：逐证券逐 session 7/7 covered；`suspended_sessions=7`、`suspended_sessions_without_price_bounds=7`、`explicitly_unbounded_sessions=0`。停牌 null bounds 不再显示成无限价格交易。
+- 幂等：重复归档 `created=false` 且不联网；receipt SHA256、mtime、文档数和 snapshot 不变。
+- 边界：只覆盖7个停牌 session；公告给出的复牌后5%/20%比例不能与回顾性前收盘自动拼成 exact 官方上下限。当前2026-09-15全市场 PREP 仍缺 official MarketRules/PIT Universe/完整状态链，Playbook/Paper/实盘权限不变。
+- 验证：Qualification+PREP+Rules Audit 专项 **28/28 passed**；完整仓库 **964 tests / 0 failed / 0 skipped**，367.662秒。
+- 文档：新增《牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md》，同步 README、数据资格说明、总体架构、总计划、核心进度与 Agent Memory。
+- 后续：先补同7只股票复牌/ST session 的官方参考价与 exact 涨跌停价证据，再按受限股票池持续追加逐日 snapshot；同时推进 PIT Universe 和连续状态链。
