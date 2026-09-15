@@ -23,6 +23,8 @@ TZ=ZoneInfo('Asia/Shanghai')
 CAPTURE_READY=time(18,30)
 CAPTURE_COOLDOWN=timedelta(minutes=15)
 MAX_CAPTURE_ATTEMPTS=8
+MARKET_CAPTURE_COOLDOWN=timedelta(seconds=30)
+MAX_MARKET_CAPTURE_ATTEMPTS=3
 R1_SNAPSHOT_CUTOFF=time(9,40)
 R2_SNAPSHOT_READY=time(11,30)
 R2_SNAPSHOT_CUTOFF=time(11,40)
@@ -93,17 +95,18 @@ class DailyPlaybookOrchestrator:
         state.setdefault('events',[]).append({'at':stamp.isoformat(),'status':status,'detail':str(detail)[:500]})
         if len(state['events'])>500:state['events']=state['events'][-500:]
 
-    def create_plan(self,trading_day,as_of_session,definition_id,*,target_streak=None,allow_daily_market_capture=False,bridge_to_trading_desk=False):
+    def create_plan(self,trading_day,as_of_session,definition_id,*,target_streak=None,allow_daily_market_capture=False,allow_market_snapshot_capture=False,bridge_to_trading_desk=False):
         trading_day=_day(trading_day,'trading_day');as_of_session=_day(as_of_session,'as_of_session')
         if date.fromisoformat(as_of_session)>=date.fromisoformat(trading_day):
             raise DailyOrchestratorError('INVALID_ARGUMENT','as_of_session 必须早于 trading_day。')
         identifier(definition_id,'definition_id');PlaybookStore(self.output).get_definition(definition_id)
         if target_streak is not None and (type(target_streak) is not int or not 1<=target_streak<=10):
             raise DailyOrchestratorError('INVALID_ARGUMENT','target_streak 必须为1–10或None。')
-        if type(allow_daily_market_capture) is not bool or type(bridge_to_trading_desk) is not bool:
+        if any(type(v) is not bool for v in (allow_daily_market_capture,allow_market_snapshot_capture,bridge_to_trading_desk)):
             raise DailyOrchestratorError('INVALID_ARGUMENT','capture/bridge 开关必须是布尔值。')
         spec={'trading_day':trading_day,'as_of_session':as_of_session,'definition_id':definition_id,
             'target_streak':target_streak,'allow_daily_market_capture':allow_daily_market_capture,
+            'allow_market_snapshot_capture':allow_market_snapshot_capture,
             'bridge_to_trading_desk':bridge_to_trading_desk,'data_root':str(self.data_root)}
         plan_id=str(uuid5(NAMESPACE_URL,'niuniu-daily-orchestrator-plan:'+digest(spec)))
         stamp=_stamp(self.now_fn())
@@ -191,11 +194,30 @@ class DailyPlaybookOrchestrator:
             candidate_set_id=frozen['candidate_set']['candidate_set_id'],prediction_id=frozen['prediction']['selection_id'],
             frozen_at=stamp.isoformat());self._event(state,stamp,'PREP_FROZEN','PREP 已冻结。');return True
 
+    def _capture_live_snapshot(self,state,stage_name,frame,stamp):
+        if not state.get('allow_market_snapshot_capture',False):return None
+        stage=state[stage_name];capture=stage.setdefault('market_capture',{'attempts':0,'last_attempt_at':None,'last_error':None,'snapshot_id':None})
+        last=capture.get('last_attempt_at')
+        if last and stamp-datetime.fromisoformat(last).astimezone(TZ)<MARKET_CAPTURE_COOLDOWN:return None
+        if capture['attempts']>=MAX_MARKET_CAPTURE_ATTEMPTS:return None
+        try:
+            base=PlaybookStore(self.output).get_candidate_set(state['prep']['candidate_set_id'])
+            symbols=[item['symbol'] for item in base.get('candidates',[])]
+            if not symbols:raise ValueError('PREP CandidateSet 没有可抓取证券。')
+            capture['attempts']+=1;capture['last_attempt_at']=stamp.isoformat();self._save(state)
+            from .public_web_market_snapshot import PublicWebConsensusProvider
+            content=PublicWebConsensusProvider().capture(state['trading_day'],frame,symbols)
+            snapshot=MarketSnapshotStore(self.output,now_fn=lambda:stamp).create(_snapshot_request(content),content)
+            capture.update(last_error=None,snapshot_id=snapshot['snapshot_id'],completeness=snapshot['completeness'],
+                capture_status=snapshot['capture_status'],provider=snapshot['provider']);return snapshot
+        except (OSError,ValueError,KeyError,TypeError,MarketSnapshotError,PlaybookError) as exc:
+            capture['last_error']=type(exc).__name__+': '+str(exc)[:300];return None
+
     def _live_snapshots(self,day,frame,start_clock,end_clock):
         rows=MarketSnapshotStore(self.output).list(trading_day=day,frame=frame,limit=200)['records']
         result=[]
         for row in rows:
-            if row.get('capture_status')!='LIVE_NEAR_REALTIME':continue
+            if row.get('capture_status')!='LIVE_NEAR_REALTIME' or row.get('completeness')!='FULL':continue
             moment=datetime.fromisoformat(row['as_of']).astimezone(TZ)
             start=datetime.combine(date.fromisoformat(day),start_clock,tzinfo=TZ)
             end=datetime.combine(date.fromisoformat(day),end_clock,tzinfo=TZ)
@@ -239,7 +261,10 @@ class DailyPlaybookOrchestrator:
         status=forward_frame_status(self.output,state['trading_day'],'AUCTION',lambda:stamp)
         if status['can_freeze']:
             rows=self._live_snapshots(state['trading_day'],'AUCTION',time(9,25),time(9,30))
-            if not rows:self._event(state,stamp,'WAIT_AUCTION_MARKET_SNAPSHOT','等待09:25后正式 LIVE_NEAR_REALTIME AUCTION MarketSnapshot。');return False
+            if not rows:
+                self._capture_live_snapshot(state,'auction','AUCTION',stamp)
+                rows=self._live_snapshots(state['trading_day'],'AUCTION',time(9,25),time(9,30))
+            if not rows:self._event(state,stamp,'WAIT_AUCTION_MARKET_SNAPSHOT','等待09:25后正式 LIVE_NEAR_REALTIME FULL AUCTION MarketSnapshot。');return False
             return self._freeze_scan(state,'auction',rows[0],stamp)
         if status['forward_status'] in ('EARLY','WAIT_DATA'):
             self._event(state,stamp,'WAIT_AUCTION_DATA_READY','等待09:25竞价数据就绪。');return False
@@ -256,6 +281,9 @@ class DailyPlaybookOrchestrator:
         r1_rows=self._live_snapshots(state['trading_day'],'R1',time(9,35),R1_SNAPSHOT_CUTOFF)
         if not status['can_freeze']:
             stage['status']='MISSED';self._event(state,stamp,'R1_MISSED','R1 实时冻结窗口已错过；不回填预测。');return False
+        if not r1_rows:
+            self._capture_live_snapshot(state,'r1','R1',stamp)
+            r1_rows=self._live_snapshots(state['trading_day'],'R1',time(9,35),R1_SNAPSHOT_CUTOFF)
         if not auction_rows:
             if stamp.time()>R1_SNAPSHOT_CUTOFF:
                 stage['status']='MISSED';self._event(state,stamp,'R1_MISSED','缺少09:25–09:30实时AUCTION快照。')
@@ -293,6 +321,9 @@ class DailyPlaybookOrchestrator:
             previous=previous_rows[0] if previous_rows else None
         if not status['can_freeze']:
             stage['status']='MISSED';self._event(state,stamp,frame+'_MISSED',frame+' 实时冻结窗口已错过；不回填预测。');return False
+        if not current_rows:
+            self._capture_live_snapshot(state,stage_name,frame,stamp)
+            current_rows=self._live_snapshots(state['trading_day'],frame,ready_clock,cutoff)
         if previous is None:
             if stamp.time()>cutoff:
                 stage['status']='MISSED';self._event(state,stamp,frame+'_MISSED','缺少前一阶段 '+previous_frame+' LIVE_NEAR_REALTIME 快照。')
@@ -325,6 +356,7 @@ class DailyPlaybookOrchestrator:
             state=self._load(trading_day)
             if state['status'] in TERMINAL:return state
             # Old v1 in-progress plans are upgraded in place; historical terminal plans remain untouched.
+            state.setdefault('allow_market_snapshot_capture',False)
             state.setdefault('r2',{'status':'PENDING'});state.setdefault('r3',{'status':'PENDING'})
             state['supported_frames']=['PREP','AUCTION','R1','R2','R3'];state.pop('unsupported_frames',None)
             try:

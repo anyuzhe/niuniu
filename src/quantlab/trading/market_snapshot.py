@@ -97,7 +97,7 @@ def _instrument(item):
 
 def normalize_market_snapshot(content):
     allowed={'trading_day','frame','as_of','provider','provider_ref','source_hash','completeness',
-        'instruments','market_metrics','notes'}
+        'strict_pit_source_verified','instruments','market_metrics','notes'}
     if not isinstance(content,dict) or set(content)-allowed:raise ValueError('MarketSnapshot 字段无效。')
     frame=_text(content.get('frame'),'frame',20,True).upper()
     if frame not in FRAMES:raise ValueError('未知 Decision Frame。')
@@ -111,12 +111,15 @@ def normalize_market_snapshot(content):
     source_hash=_text(content.get('source_hash'),'source_hash',64).lower()
     if source_hash and not HASH.fullmatch(source_hash):raise ValueError('source_hash 必须是64位小写SHA256。')
     provider_ref=_text(content.get('provider_ref'),'provider_ref',2000)
+    strict_source=content.get('strict_pit_source_verified',True)
+    if type(strict_source) is not bool:raise ValueError('strict_pit_source_verified 必须是布尔值。')
     if completeness=='FULL' and (not source_hash or not provider_ref):
         raise ValueError('FULL MarketSnapshot 必须保存 provider_ref 与 source_hash。')
     result={'trading_day':_day(content.get('trading_day')),'frame':frame,
         'as_of':_moment(content.get('as_of'),'as_of'),'provider':_text(content.get('provider'),'provider',100,True),
         'provider_ref':provider_ref,'source_hash':source_hash,'completeness':completeness,
-        'instruments':instruments,'market_metrics':_json_object(content.get('market_metrics'),'market_metrics'),
+        'strict_pit_source_verified':strict_source,'instruments':instruments,
+        'market_metrics':_json_object(content.get('market_metrics'),'market_metrics'),
         'notes':_text(content.get('notes'),'notes',6000)}
     if completeness=='FULL':_validate_frame_payload(result)
     return result
@@ -200,7 +203,7 @@ class MarketSnapshotStore:
         if not isinstance(now,datetime) or now.tzinfo is None:raise MarketSnapshotError('INVALID_CLOCK','MarketSnapshotStore 时钟必须带时区。')
         capture_status,lag,assessment=_capture_status(self.output,normalized,now)
         frozen_at=now.astimezone(timezone.utc).isoformat()
-        strict=bool(normalized['completeness']=='FULL' and capture_status=='LIVE_NEAR_REALTIME')
+        strict=bool(normalized['completeness']=='FULL' and capture_status=='LIVE_NEAR_REALTIME' and normalized['strict_pit_source_verified'])
         with self.connection(write=True) as db:
             row=db.execute('SELECT * FROM market_snapshots WHERE request_id=?',(request_id,)).fetchone()
             if row is not None:

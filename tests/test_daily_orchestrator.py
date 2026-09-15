@@ -62,9 +62,10 @@ class DailyOrchestratorTests(unittest.TestCase):
 
     def service(self,now):return DailyPlaybookOrchestrator(self.output,self.data,now_fn=lambda:now)
 
-    def init(self,now,allow=False,bridge=False):
+    def init(self,now,allow=False,bridge=False,market=False):
         return self.service(now).create_plan('2026-09-14','2026-09-11',self.definition['definition_id'],
-            target_streak=2,allow_daily_market_capture=allow,bridge_to_trading_desk=bridge)
+            target_streak=2,allow_daily_market_capture=allow,allow_market_snapshot_capture=market,
+            bridge_to_trading_desk=bridge)
 
     def accept_daily(self):
         return DailyMarketArchive(self.output,now_fn=lambda:datetime.fromisoformat('2026-09-13T18:31:00+08:00')).capture(
@@ -211,6 +212,38 @@ class DailyOrchestratorTests(unittest.TestCase):
         close=datetime.fromisoformat('2026-09-14T15:01:30+08:00');state=self.service(close).tick('2026-09-14',now=close)
         self.assertEqual(state['r3']['status'],'FROZEN');self.assertEqual(state['status'],'COMPLETE_WITH_MISSED')
         self.assertEqual(state['supported_frames'],['PREP','AUCTION','R1','R2','R3'])
+
+    def test_explicit_public_web_capture_populates_auction_and_r1_through_shared_store(self):
+        self.accept_daily();prep=datetime.fromisoformat('2026-09-13T18:31:00+08:00');self.init(prep,market=True)
+        state=self.service(prep).tick('2026-09-14',now=prep);self.assertEqual(state['prep']['status'],'FROZEN')
+        calls=[]
+        def capture(_provider,day,frame,symbols):
+            calls.append((day,frame,tuple(symbols)))
+            base={'trading_day':day,'frame':frame,'provider':'public-web-consensus-v1','provider_ref':'fixture:web',
+                'source_hash':'f'*64,'completeness':'FULL','strict_pit_source_verified':False,'market_metrics':{},'notes':'fixture'}
+            if frame=='AUCTION':
+                return {**base,'as_of':'2026-09-14T09:25:30+08:00','instruments':[{'symbol':'sh.600001','name':'fixture','previous_close':12.1,
+                    'auction_price':12.2,'tradable':True,'execution_profile':'STANDARD_ACCESS','metrics':{}}]}
+            return {**base,'as_of':'2026-09-14T09:35:30+08:00','instruments':[{'symbol':'sh.600001','name':'fixture','previous_close':12.1,
+                'open':12.2,'high':12.5,'low':12.1,'last':12.5,'volume':1000,'amount':12400,
+                'tradable':True,'execution_profile':'STANDARD_ACCESS','metrics':{}}]}
+        with patch('quantlab.trading.public_web_market_snapshot.PublicWebConsensusProvider.capture',new=capture):
+            auction=self.service(datetime.fromisoformat('2026-09-14T09:26:00+08:00')).tick('2026-09-14',now=datetime.fromisoformat('2026-09-14T09:26:00+08:00'))
+            self.assertEqual(auction['auction']['status'],'FROZEN')
+            r1=self.service(datetime.fromisoformat('2026-09-14T09:36:00+08:00')).tick('2026-09-14',now=datetime.fromisoformat('2026-09-14T09:36:00+08:00'))
+        self.assertEqual(r1['r1']['status'],'FROZEN');self.assertEqual([c[1] for c in calls],['AUCTION','R1'])
+        snapshots=MarketSnapshotStore(self.output).list(provider='public-web-consensus-v1',limit=10)['records']
+        self.assertEqual(len(snapshots),2);self.assertTrue(all(not row['strict_pit_eligible'] for row in snapshots))
+
+    def test_public_web_capture_uses_cooldown_after_failure(self):
+        self.accept_daily();prep=datetime.fromisoformat('2026-09-13T18:31:00+08:00');self.init(prep,market=True);self.service(prep).tick('2026-09-14',now=prep)
+        with patch('quantlab.trading.public_web_market_snapshot.PublicWebConsensusProvider.capture',side_effect=OSError('fixture offline')) as capture:
+            first=self.service(datetime.fromisoformat('2026-09-14T09:26:00+08:00')).tick('2026-09-14',now=datetime.fromisoformat('2026-09-14T09:26:00+08:00'))
+            second=self.service(datetime.fromisoformat('2026-09-14T09:26:10+08:00')).tick('2026-09-14',now=datetime.fromisoformat('2026-09-14T09:26:10+08:00'))
+            third=self.service(datetime.fromisoformat('2026-09-14T09:26:31+08:00')).tick('2026-09-14',now=datetime.fromisoformat('2026-09-14T09:26:31+08:00'))
+        self.assertEqual(capture.call_count,2);self.assertEqual(first['auction']['market_capture']['attempts'],1)
+        self.assertEqual(second['auction']['market_capture']['attempts'],1);self.assertEqual(third['auction']['market_capture']['attempts'],2)
+        self.assertIn('fixture offline',third['auction']['market_capture']['last_error'])
 
     def test_cli_init_status_and_model_has_no_orchestrator_write_tool(self):
         out=io.StringIO()

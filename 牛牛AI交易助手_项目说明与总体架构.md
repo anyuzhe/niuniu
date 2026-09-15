@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-15
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：Research Session Grant v1 已完成，全仓 `925 passed / 0 failed / 0 skipped`
+- 当前稳定基线：三源实时 MarketSnapshot Provider v1 已完成，全仓 `935 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -174,7 +174,7 @@ Strategy Intent
 
 `Daily Scanner` 是规则运行器，不是模型自由选股器。它读取冻结事实和冻结规则；证据不足时输出 `UNKNOWN / NO_TRADE / PARTIAL`，不得为了每天有结果而强行推荐股票。
 
-当前已完成 PREP 全市场扫描、MarketSnapshot、AUCTION/R1/R2/R3 Scanner、DailyMarket 增量归档与 P8.7 受控 Daily Orchestrator v2。R2 为 11:30 午间复核、R3 为 15:00 收盘定稿，均必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只延续其中已选标的；Provider capability/readiness 框架已完成，但正式实时网络 MarketSnapshot provider 仍未接入。
+当前已完成 PREP 全市场扫描、MarketSnapshot、AUCTION/R1/R2/R3 Scanner、DailyMarket 增量归档与 P8.7 受控 Daily Orchestrator。实时层已接入 `public-web-consensus-v1`：腾讯主源、东方财富第二源、新浪备用校验，至少两源一致才形成可用快照。R2 为 11:30 午间复核、R3 为 15:00 收盘定稿，均必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只延续其中已选标的。公开网页源适合当前研发/个人自用，但不认证 Strict PIT，也不具备交易所级 SLA。
 ## 8. AI Team：独立研究，不做投票系统
 
 AI Team 当前正式研究角色包括 Chief Researcher、Market Scanner、Skeptic / Risk Reviewer、Quant Researcher；Developer 属于已落地的 P10 Dev Studio 开发 profile，不进入交易研究投票或判断链。
@@ -238,7 +238,8 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | DailyMarket 全市场日增量归档 | 已完成 |
 | 真实前瞻冻结与防历史回填 | 已完成并已启动样本积累 |
 | 通用 StrategySource 多来源对象 | **已完成 P8.6**：六类来源 + 多对多 PlaybookSourceLink |
-| 受控每日自动编排 PREP→AUCTION→R1→R2→R3 | **已完成 P8.7 v2**：持久计划、幂等恢复、R2/R3 continuation review、错过窗口不回填；live Provider 仍未接入 |
+| 受控每日自动编排 PREP→AUCTION→R1→R2→R3 | **已完成**：持久计划、幂等恢复、R2/R3 continuation review、错过窗口不回填；实时三源抓取需宿主显式授权 |
+| Live MarketSnapshot Provider | **已完成 v1**：腾讯主源 + 东财第二源 + 新浪备用校验；至少两源一致、异常源剔除、时间戳防脏数据、公开网页源不升级 Strict PIT |
 | Agent Scorecard | **P9 v1 已完成**：按任务类型只读评价，样本不足 UNKNOWN，无总分/自动调权 |
 | Dynamic Agent Orchestrator / Dev Studio | **P10 v1 已完成**：隔离 worktree + depth-1 动态 Subagent + path lease + Reviewer + Human Merge Gate |
 | System Health | **P11 v1 已完成**：Runtime / Research Readiness 双轴，只读聚合服务、任务、数据新鲜度、PIT、通知、Dev 与日志；无健康总分/自动修复 |
@@ -249,20 +250,20 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**925 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**935 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：
 
 1. **P13-B1 Live Read-only Broker Adapter**：只有出现明确可用的具体券商实时只读通道后才开始；目标是账户/持仓/资金/回执只读连接，不默认包含订单权限。
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
-3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；外部数据侧继续寻找可审计 live MarketSnapshot provider；Research Session Grant 已完成，内部 Research Lab 下一主线转为 Strict PIT 原始资料和 Watch 序贯/在线衰减统计。
+3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot 已由腾讯/东财/新浪三源补齐。后续外部数据升级目标是券商/QMT/交易所级行情，内部 Research Lab 下一主线继续 Strict PIT 原始资料和 Watch 序贯/在线衰减统计。
 
 Approval-time actual-byte freeze 与 Research Session Grant 均已完成；并行继续补 **Strict PIT 原始资料与 Watch 序贯/在线衰减统计**。
 
 ### P8.7 当前边界
 
-Daily Orchestrator v2 是**单交易日、宿主先建计划**的持久状态机：DailyMarket 可显式授权 capture；PREP 使用正式全市场扫描；AUCTION/R1/R2/R3 只消费已经存在的 `LIVE_NEAR_REALTIME MarketSnapshot`。R2 在 11:30、R3 在 15:00 做 continuation review，必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只能延续其中已选标的。它不会自己选择未经审计的实时行情网站，也不会在错过时间窗后生成 SYSTEM_PREDICTION。Provider Registry 当前只有离线 `manual-import-v1`，所以自动实时行情能力仍为 NOT_CONFIGURED。
+Daily Orchestrator v2 是**单交易日、宿主先建计划**的持久状态机：DailyMarket 可显式授权 capture；PREP 使用正式全市场扫描；AUCTION/R1/R2/R3 只消费已经存在的 `LIVE_NEAR_REALTIME MarketSnapshot`。R2 在 11:30、R3 在 15:00 做 continuation review，必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只能延续其中已选标的。它不会自己选择未经审计的实时行情网站，也不会在错过时间窗后生成 SYSTEM_PREDICTION。Provider Registry 当前同时有离线 `manual-import-v1` 与 live `public-web-consensus-v1`。实时 Provider 必须至少两源一致；Orchestrator 默认不联网，只有宿主计划显式 `allow_market_snapshot_capture=true` 才自动抓取；每 Frame 失败冷却30秒、最多3次。公开网页源固定不认证 Strict PIT。
 
 ### P8.8 当前边界
 

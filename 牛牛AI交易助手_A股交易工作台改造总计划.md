@@ -288,13 +288,14 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 验收：旧 ExpertSource 全部可读；新来源类型可统一归档、检索、引用和审计；任何新来源都不能绕过 DRAFT→验证→冻结门槛。
 - 实际交付：schema v2 新增 `strategy_sources / source_links`；旧库只读无需迁移，首次写新对象时兼容迁移；AI/MCP/Reviewer 只读，桌面宿主可人工导入。全仓 **793/0/0**。
 
-### P8.7 Daily Orchestrator：每日受控运行闭环（v2 已完成，2026-09-15）
+### P8.7 Daily Orchestrator：每日受控运行闭环（v3 已完成，2026-09-15）
 - 串起 DailyMarket 数据增量、就绪检查、PREP、09:25 AUCTION、09:35 R1，并继续支持 R2/R3。
 - 调度器只触发已定义的确定性阶段，不让模型自己修改时间窗、候选全集或历史结果。
 - 网络失败、行情过期、规则/PIT 缺失时必须明确 BLOCKED/UNKNOWN/NO_TRADE，不补造结果。
 - 验收：同一交易日重复启动幂等；错过实时窗口不能回填 SYSTEM_PREDICTION；每阶段都可追到具体 MarketSnapshot 和 source hash。
 - v1 实际交付保留：单交易日持久计划、checksum 状态、文件锁、DailyMarket 显式 capture 授权/冷却/修订审核、PREP 预留恢复、AUCTION/R1 实时快照等待与 MISSED_FRAME、`--tick/--run/--status` CLI；当时全仓 **805/0/0**。
-- v2 扩展已完成：Forward/Scanner/Orchestrator 正式覆盖 R2/R3；R2=11:30 午间复核、R3=15:00 收盘定稿，各保留10分钟实时冻结限制。R2/R3 必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只能延续其中 selected_symbols，不新增标的。新增 MarketSnapshot Provider Protocol/Registry/Readiness、CLI/MCP/System Health；当前仅 `manual-import-v1` 离线能力，正式 live provider 仍缺失。全仓 **905/0/0**。
+- v2 扩展已完成：Forward/Scanner/Orchestrator 正式覆盖 R2/R3；R2=11:30 午间复核、R3=15:00 收盘定稿，各保留10分钟实时冻结限制。R2/R3 必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只能延续其中 selected_symbols，不新增标的。新增 MarketSnapshot Provider Protocol/Registry/Readiness、CLI/MCP/System Health；当时仅 `manual-import-v1` 离线能力，完整仓库 **905/0/0**。
+- **v3 实时 Provider 已完成（2026-09-15）**：新增 `public-web-consensus-v1`，腾讯为主实时源、东方财富为第二源、新浪为备用/交叉校验；单证券至少两源价格一致才可用，一源异常自动剔除，只剩一源 fail-closed。来源交易日/未来时钟异常会被剔除；Provider 固定 `strict_pit_source_verified=false`。Orchestrator 默认不联网，只有宿主计划显式 `allow_market_snapshot_capture=true` 才抓 AUCTION/R1/R2/R3，每 Frame 30秒冷却、最多3次，只消费 FULL+LIVE_NEAR_REALTIME。完整仓库 **935/0/0**。
 
 ### P8.8 Playbook → Trading Desk → Paper 接线
 - Daily Scanner 输出进入 Decision Ledger，再通过合法状态迁移形成 Strategy Intent。
@@ -655,3 +656,4 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 
 - 2026-09-15：Approval-time Actual-byte Freeze v1 完成。正式 Proposal 在宿主批准时把实际规范化 bars、Context、精细账户 qfq/raw 输入和 Universe mask 冻结到 `_approval_input_freezes/<proposal_id>/`；JobQueue submit/resume/run 只读同一冻结包并强校验 SHA256。批准后原 qfq 目录移走仍可执行，冻结包自身篡改则 fail-closed；Campaign/holdout/PIT/Execution 均覆盖。System Health 增加轻量冻结包观察项，模型无批准/冻结写权限。专项7/7、相关联合64/64、完整仓库912/0/0。下一内部主线 Research Session Grant。
 - 2026-09-15：Research Session Grant v1 完成。宿主通过桌面/CLI 明确预览和确认授权，范围精确绑定证券、日期、周期、复权、qualification、白名单因子与 mode；有效期5分钟～24小时，任务/并行/叶子研究/K线评价/重采样/时限均有硬预算。模型只能读取 Grant 并在有效范围内 `submit_granted_experiment`，request_id 由宿主重写；每项任务仍做 approval input freeze 并进入唯一共享 JobQueue。撤销/过期后禁止新任务、运行任务在 checkpoint 取消；失败/取消不返还额度。专项12/12、相关联合110/110、完整仓库925/0/0。下一内部主线 Strict PIT 原始资料 + Watch 序贯统计。
+- 2026-09-15：P8.7 v3 三源实时 MarketSnapshot Provider 完成。新增 `public-web-consensus-v1`：腾讯主实时源、东方财富第二源、新浪备用校验；单证券至少两源在前收/当前价及 Frame 所需 OHLC 上一致才可用，一源异常可剔除，只剩一源 fail-closed。来源日期不属于目标交易日或时间明显未来时自动剔除；公开网页源固定 `strict_pit_source_verified=false`。新增 `niuniu-market-snapshot-live`，必须 `--confirm-network` 才联网，`--store` 才写快照；Daily Orchestrator 新增宿主显式 `--allow-market-snapshot-capture`，每 Frame 30秒冷却、最多3次，只消费 FULL+LIVE_NEAR_REALTIME。真实烟测出现过3/3三源一致，也验证东财临时无返回时腾讯+新浪2/2仍可共识，artifacts 77006→77006。专项28/28、联合74/74、完整仓库935/0/0。未来 QMT/XtQuant/券商级行情可替代正式主源，三家网页源保留备份/校验。

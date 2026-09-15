@@ -1,7 +1,7 @@
-"""P8.7 extension: explicit MarketSnapshot provider capabilities/readiness.
+"""MarketSnapshot provider capabilities/readiness.
 
-No network provider is shipped here. Manual imports remain offline evidence and
-must never be presented as an implemented live provider.
+The live implementation is a low-cost public-web consensus adapter. It remains
+separate from Strict PIT and from any future broker/exchange-grade market feed.
 """
 from __future__ import annotations
 from typing import Protocol
@@ -13,6 +13,12 @@ _MANUAL={'format':FORMAT,'provider_id':'manual-import-v1','provider':'manual-jso
     'implemented':True,'live_channel':False,'network':False,'frames':list(FRAMES),
     'full_snapshot':True,'source_hash_required':True,'credentials_required':False,
     'automatic_capture':False}
+_PUBLIC_WEB={'format':FORMAT,'provider_id':'public-web-consensus-v1','provider':'Tencent + Eastmoney + Sina consensus',
+    'implemented':True,'live_channel':True,'network':True,'frames':list(FRAMES),
+    'full_snapshot':True,'source_hash_required':True,'credentials_required':False,
+    'automatic_capture':True,'strict_pit_source_verified':False,
+    'source_roles':{'tencent':'primary','eastmoney':'secondary','sina':'fallback_validation'},
+    'scope':'Public webpage quotes for research/self-use; no exchange-feed SLA or Strict PIT certification.'}
 
 
 class MarketSnapshotProvider(Protocol):
@@ -22,7 +28,7 @@ class MarketSnapshotProvider(Protocol):
 
 class MarketSnapshotProviderRegistry:
     def __init__(self,profiles=None):
-        rows=profiles or [_MANUAL];self._profiles={row['provider_id']:dict(row) for row in rows}
+        rows=profiles or [_MANUAL,_PUBLIC_WEB];self._profiles={row['provider_id']:dict(row) for row in rows}
     def list(self):return [dict(self._profiles[key]) for key in sorted(self._profiles)]
     def get(self,provider_id):return dict(self._profiles[provider_id]) if provider_id in self._profiles else None
     def live(self,frame=''):
@@ -39,8 +45,8 @@ class MarketSnapshotProviderReadiness:
             'status':'BLOCKED' if missing else 'READY',
             'live_provider_available':not missing,'missing_live_frames':missing,
             'profiles':profiles,'automatic_capture_available':any(row.get('automatic_capture') for row in profiles if row.get('live_channel')),
-            'write_model':False,'scope':'Provider capability/readiness only; no network capture or credentials are added by this service.',
-            'next_required_decision':'Choose and implement an audited live provider adapter.' if missing else ''}
+            'write_model':False,'scope':'Provider capability/readiness only. Live v1 uses public webpage quotes with no credentials, no SLA and no Strict PIT certification.',
+            'next_required_decision':'Restore an implemented live provider adapter.' if missing else 'Future broker/exchange-grade feed may replace public-web consensus as primary.'}
 
 
 def manual_import_capabilities():return dict(_MANUAL)

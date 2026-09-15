@@ -316,7 +316,8 @@ class SystemHealthService:
         if not value['live_provider_available']:
             return _component('NOT_CONFIGURED','尚无正式实时 MarketSnapshot provider；仅有离线导入能力。',evidence=value,
                 limitations=['Provider absence does not make offline research unhealthy; Daily Orchestrator live frames will wait/miss fail-closed.'])
-        return _component('OK','正式实时 MarketSnapshot provider 已覆盖 AUCTION/R1/R2/R3。',evidence=value)
+        return _component('OK','实时 MarketSnapshot provider 已实现并覆盖 AUCTION/R1/R2/R3；当前为腾讯+东财+新浪公开网页三源共识。',evidence=value,
+            limitations=['Health only reports adapter capability; it does not probe current endpoint reachability. Public-web quotes have no exchange-feed SLA and are not Strict PIT certified.'])
 
     def _orchestrator(self,now):
         root=self.output/'_daily_orchestrator'

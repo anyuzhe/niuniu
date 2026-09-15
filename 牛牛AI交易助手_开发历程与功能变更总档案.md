@@ -56,8 +56,8 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**925 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v2（含 R2/R3）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1。
+当前正式代码全仓基线：**935 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1。
 外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：Strict PIT 原始历史资料与 Watch 序贯/在线衰减统计。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
@@ -266,7 +266,7 @@
 
 已完成：八大业务导航、今日交易驾驶舱、Decision Ledger、Stock Dossier、Theme Matrix、Decision Frame、Strategy Intent、跨轮复盘与证据跳转。
 
-仍需加强：真正的实时 Market Snapshot、自动 Daily Scanner、Playbook 命中自动进入 Trading Desk、Paper Position 长期闭环。
+仍需加强：三源公开网页实时行情已可支撑当前研发/自用，但后续仍可用 QMT/XtQuant/券商级 feed 升级主源；长期 Paper 继续积累真实前瞻样本。
 
 ### 7.2 AI 与 Agent
 
@@ -288,7 +288,6 @@
 
 ## 8. 尚未完成的正式阶段
 
-- **实时 MarketSnapshot Provider（并行）**：P8.7 v2 已补齐 R2/R3 和 Provider capability/readiness 框架；真正可审计的实时网络 Provider 仍未接入。
 - **P8.8 运行验证（并行）**：核心长期 Paper 闭环已实现，但仍需积累足够真实前瞻运行天数来评价稳定性和绩效。
 - **P13-B1 Live Read-only Broker Adapter**：等待明确可用的具体券商实时只读通道；不默认包含订单权限。
 - **P13-B2/B3**：认证/密钥、实时 Shadow、kill switch、风险限额、逐单确认、订单 Gateway 和最终真实订单继续分别评审。
@@ -296,7 +295,7 @@
 ## 9. 当前推荐的后续主线
 
 1. 出现具体券商通道后推进 P13-B1，只做实时只读 Adapter；不把 Paper/Mobile/Broker Snapshot/Shadow MATCH/完整 policy 自动外推为订单权限。
-2. 无 B1 通道期间，R2/R3 Orchestrator、approval-time actual-byte freeze 与 Research Session Grant 已补齐；下一优先级为真实可审计 MarketSnapshot provider、Strict PIT 原始资料与 Watch 序贯/在线衰减统计，同时继续积累真实前瞻 Paper 样本。
+2. 无 B1 通道期间，R2/R3 Orchestrator、三源实时 MarketSnapshot、approval-time actual-byte freeze 与 Research Session Grant 已补齐；下一优先级为 Strict PIT 原始资料与 Watch 序贯/在线衰减统计，同时继续积累真实前瞻 Paper 样本。
 
 ## 10. 关键测试基线演进
 
@@ -330,6 +329,7 @@
 | 2026-09-15 | P8.7 v2 R2/R3 + MarketSnapshot Provider | **905 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Approval-time Actual-byte Freeze v1 | **912 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Research Session Grant v1 | **925 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | 三源实时 MarketSnapshot Provider v1 | **935 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -568,3 +568,16 @@
 - 可观察性：System Health 显示 Grant、到期、binding、used/remaining budget；无 Grant 不影响 Research Readiness。
 - 验收：核心专项 **12/12**、桌面链 **8/8**、相关联合 **110/110**；真实工作区只读状态查询 `artifacts` **77006→77006**；完整仓库 **925/0/0**，365.415秒。
 - 后续事项：内部主线转向 Strict PIT 原始资料与 Watch 序贯/在线衰减统计；外部继续等待正式 live MarketSnapshot provider 与 P13-B1 券商只读通道。
+
+### 2026-09-15 13:25｜[数据/实时行情] 腾讯 + 东财 + 新浪三源 MarketSnapshot Provider v1
+
+- 模块：MarketSnapshot Provider / Daily Orchestrator / Daily Scanner / System Health / 宿主 CLI。
+- 改动内容：新增 `public-web-consensus-v1` 与 `niuniu-market-snapshot-live`；腾讯作为主实时源，东方财富作为第二源，新浪作为备用与交叉校验。
+- 共识：单证券至少两个来源在前收、当前价和对应 Frame 所需 OHLC 上一致才可用；三源全一致优先三源，一源偏离自动剔除，只剩一源 fail-closed。
+- 时间防脏：来源必须属于目标交易日；明显未来时间剔除；真实 `LIVE_NEAR_REALTIME/BACKFILL` 仍由 MarketSnapshotStore 按 `as_of/captured_at` 判定。
+- 执行访问：`STANDARD_ACCESS` 需要至少两个接受来源共同提供双边买卖盘且不是一字状态；东财轻量接口缺稳定盘口时不会单独把腾讯+东财升级为普通可达。
+- PIT 边界：公开网页源固定 `strict_pit_source_verified=false`，即使 FULL+LIVE 也不升级 Strict PIT；未来 QMT/XtQuant/券商/交易所级 feed 可替换正式主源。
+- 宿主权限：CLI 必须 `--confirm-network` 才联网、`--store` 才写快照；Daily Orchestrator 默认不联网，只有计划显式 `allow_market_snapshot_capture=true` 才自动抓取，每 Frame 30秒冷却、最多3次；AI/MCP 无 capture/connect/credential 工具。
+- 真实烟测：盘中两只股票曾由腾讯/东财/新浪 3/3 共识；随后一次东财临时无有效返回，腾讯+新浪仍以2/2形成 FULL 共识并把东财缺失留在 source health。只读 smoke `artifacts` **77006→77006**。
+- 测试/验收：Provider+PublicWeb+Orchestrator 专项 **28/28**；MarketSnapshot/Scanner/PREP/Orchestrator/System Health 联合 **74/74**；完整仓库 **935 tests / 0 failed / 0 skipped**，332.681秒。
+- 后续事项：内部主线继续 Strict PIT 原始历史资料与 Watch 序贯/在线衰减统计；外部有条件时用 QMT/XtQuant/券商级行情替换实时主源，并保留三家公开源做备份校验。
