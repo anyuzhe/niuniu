@@ -360,7 +360,7 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 
 1. **Approval-time data freeze（已完成，2026-09-15）**：宿主批准时冻结实际规范化输入字节、qfq/raw/context 与 Universe eligibility mask；submit/resume/run 从冻结包执行，篡改 fail-closed。
 2. **Research Session Grant（已完成，2026-09-15）**：宿主显式冻结证券/日期/周期/因子/模式/有效期和总预算；模型只能在有效 Grant 内向共享 JobQueue 提交有限研究，每个任务单独冻结实际输入，撤销/过期在 checkpoint fail-closed。
-3. **Strict PIT Evidence Archive + Coverage v1 已完成；真实官方历史资料继续补齐（当前内部主线）**：PIT Universe / industry / daily market cap 只有绑定权威 URL、本地官方原文 SHA256 与确认 publication_at 的 receipt 才能升级 strict PIT；Coverage 只做按年/证券 evidence presence 与回顾性 inventory，不生成总完成率。真实 MQC 当前三类 strict receipt=0。
+3. **Strict PIT Evidence Archive + Coverage v1 已完成；真实官方历史资料继续补齐（当前内部主线）**：PIT Universe / security_status / industry / daily market cap 均需权威 URL、本地官方原文 SHA256 与确认 publication_at 的 receipt；Coverage 只做 evidence presence 与回顾性 inventory，不生成总完成率。当前 SecurityStatus 已有6条/3只股票，其它三类仍为0。
 4. **Watch 序贯/在线衰减统计（已完成 v1，2026-09-15）**：新 Watch 冻结 family alpha、最小 Rank IC 衰减、最少新增成熟日期与非重叠 block；新增成熟样本进入 mixture e-process，legacy Watch 不静默迁移，越界只进入人工复核。
 5. 跨 workspace 研究记忆与用户研究偏好。
 
@@ -661,3 +661,5 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 
 - 2026-09-15：Strict PIT Evidence Archive v1 完成。新增 `universe_eligibility / industry_membership / daily_market_cap` 三类 publication-evidence receipt，将 statement digest、权威 HTTPS URL、宿主确认 `published_at`、本地官方原文字节 SHA256 与 fetched_at 绑定；原文或 receipt 任一篡改 fail-closed，同一证据重复归档幂等。PIT Universe receipt 全覆盖后才允许 `historical_publication_verified=true`；industry/market-cap 不再因仅填写 CNINFO/交易所 URL 而自动通过 strict PIT。新增 `niuniu-pit-evidence` 宿主 CLI 与 System Health 计数；CLI 不自动联网，archive 必须显式确认 publication time。核心15/15、联合75/75、完整仓库950/0/0；真实 `/Volumes/Lexar/MQC-DATA` receipt=0、artifacts 77006→77006。下一内部主线为实际归档官方历史资料并提高 coverage。
 - 2026-09-15：Strict PIT Coverage v1 完成。新增 `strict_pit_coverage`、`niuniu-pit-coverage`、AI/MCP `get_strict_pit_coverage` 与桌面 Coverage 查看；深度校验 receipt/官方原文后按年份、证券和三类字段展示 evidence presence，同时把 stock_basic、单快照 industry、历史 bar lake 与空 silver PIT 目标表分开列为回顾性 inventory。固定 `overall_strict_pit_coverage_ratio=None`、`dataset_strict_pit_certified=false`，只有具体研究通过 qualification 才能叫 strict PIT。真实 MQC：5215 个日线文件、17,075,243 行、1990-12-19～2026-09-04；bar lake 无 tradestatus/isST，industry 只有 2026-08-31 单快照，三类 strict receipt=0。Coverage 真实查询优先走只读 `catalog/mqc.duckdb`，约2.8秒；专项/联合回归全绿，完整仓库956/0/0。下一内部主线直接开始真实官方历史资料采集。
+
+- 2026-09-15：Strict PIT SecurityStatus v1 首批真实接入完成。Evidence Archive 扩为 `universe_eligibility / security_status / industry_membership / daily_market_cap` 四类；新增 verified security_status silver 派生表、`niuniu-security-status` 宿主 CLI 与 PREP Scanner 接线。真实 `niuniu-data` 已归档达华智能/司尔特/恒信东方3份深交所公告，形成6条停牌/复牌ST生效 evidence。稀疏 receipt 只在明确 effective session 参与 Strict 状态，不跨日无限传播；缺官方 MarketRules 时 PREP 仍为 RETROSPECTIVE_REFERENCE。专项20/20、联合71/71、完整仓库961/0/0。下一步继续扩大官方 SecurityStatus 历史事件覆盖，再转行业/市值。

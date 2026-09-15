@@ -27,8 +27,8 @@ class StrictPITCoverageTests(unittest.TestCase):
         self.assertFalse(value['dataset_strict_pit_certified'])
         self.assertEqual(value['strict_evidence']['verified_records'],0)
         self.assertEqual({r['code'] for r in value['gaps']} & {
-            'NO_VERIFIED_UNIVERSE_ELIGIBILITY','NO_VERIFIED_INDUSTRY_MEMBERSHIP','NO_VERIFIED_DAILY_MARKET_CAP'},
-            {'NO_VERIFIED_UNIVERSE_ELIGIBILITY','NO_VERIFIED_INDUSTRY_MEMBERSHIP','NO_VERIFIED_DAILY_MARKET_CAP'})
+            'NO_VERIFIED_UNIVERSE_ELIGIBILITY','NO_VERIFIED_SECURITY_STATUS','NO_VERIFIED_INDUSTRY_MEMBERSHIP','NO_VERIFIED_DAILY_MARKET_CAP'},
+            {'NO_VERIFIED_UNIVERSE_ELIGIBILITY','NO_VERIFIED_SECURITY_STATUS','NO_VERIFIED_INDUSTRY_MEMBERSHIP','NO_VERIFIED_DAILY_MARKET_CAP'})
 
     def seed_retrospective(self):
         bars=self.root/'lake/bronze/provider=baostock/stock_kline_daily';bars.mkdir(parents=True)
@@ -61,6 +61,10 @@ class StrictPITCoverageTests(unittest.TestCase):
             {'symbol':'sh.600000','effective_at':'2024-12-31T15:00:00+08:00','available_at':'2025-01-02T09:00:00+08:00','eligible':True},
             {'symbol':'sh.600000','effective_at':'2025-06-01T15:00:00+08:00','available_at':'2025-06-02T09:00:00+08:00','eligible':False}],
             url,'2024-12-31T10:00:00+08:00',doc,confirm_publication_time=True)
+        archive_pit_evidence(self.root,'security_status',[{
+            'symbol':'sh.600000','effective_at':'2025-01-03T09:30:00+08:00','available_at':'2025-01-02T20:00:00+08:00',
+            'tradable':True,'risk_warning':'ST','source':url}],url,'2025-01-02T19:00:00+08:00',doc,
+            confirm_publication_time=True)
         archive_pit_evidence(self.root,'industry_membership',[{
             'symbol':'sh.600000','sector':'J66货币金融服务','effective_at':'2025-01-01T00:00:00+08:00',
             'available_at':'2025-01-02T09:00:00+08:00','source':url}],url,'2024-12-31T10:00:00+08:00',doc,
@@ -76,6 +80,7 @@ class StrictPITCoverageTests(unittest.TestCase):
         self.assertEqual(value['status'],'EVIDENCE_PRESENT_NOT_CERTIFIED_COMPLETE')
         by=value['strict_evidence']['by_kind']
         self.assertEqual(by['universe_eligibility']['verified_statements'],1)
+        self.assertEqual(by['security_status']['verified_statements'],1)
         self.assertEqual(by['industry_membership']['years'][0]['year'],2025)
         self.assertEqual(by['daily_market_cap']['unique_symbols'],1)
         self.assertEqual(by['universe_eligibility']['requested_symbols_with_evidence'],['sh.600000'])
@@ -87,7 +92,7 @@ class StrictPITCoverageTests(unittest.TestCase):
         docs=list((self.root/'research/pit_evidence/documents').glob('*.bin'))
         self.assertEqual(len(docs),1);docs[0].write_bytes(b'tampered')
         value=strict_pit_coverage(self.root)
-        self.assertEqual(value['strict_evidence']['invalid_records'],4)
+        self.assertEqual(value['strict_evidence']['invalid_records'],5)
         self.assertEqual(value['strict_evidence']['verified_records'],0)
         self.assertIn('INVALID_PIT_EVIDENCE_RECEIPTS',{r['code'] for r in value['gaps']})
 

@@ -15,9 +15,9 @@ from quantlab.experiments.campaign_state import read_checked,write_checked
 from quantlab.storage.codec import digest
 
 FORMAT='niuniu-pit-evidence-v1'
-KINDS=('universe_eligibility','industry_membership','daily_market_cap')
+KINDS=('universe_eligibility','security_status','industry_membership','daily_market_cap')
 AUTHORITATIVE_PIT_HOSTS={'sse.com.cn','www.sse.com.cn','star.sse.com.cn','szse.cn','www.szse.cn',
-    'bse.cn','www.bse.cn','cninfo.com.cn','www.cninfo.com.cn'}
+    'bse.cn','www.bse.cn','cninfo.com.cn','www.cninfo.com.cn','disc.static.szse.cn','reportdocs.static.szse.cn'}
 MAX_DOCUMENT_BYTES=8_000_000
 
 
@@ -41,6 +41,16 @@ def normalize_statement(kind,value):
             raise ValueError('universe statement requires symbol/effective_at/available_at/eligible')
         result={'symbol':str(value['symbol']).strip(),'effective_at':_moment(value['effective_at'],'effective_at'),
             'available_at':_moment(value['available_at'],'available_at'),'eligible':value['eligible']}
+    elif kind=='security_status':
+        if set(value)!={'symbol','effective_at','available_at','tradable','risk_warning','source'} or type(value['tradable']) is not bool:
+            raise ValueError('security status requires symbol/effective_at/available_at/tradable/risk_warning/source')
+        warning=str(value['risk_warning']).strip().upper()
+        if warning not in {'NONE','ST','STAR_ST','UNKNOWN'}:raise ValueError('risk_warning must be NONE/ST/STAR_ST/UNKNOWN')
+        result={'symbol':str(value['symbol']).strip(),'effective_at':_moment(value['effective_at'],'effective_at'),
+            'available_at':_moment(value['available_at'],'available_at'),'tradable':value['tradable'],
+            'risk_warning':warning,'source':str(value['source']).strip()}
+        if datetime.fromisoformat(result['available_at'])>datetime.fromisoformat(result['effective_at']):
+            raise ValueError('strict security status must be known no later than its effective time')
     elif kind=='industry_membership':
         if set(value)!={'symbol','sector','effective_at','available_at','source'}:
             raise ValueError('industry statement fields invalid')

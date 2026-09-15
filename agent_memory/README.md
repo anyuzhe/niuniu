@@ -21,6 +21,7 @@
 - Strict PIT Coverage / 数据缺口盘点任务同时读取 `architecture/strict_pit_coverage.md`；Coverage 只表示证据 presence/inventory，不生成数据集总完成率或资格证书。
 - 当前开发机牛牛独立数据根为 `/Volumes/Lexar/niuniu-data`；原 `/Volumes/Lexar/MQC-DATA` 保留为旧 MQC 数据源副本。历史 artifacts 中旧绝对路径属于来源证据，禁止批量重写。
 - Strict PIT / 历史资格、行业、市值与 publication evidence 任务必须读取 `architecture/strict_pit_evidence.md`；官方 URL 字符串本身不构成 Strict PIT，必须有本地原文字节、SHA256 与确认的 publication time receipt。
+- ST/*ST/停复牌 / SecurityStatus / PREP 状态过滤任务必须读取 `architecture/security_status.md`；稀疏状态 receipt 只证明明确 effective session，不能冒充完整历史状态链，也不能替代官方逐日 MarketRules。
 - Watch / Tracking / Alpha 衰减监测任务必须读取 `architecture/watch_sequential.md`；序贯证据只相对冻结经验基线，不得自动停用因子、换参数或扩大交易权限。
 
 ## 固定读取顺序

@@ -73,7 +73,7 @@ class BaostockDesktopTests(unittest.TestCase):
         dialog=ReferenceDialog(self.window);self.window.show_dialog(dialog)
         dialog.inspect_strict_pit();self.wait(lambda:not self.window.callbacks)
         self.assertIn('NO_STRICT_EVIDENCE',dialog.status.text())
-        self.assertEqual(dialog.results.rowCount(),3)
+        self.assertEqual(dialog.results.rowCount(),4)
         self.assertEqual({p.relative_to(self.fixture.root) for p in self.fixture.root.rglob('*')},before)
 
     def test_missing_watch_does_not_schedule(self):

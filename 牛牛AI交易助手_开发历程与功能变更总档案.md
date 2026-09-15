@@ -56,9 +56,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**956 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive v1、Strict PIT Coverage v1。
-外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：按 Coverage gap 归档真实官方历史资格/ST/停牌、行业与每日市值资料，提升 verified receipt presence。
+当前正式代码全仓基线：**961 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive v1、Strict PIT Coverage v1、Strict PIT SecurityStatus v1 首批真实接入。
+外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：继续扩充官方 SecurityStatus 历史事件覆盖，再推进历史行业与每日真实市值。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -333,6 +333,7 @@
 | 2026-09-15 | Watch Sequential Monitor v1 | **945 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Strict PIT Evidence Archive v1 | **950 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Strict PIT Coverage v1 | **956 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | Strict PIT SecurityStatus v1 | **961 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -628,3 +629,15 @@
 - 牛牛两个 macOS 启动入口、当前 README/Workbench 提示和活跃 examples 默认切到 `niuniu-data`。历史 artifacts 与历史开发记录中的 `MQC-DATA` 绝对路径保持原样，避免破坏来源身份。
 - 新数据根真实读取：raw/qfq 正常，`catalog/mqc.duckdb` 仍为 17,075,243 条日线、5,215 只证券、1990-12-19～2026-09-04；Strict PIT 三类 receipt 仍为 0。
 - 后续牛牛新增数据、Strict PIT 证据和官方历史资料只写入 `niuniu-data`。
+
+### 2026-09-15 18:30｜[数据资格] Strict PIT SecurityStatus v1
+
+- 数据根：牛牛后续数据统一写入 `/Volumes/Lexar/niuniu-data`；原 MQC-DATA 保留旧副本。
+- 证据：PIT Evidence 新增 `security_status`，真实核验3份深交所PDF，覆盖 `sz.002512 / sz.002538 / sz.300081` 各自停牌日与次日复牌/ST生效，共6条 verified receipts。
+- 派生层：新增 `lake/silver/security_status/security_status.parquet` + checksummed manifest；表 SHA/evidence集合变化均 fail-closed。
+- 工具：新增 `niuniu-security-status status|materialize`，只从 verified receipts 派生，不联网抓取。
+- PREP：优先消费 security_status，但稀疏 receipt 只在明确 effective session 作为 Strict 状态证据；未覆盖日期继续 `historical_st_tradestatus_missing`。
+- 规则边界：状态证据不推断官方涨跌停；即使状态完整，缺 MarketRules 时仍不能升级 Strict PIT。
+- 真实 smoke：每个3日窗口命中2个 strict status observations，整段窗口仍不完整，符合 fail-closed。
+- 测试：SecurityStatus/PREP/Coverage 20/20；相关联合71/71；完整仓库 **961 tests / 0 failed / 0 skipped**，381.649秒。
+- 后续：继续收集官方状态事件形成更连续的 SecurityStatus 链，再进入历史行业变更与每日真实市值。

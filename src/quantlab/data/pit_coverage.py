@@ -155,7 +155,7 @@ def strict_pit_coverage(data_root,*,symbols=None,start=None,end=None,detail_limi
         'industry':_small_table(root,'lake/bronze/provider=baostock/industry/industry.parquet','industry'),
         'silver':_silver_inventory(root)}
     gaps=[]
-    labels={'universe_eligibility':'历史资格/ST/停牌 eligibility','industry_membership':'历史行业变更','daily_market_cap':'每日真实市值'}
+    labels={'universe_eligibility':'历史市场资格','security_status':'历史 ST/*ST/停复牌状态','industry_membership':'历史行业变更','daily_market_cap':'每日真实市值'}
     for kind in KINDS:
         if by_kind[kind]['verified_statements']==0:
             gaps.append({'code':'NO_VERIFIED_'+kind.upper(),'kind':kind,'priority':'high',

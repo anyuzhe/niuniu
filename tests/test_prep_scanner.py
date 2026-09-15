@@ -12,6 +12,8 @@ from quantlab.trading.prep_scanner import (
 from quantlab.trading.market_snapshot import MarketSnapshotStore
 from quantlab.execution.rules import MarketRules
 from quantlab.data.daily_market_archive import DailyMarketArchive,EXPECTED_FIELDS
+from quantlab.data.pit_evidence import archive_pit_evidence
+from quantlab.data.security_status import materialize_security_status
 
 
 class _DailyResponse:
@@ -69,6 +71,14 @@ class PrepScannerTests(unittest.TestCase):
             {'url':'https://www.sse.com.cn/test','path':'research/exchange_rule_evidence.bin',
              'sha256':hashlib.sha256(payload).hexdigest(),'fetched_at':'2026-09-09T16:00:00+08:00'}]}
         (research/'official_market_rules.json').write_text(json.dumps(receipt));return snapshot
+
+    def archive_security_status(self,symbol,rows):
+        document=self.root/'status-evidence.pdf';document.write_bytes(b'%PDF strict status fixture')
+        url='https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-09-06/status.PDF'
+        normalized=[{**row,'symbol':symbol,'source':url} for row in rows]
+        archive_pit_evidence(self.data,'security_status',normalized,url,'2026-09-06T19:00:00+08:00',document,
+            confirm_publication_time=True)
+        return materialize_security_status(self.data)
 
     def test_router_is_conservative_and_can_no_trade(self):
         unknown=route_market_node({'breadth_up':100,'breadth_down':100,'limit_up_count':20,
@@ -129,6 +139,38 @@ class PrepScannerTests(unittest.TestCase):
         self.assertEqual(scan['completeness'],'PARTIAL');self.assertEqual(scan['pit_status'],'RETROSPECTIVE_REFERENCE')
         self.assertIn('official_market_rule_sessions_incomplete',scan['blockers'])
         self.assertEqual(scan['candidate_count'],0)
+
+    def test_verified_security_status_fills_status_gap_without_certifying_inferred_limits(self):
+        symbol='sz.000001';self.write_symbol(symbol,[10.0,11.0,11.55])
+        self.archive_security_status(symbol,[
+            {'effective_at':'2026-09-07T09:30:00+08:00','available_at':'2026-09-06T20:00:00+08:00',
+             'tradable':True,'risk_warning':'NONE'},
+            {'effective_at':'2026-09-08T09:30:00+08:00','available_at':'2026-09-06T20:00:00+08:00',
+             'tradable':True,'risk_warning':'NONE'},
+            {'effective_at':'2026-09-09T09:30:00+08:00','available_at':'2026-09-08T20:00:00+08:00',
+             'tradable':True,'risk_warning':'ST'}])
+        scan=scan_prep_universe(self.data,'2026-09-09',target_streak=2,
+            universe_symbols=[symbol],universe_pit_verified=True,lookback_sessions=3)
+        self.assertEqual(scan['candidate_count'],1);self.assertEqual(scan['candidates'][0]['symbol'],symbol)
+        self.assertNotIn('historical_st_tradestatus_missing',scan['blockers'])
+        self.assertIn('official_market_rules_missing',scan['blockers'])
+        self.assertEqual(scan['quality'],'PIT_STATUS_WITH_INFERRED_LIMITS')
+        self.assertEqual(scan['pit_status'],'RETROSPECTIVE_REFERENCE')
+        self.assertEqual(scan['strict_security_status_rows'],1);self.assertEqual(scan['strict_security_status_observations'],3);self.assertTrue(scan['security_status_materialized'])
+        feature=scan['candidates'][0]['features'];self.assertEqual(feature['risk_warning'],'ST')
+        self.assertEqual(feature['status_quality'],'STRICT_PIT_EVIDENCE');self.assertTrue(feature['security_status_evidence_id'])
+        self.assertIn(feature['security_status_evidence_id'],scan['candidates'][0]['evidence_ids'])
+
+    def test_tampered_security_status_materialization_blocks_prep_before_fallback(self):
+        symbol='sz.000001';self.write_symbol(symbol,[10.0,11.0,11.55])
+        self.archive_security_status(symbol,[
+            {'effective_at':'2026-09-07T09:30:00+08:00','available_at':'2026-09-06T20:00:00+08:00',
+             'tradable':True,'risk_warning':'NONE'}])
+        (self.data/'lake/silver/security_status/security_status.parquet').write_bytes(b'tampered')
+        with self.assertRaises(PrepScanError) as ctx:
+            scan_prep_universe(self.data,'2026-09-09',target_streak=2,universe_symbols=[symbol],
+                universe_pit_verified=True,lookback_sessions=3)
+        self.assertEqual(ctx.exception.code,'SECURITY_STATUS_INVALID')
 
     def test_prep_snapshot_and_forward_payload_preserve_quality_and_no_stock_pick(self):
         self.write_symbol('sh.600001',[10.0,11.0,12.1])

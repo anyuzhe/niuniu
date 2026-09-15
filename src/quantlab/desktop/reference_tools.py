@@ -32,7 +32,7 @@ class ReferenceDialog(QDialog):
             self.results.setColumnCount(5);self.results.setHorizontalHeaderLabels(['证据类型','Strict回执','证券数','effective范围','说明'])
             self.results.setRowCount(0)
             from PyQt6.QtWidgets import QTableWidgetItem
-            labels={'universe_eligibility':'历史资格','industry_membership':'历史行业','daily_market_cap':'每日市值'}
+            labels={'universe_eligibility':'历史资格','security_status':'ST/停复牌状态','industry_membership':'历史行业','daily_market_cap':'每日市值'}
             for kind,item in result['strict_evidence']['by_kind'].items():
                 i=self.results.rowCount();self.results.insertRow(i);span=item['effective_date_range']
                 values=(labels[kind],item['verified_statements'],item['unique_symbols'],str(span['min'])+' ~ '+str(span['max']),'严格证据 presence，不代表完整历史链')
