@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-15
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P12 Mobile / Bot v1 已完成，全仓 `882 passed / 0 failed / 0 skipped`
+- 当前稳定基线：P13-A Broker Read-only / Shadow v1 已完成，全仓 `889 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -34,7 +34,8 @@
 │  └─ Trading Knowledge / Playbook Lab
 ├─ Dev Studio（P10 v1 已完成）
 ├─ System Center（P11 v1 已完成）
-└─ Mobile / Bot（P12 v1 已完成；同源只读轻客户端）
+├─ Mobile / Bot（P12 v1 已完成；同源只读轻客户端）
+└─ Broker Shadow（P13-A v1 已完成；只读账户证据 / Dynamic Paper 对账）
 ```
 
 产品模块架构回答“软件怎么组织”。
@@ -239,16 +240,17 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Dynamic Agent Orchestrator / Dev Studio | **P10 v1 已完成**：隔离 worktree + depth-1 动态 Subagent + path lease + Reviewer + Human Merge Gate |
 | System Health | **P11 v1 已完成**：Runtime / Research Readiness 双轴，只读聚合服务、任务、数据新鲜度、PIT、通知、Dev 与日志；无健康总分/自动修复 |
 | Mobile / Bot | **P12 v1 已完成**：同一 Workbench `/mobile` + 只读 JSON API + MCP/CLI Mobile Brief；复用 Decision/Dossier/Paper/Health，无第二状态源 |
+| Broker Read-only / Shadow | **P13-A v1 已完成**：脱敏账户快照 append-only 保存、Dynamic Paper 持仓/现金对账、MCP/System Health 只读查询；无实时券商连接 |
 | Prediction→Decision/Intent + PaperPlan | **P8.8-A/B 已完成** |
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
-| Real Broker | P13，尚未开始 |
+| Real Broker / Order Submission | **P13-B+ 尚未开始**；认证、真实资金与任何订单能力必须单独评审 |
 
-当前生产代码最近完整回归基线：**882 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**889 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
-P12 已完成后，正式路线只剩最终真实交易边界：
+P13-A 已完成只读证据和 Shadow 对账后，后续路线进入真正的实盘边界：
 
-1. **P13 Paper→Real**：真实券商、真实资金与任何自动下单必须单独评审，不因 Paper/Mobile 已完成而默认开启。
+1. **P13-B+ Real Broker**：选择具体券商、实时只读连接、认证/密钥、真实资金与任何自动/人工下单能力均必须单独评审；当前默认仍关闭。
 2. 并行积累真实前瞻 Paper 日志，并继续补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider 与 Strict PIT 原始资料。
 
 并行继续补 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。

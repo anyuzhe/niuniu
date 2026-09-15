@@ -1,0 +1,17 @@
+{
+  "provider": "broker-export",
+  "account_alias": "main",
+  "captured_at": "2026-09-15T15:30:00+08:00",
+  "currency": "CNY",
+  "cash": 500000.0,
+  "equity": 1000000.0,
+  "positions": [
+    {
+      "symbol": "sh.600000",
+      "quantity": 1000,
+      "available_quantity": 1000,
+      "market_value": 10000.0
+    }
+  ],
+  "source_ref": "manual-broker-export"
+}

@@ -52,12 +52,13 @@
 - **Trading Knowledge / Playbook Lab**：当前已有 ExpertSource、候选全集、Selection、Validation、前瞻冻结；架构 v2 将其继续泛化为 StrategySource 多来源模型。
 - **Research Lab**：因子、理论、PIT、Campaign、Alpha Factory、Watch、统计验证、执行回测、数据归档。
 - **Dev Studio / System**：P10 Dev Studio / Dynamic Agent Orchestrator 与 P11 System Health v1 均已完成；System Center 已统一服务/任务/数据/PIT/通知/Dev/日志的只读可观察性。
+- **Mobile / Broker Shadow**：P12 同源移动端与 P13-A 只读 Broker/Shadow 均已完成；真实券商连接、认证与订单能力仍未启用。
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**882 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1。
-下一阶段：P13 Paper→Real；真实券商/真实资金必须单独评审。
+当前正式代码全仓基线：**889 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1。
+下一阶段：P13-B+ Real Broker；具体券商连接、认证、真实资金与任何订单能力必须单独评审。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -271,7 +272,7 @@
 
 已完成：AI Research Chat、提案审批、AI Team、Peer Review、Git-first Agent Memory、标准 MCP、长期跟踪与受限自动化。
 
-已完成：P9 Agent Scorecard v1、P10 Dev Studio + Dynamic Agent Orchestrator v1、P11 System Health v1 与 P12 Mobile / Bot v1。下一正式阶段为 P13 Paper→Real，真实券商/真实资金单独评审。
+已完成：P9 Agent Scorecard v1、P10 Dev Studio + Dynamic Agent Orchestrator v1、P11 System Health v1、P12 Mobile / Bot v1 与 P13-A Broker Read-only / Shadow v1。下一正式阶段为 P13-B+ Real Broker，真实券商连接/认证/资金/订单单独评审。
 
 ### 7.3 Research Lab
 
@@ -283,17 +284,17 @@
 
 已完成：ExpertSource 试点、来源归档、候选全集、selected/unselected、规则版本、历史回放、前瞻冻结、防回填、Selection/Execution Access 分离、PREP/AUCTION/R1 Scanner 与 DailyMarket 增量接力。
 
-当前架构已推进到 P12：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘、Agent Scorecard、Dev Studio、System Health 与同源 Mobile/Bot 均已落地；下一正式阶段仅剩 P13 Paper→Real，同时继续积累真实前瞻 Paper 样本并补 R2/R3/正式实时行情源。
+当前架构已推进到 P13-A：StrategySource、Daily Orchestrator、Prediction→Decision→动态 Paper→跨日复盘、Agent Scorecard、Dev Studio、System Health、同源 Mobile/Bot 与只读 Broker Shadow 均已落地；P13-B+ 真实券商连接/认证/资金/订单仍未启动。
 
 ## 8. 尚未完成的正式阶段
 
 - **P8.7 扩展项（并行）**：R2/R3 自动编排与正式实时 MarketSnapshot provider 仍未产品化。
 - **P8.8 运行验证（并行）**：核心长期 Paper 闭环已实现，但仍需积累足够真实前瞻运行天数来评价稳定性和绩效。
-- **P13 Paper→Real**：尚未启动；真实券商、真实资金和任何自动下单必须单独评审。
+- **P13-B+ Real Broker**：尚未启动；具体券商实时连接、认证/密钥、真实资金和任何订单能力必须单独评审。
 
 ## 9. 当前推荐的后续主线
 
-1. P13 真实账户最后单独评审，不把 Paper/Mobile 成功直接外推到真实券商或自动实盘。
+1. P13-B+ 真实账户能力单独评审，不把 Paper/Mobile/Broker Snapshot/Shadow MATCH 自动外推到真实券商或订单权限。
 2. 并行继续积累真实前瞻 Paper 样本，并补 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
 
 ## 10. 关键测试基线演进
@@ -323,6 +324,7 @@
 | 2026-09-15 | P10 Dev Studio / Dynamic Agent Orchestrator v1 | **862 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P11 System Health v1 | **876 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P12 Mobile / Bot v1 | **882 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | P13-A Broker Read-only / Shadow v1 | **889 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -503,3 +505,13 @@
 - 真实烟测：CLI 与 HTTP `/mobile` 读取真实 artifacts 前后文件数 77006→77006；空股票简报约2.5–2.8KB，`sh.600000` 完整紧凑档案约12KB，均未触发24KB工具结果限制。
 - 测试/验收：P12新增专项 **6/6 passed**，相关联合回归 **18/18 passed**；最终完整仓库 **882 tests / 0 failed / 0 skipped**，305.026秒。
 - 后续事项：P13 真实券商/真实资金/自动下单按原路线单独评审，不自动启动。
+### 2026-09-15 09:20｜[功能] P13-A Broker Read-only / Shadow v1
+
+- 模块：Broker Adapter / Broker Snapshot / Dynamic Paper Shadow / System Health / MCP。
+- 改动内容：新增 `ReadOnlyBrokerAdapter`、`JsonBrokerExportAdapter`、append-only `BrokerSnapshotStore`、`BrokerShadowReconciler`、`niuniu-broker-shadow`、MCP `get_broker_shadow` 和 System Health Broker Shadow 观察项。
+- 隐私边界：递归拒绝密码、Token、API Key、Cookie、Session、真实券商账号等敏感字段；account alias 不能使用8位以上纯数字账号；导入只读快照需要宿主 `--confirm`。
+- 对账语义：Broker 与 Dynamic Paper 比较证券数量和现金；权益差仅描述，不因估值时点差异硬判 MATCH。Shadow MATCH 不生成 Decision、Intent、Paper target 或真实订单。
+- 权限：模型没有 Broker Snapshot 导入、券商连接、下单、撤单或资金划转工具；即使存在导入快照，`real_broker_connected=false`。
+- 真实烟测：未配置 Broker 的真实工作区查询 artifacts 文件数 **77006→77006**；CLI/MCP 均返回 NOT_CONFIGURED，MCP 返回约412 bytes，写工具交集为空。
+- 测试/验收：P13-A 专项 **7/7 passed**，Broker+System Health+MCP **24/24 passed**；完整仓库 **889 tests / 0 failed / 0 skipped**，305.046秒。
+- 后续事项：P13-B+ 具体券商实时连接、认证/密钥、真实资金与订单能力必须重新单独评审，不自动启动。

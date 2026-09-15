@@ -34,6 +34,7 @@ niuniu-agent-scorecard = "quantlab.agent.scorecard_cli:main"
 niuniu-dev-studio = "quantlab.agent.dev_studio_cli:main"
 niuniu-system-health = "quantlab.agent.system_health_cli:main"
 niuniu-mobile-brief = "quantlab.agent.mobile_brief_cli:main"
+niuniu-broker-shadow = "quantlab.agent.broker_shadow_cli:main"
 niuniu-paper-rebalance = "quantlab.agent.paper_rebalance_cli:main"
 niuniu-paper-rebalance-outcome = "quantlab.agent.paper_rebalance_outcome_cli:main"
 

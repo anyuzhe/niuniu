@@ -320,6 +320,23 @@ class SystemHealthService:
             evidence=value,warnings=['paper_execution_failures_present'] if failures else [],
             limitations=['Paper health is simulated execution evidence and never certifies real broker readiness.'])
 
+    def _broker_shadow(self,now):
+        from quantlab.broker import BrokerSnapshotStore
+        try:value=BrokerSnapshotStore(self.output).list(limit=2000)
+        except (OSError,ValueError,KeyError,TypeError) as exc:
+            return _component('BLOCKED','Broker shadow 快照不可读。',blockers=['broker_shadow_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300]})
+        rows=value['records'];warnings=[]
+        if not rows:return _component('NOT_CONFIGURED','尚无只读 Broker 账户快照。',evidence={'real_broker_connected':False,'order_submission':False})
+        latest=rows[0];captured=_parse(latest.get('captured_at'));age=None
+        if captured:age=max(0.0,(now-captured.astimezone(timezone.utc)).total_seconds())
+        if age is None or age>86400:warnings.append('broker_snapshot_stale_gt_24h')
+        if value.get('errors'):warnings.append('unreadable_broker_snapshots')
+        return _component('WARN' if warnings else 'OK',f"Broker read-only snapshots={value['total']} latest={latest['account_alias']}。",
+            evidence={'snapshot_count':value['total'],'latest_snapshot_id':latest['snapshot_id'],'provider':latest['provider'],
+                'account_alias':latest['account_alias'],'captured_at':latest['captured_at'],'age_seconds':age,
+                'position_count':len(latest['positions']),'real_broker_connected':False,'order_submission':False},warnings=warnings,
+            limitations=['Imported account exports are read-only evidence; they do not prove a live broker connection or authorize orders.'])
+
     def _devstudio(self,now):
         from quantlab.devstudio.store import DevTaskStore,DevTaskError
         try:tasks=DevTaskStore(self.output).list(limit=2000)
@@ -362,7 +379,8 @@ class SystemHealthService:
             'tracking_daemon':self._tracking_daemon(now),'mcp':self._mcp(now),'notifications':self._notifications(now),
             'market_data_series':self._market_data_series(now),'daily_market':self._daily_market(now),'market_snapshots':self._market_snapshots(now),
             'daily_orchestrator':self._orchestrator(now),'pit_playbook':self._pit_playbook(now),
-            'paper_lifecycle':self._paper(now),'dev_studio':self._devstudio(now),'logs':self._logs(now)}
+            'paper_lifecycle':self._paper(now),'broker_shadow':self._broker_shadow(now),
+            'dev_studio':self._devstudio(now),'logs':self._logs(now)}
         runtime=('workspace','artifact_growth','jobs','tracking_daemon','mcp','notifications','dev_studio','logs')
         readiness=('market_data_series','daily_market','market_snapshots','daily_orchestrator','pit_playbook','paper_lifecycle')
         blockers=[];warnings=[]

@@ -23,6 +23,7 @@ TOOLS=[
     schema('get_market_snapshot','读取一个MarketSnapshot及其捕获状态、SHA256来源和证券快照。',{'snapshot_id':TEXT}),
     schema('get_system_health','只读汇总System Health：任务、daemon、数据新鲜度、MarketSnapshot、PIT/Playbook、Paper、Dev Studio和日志元数据；不执行任何修复动作。',{}),
     schema('get_mobile_brief','只读生成手机/机器人简报；直接复用同一Cockpit、Decision Ledger、Stock Dossier、Paper与System Health，不创建第二份状态。',{'trading_day':TEXT,'symbol':TEXT}),
+    schema('get_broker_shadow','只读查询P13-A Broker账户快照与Dynamic Paper影子对账；不能导入账户、连接券商或下单。',{'snapshot_id':TEXT,'account_alias':TEXT,'paper_account':TEXT}),
 ]
 
 
@@ -37,6 +38,7 @@ class MarketDataResearchAPI(ThemeResearchAPI):
                     calendar_readiness_available=True,controlled_tracking_available=True,managed_series_available=True,
                     market_snapshot_available=True,market_snapshot_write_model=False,system_health_available=True,system_health_write_model=False,
                     mobile_brief_available=True,mobile_brief_write_model=False,mobile_has_independent_state=False,
+                    broker_shadow_available=True,broker_snapshot_import_model=False,broker_order_tool=False,real_broker_connected=False,
                     tracking_authorization_host_only=True,tools=[t['name'] for t in self.schemas()])
             return result
         try:
@@ -95,6 +97,10 @@ class MarketDataResearchAPI(ThemeResearchAPI):
             elif name=='get_mobile_brief':
                 from quantlab.trading.mobile import MobileBriefService
                 data=MobileBriefService(self.output,self.data_root).build(arguments['trading_day'],arguments['symbol']);refs=[]
+            elif name=='get_broker_shadow':
+                from quantlab.broker import BrokerShadowReconciler
+                data=BrokerShadowReconciler(self.output).reconcile(snapshot_id=arguments['snapshot_id'],
+                    account_alias=arguments['account_alias'],paper_account=arguments['paper_account']);refs=[]
             else:
                 directory,m=load_import(self.output,arguments['import_id'])
                 refs=[{'kind':'market_data','import_id':arguments['import_id']}]
