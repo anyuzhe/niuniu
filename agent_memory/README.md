@@ -15,6 +15,7 @@
 - Mobile / Bot 任务必须读取 `architecture/mobile.md`；手机/机器人只复用现有状态源，禁止建立第二份 Decision、持仓、记忆或移动端数据库。
 - Broker / Shadow / P13 任务必须读取 `architecture/broker_shadow.md`；P13-A 只允许只读券商证据和 Shadow 对账，任何真实连接、认证、资金或订单能力必须单独评审。
 - RealTrade / P13-B0+ 任务必须读取 `architecture/real_trade_readiness.md`；没有明确券商通道时必须 fail-closed，不能用完整 policy、Shadow MATCH 或 Agent 判断替代真实 Adapter/认证/订单安全门。
+- Daily Orchestrator / 日内 Scanner 任务必须读取 `architecture/daily_orchestrator.md`；MarketSnapshot 数据源任务同时读取 `architecture/market_snapshot_provider.md`，不得把手工/BACKFILL 快照冒充 live provider。
 
 ## 固定读取顺序
 

@@ -288,12 +288,13 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 验收：旧 ExpertSource 全部可读；新来源类型可统一归档、检索、引用和审计；任何新来源都不能绕过 DRAFT→验证→冻结门槛。
 - 实际交付：schema v2 新增 `strategy_sources / source_links`；旧库只读无需迁移，首次写新对象时兼容迁移；AI/MCP/Reviewer 只读，桌面宿主可人工导入。全仓 **793/0/0**。
 
-### P8.7 Daily Orchestrator：每日受控运行闭环（v1 已完成，2026-09-14）
+### P8.7 Daily Orchestrator：每日受控运行闭环（v2 已完成，2026-09-15）
 - 串起 DailyMarket 数据增量、就绪检查、PREP、09:25 AUCTION、09:35 R1，并继续支持 R2/R3。
 - 调度器只触发已定义的确定性阶段，不让模型自己修改时间窗、候选全集或历史结果。
 - 网络失败、行情过期、规则/PIT 缺失时必须明确 BLOCKED/UNKNOWN/NO_TRADE，不补造结果。
 - 验收：同一交易日重复启动幂等；错过实时窗口不能回填 SYSTEM_PREDICTION；每阶段都可追到具体 MarketSnapshot 和 source hash。
-- v1 实际交付：单交易日持久计划、checksum 状态、文件锁、DailyMarket 显式 capture 授权/冷却/修订审核、PREP 预留恢复、AUCTION/R1 实时快照等待与 MISSED_FRAME、`--tick/--run/--status` CLI。R2/R3 和正式实时 provider 仍未实现。全仓 **805/0/0**。
+- v1 实际交付保留：单交易日持久计划、checksum 状态、文件锁、DailyMarket 显式 capture 授权/冷却/修订审核、PREP 预留恢复、AUCTION/R1 实时快照等待与 MISSED_FRAME、`--tick/--run/--status` CLI；当时全仓 **805/0/0**。
+- v2 扩展已完成：Forward/Scanner/Orchestrator 正式覆盖 R2/R3；R2=11:30 午间复核、R3=15:00 收盘定稿，各保留10分钟实时冻结限制。R2/R3 必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只能延续其中 selected_symbols，不新增标的。新增 MarketSnapshot Provider Protocol/Registry/Readiness、CLI/MCP/System Health；当前仅 `manual-import-v1` 离线能力，正式 live provider 仍缺失。全仓 **905/0/0**。
 
 ### P8.8 Playbook → Trading Desk → Paper 接线
 - Daily Scanner 输出进入 Decision Ledger，再通过合法状态迁移形成 Strategy Intent。
@@ -650,3 +651,4 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 - 2026-09-15：P12 Mobile / Bot v1 完成。新增 `MobileBriefService`、同一 Workbench `/mobile` 与四个只读 mobile JSON API、MCP `get_mobile_brief`、`niuniu-mobile-brief` CLI；全部复用 Decision Ledger、Stock Dossier、Theme、Paper Lifecycle、System Health 与既有 MCP/API，不创建第二数据库/持仓/记忆。Workbench 继续 loopback-only，无 mobile POST 写端点。真实 artifacts 读取前后 77006→77006；首屏 Direct+MCP 两次约1.02秒，`sh.600000` 完整紧凑 Dossier MCP 响应约12KB。专项6/6、联合18/18、完整仓库882/0/0。下一阶段 P13 真实券商/真实资金必须单独评审。
 - 2026-09-15：P13-A Broker Read-only / Shadow v1 完成。新增 `ReadOnlyBrokerAdapter`、脱敏/append-only `BrokerSnapshotStore`、`BrokerShadowReconciler`、`niuniu-broker-shadow`、MCP `get_broker_shadow` 与 System Health Broker Shadow 观察项；拒绝凭证/真实账号字段，宿主导入需 `--confirm`。真实工作区未配置 Broker 时 artifacts 77006→77006，CLI/MCP 返回 NOT_CONFIGURED，模型无 connect/import/order/cancel/fund-transfer 工具。专项7/7、联合24/24、完整仓库889/0/0。当时计划进入 P13-B+；随后已拆为 B0 Readiness、B1 实时只读、B2/B3 后续权限层。
 - 2026-09-15：P13-B0 RealTrade Readiness v1 完成。新增 Broker capability registry、禁用态 RealTrade safety policy、`RealTradeReadinessService`、`niuniu-real-trade-readiness`、MCP `get_real_trade_readiness` 与 System Health 观察项；当前只有 `json-export-v1` offline Adapter，因此真实工作区固定 `NO_LIVE_BROKER_CHANNEL`、不可连接、不可下单。Policy 不猜用户风险限额，`enabled=true` 或关闭核心安全门直接拒绝。真实 artifacts 77006→77006；专项8/8、联合32/32、完整仓库897/0/0。下一步 P13-B1 等待具体券商实时只读通道。
+- 2026-09-15：P8.7 v2 R2/R3 + MarketSnapshot Provider framework 完成。Forward/Scanner/Orchestrator 扩展到 R2 11:30 与 R3 15:00，R2/R3 只做 continuation review，必须引用前序冻结 SYSTEM_PREDICTION 且禁止新增 R1 未选股票；BACKFILL/缺快照继续 fail-closed。新增 Provider Protocol/Registry/Readiness、`niuniu-market-provider-status`、MCP/System Health 只读状态；真实工作区明确四个 live frame 均缺失，artifacts 77006→77006。专项27/27、联合44/44、完整仓库905/0/0。下一数据侧缺口是真实可审计 live MarketSnapshot Provider。

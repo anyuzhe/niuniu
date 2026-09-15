@@ -1,4 +1,4 @@
-"""Durable host-side daily orchestration for PREP/AUCTION/R1 Playbook research."""
+"""Durable host-side daily orchestration for PREP/AUCTION/R1/R2/R3 Playbook research."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -24,6 +24,10 @@ CAPTURE_READY=time(18,30)
 CAPTURE_COOLDOWN=timedelta(minutes=15)
 MAX_CAPTURE_ATTEMPTS=8
 R1_SNAPSHOT_CUTOFF=time(9,40)
+R2_SNAPSHOT_READY=time(11,30)
+R2_SNAPSHOT_CUTOFF=time(11,40)
+R3_SNAPSHOT_READY=time(15,0)
+R3_SNAPSHOT_CUTOFF=time(15,10)
 TERMINAL={'COMPLETE','COMPLETE_WITH_MISSED','BLOCKED_PREP_MISSED','BLOCKED_ROUTE_UNKNOWN','BLOCKED_CAPTURE_BUDGET'}
 
 
@@ -112,7 +116,8 @@ class DailyPlaybookOrchestrator:
             state={'format':FORMAT,'plan_id':plan_id,**spec,'created_at':stamp.isoformat(),'updated_at':stamp.isoformat(),
                 'status':'CREATED','daily_market':{'status':'PENDING','attempts':0,'last_attempt_at':None,'snapshot_id':None},
                 'prep':{'status':'PENDING'},'auction':{'status':'PENDING'},'r1':{'status':'PENDING'},
-                'unsupported_frames':['R2','R3'],'events':[]}
+                'r2':{'status':'PENDING'},'r3':{'status':'PENDING'},
+                'supported_frames':['PREP','AUCTION','R1','R2','R3'],'events':[]}
             self._event(state,stamp,'CREATED','计划已创建；不会隐式下载或回填历史预测。');self._save(state);return state
 
     def get(self,trading_day):
@@ -198,11 +203,12 @@ class DailyPlaybookOrchestrator:
         result.sort(key=lambda row:(row['as_of'],row['snapshot_id']))
         return result
 
-    def _freeze_scan(self,state,stage_name,snapshot,stamp,auction_snapshot=None):
+    def _freeze_scan(self,state,stage_name,snapshot,stamp,auction_snapshot=None,previous_snapshot=None,reference_prediction_id=''):
         stage=state[stage_name]
         try:
             result=DailyPlaybookScanner(self.output).scan(state['prep']['candidate_set_id'],snapshot['snapshot_id'],
-                auction_snapshot['snapshot_id'] if auction_snapshot else '')
+                auction_snapshot['snapshot_id'] if auction_snapshot else '',
+                previous_snapshot['snapshot_id'] if previous_snapshot else '',reference_prediction_id)
             frozen=freeze_forward_snapshot(self.output,result['forward_payload'],now_fn=lambda:stamp)
         except (PlaybookScanError,PlaybookError,MarketSnapshotError,OSError,ValueError) as exc:
             code=getattr(exc,'code','SCAN_FREEZE_FAILED')
@@ -266,11 +272,61 @@ class DailyPlaybookOrchestrator:
             stage['status']='MISSED';self._event(state,stamp,'R1_MISSED','首个R1快照已超过10分钟实时冻结限制。');return False
         return self._freeze_scan(state,'r1',snapshot,stamp,auction_rows[0])
 
+    def _later_review(self,state,stage_name,frame,previous_stage,previous_frame,ready_clock,cutoff,previous_window):
+        stage=state[stage_name]
+        if stage.get('status')=='FROZEN':return True
+        if stage.get('status')=='MISSED':return False
+        stamp=state['_tick_stamp']
+        status=forward_frame_status(self.output,state['trading_day'],frame,lambda:stamp)
+        if status['forward_status'] in ('EARLY','WAIT_DATA'):
+            self._event(state,stamp,'WAIT_'+frame+'_DATA_READY','等待'+ready_clock.strftime('%H:%M')+' '+frame+'复核快照。');return False
+        current_rows=self._live_snapshots(state['trading_day'],frame,ready_clock,cutoff)
+        previous=None
+        prior_stage=state[previous_stage]
+        if status['can_freeze'] and prior_stage.get('status')!='FROZEN':
+            stage['status']='MISSED';self._event(state,stamp,frame+'_MISSED','前一阶段 '+previous_frame+' 没有冻结 prediction，continuation review 不补造选择。');return False
+        if prior_stage.get('status')=='FROZEN' and prior_stage.get('snapshot_id'):
+            try:previous=MarketSnapshotStore(self.output).get(prior_stage['snapshot_id'])
+            except MarketSnapshotError:previous=None
+        if previous is None:
+            previous_rows=self._live_snapshots(state['trading_day'],previous_frame,*previous_window)
+            previous=previous_rows[0] if previous_rows else None
+        if not status['can_freeze']:
+            stage['status']='MISSED';self._event(state,stamp,frame+'_MISSED',frame+' 实时冻结窗口已错过；不回填预测。');return False
+        if previous is None:
+            if stamp.time()>cutoff:
+                stage['status']='MISSED';self._event(state,stamp,frame+'_MISSED','缺少前一阶段 '+previous_frame+' LIVE_NEAR_REALTIME 快照。')
+            else:self._event(state,stamp,'WAIT_'+previous_frame+'_SNAPSHOT_FOR_'+frame,frame+' 需要同日 '+previous_frame+' 实时事实快照。')
+            return False
+        if not current_rows:
+            if stamp.time()>cutoff:
+                stage['status']='MISSED';self._event(state,stamp,frame+'_MISSED',ready_clock.strftime('%H:%M')+'–'+cutoff.strftime('%H:%M')+'未取得正式实时 '+frame+' 快照。')
+            else:self._event(state,stamp,'WAIT_'+frame+'_MARKET_SNAPSHOT','等待正式 LIVE_NEAR_REALTIME '+frame+' MarketSnapshot。')
+            return False
+        snapshot=current_rows[0];as_of=datetime.fromisoformat(snapshot['as_of']).astimezone(TZ)
+        if stamp-as_of>timedelta(minutes=10):
+            stage['status']='MISSED';self._event(state,stamp,frame+'_MISSED',frame+'快照已超过10分钟实时冻结限制。');return False
+        return self._freeze_scan(state,stage_name,snapshot,stamp,previous_snapshot=previous,
+            reference_prediction_id=prior_stage.get('prediction_id',''))
+
+    def _r2(self,state,stamp):
+        state['_tick_stamp']=stamp
+        try:return self._later_review(state,'r2','R2','r1','R1',R2_SNAPSHOT_READY,R2_SNAPSHOT_CUTOFF,(time(9,35),R1_SNAPSHOT_CUTOFF))
+        finally:state.pop('_tick_stamp',None)
+
+    def _r3(self,state,stamp):
+        state['_tick_stamp']=stamp
+        try:return self._later_review(state,'r3','R3','r2','R2',R3_SNAPSHOT_READY,R3_SNAPSHOT_CUTOFF,(R2_SNAPSHOT_READY,R2_SNAPSHOT_CUTOFF))
+        finally:state.pop('_tick_stamp',None)
+
     def tick(self,trading_day,*,now=None,daily_market_sdk=None):
         trading_day=_day(trading_day,'trading_day');stamp=_stamp(now or self.now_fn())
         with self._locked(trading_day):
             state=self._load(trading_day)
             if state['status'] in TERMINAL:return state
+            # Old v1 in-progress plans are upgraded in place; historical terminal plans remain untouched.
+            state.setdefault('r2',{'status':'PENDING'});state.setdefault('r3',{'status':'PENDING'})
+            state['supported_frames']=['PREP','AUCTION','R1','R2','R3'];state.pop('unsupported_frames',None)
             try:
                 if not self._ensure_daily_market(state,stamp,sdk=daily_market_sdk):self._save(state);return state
                 if not self._prep(state,stamp):self._save(state);return state
@@ -279,15 +335,24 @@ class DailyPlaybookOrchestrator:
                     self._save(state);return state
                 if state['auction'].get('status')=='FROZEN' and not self._bridge_stage(state,'auction',stamp):
                     self._save(state);return state
-                # R1 may proceed even when AUCTION prediction was missed, provided a live auction fact snapshot exists.
                 self._r1(state,stamp)
+                if state['r1'].get('status') not in ('FROZEN','MISSED'):
+                    self._save(state);return state
                 if state['r1'].get('status')=='FROZEN' and not self._bridge_stage(state,'r1',stamp):
                     self._save(state);return state
-                if state['r1'].get('status')=='FROZEN':
-                    self._event(state,stamp,'COMPLETE_WITH_MISSED' if state['auction'].get('status')=='MISSED' else 'COMPLETE',
-                        'PREP/AUCTION/R1 v1 编排结束。')
-                elif state['r1'].get('status')=='MISSED':
-                    self._event(state,stamp,'COMPLETE_WITH_MISSED','R1 未形成实时预测。')
+                self._r2(state,stamp)
+                if state['r2'].get('status') not in ('FROZEN','MISSED'):
+                    self._save(state);return state
+                if state['r2'].get('status')=='FROZEN' and not self._bridge_stage(state,'r2',stamp):
+                    self._save(state);return state
+                self._r3(state,stamp)
+                if state['r3'].get('status') not in ('FROZEN','MISSED'):
+                    self._save(state);return state
+                if state['r3'].get('status')=='FROZEN' and not self._bridge_stage(state,'r3',stamp):
+                    self._save(state);return state
+                missed=[name.upper() for name in ('auction','r1','r2','r3') if state[name].get('status')=='MISSED']
+                self._event(state,stamp,'COMPLETE_WITH_MISSED' if missed else 'COMPLETE',
+                    'PREP/AUCTION/R1/R2/R3 v2 编排结束。'+((' missed='+','.join(missed)) if missed else ''))
             except DailyOrchestratorError:raise
             except (OSError,ValueError,KeyError,TypeError) as exc:
                 self._event(state,stamp,'BLOCKED',type(exc).__name__+': '+str(exc)[:400])

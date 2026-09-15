@@ -254,6 +254,17 @@ class SystemHealthService:
             evidence={'overview':overview,'live_today':len(live_today),'latest_by_frame':{k:{'trading_day':v['trading_day'],'as_of':v['as_of'],'provider':v['provider'],'capture_status':v['capture_status'],'completeness':v['completeness']} for k,v in latest_by_frame.items()}},
             limitations=['No current LIVE snapshot during a weekday market window is UNKNOWN, not automatically a provider outage; exchange holidays are not inferred.'])
 
+    def _market_snapshot_provider(self,now):
+        from quantlab.trading.market_snapshot_provider import MarketSnapshotProviderReadiness
+        try:value=MarketSnapshotProviderReadiness().build()
+        except (OSError,ValueError,KeyError,TypeError) as exc:
+            return _component('WARN','MarketSnapshot Provider readiness 无法读取。',warnings=['market_snapshot_provider_read_failed'],
+                evidence={'error':type(exc).__name__+': '+str(exc)[:300]})
+        if not value['live_provider_available']:
+            return _component('NOT_CONFIGURED','尚无正式实时 MarketSnapshot provider；仅有离线导入能力。',evidence=value,
+                limitations=['Provider absence does not make offline research unhealthy; Daily Orchestrator live frames will wait/miss fail-closed.'])
+        return _component('OK','正式实时 MarketSnapshot provider 已覆盖 AUCTION/R1/R2/R3。',evidence=value)
+
     def _orchestrator(self,now):
         root=self.output/'_daily_orchestrator'
         if not root.exists():return _component('NOT_CONFIGURED','尚无 Daily Orchestrator 计划。')
@@ -283,7 +294,8 @@ class SystemHealthService:
             evidence={'plans':len(rows),'current_plan_present':current_plan,'today':today,'latest':{'trading_day':latest.get('trading_day'),'as_of_session':latest.get('as_of_session'),
                 'status':state,'updated_at':latest.get('updated_at'),'daily_market':latest.get('daily_market'),
                 'prep_status':(latest.get('prep') or {}).get('status'),'auction_status':(latest.get('auction') or {}).get('status'),
-                'r1_status':(latest.get('r1') or {}).get('status')},'unreadable':unreadable},blockers=blockers,warnings=warnings,
+                'r1_status':(latest.get('r1') or {}).get('status'),'r2_status':(latest.get('r2') or {}).get('status'),
+                'r3_status':(latest.get('r3') or {}).get('status')},'unreadable':unreadable},blockers=blockers,warnings=warnings,
             limitations=['A historical blocked/missed plan remains visible as WARN but does not block today by itself.'])
 
     def _pit_playbook(self,now):
@@ -391,7 +403,7 @@ class SystemHealthService:
             'workspace':self._workspace(now),'artifact_growth':self._artifact_growth(now),'jobs':self._jobs(now),
             'tracking_daemon':self._tracking_daemon(now),'mcp':self._mcp(now),'notifications':self._notifications(now),
             'market_data_series':self._market_data_series(now),'daily_market':self._daily_market(now),'market_snapshots':self._market_snapshots(now),
-            'daily_orchestrator':self._orchestrator(now),'pit_playbook':self._pit_playbook(now),
+            'market_snapshot_provider':self._market_snapshot_provider(now),'daily_orchestrator':self._orchestrator(now),'pit_playbook':self._pit_playbook(now),
             'paper_lifecycle':self._paper(now),'broker_shadow':self._broker_shadow(now),
             'real_trade_readiness':self._real_trade_readiness(now),'dev_studio':self._devstudio(now),'logs':self._logs(now)}
         runtime=('workspace','artifact_growth','jobs','tracking_daemon','mcp','notifications','dev_studio','logs')

@@ -1,3 +1,6 @@
+import contextlib
+import io
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -9,6 +12,7 @@ from quantlab.trading.market_snapshot import MarketSnapshotError,MarketSnapshotS
 from quantlab.trading.playbook_forward import freeze_forward_snapshot
 from quantlab.trading.playbook_scanner import DailyPlaybookScanner
 from quantlab.trading.playbook_store import PlaybookStore
+from quantlab.agent.playbook_scan_cli import main as scanner_cli
 
 
 class MarketSnapshotScannerTests(unittest.TestCase):
@@ -70,6 +74,19 @@ class MarketSnapshotScannerTests(unittest.TestCase):
         self.clock=datetime.fromisoformat('2026-09-14T09:36:00+08:00')
         return MarketSnapshotStore(self.root,now_fn=lambda:self.clock).create(str(uuid4()),self.r1_payload(missing))
 
+    def create_later(self,frame,as_of,last_by_symbol):
+        captured=datetime.fromisoformat(as_of)+__import__('datetime').timedelta(seconds=30);self.clock=captured
+        instruments=[]
+        for symbol,base in [('sz.000823',20.57),('sz.002201',11.09),('sz.002912',23.51),('sh.600876',8.70)]:
+            last=last_by_symbol[symbol]
+            instruments.append({'symbol':symbol,'name':symbol,'previous_close':base,'open':last*0.99,'high':last*1.01,
+                'low':last*0.98,'last':last,'volume':200000,'amount':3000000,'tradable':True,
+                'execution_profile':'STANDARD_ACCESS' if symbol!='sz.002912' else 'QUEUE_DEPENDENT','metrics':{}})
+        payload={'trading_day':'2026-09-14','frame':frame,'as_of':as_of,'provider':'test-live',
+            'provider_ref':'archive:'+frame.lower(),'source_hash':('d' if frame=='R2' else 'e')*64,'completeness':'FULL',
+            'instruments':instruments,'market_metrics':{},'notes':''}
+        return MarketSnapshotStore(self.root,now_fn=lambda:self.clock).create(str(uuid4()),payload)
+
     def test_live_snapshot_is_immutable_auditable_and_future_is_blocked(self):
         saved=self.create_auction()
         self.assertEqual(saved['capture_status'],'LIVE_NEAR_REALTIME');self.assertTrue(saved['strict_pit_eligible'])
@@ -112,6 +129,50 @@ class MarketSnapshotScannerTests(unittest.TestCase):
         self.assertEqual(frozen['prediction']['selected_symbols'],['sz.000823'])
         bundle=PlaybookStore(self.root,now_fn=lambda:self.clock).case_bundle(frozen['case']['case_id'])
         self.assertEqual([s['frame'] for s in bundle['market_snapshots']],['AUCTION','R1'])
+
+    def test_r2_r3_only_continue_frozen_previous_prediction_and_do_not_add_new_symbol(self):
+        auction=self.create_auction();r1=self.create_r1()
+        r1_result=DailyPlaybookScanner(self.root).scan(self.base['candidate_set_id'],r1['snapshot_id'],auction['snapshot_id'])
+        self.assertEqual(r1_result['selected_symbols'],['sz.000823'])
+        self.clock=datetime.fromisoformat('2026-09-14T09:37:00+08:00')
+        r1_frozen=freeze_forward_snapshot(self.root,r1_result['forward_payload'],now_fn=lambda:self.clock)
+        r2=self.create_later('R2','2026-09-14T11:30:00+08:00',{'sz.000823':21.5,'sz.002201':11.2,'sz.002912':25.5,'sh.600876':9.4})
+        r2_result=DailyPlaybookScanner(self.root).scan(self.base['candidate_set_id'],r2['snapshot_id'],
+            previous_snapshot_id=r1['snapshot_id'],reference_prediction_id=r1_frozen['prediction']['selection_id'])
+        self.assertEqual(r2_result['selected_symbols'],['sz.000823'])
+        self.assertIn('本阶段禁止新增标的',r2_result['forward_payload']['prediction']['reasons']['sh.600876'][0])
+        self.assertIn('playbook_selection:'+r1_frozen['prediction']['selection_id'],r2_result['forward_payload']['prediction']['evidence_ids'])
+        self.clock=datetime.fromisoformat('2026-09-14T11:31:00+08:00')
+        r2_frozen=freeze_forward_snapshot(self.root,r2_result['forward_payload'],now_fn=lambda:self.clock)
+        r3=self.create_later('R3','2026-09-14T15:00:00+08:00',{'sz.000823':20.0,'sz.002201':11.5,'sz.002912':25.0,'sh.600876':9.6})
+        r3_result=DailyPlaybookScanner(self.root).scan(self.base['candidate_set_id'],r3['snapshot_id'],
+            previous_snapshot_id=r2['snapshot_id'],reference_prediction_id=r2_frozen['prediction']['selection_id'])
+        self.assertEqual(r3_result['selected_symbols'],[])
+        self.assertEqual(r3_result['forward_payload']['frame'],'R3')
+
+    def test_r2_requires_explicit_previous_snapshot_and_frozen_prediction(self):
+        r2=self.create_later('R2','2026-09-14T11:30:00+08:00',{'sz.000823':21.5,'sz.002201':11.2,'sz.002912':25.5,'sh.600876':9.4})
+        with self.assertRaises(Exception) as missing_previous:
+            DailyPlaybookScanner(self.root).scan(self.base['candidate_set_id'],r2['snapshot_id'])
+        self.assertEqual(getattr(missing_previous.exception,'code',None),'PREVIOUS_SNAPSHOT_REQUIRED')
+        auction=self.create_auction();r1=self.create_r1()
+        with self.assertRaises(Exception) as missing_prediction:
+            DailyPlaybookScanner(self.root).scan(self.base['candidate_set_id'],r2['snapshot_id'],previous_snapshot_id=r1['snapshot_id'])
+        self.assertEqual(getattr(missing_prediction.exception,'code',None),'REFERENCE_PREDICTION_REQUIRED')
+
+    def test_host_cli_supports_r2_with_auditable_previous_prediction(self):
+        auction=self.create_auction();r1=self.create_r1()
+        r1_result=DailyPlaybookScanner(self.root).scan(self.base['candidate_set_id'],r1['snapshot_id'],auction['snapshot_id'])
+        self.clock=datetime.fromisoformat('2026-09-14T09:37:00+08:00')
+        frozen=freeze_forward_snapshot(self.root,r1_result['forward_payload'],now_fn=lambda:self.clock)
+        r2=self.create_later('R2','2026-09-14T11:30:00+08:00',{'sz.000823':21.5,'sz.002201':11.2,'sz.002912':25.5,'sh.600876':9.4})
+        out=io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code=scanner_cli(['--output',str(self.root),'--candidate-set-id',self.base['candidate_set_id'],
+                '--market-snapshot-id',r2['snapshot_id'],'--previous-snapshot-id',r1['snapshot_id'],
+                '--reference-prediction-id',frozen['prediction']['selection_id']])
+        value=json.loads(out.getvalue());self.assertEqual(code,0);self.assertTrue(value['ok'])
+        self.assertEqual(value['data']['frame'],'R2');self.assertEqual(value['data']['selected_symbols'],['sz.000823'])
 
     def test_snapshot_tamper_is_detected(self):
         saved=self.create_auction();db=sqlite3.connect(self.market.path)

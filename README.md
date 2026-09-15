@@ -177,7 +177,7 @@ quantlab desktop --output ./artifacts
 桌面退出后可运行 `niuniu-tracking-daemon --output ./artifacts --data-root /path/to/data`。守护进程只执行已经由宿主保存的跟踪授权，并与桌面共享原 `JobQueue` 单 worker 边界。`quantlab tracking-launchd-write ...` 可以生成 macOS LaunchAgent plist，但不会自动加载或创建授权。
 
 
-每日 Playbook 编排使用 `niuniu-daily-orchestrator`。宿主先用 `--init` 为**单个交易日**冻结 definition、上一交易日和可选 target_streak；默认不联网，只有显式 `--allow-daily-market-capture` 才允许在数据就绪后抓取 DailyMarket。之后可用 `--tick` 单步运行或 `--run` 以固定轮询持续到该日终态。当前 v1 只编排 PREP/AUCTION/R1；AUCTION/R1 实时行情必须先由正式 MarketSnapshot provider 写入，Orchestrator 不自行抓取临时网页行情。
+每日 Playbook 编排使用 `niuniu-daily-orchestrator`。宿主先用 `--init` 为**单个交易日**冻结 definition、上一交易日和可选 target_streak；默认不联网，只有显式 `--allow-daily-market-capture` 才允许在数据就绪后抓取 DailyMarket。之后可用 `--tick` 单步运行或 `--run` 以固定轮询持续到该日终态。当前已编排 PREP/AUCTION/R1/R2/R3：R2 在 11:30 午间收盘复核，R3 在 15:00 收盘定稿；R2/R3 必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只延续其中已选标的，不新增股票。实时行情必须先由正式 `LIVE_NEAR_REALTIME` MarketSnapshot 写入；当前 Provider Registry 只有离线 `manual-import-v1`，正式 live provider 仍未接入。
 
 ### 3. 接入自己的本地行情
 
@@ -341,7 +341,7 @@ python -m unittest discover -s tests -v
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
-- P8.7 Daily Orchestrator v1 已完成 PREP/AUCTION/R1；R2/R3 自动编排与正式实时 MarketSnapshot provider 仍待产品化。P9 Agent Scorecard、P10 Dev Studio、P11 System Health、P12 Mobile / Bot、P13-A Broker Shadow 与 P13-B0 RealTrade Readiness v1 均已完成。B0 已把当前“没有具体券商通道”编码为 `NO_LIVE_BROKER_CHANNEL`，所以 `ready_for_live_connection=false`、`ready_for_real_orders=false`、`real_broker_connected=false`。
+- P8.7 Daily Orchestrator v2 已完成 PREP/AUCTION/R1/R2/R3 与 MarketSnapshot Provider capability/readiness 框架；正式实时网络 Provider 仍未接入，`manual-import-v1` 只能离线导入。P9 Agent Scorecard、P10 Dev Studio、P11 System Health、P12 Mobile / Bot、P13-A Broker Shadow 与 P13-B0 RealTrade Readiness v1 均已完成。B0 已把当前“没有具体券商通道”编码为 `NO_LIVE_BROKER_CHANNEL`，所以 `ready_for_live_connection=false`、`ready_for_real_orders=false`、`real_broker_connected=false`。
 - 下一层 P13-B1 只有出现明确可用的具体券商实时**只读**通道后才开始；认证/密钥、真实资金与任何下单/撤单/资金划转仍未启用。B2/B3 若涉及风险门、kill switch、逐单人工确认、订单 Gateway 或真实订单，必须继续单独评审。任何 Paper/Shadow/完整 policy/Agent 判断都不能自动外推为实盘权限。
 
 ## 深入文档与来源
@@ -354,6 +354,7 @@ python -m unittest discover -s tests -v
 - [P12 移动端 / 机器人验收说明](牛牛AI交易工作台_P12移动端与机器人_验收说明.md)：同源 Mobile Brief、手机 Web、Stock Dossier、Decision/System Health JSON API、MCP/CLI 与无第二状态边界。
 - [P13-A 券商只读与 Shadow 对账验收说明](牛牛AI交易工作台_P13A券商只读与Shadow对账_验收说明.md)：脱敏账户快照、append-only Broker evidence、Dynamic Paper 对账、MCP 只读和无实盘权限边界。
 - [P13-B0 实盘安全门验收说明](牛牛AI交易工作台_P13B0实盘安全门_验收说明.md)：Broker capability、禁用态 safety policy、fail-closed readiness、无券商通道 blocker 与 B1/B2/B3 后续分层。
+- [P8.7 R2/R3 与 MarketSnapshot Provider 验收说明](牛牛AI交易工作台_P8_7R2R3与MarketSnapshotProvider_验收说明.md)：午间/收盘 continuation review、五阶段 Orchestrator 与正式 Provider fail-closed 能力合同。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。

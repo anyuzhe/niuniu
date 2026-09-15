@@ -21,6 +21,7 @@ TOOLS=[
     schema('get_watch_refresh_readiness','使用已归档完整日历和带时区as_of检查日线跟踪到期候选，不下载、不批准、不运行。',{'watch_id':TEXT,'import_id':TEXT,'as_of':TEXT}),
     schema('list_market_snapshots','只读查询Trading Desk已冻结的MarketSnapshot；不会联网刷新行情。',{'trading_day':TEXT,'frame':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
     schema('get_market_snapshot','读取一个MarketSnapshot及其捕获状态、SHA256来源和证券快照。',{'snapshot_id':TEXT}),
+    schema('get_market_snapshot_provider_status','只读查询正式MarketSnapshot provider能力；当前无实时provider时明确BLOCKED，不联网抓行情。',{}),
     schema('get_system_health','只读汇总System Health：任务、daemon、数据新鲜度、MarketSnapshot、PIT/Playbook、Paper、Dev Studio和日志元数据；不执行任何修复动作。',{}),
     schema('get_mobile_brief','只读生成手机/机器人简报；直接复用同一Cockpit、Decision Ledger、Stock Dossier、Paper与System Health，不创建第二份状态。',{'trading_day':TEXT,'symbol':TEXT}),
     schema('get_broker_shadow','只读查询P13-A Broker账户快照与Dynamic Paper影子对账；不能导入账户、连接券商或下单。',{'snapshot_id':TEXT,'account_alias':TEXT,'paper_account':TEXT}),
@@ -37,7 +38,8 @@ class MarketDataResearchAPI(ThemeResearchAPI):
             if name=='get_capabilities' and result.get('ok'):
                 result['data'].update(imported_market_data_available=True,data_download_tool=False,candidate_review_available=True,
                     calendar_readiness_available=True,controlled_tracking_available=True,managed_series_available=True,
-                    market_snapshot_available=True,market_snapshot_write_model=False,system_health_available=True,system_health_write_model=False,
+                    market_snapshot_available=True,market_snapshot_write_model=False,market_snapshot_provider_status_available=True,
+                    market_snapshot_provider_capture_model=False,system_health_available=True,system_health_write_model=False,
                     mobile_brief_available=True,mobile_brief_write_model=False,mobile_has_independent_state=False,
                     broker_shadow_available=True,broker_snapshot_import_model=False,broker_order_tool=False,real_broker_connected=False,
                     real_trade_readiness_available=True,real_trade_policy_write_model=False,real_trade_order_tool=False,
@@ -93,6 +95,9 @@ class MarketDataResearchAPI(ThemeResearchAPI):
             elif name=='get_market_snapshot':
                 data=MarketSnapshotStore(self.output).get(arguments['snapshot_id'])
                 refs=[{'kind':'market_snapshot','snapshot_id':data['snapshot_id']}]
+            elif name=='get_market_snapshot_provider_status':
+                from quantlab.trading.market_snapshot_provider import MarketSnapshotProviderReadiness
+                data=MarketSnapshotProviderReadiness().build();refs=[]
             elif name=='get_system_health':
                 from quantlab.agent.system_health import SystemHealthService
                 data=SystemHealthService(self.output,self.data_root).build();refs=[]

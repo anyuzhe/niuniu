@@ -1,4 +1,4 @@
-"""Host CLI for durable daily PREP/AUCTION/R1 Playbook orchestration."""
+"""Host CLI for durable daily PREP/AUCTION/R1/R2/R3 Playbook orchestration."""
 from __future__ import annotations
 
 import argparse,time

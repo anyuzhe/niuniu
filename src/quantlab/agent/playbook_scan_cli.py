@@ -16,11 +16,13 @@ def main(argv=None):
     parser.add_argument('--candidate-set-id',required=True)
     parser.add_argument('--market-snapshot-id',required=True)
     parser.add_argument('--auction-snapshot-id',default='')
+    parser.add_argument('--previous-snapshot-id',default='')
+    parser.add_argument('--reference-prediction-id',default='')
     parser.add_argument('--freeze',action='store_true')
     args=parser.parse_args(argv)
     try:
         result=DailyPlaybookScanner(Path(args.output)).scan(args.candidate_set_id,
-            args.market_snapshot_id,args.auction_snapshot_id)
+            args.market_snapshot_id,args.auction_snapshot_id,args.previous_snapshot_id,args.reference_prediction_id)
         if args.freeze:result['freeze_result']=freeze_forward_snapshot(Path(args.output),result['forward_payload'])
         reply={'ok':True,'data':result}
     except (PlaybookScanError,PlaybookError,ValueError,OSError) as error:

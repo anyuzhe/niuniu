@@ -90,6 +90,14 @@ class DailyOrchestratorTests(unittest.TestCase):
             'market_metrics':{},'notes':''}
         return MarketSnapshotStore(self.output,now_fn=lambda:datetime.fromisoformat(captured)).create(str(uuid4()),content)
 
+    def later_snapshot(self,frame,as_of,captured,last=12.6,source='d'):
+        content={'trading_day':'2026-09-14','frame':frame,'as_of':as_of,'provider':'fixture',
+            'provider_ref':'fixture:'+frame.lower(),'source_hash':source*64,'completeness':'FULL','instruments':[
+                {'symbol':'sh.600001','previous_close':12.1,'open':12.2,'high':max(last,12.5),'low':12.1,'last':last,
+                    'volume':2000,'amount':25000,'tradable':True,'execution_profile':'STANDARD_ACCESS','metrics':{}}],
+            'market_metrics':{},'notes':''}
+        return MarketSnapshotStore(self.output,now_fn=lambda:datetime.fromisoformat(captured)).create(str(uuid4()),content)
+
     def test_plan_defaults_to_no_network_and_waits_for_daily_market(self):
         now=datetime.fromisoformat('2026-09-13T19:00:00+08:00');state=self.init(now,allow=False)
         with patch.object(DailyMarketArchive,'capture',side_effect=AssertionError('must not network')):
@@ -184,13 +192,25 @@ class DailyOrchestratorTests(unittest.TestCase):
         self.assertEqual(state['r1']['status'],'FROZEN')
         # Current automatic PREP remains PARTIAL without certified PIT universe/official rules, so R1 must fail closed to NO_TRADE.
         self.assertEqual(state['r1']['selected_symbols'],[])
-        self.assertEqual(state['status'],'COMPLETE_WITH_MISSED')
+        self.assertEqual(state['status'],'WAIT_R2_DATA_READY')
 
     def test_r1_without_first_window_snapshot_is_missed_not_backfilled(self):
         self.prep_frozen();self.auction_snapshot();now=datetime.fromisoformat('2026-09-14T09:41:00+08:00')
         state=self.service(now).tick('2026-09-14',now=now)
         self.assertEqual(state['auction']['status'],'MISSED');self.assertEqual(state['r1']['status'],'MISSED')
-        self.assertEqual(state['status'],'COMPLETE_WITH_MISSED')
+        self.assertEqual(state['status'],'WAIT_R2_DATA_READY')
+
+    def test_r2_and_r3_freeze_at_midday_and_close_then_complete(self):
+        self.prep_frozen();self.auction_snapshot();self.r1_snapshot()
+        morning=datetime.fromisoformat('2026-09-14T09:36:30+08:00');state=self.service(morning).tick('2026-09-14',now=morning)
+        self.assertEqual(state['r1']['status'],'FROZEN');self.assertEqual(state['status'],'WAIT_R2_DATA_READY')
+        self.later_snapshot('R2','2026-09-14T11:30:30+08:00','2026-09-14T11:31:00+08:00',12.7,'d')
+        midday=datetime.fromisoformat('2026-09-14T11:31:30+08:00');state=self.service(midday).tick('2026-09-14',now=midday)
+        self.assertEqual(state['r2']['status'],'FROZEN');self.assertEqual(state['status'],'WAIT_R3_DATA_READY')
+        self.later_snapshot('R3','2026-09-14T15:00:30+08:00','2026-09-14T15:01:00+08:00',12.8,'e')
+        close=datetime.fromisoformat('2026-09-14T15:01:30+08:00');state=self.service(close).tick('2026-09-14',now=close)
+        self.assertEqual(state['r3']['status'],'FROZEN');self.assertEqual(state['status'],'COMPLETE_WITH_MISSED')
+        self.assertEqual(state['supported_frames'],['PREP','AUCTION','R1','R2','R3'])
 
     def test_cli_init_status_and_model_has_no_orchestrator_write_tool(self):
         out=io.StringIO()

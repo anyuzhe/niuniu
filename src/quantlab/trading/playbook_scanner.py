@@ -6,7 +6,7 @@ from pathlib import Path
 from .market_snapshot import MarketSnapshotError,MarketSnapshotStore
 from .playbook_store import PlaybookError,PlaybookStore
 
-SCANNER_VERSION='v3-active-execution-v1'
+SCANNER_VERSION='v4-r2-r3-continuation-v1'
 
 
 class PlaybookScanError(ValueError):
@@ -105,7 +105,32 @@ class DailyPlaybookScanner:
         rows.sort(key=rank_key,reverse=True)
         return rows,missing
 
-    def scan(self,candidate_set_id,market_snapshot_id,auction_snapshot_id=''):
+    def _review_rows(self,base,previous,current,reference_selected):
+        previous_items=_index(previous);current_items=_index(current);reference=set(reference_selected);rows=[];missing=[]
+        for candidate in base['candidates']:
+            symbol=candidate['symbol'];prior=previous_items.get(symbol);item=current_items.get(symbol)
+            if prior is None or item is None:
+                missing.append(symbol);features={**candidate['features'],'snapshot_missing':True,'reference_selected':symbol in reference}
+                rows.append({'symbol':symbol,'candidate':candidate,'features':features,'eligible':False,'current_pct':None,'change_pct':None});continue
+            prior_pct=_pct(prior.get('last'),prior.get('previous_close'));current_pct=_pct(item.get('last'),item.get('previous_close'))
+            change=None if prior_pct is None or current_pct is None else current_pct-prior_pct
+            profile=item.get('execution_profile','UNKNOWN');one_price=_one_price(item)
+            eligible=bool(symbol in reference and item.get('tradable',True) and profile=='STANDARD_ACCESS' and not one_price and
+                current_pct is not None and current_pct>0)
+            frame=current['frame'].lower()
+            features={**candidate['features'],'snapshot_missing':False,'name':item.get('name',''),
+                'reference_selected':symbol in reference,'prior_frame':previous['frame'],'prior_close_pct':prior_pct,
+                frame+'_close_pct':current_pct,frame+'_vs_prior_pct':change,frame+'_open':item.get('open'),
+                frame+'_high':item.get('high'),frame+'_low':item.get('low'),frame+'_last':item.get('last'),
+                frame+'_volume':item.get('volume'),frame+'_amount':item.get('amount'),'tradable':item.get('tradable',True),
+                'execution_profile':profile,'one_price_window':one_price,'scanner_eligible':eligible}
+            rows.append({'symbol':symbol,'candidate':candidate,'features':features,'eligible':eligible,
+                'current_pct':current_pct,'change_pct':change})
+        rows.sort(key=lambda row:(row['eligible'],row['current_pct'] if row['current_pct'] is not None else -1e9,
+            row['change_pct'] if row['change_pct'] is not None else -1e9,row['symbol']),reverse=True)
+        return rows,missing
+
+    def scan(self,candidate_set_id,market_snapshot_id,auction_snapshot_id='',previous_snapshot_id='',reference_prediction_id=''):
         base,case,definition=self._base(candidate_set_id);day=base['trading_day']
         snapshot=self._snapshot(market_snapshot_id,day,self.snapshots.get(market_snapshot_id)['frame'])
         if snapshot['frame']=='AUCTION':
@@ -131,13 +156,44 @@ class DailyPlaybookScanner:
                     if row['eligible']:text.append('满足STANDARD_ACCESS + 正收益 + 主动增强子规则')
                 reasons[row['symbol']]=text
             summary='R1 deterministic scan：STANDARD_ACCESS + 正收益 + 相对竞价主动增强；缺数据时NO_TRADE。'
+        elif snapshot['frame'] in ('R2','R3'):
+            expected_previous='R1' if snapshot['frame']=='R2' else 'R2'
+            if not previous_snapshot_id:
+                raise PlaybookScanError('PREVIOUS_SNAPSHOT_REQUIRED',snapshot['frame']+' 扫描必须引用同日前一复核 Frame MarketSnapshot。')
+            if not reference_prediction_id:
+                raise PlaybookScanError('REFERENCE_PREDICTION_REQUIRED',snapshot['frame']+' 必须引用前一阶段 SYSTEM_PREDICTION。')
+            try:
+                reference_prediction=self.playbooks.get_selection(reference_prediction_id)
+                reference_set=self.playbooks.get_candidate_set(reference_prediction['candidate_set_id'])
+            except PlaybookError as exc:raise PlaybookScanError('REFERENCE_PREDICTION_INVALID',str(exc)) from None
+            if reference_prediction.get('kind')!='SYSTEM_PREDICTION' or reference_set.get('trading_day')!=day or                     reference_set.get('frame')!=expected_previous or reference_set.get('definition_id')!=base.get('definition_id'):
+                raise PlaybookScanError('REFERENCE_PREDICTION_MISMATCH',snapshot['frame']+' 前序 prediction 必须属于同日/同 definition 的 '+expected_previous+'。')
+            previous=self._snapshot(previous_snapshot_id,day,expected_previous)
+            reference_selected=reference_prediction.get('selected_symbols') or []
+            rows,missing=self._review_rows(base,previous,snapshot,reference_selected);snapshots=[previous,snapshot]
+            ranked=[row['symbol'] for row in rows]
+            selected=[] if missing or not self._complete(base,*snapshots) else [row['symbol'] for row in rows if row['eligible']]
+            reasons={}
+            for row in rows:
+                text=[]
+                if row['features'].get('snapshot_missing'):text.append('实时快照缺失，禁止延续选择')
+                else:
+                    text.append(('前一阶段已选择' if row['features']['reference_selected'] else '前一阶段未选择；本阶段禁止新增标的'))
+                    text.append(f"{snapshot['frame']}涨跌幅={row['current_pct']:.4f}%" if row['current_pct'] is not None else snapshot['frame']+'涨跌幅未知')
+                    text.append(f"相对{expected_previous}变化={row['change_pct']:.4f}%" if row['change_pct'] is not None else '相对前一阶段变化未知')
+                    text.append('执行='+row['features']['execution_profile'])
+                    if row['eligible']:text.append('继续满足STANDARD_ACCESS + 正收益；仅延续，不新开候选')
+                reasons[row['symbol']]=text
+            summary=snapshot['frame']+' deterministic continuation review：只复核前一阶段已选标的，不引入新标的；失去普通账户可达性或转负则NO_TRADE。'
         else:
-            raise PlaybookScanError('UNSUPPORTED_FRAME','DailyPlaybookScanner 第一版只支持 AUCTION/R1。')
+            raise PlaybookScanError('UNSUPPORTED_FRAME','DailyPlaybookScanner 只支持 AUCTION/R1/R2/R3。')
 
         complete=self._complete(base,*snapshots) and not missing
         completeness='FULL' if complete else 'PARTIAL'
         pit_status=self._pit(base,*snapshots) if complete else 'UNKNOWN'
         evidence=[f"market_snapshot:{s['snapshot_id']}" for s in snapshots]
+        if snapshot['frame'] in ('R2','R3'):
+            evidence.append('playbook_selection:'+reference_prediction_id)
         candidates=[]
         for row in rows:
             original=row['candidate']

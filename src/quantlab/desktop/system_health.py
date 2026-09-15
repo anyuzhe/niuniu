@@ -5,10 +5,10 @@ from quantlab.agent.system_health import SystemHealthService
 from .widgets import Card,button,kpis,label,row,table
 
 
-ORDER=('workspace','artifact_growth','jobs','tracking_daemon','mcp','notifications','market_data_series','daily_market','market_snapshots','daily_orchestrator','pit_playbook','paper_lifecycle','broker_shadow','real_trade_readiness','dev_studio','logs')
+ORDER=('workspace','artifact_growth','jobs','tracking_daemon','mcp','notifications','market_data_series','daily_market','market_snapshots','market_snapshot_provider','daily_orchestrator','pit_playbook','paper_lifecycle','broker_shadow','real_trade_readiness','dev_studio','logs')
 LABELS={'workspace':'工作空间','artifact_growth':'产物增长','jobs':'研究任务','tracking_daemon':'Tracking Daemon','mcp':'MCP',
     'notifications':'Notifications','market_data_series':'Market Data / Series','daily_market':'DailyMarket',
-    'market_snapshots':'MarketSnapshot','daily_orchestrator':'Daily Orchestrator','pit_playbook':'PIT / Playbook',
+    'market_snapshots':'MarketSnapshot','market_snapshot_provider':'Snapshot Provider','daily_orchestrator':'Daily Orchestrator','pit_playbook':'PIT / Playbook',
     'paper_lifecycle':'Paper Lifecycle','broker_shadow':'Broker Shadow','real_trade_readiness':'RealTrade Readiness',
     'dev_studio':'Dev Studio','logs':'后台日志'}
 

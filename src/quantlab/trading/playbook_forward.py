@@ -10,8 +10,8 @@ from quantlab.storage.codec import digest
 from .frame_policy import FramePolicyStore, assess_submission
 from .playbook_store import PlaybookError, PlaybookStore
 
-FORWARD_FRAMES = ('PREP', 'AUCTION', 'R1')
-DATA_READY_CLOCK = {'AUCTION': time(9, 25), 'R1': time(9, 35)}
+FORWARD_FRAMES = ('PREP', 'AUCTION', 'R1', 'R2', 'R3')
+DATA_READY_CLOCK = {'AUCTION': time(9, 25), 'R1': time(9, 35), 'R2': time(11, 30), 'R3': time(15, 0)}
 PAYLOAD_FIELDS = {
     'definition_id','trading_day','frame','as_of','source_ids','summary','notes',
     'candidate_set','prediction',
@@ -31,7 +31,7 @@ def _aware_now(now_fn):
 
 def forward_frame_status(output, trading_day, frame, now_fn):
     if frame not in FORWARD_FRAMES:
-        raise PlaybookError('INVALID_ARGUMENT','前瞻冻结只支持 PREP/AUCTION/R1。')
+        raise PlaybookError('INVALID_ARGUMENT','前瞻冻结只支持 PREP/AUCTION/R1/R2/R3。')
     try:
         day = date.fromisoformat(trading_day)
     except (TypeError, ValueError):
@@ -58,7 +58,7 @@ def _payload(value):
         raise PlaybookError('INVALID_ARGUMENT','前瞻 payload 字段必须与合同完全一致。')
     value=dict(value);value.setdefault('market_snapshot_ids',[])
     if value['frame'] not in FORWARD_FRAMES:
-        raise PlaybookError('INVALID_ARGUMENT','前瞻 payload 只支持 PREP/AUCTION/R1。')
+        raise PlaybookError('INVALID_ARGUMENT','前瞻 payload 只支持 PREP/AUCTION/R1/R2/R3。')
     for name in ('candidate_set','prediction'):
         if not isinstance(value[name],dict):
             raise PlaybookError('INVALID_ARGUMENT',name+' 必须是对象。')

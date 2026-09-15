@@ -56,8 +56,8 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**897 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v1、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1。
+当前正式代码全仓基线：**905 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v2（含 R2/R3）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1。
 下一阶段：P13-B1 Live Read-only Broker Adapter；等待明确可用的具体券商通道，订单能力仍不默认开启。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
@@ -288,7 +288,7 @@
 
 ## 8. 尚未完成的正式阶段
 
-- **P8.7 扩展项（并行）**：R2/R3 自动编排与正式实时 MarketSnapshot provider 仍未产品化。
+- **实时 MarketSnapshot Provider（并行）**：P8.7 v2 已补齐 R2/R3 和 Provider capability/readiness 框架；真正可审计的实时网络 Provider 仍未接入。
 - **P8.8 运行验证（并行）**：核心长期 Paper 闭环已实现，但仍需积累足够真实前瞻运行天数来评价稳定性和绩效。
 - **P13-B1 Live Read-only Broker Adapter**：等待明确可用的具体券商实时只读通道；不默认包含订单权限。
 - **P13-B2/B3**：认证/密钥、实时 Shadow、kill switch、风险限额、逐单确认、订单 Gateway 和最终真实订单继续分别评审。
@@ -296,7 +296,7 @@
 ## 9. 当前推荐的后续主线
 
 1. 出现具体券商通道后推进 P13-B1，只做实时只读 Adapter；不把 Paper/Mobile/Broker Snapshot/Shadow MATCH/完整 policy 自动外推为订单权限。
-2. 无 B1 通道期间，优先推进 R2/R3 Orchestrator、正式实时 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计，同时继续积累真实前瞻 Paper 样本。
+2. 无 B1 通道期间，R2/R3 Orchestrator 已补齐；下一优先级转为真实可审计 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计，同时继续积累真实前瞻 Paper 样本。
 
 ## 10. 关键测试基线演进
 
@@ -327,6 +327,7 @@
 | 2026-09-15 | P12 Mobile / Bot v1 | **882 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P13-A Broker Read-only / Shadow v1 | **889 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P13-B0 RealTrade Readiness v1 | **897 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | P8.7 v2 R2/R3 + MarketSnapshot Provider | **905 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -530,3 +531,13 @@
 - 真实烟测：`artifacts` **77006→77006**；普通 readiness 与示例 policy 均 BLOCKED，MCP 约2.3KB，System Health 对无通道显示 NOT_CONFIGURED 而不污染正常 Research/Paper 健康轴。
 - 测试/验收：P13-B0 专项 **8/8 passed**，Readiness+P13-A+System Health+MCP **32/32 passed**；完整仓库 **897 tests / 0 failed / 0 skipped**，352.959秒。
 - 后续事项：P13-B1 等待具体券商实时只读通道；无通道期间转向 R2/R3 Orchestrator、正式实时 MarketSnapshot、Strict PIT、approval-time freeze、Research Session Grant、Watch 序贯统计等并行线。
+
+### 2026-09-15 11:10｜[功能] P8.7 v2 R2/R3 + MarketSnapshot Provider
+
+- 模块：Daily Orchestrator / Forward Freeze / Daily Scanner / MarketSnapshot Provider / System Health / MCP。
+- 改动内容：Forward/Scanner/Orchestrator 从 PREP/AUCTION/R1 扩展至 R2/R3；R2 数据就绪点 11:30、R3 15:00，各自只允许10分钟内前瞻冻结。
+- 规则边界：R2/R3 只对前一阶段 selected_symbols 做 continuation review，不允许盘中后段新增股票；缺失/PARTIAL/BACKFILL 快照继续 fail-closed。
+- Provider：新增 `MarketSnapshotProvider` Protocol、Registry/Readiness、`niuniu-market-provider-status`、MCP `get_market_snapshot_provider_status` 与 System Health `Snapshot Provider`。当前唯一 `manual-import-v1` 为离线导入，live_channel=false，不冒充实时行情。
+- 真实烟测：Provider BLOCKED（AUCTION/R1/R2/R3 均缺 live source），System Health Provider=NOT_CONFIGURED，Research Readiness= WARN；artifacts **77006→77006**。
+- 测试/验收：R2/R3+Provider 专项 **27/27**，Provider/Scanner/Orchestrator/System Health/MCP 联合 **44/44**；完整仓库 **905 tests / 0 failed / 0 skipped**，380.437秒。
+- 后续事项：R2/R3 状态机已收尾；下一数据侧缺口是真实、可审计的 live MarketSnapshot Provider。无合适数据源时继续 Strict PIT / approval-time actual-byte freeze / Research Session Grant / Watch 序贯统计等并行线。
