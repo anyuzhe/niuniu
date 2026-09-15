@@ -266,6 +266,23 @@ def _normalize_claim(item, resources):
         'resource_ids': resource_ids}
 
 
+def _verify_direct_quotes(root, claims, resources):
+    for claim in claims:
+        if claim['kind'] != 'DIRECT_QUOTE':
+            continue
+        matched = False
+        for resource_id in claim['resource_ids']:
+            path = root.joinpath(*PurePosixPath(resources[resource_id]['path']).parts)
+            try:
+                matched = claim['text'] in path.read_text(encoding='utf-8')
+            except UnicodeDecodeError:
+                _fail('DIRECT_QUOTE_INVALID', 'DIRECT_QUOTE 来源必须是 UTF-8 文本。')
+            if matched:
+                break
+        if not matched:
+            _fail('DIRECT_QUOTE_NOT_FOUND', 'DIRECT_QUOTE 必须逐字存在于引用的 PRIMARY_STATEMENT。')
+
+
 def _normalize_alignment(item, claims, resources):
     _object(item, ALIGNMENT_FIELDS, 'alignment')
     alignment_id = _slug(item['alignment_id'], 'alignment_id')
@@ -378,6 +395,7 @@ def audit_research_skill(package):
         _fail('SCHEMA_INVALID', 'claims 必须是不超过 500 项的数组。')
     claim_rows = [_normalize_claim(item, resources) for item in raw['claims']]
     _unique(claim_rows, 'claim_id', 'claims.claim_id')
+    _verify_direct_quotes(root, claim_rows, resources)
     claims = {item['claim_id']: item for item in claim_rows}
     if not isinstance(raw['alignments'], list) or len(raw['alignments']) > 500:
         _fail('SCHEMA_INVALID', 'alignments 必须是不超过 500 项的数组。')
@@ -419,6 +437,7 @@ def audit_research_skill(package):
     if say_do_applicable and not outcomes: blockers.append('realized_outcome_missing')
     if say_do_applicable and not complete_triads: blockers.append('say_do_outcome_triad_missing')
     if publication_unverified: blockers.append('publication_time_unverified_resources')
+    if primary: blockers.append('source_authenticity_host_review_required')
     preview = _strategy_source_preview(root, normalized, snapshot, resources, source_ready)
     return {'format': AUDIT_FORMAT, 'valid': True, 'package_path': str(root),
         'package_snapshot': snapshot, 'skill_key': skill_key, 'title': title, 'version': version,
@@ -428,8 +447,8 @@ def audit_research_skill(package):
             'source_grounded_claims': len(source_claim_ids), 'alignments': len(alignment_rows),
             'complete_say_do_outcome_triads': complete_triads,
             'hypotheses': len(hypothesis_rows), 'scripts': role_counts['SCRIPT']},
-        'readiness': {'source_layer_ready': source_ready, 'method_layer_ready': method_ready,
-            'hypotheses_linked_to_claims': linked_hypotheses,
+        'readiness': {'source_layer_ready': source_ready, 'source_identity_verified': False,
+            'method_layer_ready': method_ready, 'hypotheses_linked_to_claims': linked_hypotheses,
             'say_do_applicable': say_do_applicable, 'say_do_ready': say_do_ready,
             'outcome_linked': outcome_linked,
             'playbook_draft_candidate_ready': source_ready and method_ready and linked_hypotheses,
@@ -438,7 +457,7 @@ def audit_research_skill(package):
         'boundaries': {'automatic_store_write': False, 'automatic_playbook_creation': False,
             'scripts_executed': False, 'network_used': False, 'direct_trade_eligible': False,
             'daily_scanner_eligible': False, 'strict_pit_eligible': False, 'alpha_claimed': False,
-            'quarterly_data_intraday_eligible': False,
+            'source_authenticity_verified': False, 'quarterly_data_intraday_eligible': False,
             'institutional_data_role': 'THEME_DOSSIER_AUXILIARY_ONLY'},
         'strategy_source_preview': preview, 'hypothesis_candidates': hypothesis_rows,
         'scope': ('Read-only external knowledge adapter. Host review and existing StrategySource/'

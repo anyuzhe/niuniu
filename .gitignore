@@ -16,3 +16,4 @@ htmlcov/
 .vscode/
 playbooks/**/source_raw/
 research_skills/**/references/source_raw/
+research_skills/**/upstream/

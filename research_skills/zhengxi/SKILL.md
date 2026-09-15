@@ -1,8 +1,8 @@
-# 郑希机构投资方法 Research Skill（接入脚手架）
+# 郑希机构投资方法 Research Skill（控制包）
 
 ## 当前状态
 
-`SOURCE_REQUIRED`。本目录没有导入外部 `zhengxi-views` 语料、基金持仓数据或抓取脚本，也不把用户提供的二次概述冒充郑希原话。
+本 Git 跟踪目录保持 `SOURCE_REQUIRED` 控制包：不复制第三方原始语料、基金数据或外部脚本。宿主已授权下载的 `zhengxi-views` 固定在 `upstream.lock.json` 所列 commit/tree，并以内容寻址对象和 append-only receipt 保存到独立数据根。策展包只能从该 receipt 选择资源生成，且仍是回顾性 DRAFT，不把上游自述或用户概述冒充官方原始字节。
 
 ## 目标行为
 

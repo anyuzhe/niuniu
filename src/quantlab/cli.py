@@ -235,6 +235,22 @@ def main() -> None:
     reference_audit.add_argument('--data-root',type=Path,required=True)
     skill_audit=commands.add_parser('research-skill-audit',help='只读审计外部Research Skill知识包；不执行脚本、不联网、不写StrategySource/Playbook')
     skill_audit.add_argument('--package',type=Path,required=True,help='包含skill.yml、SKILL.md、method.md、scorecard.md的本地知识包')
+    skill_git_archive=commands.add_parser('research-skill-git-archive',help='归档宿主已下载并固定commit/tree的外部Git字节；命令本身不联网、不执行外部脚本')
+    skill_git_archive.add_argument('--data-root',type=Path,required=True)
+    skill_git_archive.add_argument('--repository',type=Path,required=True)
+    skill_git_archive.add_argument('--skill-key',required=True)
+    skill_git_archive.add_argument('--expected-origin',required=True)
+    skill_git_archive.add_argument('--expected-commit',required=True)
+    skill_git_archive.add_argument('--expected-tree',required=True)
+    skill_git_archive.add_argument('--confirm-untrusted-no-exec',action='store_true')
+    skill_git_audit=commands.add_parser('research-skill-git-audit',help='只读深验外部Research Skill Git receipts及全部内容寻址对象')
+    skill_git_audit.add_argument('--data-root',type=Path,required=True)
+    skill_git_audit.add_argument('--skill-key')
+    skill_git_curate=commands.add_parser('research-skill-git-curate',help='由已验证Git receipt生成回顾性Research Skill包；不写StrategySource/Playbook')
+    skill_git_curate.add_argument('--data-root',type=Path,required=True)
+    skill_git_curate.add_argument('--control-package',type=Path,required=True)
+    skill_git_curate.add_argument('--plan',type=Path,required=True)
+    skill_git_curate.add_argument('--confirm-retrospective-only',action='store_true')
     feed.add_argument('--require-fresh',action='store_true',help='行情过期或最新截面不齐时拒绝推进账户')
     archive=commands.add_parser('archive-bars',help='在独立工作目录保存不可变行情版本，显式处理修订')
     archive.add_argument('--bars',type=Path,required=True,help='规范化行情 Parquet')
@@ -347,6 +363,18 @@ def main() -> None:
     if args.command=='research-skill-audit':
         from quantlab.knowledge.research_skill import audit_research_skill
         print(encode(audit_research_skill(args.package)));return
+    if args.command=='research-skill-git-archive':
+        from quantlab.knowledge.research_skill_git import archive_git_research_skill
+        print(encode(archive_git_research_skill(args.data_root,args.repository,args.skill_key,
+            args.expected_origin,args.expected_commit,args.expected_tree,
+            confirm_untrusted_no_exec=args.confirm_untrusted_no_exec)));return
+    if args.command=='research-skill-git-audit':
+        from quantlab.knowledge.research_skill_git import audit_git_research_skill_archives
+        print(encode(audit_git_research_skill_archives(args.data_root,args.skill_key)));return
+    if args.command=='research-skill-git-curate':
+        from quantlab.knowledge.research_skill_git import materialize_git_research_skill
+        print(encode(materialize_git_research_skill(args.data_root,args.control_package,args.plan,
+            confirm_retrospective_only=args.confirm_retrospective_only)));return
     if args.command=='paper-reconcile':
         from quantlab.execution.reconcile import reconcile_account
         if args.output.exists():raise FileExistsError(args.output)

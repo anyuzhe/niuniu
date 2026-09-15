@@ -70,11 +70,13 @@ class ResearchSkillTests(unittest.TestCase):
         self.assertEqual(audit['counts']['complete_say_do_outcome_triads'], 1)
         self.assertEqual(audit['counts']['scripts'], 1)
         self.assertTrue(audit['readiness']['source_layer_ready'])
+        self.assertFalse(audit['readiness']['source_identity_verified'])
         self.assertTrue(audit['readiness']['say_do_ready'])
         self.assertTrue(audit['readiness']['outcome_linked'])
         self.assertTrue(audit['readiness']['playbook_draft_candidate_ready'])
         self.assertFalse(audit['readiness']['quant_validation_completed'])
-        self.assertEqual(audit['blockers'], ['publication_time_unverified_resources'])
+        self.assertEqual(audit['blockers'], [
+            'publication_time_unverified_resources', 'source_authenticity_host_review_required'])
         self.assertEqual(audit['strategy_source_preview']['completeness'], 'PARTIAL')
         self.assertIsNone(audit['strategy_source_preview']['published_at'])
         self.assertFalse(any(audit['boundaries'][key] for key in (
@@ -105,10 +107,20 @@ class ResearchSkillTests(unittest.TestCase):
             audit_research_skill(self.root)
         self.assertEqual(policy.exception.code, 'POLICY_VIOLATION')
 
-    def test_zhengxi_scaffold_is_valid_but_source_required(self):
+    def test_direct_quote_must_exist_verbatim_in_primary_statement(self):
+        self.manifest['claims'][0]['text'] = '不存在的原话'
+        self.write_manifest()
+        with self.assertRaises(ResearchSkillError) as quote:
+            audit_research_skill(self.root)
+        self.assertEqual(quote.exception.code, 'DIRECT_QUOTE_NOT_FOUND')
+
+    def test_zhengxi_control_package_is_valid_but_source_required(self):
         package = Path(__file__).resolve().parents[1] / 'research_skills/zhengxi'
         audit = audit_research_skill(package)
         self.assertEqual(audit['status'], 'SOURCE_REQUIRED')
+        self.assertEqual(audit['package_snapshot'],
+            '7185219deebfe271d28e8f77abb72fc9077246ae2a7ddb69bd560de454a9dd6f')
+        self.assertEqual(audit['counts']['resources'], 6)
         self.assertEqual(audit['counts']['primary_statements'], 0)
         self.assertEqual(audit['counts']['hypotheses'], 5)
         self.assertFalse(audit['readiness']['source_layer_ready'])

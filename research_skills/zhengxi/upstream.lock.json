@@ -1,0 +1,20 @@
+{
+  "format": "niuniu-research-skill-upstream-lock-v1",
+  "origin_url": "https://github.com/lyra81604/zhengxi-views.git",
+  "commit": "304ac3e404a4c5f5c85d927840fefb028bebb536",
+  "tree": "ef5833f6ff201b60ae5213501eaee70fb428fe2f",
+  "git_archive_snapshot": "a48a85cb1d0dacddbaa54cb88761bf34c7d47ac0d621fee6be28e8f6e383fd3a",
+  "archive_receipt": "research/external_research_skills/git_receipts/zhengxi/a48a85cb1d0dacddbaa54cb88761bf34c7d47ac0d621fee6be28e8f6e383fd3a.json",
+  "observed_at": "2026-09-15T18:27:05.855487+00:00",
+  "file_count": 143,
+  "total_bytes": 11367050,
+  "code_and_project_docs_license": "MIT",
+  "third_party_corpus_and_fund_data_rights": "ORIGINAL_RIGHTSHOLDERS_RESEARCH_ONLY",
+  "trust_class": "UNTRUSTED_EXTERNAL_GIT_RETROSPECTIVE_REFERENCE",
+  "source_publication_verified": false,
+  "strict_pit_eligible": false,
+  "scripts_reviewed": false,
+  "scripts_executed": false,
+  "strategy_source_written": false,
+  "playbook_written": false
+}

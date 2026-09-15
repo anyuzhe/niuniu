@@ -21,12 +21,14 @@
 
 ## External Research Skill adapter
 
-- 外部专家知识库不直接进入交易核心；先放在 `research_skills/<skill>/`，由 `research-skill-audit` 只读验证 `skill.yml / SKILL.md / references / method.md / scorecard.md / scripts`。
-- 原始观点、披露行为与后续结果分别使用 `PRIMARY_STATEMENT / DISCLOSED_ACTION / REALIZED_OUTCOME`；claim 必须区分 `DIRECT_QUOTE / METHOD_INFERENCE / FACT_TO_VERIFY`。
+- 外部专家知识库不直接进入交易核心；Git跟踪控制包放在 `research_skills/<skill>/`，由 `research-skill-audit` 只读验证 `skill.yml / SKILL.md / references / method.md / scorecard.md / scripts`。
+- 宿主对明确URL授权并自行clone后，`research-skill-git-archive` 固定HTTPS origin、完整commit/tree、clean checkout及全部普通tracked blobs；命令自身禁lazy fetch、不联网、不执行外部脚本，SHA256对象/receipt只写独立数据根。
+- `research-skill-git-curate` 必须显式 `--confirm-retrospective-only`，只从verified对象按Git跟踪plan选材；上游脚本不得复制进策展包。上游更新必须产生新receipt/package snapshot，禁止覆盖旧版本。
+- 原始观点、披露行为与后续结果分别使用 `PRIMARY_STATEMENT / DISCLOSED_ACTION / REALIZED_OUTCOME`；claim 必须区分 `DIRECT_QUOTE / METHOD_INFERENCE / FACT_TO_VERIFY`，DIRECT_QUOTE还须逐字存在于UTF-8来源。
 - “说/做/结果” alignment 是交叉核验，不是因果或 Alpha 证明。季度持仓只能作为 Theme Matrix / Stock Dossier 中期辅助证据，不能进入 AUCTION/R1/R2/R3。
 - 外部评分只能是 `SOURCE_STYLE_SIMILARITY_ONLY`；所有 hypothesis 固定 DRAFT。审计不执行脚本、不联网、不写结构化库，只给 `PENDING/PARTIAL StrategySource` 预览。
-- Research Skill 永不自行签发 Strict PIT、Daily Scanner 或交易资格；publication-time、CandidateSet、Holdout/Walk-forward 与 execution 继续走牛牛既有门。
-- `research_skills/zhengxi` 当前只是 `SOURCE_REQUIRED` 脚手架；没有外部 corpus、持仓、结果或脚本，不得把用户二次概述冒充原话。
+- Research Skill 永不自行签发 Strict PIT、Daily Scanner 或交易资格；Git commit time、内嵌source URL、字节哈希和逐字quote都不单独认证source identity/publication time，CandidateSet、Holdout/Walk-forward 与 execution 继续走牛牛既有门。
+- 郑希控制包仍为source-free `SOURCE_REQUIRED`；上游固定commit=`304ac3e4...bebb536`，archive=`a48a85cb...383fd3a`（143文件/11,367,050 bytes）。首个外部DRAFT策展包=`f9e72ecd...74bf10`，含1 statement/1 action/1 outcome、10 claims、1三联、5 hypotheses；source identity/publication仍未验证，0次StrategySource/Playbook写入。
 
 ## 规则与证据边界
 

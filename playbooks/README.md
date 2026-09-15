@@ -25,7 +25,9 @@
 
 ## 外部 Research Skill 边界
 
-`../research_skills/` 是进入本层之前的独立知识适配区。它可以按专家/方法保存 `SKILL.md + references + method.md + scorecard.md + scripts`，并通过 `research-skill-audit` 核文件哈希、时点、原话/推演/待核实事实和“说/做/结果”关系。
+`../research_skills/` 是进入本层之前的独立知识适配区。它可以按专家/方法保存 `SKILL.md + references + method.md + scorecard.md + scripts`，并通过 `research-skill-audit` 核文件哈希、时点、逐字原话、推演/待核实事实和“说/做/结果”关系。
+
+宿主授权取得的Git上游先由 `research-skill-git-archive` 固定origin/commit/tree和全部blob，再由显式curation plan从verified对象生成独立数据根DRAFT包；归档/策展不执行上游脚本，Git metadata也不替代官方publication receipt。
 
 审计只生成 `PENDING/PARTIAL StrategySource` 预览，不写本数据库；外部评分固定为来源风格相似度，季度机构数据只可作为 Theme/Dossier 中期辅助证据。任何包都不能自动变成 FROZEN Playbook、Daily Scanner、Strict PIT、Alpha 或交易信号。
 

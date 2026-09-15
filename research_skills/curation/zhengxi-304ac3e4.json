@@ -1,0 +1,215 @@
+{
+  "format": "niuniu-research-skill-git-curation-plan-v1",
+  "skill_key": "zhengxi",
+  "control_snapshot": "7185219deebfe271d28e8f77abb72fc9077246ae2a7ddb69bd560de454a9dd6f",
+  "archive_snapshot": "a48a85cb1d0dacddbaa54cb88761bf34c7d47ac0d621fee6be28e8f6e383fd3a",
+  "version": "upstream-304ac3e4-r1",
+  "status": "DRAFT",
+  "strategy_source_kind": "TRADER",
+  "title": "郑希公开方法与披露行为回顾性策展包",
+  "summary": "从宿主授权下载并固定到304ac3e4的zhengxi-views中选择一份访谈、001513持仓与净值快照及方法说明；上游是二次整理源，未取得官方原始响应、headers或可靠publication receipt，全部证据仅为回顾性研究参考。",
+  "keywords": ["郑希", "景气度投资", "低ROE修复", "全球视野", "产业链", "流动性", "季度持仓"],
+  "resources": [
+    {
+      "resource_id": "upstream-license",
+      "upstream_path": "LICENSE",
+      "target_path": "references/upstream/LICENSE.txt",
+      "role": "DOCUMENTATION",
+      "sha256": "da4b680b775e6cd366453a71b0dac4b0e9b7bc63bb95c31559a8eb4787a796b7",
+      "bytes": 1548,
+      "locator": "https://github.com/lyra81604/zhengxi-views/blob/304ac3e404a4c5f5c85d927840fefb028bebb536/LICENSE"
+    },
+    {
+      "resource_id": "upstream-corpus-index",
+      "upstream_path": "references/corpus_index.json",
+      "target_path": "references/upstream/corpus_index.json",
+      "role": "DOCUMENTATION",
+      "sha256": "0029ace7312e16419cee662b9485bc66c5469b87f410f5200d7b3ea9458f686a",
+      "bytes": 26448,
+      "locator": "https://github.com/lyra81604/zhengxi-views/blob/304ac3e404a4c5f5c85d927840fefb028bebb536/references/corpus_index.json"
+    },
+    {
+      "resource_id": "upstream-method",
+      "upstream_path": "references/method.md",
+      "target_path": "references/upstream/method.external.md",
+      "role": "DOCUMENTATION",
+      "sha256": "5b6fda48c7f208ebd2d598a6ba806b0c81e98a9ee7b58088fdf0851d350cc988",
+      "bytes": 9701,
+      "locator": "https://github.com/lyra81604/zhengxi-views/blob/304ac3e404a4c5f5c85d927840fefb028bebb536/references/method.md"
+    },
+    {
+      "resource_id": "upstream-scorecard",
+      "upstream_path": "references/scorecard.md",
+      "target_path": "references/upstream/scorecard.external.md",
+      "role": "DOCUMENTATION",
+      "sha256": "571e9a26c5433c12369cbf13a811b36f8af4db411f4ebb73fa8d2e0cd4230444",
+      "bytes": 5971,
+      "locator": "https://github.com/lyra81604/zhengxi-views/blob/304ac3e404a4c5f5c85d927840fefb028bebb536/references/scorecard.md"
+    },
+    {
+      "resource_id": "statement-20260608",
+      "upstream_path": "references/corpus/媒体报道/01_2026-06-08_易方达基金郑希：寻找高景气机会 关注高流动性低ROE资产.md",
+      "target_path": "references/upstream/primary/2026-06-08-interview.md",
+      "role": "PRIMARY_STATEMENT",
+      "sha256": "44b0cfbfa61d5dc81fb61da0e3f3fe1955b0239a47ea2e1a1183794451a86ea6",
+      "bytes": 11949,
+      "locator": "https://github.com/lyra81604/zhengxi-views/blob/304ac3e404a4c5f5c85d927840fefb028bebb536/references/corpus/媒体报道/01_2026-06-08_易方达基金郑希：寻找高景气机会%20关注高流动性低ROE资产.md"
+    },
+    {
+      "resource_id": "upstream-fund-index",
+      "upstream_path": "references/fund_data/_index.json",
+      "target_path": "references/upstream/fund_data/index.json",
+      "role": "DOCUMENTATION",
+      "sha256": "2c9fc97a26be9b433077095da9a412834e39fff709edcae65001bbfe723f417c",
+      "bytes": 2841,
+      "locator": "https://github.com/lyra81604/zhengxi-views/blob/304ac3e404a4c5f5c85d927840fefb028bebb536/references/fund_data/_index.json"
+    },
+    {
+      "resource_id": "holding-001513",
+      "upstream_path": "references/fund_data/001513_易方达信息产业混合/季度持仓.json",
+      "target_path": "references/upstream/fund_data/001513-holdings.json",
+      "role": "DISCLOSED_ACTION",
+      "sha256": "a39fd7e486c27920935206c3cd768a08fc0b19b14b8f262ff16643fad5140fcd",
+      "bytes": 71850,
+      "locator": "https://github.com/lyra81604/zhengxi-views/blob/304ac3e404a4c5f5c85d927840fefb028bebb536/references/fund_data/001513_易方达信息产业混合/季度持仓.json"
+    },
+    {
+      "resource_id": "outcome-001513",
+      "upstream_path": "references/fund_data/001513_易方达信息产业混合/净值业绩规模.json",
+      "target_path": "references/upstream/fund_data/001513-outcome.json",
+      "role": "REALIZED_OUTCOME",
+      "sha256": "a91c30d33d6b3740480ae10a1b9e1d127853a92cf931cfe41082cdb422635f18",
+      "bytes": 355170,
+      "locator": "https://github.com/lyra81604/zhengxi-views/blob/304ac3e404a4c5f5c85d927840fefb028bebb536/references/fund_data/001513_易方达信息产业混合/净值业绩规模.json"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "growth-style-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "我的投资以成长风格为主，更准确地说是景气度投资。",
+      "resource_ids": ["statement-20260608"]
+    },
+    {
+      "claim_id": "inflation-origin-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "我投资的最底层是研究清楚通胀从何而来。",
+      "resource_ids": ["statement-20260608"]
+    },
+    {
+      "claim_id": "low-roe-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "我倾向于投资景气方向上标的资产ROE从低到高的过程。",
+      "resource_ids": ["statement-20260608"]
+    },
+    {
+      "claim_id": "global-view-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "按照我的投资方法，核心还是从全球视野出发去寻找机会。",
+      "resource_ids": ["statement-20260608"]
+    },
+    {
+      "claim_id": "liquidity-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "第一是个股的流动性。",
+      "resource_ids": ["statement-20260608"]
+    },
+    {
+      "claim_id": "value-chain-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "而需求加速需要算力网络作为支撑，算力网络又需要传输、计算、存储。",
+      "resource_ids": ["statement-20260608"]
+    },
+    {
+      "claim_id": "positioning-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "我那时候开始尝试配置一些光通信、PCB板块资产。",
+      "resource_ids": ["statement-20260608"]
+    },
+    {
+      "claim_id": "cycle-stitching-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "我更倾向于将复利来源视为周期的一次次拼接，再长期的判断也是由一个个阶段性判断拼接起来的，不能因为有长期判断，就忽略中间很多小的判断。",
+      "resource_ids": ["statement-20260608"]
+    },
+    {
+      "claim_id": "holding-snapshot-fact",
+      "kind": "FACT_TO_VERIFY",
+      "text": "上游快照列示001513各季度前十大持仓；其原始披露字节、抓取响应与publication time仍待独立核验。",
+      "resource_ids": ["holding-001513"]
+    },
+    {
+      "claim_id": "fund-outcome-snapshot-fact",
+      "kind": "FACT_TO_VERIFY",
+      "text": "上游快照列示001513净值、业绩与规模序列；其提供方原始响应和各时点可用性仍待独立核验。",
+      "resource_ids": ["outcome-001513"]
+    }
+  ],
+  "alignments": [
+    {
+      "alignment_id": "optical-statement-holding-outcome",
+      "statement_claim_id": "positioning-quote",
+      "action_resource_ids": ["holding-001513"],
+      "outcome_resource_ids": ["outcome-001513"],
+      "assessment": "MIXED",
+      "notes": "上游持仓快照可用于核对光通信配置叙述，基金整体净值只能作为后续结果背景；不能把整体业绩归因于单一方向，且三份资料均缺牛牛可接受的官方publication receipt。"
+    }
+  ],
+  "hypotheses": [
+    {
+      "hypothesis_key": "industry-upcycle",
+      "title": "行业景气与通胀来源候选维度",
+      "status": "DRAFT",
+      "claim_ids": ["growth-style-quote", "inflation-origin-quote"],
+      "feature_candidates": ["行业收入与利润扩散", "订单、价格与供需景气代理"],
+      "required_data": ["PIT行业分类", "带publication time的行业基本面与价格数据"],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "roe-low-base-recovery",
+      "title": "ROE低位修复候选维度",
+      "status": "DRAFT",
+      "claim_ids": ["low-roe-quote"],
+      "feature_candidates": ["ROE水平与变化", "盈利修复确认"],
+      "required_data": ["首次公告与修订分离的财务数据", "每日真实市值"],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "global-competitive-advantage",
+      "title": "全球技术周期与中国比较优势候选维度",
+      "status": "DRAFT",
+      "claim_ids": ["global-view-quote", "value-chain-quote"],
+      "feature_candidates": ["海外收入与份额代理", "产业链瓶颈与研发强度"],
+      "required_data": ["PIT财务与公司披露", "可复核全球产业比较数据"],
+      "target_horizon": "LONG_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "value-chain-profit-shift",
+      "title": "产业链利润再分配候选维度",
+      "status": "DRAFT",
+      "claim_ids": ["value-chain-quote", "inflation-origin-quote"],
+      "feature_candidates": ["上下游毛利变化", "价格、库存与资本开支传导"],
+      "required_data": ["PIT产业链映射", "带可用时间的财务与产业数据"],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "institutional-liquidity-fit",
+      "title": "机构可承载流动性与周期拼接候选维度",
+      "status": "DRAFT",
+      "claim_ids": ["liquidity-quote", "cycle-stitching-quote"],
+      "feature_candidates": ["成交额与自由流通市值", "季度持仓变化与集中度"],
+      "required_data": ["每日真实市值", "披露后才可用的季度基金持仓"],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    }
+  ]
+}

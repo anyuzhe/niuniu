@@ -70,7 +70,7 @@ D1 / D2 / D3+ 复盘
 | 任务与续算 | 本地持久化任务状态；经典缠论状态检查点、追加行情续算与中断恢复。其他算法并非全部支持通用续算 |
 | Trading Desk | 今日交易驾驶舱、Decision Ledger、Stock Dossier、Theme Matrix、Decision Frame、Strategy Intent、Playbook Decision Bridge 与 PaperPlan 只读状态；预测、策略意图、模拟成交与未来真实持仓严格分离 |
 | Trading Knowledge / Playbook Lab | 已支持六类 `StrategySource`、旧 `ExpertSource→TRADER` 兼容投影、Playbook 多对多来源关系、完整 CandidateSet、selected/unselected、Selection/Veto、前瞻冻结、历史回放与执行访问分层 |
-| External Research Skill | 外部专家/机构知识的只读边界适配：固定 `skill.yml + SKILL.md + references + method + scorecard + scripts`，核字节/时点/claim/“说做结果”；只生成 PENDING/PARTIAL StrategySource 预览，不联网、不执行脚本、不写 Playbook/Decision/交易 |
+| External Research Skill | 外部专家/机构知识的只读边界适配：固定包内资源，并把宿主已下载的 Git origin/commit/tree/tracked blobs 归档到独立数据根；核 SHA256、时点、逐字 quote、claim/“说做结果”，只生成 PENDING/PARTIAL StrategySource 预览，不执行外部脚本、不写 Playbook/Decision/交易 |
 | Daily Scanner / 每日编排 | PREP 全市场扫描、MarketSnapshot、AUCTION/R1/R2/R3 确定性扫描、DailyMarket 全市场日增量归档，以及持久 `Daily Orchestrator` 五阶段幂等可恢复链路；腾讯主源+东财第二源+新浪备用校验的 live Provider 已接入；错过窗口不回填；空 PREP CandidateSet 以 `COMPLETE_NO_TRADE` 正常结束 |
 | AI Team | Chief Researcher、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；第一轮独立判断，Chief 综合，不用多数票代替证据 |
 | AI 研究与自动化基础 | 结构化研究记忆、固定研究包、受限 DSL、Research Agenda、Safe Alpha Factory、Watch + Sequential Monitor、标准 MCP、approval-time actual-byte freeze 与 Research Session Grant；新 Watch 可冻结序贯 Rank IC 衰减门槛，但模型不能自动停因子、换参数、扩大授权或实盘 |
@@ -179,7 +179,7 @@ quantlab desktop --output ./artifacts
 
 桌面退出后可运行 `niuniu-tracking-daemon --output ./artifacts --data-root /path/to/data`。守护进程只执行已经由宿主保存的跟踪授权，并与桌面共享原 `JobQueue` 单 worker 边界。`quantlab tracking-launchd-write ...` 可以生成 macOS LaunchAgent plist，但不会自动加载或创建授权。
 
-外部专家/机构知识包先运行 `quantlab research-skill-audit --package research_skills/<skill>`。该命令只读本地资源并生成 StrategySource 预览，不联网、不执行包内脚本，也不写 Playbook Lab。`research_skills/zhengxi` 当前只有 SOURCE_REQUIRED 接入脚手架，没有导入外部原始语料或基金数据。
+外部专家/机构知识包先运行 `quantlab research-skill-audit --package research_skills/<skill>`。该命令只读本地资源并生成 StrategySource 预览，不联网、不执行包内脚本，也不写 Playbook Lab。宿主已授权 clone 的仓库可用 `research-skill-git-archive` 固定 origin/commit/tree 和全部 tracked blobs，再以 `research-skill-git-audit` 深验、`research-skill-git-curate --confirm-retrospective-only` 选择性生成独立数据根 DRAFT 包；三个命令自身均不 clone/fetch。郑希上游已固定至 commit `304ac3e4...bebb536`，143个文件/11,367,050 bytes 的 archive receipt 验证通过；首个14资源策展包含1份上游访谈、001513持仓与净值快照、10条 claim 和1组“说/做/结果”，但来源真实性仍需宿主复核、发布时间未验证，不具 Strict PIT/Alpha/Scanner/交易资格，也未写入 StrategySource 或 Playbook。
 
 每日 Playbook 编排使用 `niuniu-daily-orchestrator`。宿主先用 `--init` 为**单个交易日**冻结 definition、上一交易日和可选 target_streak；默认不联网，只有显式 `--allow-daily-market-capture` 才允许在数据就绪后抓取 DailyMarket。之后可用 `--tick` 单步运行或 `--run` 以固定轮询持续到该日终态。当前已编排 PREP/AUCTION/R1/R2/R3：R2 在 11:30 午间收盘复核，R3 在 15:00 收盘定稿；R2/R3 必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只延续其中已选标的，不新增股票。实时行情现已可由 `public-web-consensus-v1` 生成：腾讯主源、东方财富第二源、新浪备用校验；至少两源一致才形成可用证券快照。Daily Orchestrator 默认仍不联网，初始化计划时显式 `--allow-market-snapshot-capture` 才会自动抓 AUCTION/R1/R2/R3。PREP CandidateSet 为空时，系统先保存可选的 Trading Desk NO_TRADE receipt，再以 `COMPLETE_NO_TRADE` 终止并把后续 Frame 标为 `SKIPPED_NO_TRADE`，不会请求无标的实时行情；这与“CandidateSet 非空但 PREP 暂不提前选具体股票”严格区分。公开网页行情固定不认证 Strict PIT，未来券商/QMT 可替代为正式主源。
 
@@ -344,7 +344,7 @@ python -m unittest discover -s tests -v
 - Strict PIT Evidence Archive v1 已支持四类 statement：PIT Universe、SecurityStatus、历史行业、每日市值。当前 `/Volumes/Lexar/niuniu-data` 已有 `security_status=14` verified receipts（7只深市股票的明确停牌/复牌及 ST 生效事件），其它三类仍为0；这不代表历史状态链完整。季度股本不能直接当成每日股本。
 - Strict PIT Coverage v1 已完成：按年份/证券/字段统计经过深度校验的 evidence presence，并把 `stock_basic`、单快照行业、历史 bar lake 等回顾性资料单独列为 inventory。当前日线仍是5215个证券文件、17,075,243行（1990-12-19～2026-09-04），bar lake 本身无 `tradestatus/isST`；现有14条 SecurityStatus 只覆盖7只股票的明确事件日，Coverage 不输出伪造总完成率。
 - Official MarketRules publication receipt v2 已完成 append-only、实际 records、官方原文 SHA256 与 `published_at <= available_at` 验证；`official-rule-audit` 和 System Health 可全局深度核验。当前真实数据仍为1个 verified snapshot、7只证券各1个明确停牌 session（7/7 audit covered）。另已用深交所公告比例、2023交易规则公式/舍入及官方历史 `qss` 核出7组复牌 exact 算术值，并由 `official-rule-reference-audit` 深验回顾性参考包；由于行情响应是在 session 后取得，缺开盘前 publication receipt，`strict_pit_eligible=false` 且没有追加 MarketRules。全市场逐日价格边界及特殊上市/退市规则仍缺。
-- External Research Skill v1 已有完整适配合同，但郑希包仍为 `SOURCE_REQUIRED`：原始语料、季度持仓、结果资料和外部脚本均未导入。五个维度只是未回链来源的 DRAFT 脚手架，不能称郑希已验证方法或 Alpha。
+- External Research Skill Git archive/curation 已接入：Git 跟踪的郑希控制包仍为 `SOURCE_REQUIRED`，第三方字节不进仓库；独立数据根中已有固定 `304ac3e4...bebb536` 的 verified archive 和 `f9e72ecd...74bf10` DRAFT 策展包。策展包的逐字 claim/“说做结果”结构完整，但上游二次整理不等于官方原始字节，publication time 和 source identity 仍未验证，Quant Validation 尚未开始。
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
@@ -375,7 +375,7 @@ python -m unittest discover -s tests -v
 - [首轮 Daily Orchestrator 前瞻 NO_TRADE 验收说明](牛牛AI交易工作台_首轮DailyOrchestrator前瞻NoTrade_验收说明.md)：2026-09-15 DailyMarket、2026-09-16 PREP 前瞻冻结、空候选终态、NO_TRADE bridge、幂等和数据资格边界。
 - [Official MarketRules Publication Receipt v2 验收说明](牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md)：append-only 规则快照、publication-time 防回填、首批7个真实停牌 session、全局深度审计/System Health、篡改/幂等验证与未覆盖边界。
 - [复牌日 Exact 价格边界参考证据验收说明](牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md)：7组官方前收+公告比例+规则公式的 exact 算术核对、内容寻址参考包，以及因缺历史开盘前 byte vintage 而不追加 MarketRules 的 fail-closed 边界。
-- [外部 Research Skill 接入规范 v1 验收说明](牛牛AI交易工作台_外部ResearchSkill接入规范_验收说明.md)：外部知识包、原话/推演/事实、“说做结果”、评分语义、脚本权限和 StrategySource/Playbook 安全边界；含 SOURCE_REQUIRED 郑希脚手架。
+- [外部 Research Skill Git Archive / Curation v2 验收说明](牛牛AI交易工作台_外部ResearchSkill接入规范_验收说明.md)：外部知识包、固定 Git 身份/对象归档、逐字原话、说做结果、回顾性策展、评分语义以及 StrategySource/Playbook 安全边界。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。
