@@ -11,7 +11,7 @@
 当前工作区已安装 PyQt6，可双击 `启动牛牛平台.command`，或执行：
 
 ```sh
-.venv/bin/python -m quantlab.cli desktop --output artifacts --data-root /Volumes/Lexar/MQC-DATA
+.venv/bin/python -m quantlab.cli desktop --output artifacts --data-root /Volumes/Lexar/niuniu-data
 ```
 
 新环境先安装可选桌面依赖：`python -m pip install -e '.[desktop]'`。省略 `--data-root` 可以只读浏览、校验配置。研究产物保存在 `--output`，行情保持只读。

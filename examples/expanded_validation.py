@@ -29,7 +29,7 @@ plan={'symbols':symbols,'start':request.start,'end':request.end,'train_end':'202
  'limitations':'Explicit present-day selected stocks; selection/survivorship bias. No certified historical rules or corporate-action accounting. OOS repeatedly observed is exploratory.'}
 out=root/'artifacts/data-acceptance';out.mkdir(parents=True,exist_ok=True)
 with (out/'expanded-plan.json').open('x') as handle:handle.write(encode(plan))
-runner=build_runner(Path('/Volumes/Lexar/MQC-DATA'),root/'artifacts',symbols);results=[]
+runner=build_runner(Path('/Volumes/Lexar/niuniu-data'),root/'artifacts',symbols);results=[]
 for template,alias,grid in [('RESEARCH.BROOKS_SECOND_ENTRY','entry',{'trend_lookback':[10,20]}),
  ('RESEARCH.ICT_MSS_FVG','mss',{'atr_multiple':[1.5,2.]}),('RESEARCH.WYCKOFF_SOS_MOMENTUM','sos',{'lookback':[10,20]})]:
  try:

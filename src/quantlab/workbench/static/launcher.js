@@ -29,7 +29,7 @@ async function launch(token){
     if(token!==generation)return;
     app.replaceChildren(el('h1','新建研究实验'),el('p','配置研究假设与数据范围，提交后由本地队列串行执行。结果沿用现有实验归档和报告。','muted'));
     if(!settings.execution_enabled){
-        app.append(el('p','当前为只读模式。启动服务时加入 --data-root /Volumes/Lexar/MQC-DATA 才能运行实验。','note'));return;
+        app.append(el('p','当前为只读模式。启动服务时加入 --data-root /Volumes/Lexar/niuniu-data 才能运行实验。','note'));return;
     }
     app.append(el('p',`只读行情来源：${settings.data_root}`,'muted mono'));
     const latest=recent.runs[0]||{};

@@ -15,7 +15,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--output',type=Path,default=Path('artifacts/roadmap-acceptance'))
     parser.add_argument('--fetched',type=Path,default=Path('artifacts/roadmap-acceptance/fetched-daily'))
-    parser.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/MQC-DATA'))
+    parser.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/niuniu-data'))
     parser.add_argument('--start',type=date.fromisoformat,default=date(2026,8,3))
     parser.add_argument('--seed-end',type=date.fromisoformat,default=date(2026,9,4))
     parser.add_argument('--calendar-file',type=Path)

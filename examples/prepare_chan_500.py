@@ -9,7 +9,7 @@ import hashlib,json
 import polars as pl
 from quantlab.data.validation import validate_bars
 
-root=Path('/Volumes/Lexar/MQC-DATA/lake/bronze/provider=baostock/stock_kline_daily')
+root=Path('/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/stock_kline_daily')
 out=Path('artifacts/chan-500-ten-year');manifest=json.loads((out/'sample-manifest.json').read_text())
 dest=out/'data/lake/bronze/provider=baostock/stock_kline_daily';dest.mkdir(parents=True,exist_ok=True)
 reports=[];excluded=[]

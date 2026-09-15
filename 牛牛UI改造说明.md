@@ -25,7 +25,7 @@
 ## 启动
 
 ```sh
-.venv/bin/python -m quantlab.cli serve --output artifacts --data-root /Volumes/Lexar/MQC-DATA --port 8766
+.venv/bin/python -m quantlab.cli serve --output artifacts --data-root /Volumes/Lexar/niuniu-data --port 8766
 ```
 
 打开 <http://127.0.0.1:8766/>。已有该端口服务时直接访问即可。

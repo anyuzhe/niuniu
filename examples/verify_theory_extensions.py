@@ -19,7 +19,7 @@ from quantlab.causal import assert_prefix_invariant
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--snapshot-manifest',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
-    p.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/MQC-DATA'))
+    p.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/niuniu-data'))
     args=p.parse_args();args.output.mkdir(parents=True,exist_ok=False)
     manifest=json.loads(args.snapshot_manifest.read_text());symbols=tuple(manifest['symbols'])
     request=DataRequest(symbols,Timeframe(manifest['timeframe']),date(2026,9,1),date(2026,9,8))

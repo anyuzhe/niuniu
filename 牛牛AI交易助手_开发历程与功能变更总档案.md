@@ -620,3 +620,11 @@
 - 真实烟测：指定 `sh.600000 / sz.000001`、2025-01-01～2026-09-15，三类均明确列为 missing evidence；`artifacts` **77006→77006**。
 - 测试/验收：Coverage+Evidence+Qualification 18/18，Coverage+System Health/UI 19/19，相关 Baostock/Series/Session/MCP 回归全绿；完整仓库 **956 tests / 0 failed / 0 skipped**，412.711秒。
 - 后续事项：不再扩 Coverage 框架；直接按 gap 收集并归档真实官方历史资料，优先历史资格/ST/停牌，其次行业变更、每日市值和逐日特殊交易制度。
+
+### 2026-09-15 16:50｜[数据基础设施] 牛牛独立数据根
+
+- 将 `/Volumes/Lexar/MQC-DATA` 完整复制为 `/Volumes/Lexar/niuniu-data`，原目录不删除、不改写。
+- 复制后源/目标均为 26,445 个文件、14,460,345,471 bytes；关键 DuckDB/manifest/parquet SHA256 一致，二次 rsync checksum dry-run 无内容差异。
+- 牛牛两个 macOS 启动入口、当前 README/Workbench 提示和活跃 examples 默认切到 `niuniu-data`。历史 artifacts 与历史开发记录中的 `MQC-DATA` 绝对路径保持原样，避免破坏来源身份。
+- 新数据根真实读取：raw/qfq 正常，`catalog/mqc.duckdb` 仍为 17,075,243 条日线、5,215 只证券、1990-12-19～2026-09-04；Strict PIT 三类 receipt 仍为 0。
+- 后续牛牛新增数据、Strict PIT 证据和官方历史资料只写入 `niuniu-data`。

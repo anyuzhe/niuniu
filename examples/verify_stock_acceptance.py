@@ -29,7 +29,7 @@ if __name__=='__main__':
         actions=[r for r in source['corporate_actions'] if r['symbol']==symbol and case['start']<=r['record_at'][:10]<=case['end']]
         if len(actions)!=1 or 'stock_per_share' not in actions[0]:raise ValueError('Expected a single documented stock distribution')
         cfg=ExecutionConfig(initial_cash=1000000,top_n=1,threshold=-1,exposure=.5,corporate_actions=actions,corporate_action_mode='retrospective')
-        runner=build_runner(Path('/Volumes/Lexar/MQC-DATA'),Path('artifacts'),(symbol,),'raw')
+        runner=build_runner(Path('/Volumes/Lexar/niuniu-data'),Path('artifacts'),(symbol,),'raw')
         config=ExperimentConfig('真实送转记录与原始行情账务验收；不代表真实交易规则',DataRequest((symbol,),Timeframe.DAILY,start,end),
             'BASE.MOMENTUM',parameters={'lookback':2},horizons=(1,5),replay=True)
         result=ExecutionStudy(runner).run(config,cfg,backend='vnpy_rules')

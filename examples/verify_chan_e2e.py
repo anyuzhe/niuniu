@@ -174,5 +174,5 @@ def run(output,data_root):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True)
-    parser.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/MQC-DATA'))
+    parser.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/niuniu-data'))
     args=parser.parse_args();run(args.output,args.data_root)

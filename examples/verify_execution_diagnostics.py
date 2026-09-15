@@ -19,7 +19,7 @@ from quantlab.storage.codec import encode
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True)
     p.add_argument('--snapshot-manifest',type=Path,required=True)
-    p.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/MQC-DATA'))
+    p.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/niuniu-data'))
     args=p.parse_args();args.output.mkdir(parents=True,exist_ok=False)
     manifest=json.loads(args.snapshot_manifest.read_text());symbols=tuple(manifest['symbols'])
     start=date.fromisoformat(manifest['start'][:10]);end=date.fromisoformat(manifest['end'][:10])

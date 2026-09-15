@@ -15,7 +15,7 @@ from quantlab.regime.config import RegimeConfig
 from quantlab.storage.codec import encode
 root=Path(__file__).resolve().parents[1]
 symbols=('sh.600519','sz.000001','sz.000858','sh.601318','sz.300750')
-runner=build_runner(Path('/Volumes/Lexar/MQC-DATA'),root/'artifacts',symbols)
+runner=build_runner(Path('/Volumes/Lexar/niuniu-data'),root/'artifacts',symbols)
 data=DataRequest(symbols,Timeframe.MIN5,date(2026,8,3),date(2026,9,4))
 cfg=ExperimentConfig('真实行情因子残差验收',data,'BASE.MOMENTUM','1.0.0',parameters={'lookback':5},horizons=(1,5),regime=RegimeConfig(),replay=True)
 a=runner.run(cfg);b=runner.run(replace(cfg,parameters={'lookback':20}))

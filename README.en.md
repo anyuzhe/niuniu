@@ -123,19 +123,19 @@ When the desktop is closed, run `niuniu-tracking-daemon --output ./artifacts --d
 
 ### 3. Connect local market data
 
-Replace `/path/to/MQC-DATA` with your actual MQC data root:
+Replace `/path/to/niuniu-data` with your actual MQC data root:
 
 ```bash
-quantlab desktop --data-root /path/to/MQC-DATA --output ./artifacts
+quantlab desktop --data-root /path/to/niuniu-data --output ./artifacts
 ```
 
 The equivalent desktop entry point is:
 
 ```bash
-python -m quantlab.desktop --data-root /path/to/MQC-DATA --output ./artifacts
+python -m quantlab.desktop --data-root /path/to/niuniu-data --output ./artifacts
 ```
 
-The macOS `.command` launcher in the repository uses the original development-machine path, `/Volumes/Lexar/MQC-DATA`. On another machine, use the explicit commands above or adjust that path.
+The macOS `.command` launcher in the repository uses the original development-machine path, `/Volumes/Lexar/niuniu-data`. On another machine, use the explicit commands above or adjust that path.
 
 ### 4. Run a basic study
 
@@ -143,7 +143,7 @@ The following command requires bars for the specified stocks and date range. Ada
 
 ```bash
 quantlab run \
-  --data-root /path/to/MQC-DATA --output ./artifacts \
+  --data-root /path/to/niuniu-data --output ./artifacts \
   --symbols sh.600000 sz.000001 sh.600519 \
   --timeframe 1d --start 2024-01-01 --end 2024-12-31 \
   --factor BASE.MOMENTUM --lookback 20 \
@@ -158,14 +158,14 @@ Inspect the command output and reports under `artifacts/`. Small samples are use
 
 ```bash
 quantlab run \
-  --data-root /path/to/MQC-DATA --output ./artifacts \
+  --data-root /path/to/niuniu-data --output ./artifacts \
   --symbols sh.600000 sz.000001 sh.600519 \
   --timeframe 1d --start 2024-01-01 --end 2024-12-31 \
   --factor COMB.SCORE --params-json examples/score.json \
   --adjustment qfq --backtest --execution-backend open --replay
 ```
 
-Use `quantlab run --help` for advanced options, or configure the study with the desktop business forms and export its JSON. To use the optional local web workbench, run `quantlab serve --data-root /path/to/MQC-DATA --output ./artifacts`; see `quantlab serve --help` for binding and port options.
+Use `quantlab run --help` for advanced options, or configure the study with the desktop business forms and export its JSON. To use the optional local web workbench, run `quantlab serve --data-root /path/to/niuniu-data --output ./artifacts`; see `quantlab serve --help` for binding and port options.
 
 ## Typical research workflow
 
@@ -186,7 +186,7 @@ Chan and Wyckoff studies can follow the same workflow. A theory name does not au
 The primary adapter is [MQCParquetProvider](src/quantlab/data/mqc.py). It does not automatically recognize arbitrary CSV or Parquet schemas.
 
 ```text
-MQC-DATA/
+niuniu-data/
 └── lake/
     ├── bronze/provider=baostock/
     │   ├── stock_kline_daily/sh_600000.parquet

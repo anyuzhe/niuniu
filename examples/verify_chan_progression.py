@@ -18,7 +18,7 @@ from quantlab.causal import assert_prefix_invariant
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True)
-    p.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/MQC-DATA'))
+    p.add_argument('--data-root',type=Path,default=Path('/Volumes/Lexar/niuniu-data'))
     args=p.parse_args();args.output.mkdir(parents=True,exist_ok=False)
     symbols=('sh.600000','sh.600036','sh.600276','sh.600309','sh.600519','sh.600887','sh.601166','sh.601288','sh.601318','sh.601328',
         'sh.601398','sh.601857','sz.000001','sz.000002','sz.000333','sz.000651','sz.000858','sz.002415','sz.002594','sz.300750')

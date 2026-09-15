@@ -181,19 +181,19 @@ quantlab desktop --output ./artifacts
 
 ### 3. 接入自己的本地行情
 
-将 `/path/to/MQC-DATA` 替换为实际 MQC 数据根目录：
+将 `/path/to/niuniu-data` 替换为实际 MQC 数据根目录：
 
 ```bash
-quantlab desktop --data-root /path/to/MQC-DATA --output ./artifacts
+quantlab desktop --data-root /path/to/niuniu-data --output ./artifacts
 ```
 
 等价的桌面入口：
 
 ```bash
-python -m quantlab.desktop --data-root /path/to/MQC-DATA --output ./artifacts
+python -m quantlab.desktop --data-root /path/to/niuniu-data --output ./artifacts
 ```
 
-仓库中的 macOS `.command` 启动脚本使用原开发机的 `/Volumes/Lexar/MQC-DATA` 路径；其他机器优先使用上述显式命令，或调整该路径。
+仓库中的 macOS `.command` 启动脚本使用原开发机的 `/Volumes/Lexar/niuniu-data` 路径；其他机器优先使用上述显式命令，或调整该路径。
 
 ### 4. 运行一个基础研究
 
@@ -201,7 +201,7 @@ python -m quantlab.desktop --data-root /path/to/MQC-DATA --output ./artifacts
 
 ```bash
 quantlab run \
-  --data-root /path/to/MQC-DATA --output ./artifacts \
+  --data-root /path/to/niuniu-data --output ./artifacts \
   --symbols sh.600000 sz.000001 sh.600519 \
   --timeframe 1d --start 2024-01-01 --end 2024-12-31 \
   --factor BASE.MOMENTUM --lookback 20 \
@@ -216,14 +216,14 @@ quantlab run \
 
 ```bash
 quantlab run \
-  --data-root /path/to/MQC-DATA --output ./artifacts \
+  --data-root /path/to/niuniu-data --output ./artifacts \
   --symbols sh.600000 sz.000001 sh.600519 \
   --timeframe 1d --start 2024-01-01 --end 2024-12-31 \
   --factor COMB.SCORE --params-json examples/score.json \
   --adjustment qfq --backtest --execution-backend open --replay
 ```
 
-高级参数可通过 `quantlab run --help` 查询，或从客户端业务表单配置并导出 JSON。可选本地 Web 工作台使用 `quantlab serve --data-root /path/to/MQC-DATA --output ./artifacts`；监听与端口选项见 `quantlab serve --help`。
+高级参数可通过 `quantlab run --help` 查询，或从客户端业务表单配置并导出 JSON。可选本地 Web 工作台使用 `quantlab serve --data-root /path/to/niuniu-data --output ./artifacts`；监听与端口选项见 `quantlab serve --help`。
 
 ## 典型研究流程
 
@@ -249,7 +249,7 @@ quantlab run \
 主要行情适配器为 [MQCParquetProvider](src/quantlab/data/mqc.py)，不是任意 CSV/Parquet 文件的自动识别器。
 
 ```text
-MQC-DATA/
+niuniu-data/
 └── lake/
     ├── bronze/provider=baostock/
     │   ├── stock_kline_daily/sh_600000.parquet
@@ -336,7 +336,7 @@ python -m unittest discover -s tests -v
 ## 当前边界
 
 - 部分复杂业务表单尚未逐项完成真实客户端验收。
-- Strict PIT Evidence Archive v1 已完成：PIT Universe、历史行业、每日市值只有在 statement、权威 URL、确认的 `published_at`、本地官方原文字节和 SHA256 全部绑定时才可升级严格资格；真实 `/Volumes/Lexar/MQC-DATA` 当前 receipt 仍为 0，因此历史行业全日期覆盖、可靠发布/可用时间与每日真实市值依然需要继续补资料。季度股本不能直接当成每日股本。
+- Strict PIT Evidence Archive v1 已完成：PIT Universe、历史行业、每日市值只有在 statement、权威 URL、确认的 `published_at`、本地官方原文字节和 SHA256 全部绑定时才可升级严格资格；真实 `/Volumes/Lexar/niuniu-data` 当前 receipt 仍为 0，因此历史行业全日期覆盖、可靠发布/可用时间与每日真实市值依然需要继续补资料。季度股本不能直接当成每日股本。
 - Strict PIT Coverage v1 已完成：按年份/证券/字段统计经过深度校验的 evidence presence，并把 `stock_basic`、单快照行业、历史 bar lake 等回顾性资料单独列为 inventory。当前真实 MQC 为 5215 个日线文件、17,075,243 行（1990-12-19～2026-09-04），但 `tradestatus/isST` 在 bar lake 中均为 0，三类 strict receipt 仍为 0；Coverage 不输出伪造总完成率。
 - 官方逐日涨跌停价及特殊上市/退市规则覆盖尚不完整；合成规则回测不等于完整真实市场规则验收。
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。

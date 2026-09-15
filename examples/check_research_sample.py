@@ -12,7 +12,7 @@ from quantlab.execution.rules_audit import audit_market_rules
 from quantlab.storage.codec import encode,digest
 
 if __name__=='__main__':
-    out=Path('artifacts/stock-acceptance');root=Path('/Volumes/Lexar/MQC-DATA')
+    out=Path('artifacts/stock-acceptance');root=Path('/Volumes/Lexar/niuniu-data')
     request=DataRequest(('sh.600519','sz.000001','sz.000858','sh.601318','sz.300750'),Timeframe.DAILY,date(2025,1,1),date(2026,9,4))
     audit=audit_market(root,request)
     (out/'proposed-sample-data-audit.json').write_text(encode(audit))

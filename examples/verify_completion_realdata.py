@@ -13,7 +13,7 @@ from quantlab.factors.engine import compute_factor
 from quantlab.causal import assert_prefix_invariant
 from quantlab.storage.codec import encode
 
-root=Path('artifacts/core-completion');results={};provider=MQCParquetProvider(Path('/Volumes/Lexar/MQC-DATA'),'qfq')
+root=Path('artifacts/core-completion');results={};provider=MQCParquetProvider(Path('/Volumes/Lexar/niuniu-data'),'qfq')
 request=DataRequest(('sh.600000','sz.000001'),Timeframe.MIN5,date(2026,8,24),date(2026,9,4))
 base=provider.load(request);registry=default_registry();periods=[]
 for timeframe in (Timeframe.MIN15,Timeframe.MIN30,Timeframe.MIN60):

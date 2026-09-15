@@ -2,6 +2,7 @@
 
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-15
+- 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
 - 当前稳定基线：Strict PIT Coverage v1 已完成，全仓 `956 passed / 0 failed / 0 skipped`
 

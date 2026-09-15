@@ -19,7 +19,7 @@ def main():
     output=Path('artifacts/overlapping-actions-acceptance/real-bars')
     output.mkdir(parents=True,exist_ok=False)
     symbol='sh.600000'
-    batch=MQCParquetProvider(Path('/Volumes/Lexar/MQC-DATA'),'raw').load(DataRequest((symbol,),Timeframe.DAILY,date(2026,8,3),date(2026,8,14)))
+    batch=MQCParquetProvider(Path('/Volumes/Lexar/niuniu-data'),'raw').load(DataRequest((symbol,),Timeframe.DAILY,date(2026,8,3),date(2026,8,14)))
     bars=batch.bars;dates=bars['datetime'].to_list();assert len(dates)==10
     opening=lambda i:dates[i].replace(hour=9,minute=30)
     source='synthetic overlapping entitlement assumption on real MQC bars; not an actual corporate action'

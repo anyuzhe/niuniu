@@ -22,7 +22,7 @@ if __name__=='__main__':
     actions=[r for r in imported['corporate_actions'] if r['symbol']==symbol and start.isoformat()<=r['record_at'][:10]<=end.isoformat()]
     cfg=ExecutionConfig(initial_cash=100000,top_n=1,exposure=.5,threshold=-1,corporate_actions=actions,corporate_action_mode='retrospective')
     (output/'cash-execution.json').write_text(encode(cfg))
-    runner=build_runner(Path('/Volumes/Lexar/MQC-DATA'),Path('artifacts'),(symbol,),'raw')
+    runner=build_runner(Path('/Volumes/Lexar/niuniu-data'),Path('artifacts'),(symbol,),'raw')
     research=ExperimentConfig('真实 raw K 线现金分红账务核对；税率 0 假设，非严格 PIT，无官方交易规则',
         DataRequest((symbol,),Timeframe.DAILY,start,end),'BASE.MOMENTUM',parameters={'lookback':5},horizons=(1,5),replay=True)
     result=ExecutionStudy(runner).run(research,cfg,backend='vnpy_rules')

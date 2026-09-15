@@ -5,7 +5,7 @@ from pathlib import Path
 import hashlib, io, json, random
 import polars as pl
 
-ROOT=Path('/Volumes/Lexar/MQC-DATA')
+ROOT=Path('/Volumes/Lexar/niuniu-data')
 OUT=Path('artifacts/chan-500-full-ten-year-qfq')
 START=date(2016,9,5); END=date(2026,9,4); SEED=20260910
 RAW=ROOT/'lake/bronze/provider=baostock/stock_kline_daily'
