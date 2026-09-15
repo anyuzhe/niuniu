@@ -4,7 +4,7 @@
 - 范围：历史资格 / 行业 / 每日市值的 publication evidence 与 Strict PIT 升级门
 - 结论：证据归档与验证基础设施完成；真实历史资料覆盖仍需持续补充
 
-> 后续更新：Evidence Archive 已增加 `security_status`；Official MarketRules 使用独立的 publication receipt v2，按 snapshot append-only 保存实际规则 records，并已归档首批7个真实停牌 session。详见《牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md》。本文其余内容保留 v1 当轮口径。
+> 后续更新：Evidence Archive 已增加 `security_status`；Official MarketRules 使用独立的 publication receipt v2，按 snapshot append-only 保存实际规则 records，并已归档首批7个真实停牌 session；CLI/System Health 可全局深度审计但不代表 case coverage。详见《牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md》。本文其余内容保留 v1 当轮口径。
 
 ## 1. 本轮解决的问题
 

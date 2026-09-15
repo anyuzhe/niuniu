@@ -130,7 +130,7 @@ quantlab official-rule-archive \
 3. 该 snapshot 不覆盖 2026-09-15 的 5,219 只 DailyMarket 证券，因此不会消除当前 PREP 的 `official_market_rules_missing`。
 4. v2 验证的是原文字节、发布时间、record 身份和覆盖关系；公告到结构化 record 的语义映射仍需人工复核。
 5. 费用字段不属于交易所公告证明范围，真实 Paper/回测必须另行冻结券商费用假设。
-6. System Health 的 `official_rule_receipt_present` 针对最新 CandidateSet 所引用的 `rule_snapshot_id`，不是全局 receipt 计数；最新 2026-09-16 PREP 没有引用本历史 snapshot，因此该字段正确保持 false。
+6. System Health 现将 v2 archive 作为**全局完整性 inventory**展示；`official_rule_archive_verified_present=true` 不表示最新 CandidateSet 引用了该 snapshot。最新 2026-09-16 PREP 仍没有规则覆盖，继续保持 PARTIAL。
 7. 本轮不改变 Playbook 状态、Paper 权限或 RealTrade `BLOCKED`。
 
 ## 9. Git 与数据边界
@@ -148,3 +148,23 @@ quantlab official-rule-archive \
 2. 按受限股票池和日期逐批追加 snapshot，不覆盖旧 receipt。
 3. 建设 PIT Universe 与连续 SecurityStatus 链，避免只补价格规则却仍无法通过完整资格门。
 4. 全市场 Daily PREP 只有在目标日期所有证券 session 的官方规则、状态和 Universe 同时认证后才可升级 Strict PIT。
+
+## 11. 后续补强：全局深度审计与 System Health（2026-09-15 22:15）
+
+v2 首批提交后继续补齐只读可观察性：
+
+- 新增 `quantlab official-rule-audit --data-root ...`，逐个重建 snapshot、核对 records、来源映射、发布时间、内容寻址路径和官方原文字节。
+- 拒绝重复 source、非法 SHA256、v2 非 `research/official_rules/<sha256>.bin` 路径及文档 symlink；畸形字段必须返回 invalid，不得使 Qualification 崩溃。
+- System Health 的 PIT/Playbook 组件显示 `official_rule_archive` 全局 inventory；损坏 receipt 进入 `official_rule_receipts_invalid` WARN。
+- 保留 `official_rule_receipt_present` 兼容字段，同时新增语义更明确的 `official_rule_archive_verified_present`；两者均只表示全局存在深度验证通过的 v2 receipt，不证明 case-specific coverage。
+
+真实只读审计结果：
+
+- receipt files=1
+- verified=1 / invalid=0
+- records=7 / sources=7 / unique documents=7
+- legacy receipt present=false
+- System Health 中 `official_rule_archive_verified_present=true`
+- 最新 CandidateSet 仍为 `PARTIAL / RETROSPECTIVE_REFERENCE`，Research Readiness 仍为 WARN
+
+验证：相关专项 **42/42 passed**；完整仓库 **965 tests / 0 failed / 0 skipped**，336.996 秒。

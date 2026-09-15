@@ -50,6 +50,14 @@ quantlab official-rule-archive \
 
 当前 v2 只允许上交所、深交所、北交所 HTTPS 地址；每个 URL 必须提供宿主确认的带时区 `published_at`，未确认时不联网。下载后的原文按 SHA256 保存，每个 snapshot 独立生成 `research/official_market_rules/<rules_snapshot>.json`，同时保存实际 MarketRules records。相同快照重复运行幂等且不重新联网，不同快照可 append-only 并存。record 的 `available_at` 早于来源 `published_at`、原文/record 被篡改或来源缺失均 fail-closed。旧 `official-market-rules-v1` 单文件仍可读，但因没有 publication time 不再通过新的最高资格门。
 
+全部 v2 回执可只读深度审计：
+
+```bash
+quantlab official-rule-audit --data-root /path/to/data
+```
+
+该命令核对 snapshot、实际 records、publication time、来源映射、content-addressed path 与官方原文字节。输出是全局 archive inventory，不表示任一 CandidateSet 已引用对应 snapshot。
+
 首批真实 v2 数据已归档7份深交所公告对应的7个明确停牌 session；该回执证明“本地规则 records 绑定了所列官方原文及发布时间”，仍不自动证明人工语义映射、复牌日 exact 价格界限或费用假设正确。`official_rule_covered` 继续要求请求内逐证券逐日规则全覆盖且其他 strict PIT 组件同时通过。
 
 ## 五、执行链

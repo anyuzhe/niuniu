@@ -225,6 +225,8 @@ def main() -> None:
     official_archive.add_argument('--url',action='append',required=True,help='上交所/深交所/北交所HTTPS规则原文URL，可重复')
     official_archive.add_argument('--published-at',action='append',required=True,help='与--url逐项对应的带时区publication time，可重复')
     official_archive.add_argument('--confirm-publication-time',action='store_true',help='宿主确认所填publication time；未确认不联网')
+    official_audit=commands.add_parser('official-rule-audit',help='只读深度校验全部Official MarketRules v2回执、records和官方原文字节')
+    official_audit.add_argument('--data-root',type=Path,required=True)
     feed.add_argument('--require-fresh',action='store_true',help='行情过期或最新截面不齐时拒绝推进账户')
     archive=commands.add_parser('archive-bars',help='在独立工作目录保存不可变行情版本，显式处理修订')
     archive.add_argument('--bars',type=Path,required=True,help='规范化行情 Parquet')
@@ -321,6 +323,9 @@ def main() -> None:
             publications[url]=published
         print(encode(archive_official_rules(args.data_root,records,args.url,publications,
             confirm_publication_time=args.confirm_publication_time)));return
+    if args.command=='official-rule-audit':
+        from quantlab.data.official_rule_archive import audit_official_rule_archive
+        print(encode(audit_official_rule_archive(args.data_root)));return
     if args.command=='paper-reconcile':
         from quantlab.execution.reconcile import reconcile_account
         if args.output.exists():raise FileExistsError(args.output)

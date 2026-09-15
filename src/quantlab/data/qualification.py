@@ -53,12 +53,18 @@ def _official_rule_receipt(root,snapshot_id):
     if format_ not in schemas or set(value)!=schemas[format_]:return {'verified':False,'reason':'official_rule_receipt_schema_invalid'}
     if value['rules_snapshot']!=snapshot_id:return {'verified':False,'reason':'official_rule_snapshot_mismatch'}
     if not isinstance(value['sources'],list) or not value['sources']:return {'verified':False,'reason':'official_rule_sources_missing'}
-    evidence=[];published={}
+    evidence=[];published={};seen_urls=set()
     for item in value['sources']:
         expected={'url','path','sha256','fetched_at'} if format_=='official-market-rules-v1' else \
             {'url','path','sha256','fetched_at','published_at','publication_time_confirmed'}
         if not isinstance(item,dict) or set(item)!=expected or not _official_source(item.get('url')):
             return {'verified':False,'reason':'official_rule_source_invalid'}
+        if item['url'] in seen_urls:return {'verified':False,'reason':'official_rule_source_duplicate'}
+        seen_urls.add(item['url'])
+        sha=item['sha256']
+        if not isinstance(sha,str) or len(sha)!=64 or any(c not in '0123456789abcdef' for c in sha):
+            return {'verified':False,'reason':'official_rule_document_hash_invalid'}
+        if not isinstance(item['path'],str):return {'verified':False,'reason':'official_rule_document_path_invalid'}
         try:fetched=datetime.fromisoformat(item['fetched_at'])
         except (TypeError,ValueError):return {'verified':False,'reason':'official_rule_fetch_time_invalid'}
         if fetched.tzinfo is None:return {'verified':False,'reason':'official_rule_fetch_time_missing_timezone'}
@@ -70,8 +76,12 @@ def _official_rule_receipt(root,snapshot_id):
             if publication>fetched:return {'verified':False,'reason':'official_rule_publication_after_fetch'}
             published[item['url']]=publication
         relative=Path(item['path'])
-        if relative.is_absolute() or '..' in relative.parts:return {'verified':False,'reason':'official_rule_document_path_invalid'}
-        document=(root/relative).resolve()
+        expected_path=Path('research/official_rules')/(sha+'.bin')
+        if relative.is_absolute() or '..' in relative.parts or (format_=='official-market-rules-v2' and relative!=expected_path):
+            return {'verified':False,'reason':'official_rule_document_path_invalid'}
+        candidate=root/relative
+        if candidate.is_symlink():return {'verified':False,'reason':'official_rule_document_path_invalid'}
+        document=candidate.resolve()
         if not document.is_relative_to(root) or not document.is_file():return {'verified':False,'reason':'official_rule_document_missing'}
         try:payload=document.read_bytes()
         except OSError:return {'verified':False,'reason':'official_rule_document_unreadable'}

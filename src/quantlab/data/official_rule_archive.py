@@ -19,6 +19,37 @@ def _aware(value,name):
     return stamp
 
 
+def audit_official_rule_archive(data_root):
+    supplied=Path(data_root).expanduser()
+    if supplied.is_symlink():raise ValueError('官方规则数据根不能是符号链接')
+    root=supplied.resolve()
+    if not root.is_dir():raise ValueError('官方规则数据根不存在')
+    directory=root/'research/official_market_rules';legacy=root/'research/official_market_rules.json'
+    if directory.is_symlink() or legacy.is_symlink():raise ValueError('官方规则回执路径不能是符号链接')
+    if directory.exists() and not directory.is_dir():raise ValueError('官方规则回执目录类型错误')
+    if legacy.exists() and not legacy.is_file():raise ValueError('旧官方规则回执路径类型错误')
+    paths=sorted(directory.glob('*.json')) if directory.is_dir() else []
+    verified=[];invalid=[];documents=set();rule_count=source_count=0
+    for path in paths:
+        snapshot=path.stem
+        try:check=_official_rule_receipt(root,snapshot)
+        except (OSError,ValueError,TypeError,KeyError) as exc:
+            check={'verified':False,'reason':'official_rule_receipt_audit_error','error':type(exc).__name__}
+        if not check.get('verified'):
+            invalid.append({'file':str(path.relative_to(root)),'reason':check.get('reason','official_rule_receipt_invalid')})
+            continue
+        sources=check.get('sources') or [];rule_count+=int(check.get('rules') or 0);source_count+=len(sources)
+        documents.update(str(row.get('path')) for row in sources if row.get('path'))
+        verified.append({'rules_snapshot':snapshot,'receipt_path':check.get('receipt_path'),
+            'rules':check.get('rules'),'sources':len(sources)})
+    return {'format':'official-market-rules-archive-audit-v1','receipt_files':len(paths),
+        'verified_receipts':len(verified),'invalid_receipts':len(invalid),'rule_records':rule_count,
+        'source_records':source_count,'unique_documents':len(documents),'snapshots':verified[-100:],
+        'snapshots_omitted':max(0,len(verified)-100),'invalid':invalid[:100],
+        'invalid_omitted':max(0,len(invalid)-100),'legacy_receipt_present':legacy.is_file(),
+        'scope':'Global archive integrity inventory only; it does not prove that a CandidateSet references a covered snapshot or that semantic mapping is correct.'}
+
+
 def archive_official_rules(data_root,rules_records,urls,publication_times=None,*,
         confirm_publication_time=False,opener=urlopen,now_fn=None):
     root=Path(data_root).resolve();rules=MarketRules(rules_records);urls=list(dict.fromkeys(urls))
@@ -73,4 +104,4 @@ def archive_official_rules(data_root,rules_records,urls,publication_times=None,*
         'scope':'Publication-time receipt + archived exchange bytes + exact supplied records; semantic mapping and fees remain host-reviewed.'}
 
 
-__all__=['FORMAT','archive_official_rules']
+__all__=['FORMAT','archive_official_rules','audit_official_rule_archive']

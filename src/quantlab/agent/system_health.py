@@ -355,6 +355,8 @@ class SystemHealthService:
     def _pit_playbook(self,now):
         from quantlab.trading.playbook_store import PlaybookStore,PlaybookError
         store=PlaybookStore(self.output);pit_evidence={'records':0,'counts':{}};pit_warning=[]
+        official_rules={'format':'official-market-rules-archive-audit-v1','receipt_files':0,
+            'verified_receipts':0,'invalid_receipts':0,'rule_records':0,'legacy_receipt_present':False}
         pit_coverage={'available':bool(self.data_root),'claim':'evidence_presence_only_not_dataset_certificate'}
         if self.data_root:
             try:
@@ -363,11 +365,21 @@ class SystemHealthService:
                 pit_coverage.update(strict_receipts=pit_evidence.get('records',0),by_kind=pit_evidence.get('counts',{}),
                     full_inventory_requires_explicit_call=True,tool='get_strict_pit_coverage',cli='niuniu-pit-coverage')
             except (OSError,ValueError,KeyError,TypeError) as exc:
-                pit_evidence={'error':type(exc).__name__+': '+str(exc)[:300]};pit_warning=['pit_evidence_receipts_unreadable']
+                pit_evidence={'error':type(exc).__name__+': '+str(exc)[:300]};pit_warning.append('pit_evidence_receipts_unreadable')
+            try:
+                from quantlab.data.official_rule_archive import audit_official_rule_archive
+                official_rules=audit_official_rule_archive(self.data_root)
+                if official_rules['invalid_receipts']:pit_warning.append('official_rule_receipts_invalid')
+                if official_rules['legacy_receipt_present']:pit_warning.append('legacy_official_rule_receipt_not_qualification_eligible')
+            except (OSError,ValueError,KeyError,TypeError) as exc:
+                official_rules={'error':type(exc).__name__+': '+str(exc)[:300]};pit_warning.append('official_rule_archive_unreadable')
         try:overview=store.overview();sets=store.list_candidate_sets(limit=2000)['records'] if overview['candidate_sets'] else []
         except (PlaybookError,OSError,ValueError,KeyError,TypeError) as exc:
-            return _component('BLOCKED','Playbook/PIT 结构化证据不可读。',blockers=['playbook_store_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300],'pit_evidence':pit_evidence})
-        if not sets:return _component('WARN' if pit_warning else 'NOT_CONFIGURED','尚无 CandidateSet/PIT 证据。',evidence={'overview':overview,'pit_evidence':pit_evidence,'pit_coverage':pit_coverage},warnings=pit_warning)
+            return _component('BLOCKED','Playbook/PIT 结构化证据不可读。',blockers=['playbook_store_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300],'pit_evidence':pit_evidence,'official_rule_archive':official_rules})
+        if not sets:return _component('WARN' if pit_warning else 'NOT_CONFIGURED','尚无 CandidateSet/PIT 证据。',evidence={'overview':overview,'pit_evidence':pit_evidence,'pit_coverage':pit_coverage,
+            'official_rule_archive':official_rules,'official_rule_archive_verified_present':bool(official_rules.get('verified_receipts')),
+            'official_rule_receipt_present':bool(official_rules.get('verified_receipts'))},warnings=pit_warning,
+            limitations=['Official-rule archive counts are global integrity inventory; they do not prove case-specific rule coverage.'])
         counts=Counter((row.get('completeness','UNKNOWN'),row.get('pit_status','UNKNOWN')) for row in sets)
         latest=max(sets,key=lambda r:(r.get('as_of',''),r.get('candidate_set_id','')))
         strict=latest.get('completeness')=='FULL' and latest.get('pit_status')=='STRICT_PIT';warnings=list(pit_warning)
@@ -378,8 +390,10 @@ class SystemHealthService:
             evidence={'overview':overview,'latest_candidate_set':{'id':latest.get('candidate_set_id'),'trading_day':latest.get('trading_day'),
                 'frame':latest.get('frame'),'as_of':latest.get('as_of'),'completeness':latest.get('completeness'),'pit_status':latest.get('pit_status')},
                 'candidate_quality_counts':{f'{a}/{b}':n for (a,b),n in counts.items()},'pit_evidence':pit_evidence,'pit_coverage':pit_coverage,
-                'official_rule_receipt_present':bool(self.data_root and (self.data_root/'research'/'official_market_rules.json').is_file())},
-            warnings=warnings,limitations=['CandidateSet PIT is case-specific and never certifies the whole provider or data lake.'])
+                'official_rule_archive':official_rules,'official_rule_archive_verified_present':bool(official_rules.get('verified_receipts')),
+                'official_rule_receipt_present':bool(official_rules.get('verified_receipts'))},
+            warnings=warnings,limitations=['CandidateSet PIT is case-specific and never certifies the whole provider or data lake.',
+                'Official-rule archive counts are global integrity inventory; they do not prove that the latest CandidateSet references a covered snapshot.'])
 
     def _paper(self,now):
         from quantlab.trading.paper_lifecycle import PaperLifecycleAnalytics

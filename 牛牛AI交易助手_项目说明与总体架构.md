@@ -4,7 +4,7 @@
 - 架构口径更新：2026-09-15
 - 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `964 passed / 0 failed / 0 skipped`
+- 当前稳定基线：SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session及全局深度审计；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `965 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -238,7 +238,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Strict PIT Evidence Archive | **已完成 v1 基础设施**：支持 Universe / SecurityStatus / Industry / Daily Market Cap 四类 statement；当前 `niuniu-data` 已有 SecurityStatus 14条/7只股票，其它三类仍为0 |
 | Strict PIT Coverage | **已完成 v1**：深度验证 receipt 后按年份/证券/字段展示 evidence presence，并分开展示回顾性 inventory 与 gap；不生成数据集总覆盖率；当前 SecurityStatus 有14条 verified evidence，其它三类仍缺 |
 | Strict PIT SecurityStatus | **第二批真实资料已接入**：累计7份深交所官方公告→14条状态事件→silver派生表→PREP消费；稀疏 receipt 只证明明确生效日，不跨日外推 |
-| Official MarketRules Receipt | **v2 与首批真实资料已完成**：按 snapshot append-only 保存 records/官方原文/`published_at`；当前仅7只股票各1个停牌 session，复牌 exact 涨跌停价和全市场覆盖仍缺 |
+| Official MarketRules Receipt | **v2、首批真实资料与全局审计已完成**：按 snapshot append-only 保存 records/官方原文/`published_at`；CLI/System Health 深度核验1个 receipt、7条规则、7份原文；当前仅7个停牌 session，复牌 exact 涨跌停价和全市场覆盖仍缺 |
 | Playbook Lab 六类结构化对象 | 已完成 |
 | `ExpertSource` 作为交易者来源 | 已完成，并兼容投影为 StrategySource(TRADER) |
 | PREP 全市场扫描 / MarketSnapshot / AUCTION / R1 Scanner | 已完成 |
@@ -249,7 +249,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Live MarketSnapshot Provider | **已完成 v1**：腾讯主源 + 东财第二源 + 新浪备用校验；至少两源一致、异常源剔除、时间戳防脏数据、公开网页源不升级 Strict PIT |
 | Agent Scorecard | **P9 v1 已完成**：按任务类型只读评价，样本不足 UNKNOWN，无总分/自动调权 |
 | Dynamic Agent Orchestrator / Dev Studio | **P10 v1 已完成**：隔离 worktree + depth-1 动态 Subagent + path lease + Reviewer + Human Merge Gate |
-| System Health | **P11 v1 已完成**：Runtime / Research Readiness 双轴，只读聚合服务、任务、数据新鲜度、PIT、通知、Dev 与日志；无健康总分/自动修复 |
+| System Health | **P11 v1 已完成**：Runtime / Research Readiness 双轴，只读聚合服务、任务、数据新鲜度、PIT、通知、Dev 与日志；MarketRules v2 显示全局完整性 inventory 但不冒充 case coverage；无健康总分/自动修复 |
 | Mobile / Bot | **P12 v1 已完成**：同一 Workbench `/mobile` + 只读 JSON API + MCP/CLI Mobile Brief；复用 Decision/Dossier/Paper/Health，无第二状态源 |
 | Broker Read-only / Shadow | **P13-A v1 已完成**：脱敏账户快照 append-only 保存、Dynamic Paper 持仓/现金对账、MCP/System Health 只读查询；无实时券商连接 |
 | RealTrade Readiness | **P13-B0 v1 已完成**：Broker capability + disabled safety policy + fail-closed blocker；当前无 live channel 时固定不可连接/不可下单 |
@@ -257,7 +257,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**964 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**965 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：

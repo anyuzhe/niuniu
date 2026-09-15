@@ -18,6 +18,7 @@ Official MarketRules 不计入上面四类 PIT statement 数量，但其最高�
 - 新回执按 `research/official_market_rules/<rules_snapshot>.json` append-only 保存实际规则 records、官方原文字节 SHA256、`published_at`、`fetched_at` 与宿主 publication-time confirmation。
 - 每个 record 的 `available_at` 不得早于其 source `published_at`；旧 v1 单文件没有 publication time，只可读，不再通过新的 `official_rule_covered` gate。
 - 同一 snapshot 重试幂等且不重新联网；不同 snapshot 可在同一数据根并存，禁止覆盖旧回执。
+- `official-rule-audit` 只读深度核对所有 v2 receipt、records、source、content-addressed path 与官方原文字节；System Health 展示的是全局 archive inventory，不是 CandidateSet 已绑定该 snapshot 的证明。
 - v2 证明来源字节、发布时间、record 身份和请求覆盖，不自动证明人工语义映射或券商费用假设正确。
 - 停牌 session 可显式保存无价格边界，但 RulesAudit 必须将其统计为 suspended，不得写成可无限价格交易。
 

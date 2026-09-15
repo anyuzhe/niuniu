@@ -101,7 +101,7 @@ class DataQualificationTests(unittest.TestCase):
             self.assertTrue(good['qualified'],good);self.assertEqual(good['components']['official_rules']['status'],'official_rule_covered')
 
     def test_official_rule_archive_is_append_only_publication_bound_and_idempotent(self):
-        from quantlab.data.official_rule_archive import archive_official_rules
+        from quantlab.data.official_rule_archive import archive_official_rules,audit_official_rule_archive
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);url='https://disc.static.szse.cn/download/disc/rule.PDF';published='2024-12-31T18:00:00+08:00'
             rules=[{'symbol':'sz.000001','effective_at':'2025-01-01T00:00:00+08:00','available_at':'2025-01-01T00:00:00+08:00',
@@ -122,13 +122,16 @@ class DataQualificationTests(unittest.TestCase):
             other=[{**rules[0],'symbol':'sz.000002'}]
             third=archive_official_rules(root,other,[url],{url:published},confirm_publication_time=True,opener=opener)
             self.assertTrue(third['created']);self.assertEqual(len(list(path.parent.glob('*.json'))),2)
+            audit=audit_official_rule_archive(root);self.assertEqual(audit['verified_receipts'],2)
+            self.assertEqual(audit['invalid_receipts'],0);self.assertEqual(audit['rule_records'],2)
+            self.assertEqual(audit['unique_documents'],1);self.assertFalse(audit['legacy_receipt_present'])
             bad=[{**rules[0],'source':'https://example.com/rule'}]
             with self.assertRaisesRegex(ValueError,'上交所'):
                 archive_official_rules(root,bad,['https://example.com/rule'],{'https://example.com/rule':published},
                     confirm_publication_time=True,opener=opener)
 
     def test_official_rule_archive_rejects_hindsight_availability_and_tampering(self):
-        from quantlab.data.official_rule_archive import archive_official_rules
+        from quantlab.data.official_rule_archive import archive_official_rules,audit_official_rule_archive
         from quantlab.data.qualification import _official_rule_receipt
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);url='https://www.szse.cn/lawrules/rule/stock/trade/rule.html'
@@ -147,6 +150,10 @@ class DataQualificationTests(unittest.TestCase):
             path.write_text(json.dumps(value))
             check=_official_rule_receipt(root,result['rules_snapshot'])
             self.assertFalse(check['verified']);self.assertEqual(check['reason'],'official_rule_records_snapshot_mismatch')
+            audit=audit_official_rule_archive(root);self.assertEqual(audit['verified_receipts'],0);self.assertEqual(audit['invalid_receipts'],1)
+            value['rules'][0]['suspended']=True;value['sources'][0]['path']=7;path.write_text(json.dumps(value))
+            malformed=_official_rule_receipt(root,result['rules_snapshot'])
+            self.assertFalse(malformed['verified']);self.assertEqual(malformed['reason'],'official_rule_document_path_invalid')
 
 
     def test_pit_universe_requires_archived_authoritative_publication_receipt(self):

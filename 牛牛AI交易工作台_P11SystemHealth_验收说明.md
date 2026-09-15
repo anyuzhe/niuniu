@@ -70,3 +70,5 @@ System Health 不生成“95分/健康率”一类总分。顶层只分两条轴
 - 完整仓库：**876 tests / 0 failed / 0 skipped**。
 
 P11 v1 到此完成。下一正式阶段进入 **P12 移动端 / 机器人**：复用现有 MCP/API、Stock Dossier、Decision Ledger 与统一状态源，不建立第二份记忆或第二份持仓状态。
+
+> 2026-09-15 后续：PIT/Playbook 组件已支持 Official MarketRules v2 全局深度审计 inventory；invalid receipt 触发 WARN，verified present 不等于最新 CandidateSet 已绑定该 snapshot。最新全仓基线为965/0/0，详见《牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md》。

@@ -56,8 +56,8 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**964 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive/Coverage/SecurityStatus 和 Official MarketRules publication receipt v2。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session。
+当前正式代码全仓基线：**965 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio / P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage/SecurityStatus 和 Official MarketRules publication receipt v2 + 全局深度审计。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session。
 外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部并行主线：持续真实前瞻每日运行，补复牌 exact 价格边界、连续 SecurityStatus/PIT Universe，再推进历史行业与每日真实市值。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
@@ -336,6 +336,7 @@
 | 2026-09-15 | Strict PIT SecurityStatus v1 | **961 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | 首轮 Daily Orchestrator 前瞻 NO_TRADE / 空候选终态 | **962 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Official MarketRules Publication Receipt v2 / 首批7个停牌 session | **964 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | Official MarketRules v2 全局审计 / System Health 接线 | **965 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -685,3 +686,15 @@
 - 验证：Qualification+PREP+Rules Audit 专项 **28/28 passed**；完整仓库 **964 tests / 0 failed / 0 skipped**，367.662秒。
 - 文档：新增《牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md》，同步 README、数据资格说明、总体架构、总计划、核心进度与 Agent Memory。
 - 后续：先补同7只股票复牌/ST session 的官方参考价与 exact 涨跌停价证据，再按受限股票池持续追加逐日 snapshot；同时推进 PIT Universe 和连续状态链。
+
+### 2026-09-15 22:15｜[修复/可观察性] Official MarketRules v2 全局深度审计
+
+- 模块：Official Rule Archive / Qualification Verifier / System Health / CLI / Agent Operating Memory。
+- Git：本条与代码及文档同一提交发布，提交标题 `fix: 审计MarketRules v2回执`；SHA 以该提交 Git 历史为准。
+- 改动：新增只读 `quantlab official-rule-audit --data-root ...`；扫描所有 v2 snapshot，重建 MarketRules，并深度核对 source/publication time、records identity、content-addressed path 和官方原文字节。
+- 防篡改：重复 source、非法 SHA256、v2 非 `research/official_rules/<sha>.bin` 路径、文档 symlink 及畸形字段都返回 invalid；Qualification 不因坏 receipt 字段崩溃。
+- System Health：PIT/Playbook evidence 新增 `official_rule_archive` 和 `official_rule_archive_verified_present`；兼容 `official_rule_receipt_present`。invalid receipt 触发 `official_rule_receipts_invalid` WARN；legacy v1 单文件触发不具资格提示。
+- 语义：上述字段是全局 archive 完整性 inventory，不是最新 CandidateSet 的 rule binding，也不会把 PARTIAL/RETROSPECTIVE_REFERENCE 升级。
+- 真实烟测：`niuniu-data` 为 receipt files=1、verified=1、invalid=0、records=7、sources=7、unique documents=7、legacy=false；System Health 显示 verified present=true，但最新2026-09-16 CandidateSet 及 Research Readiness 仍为 WARN。
+- 验证：Qualification+PREP+Health+Rules Audit 专项 **42/42 passed**；完整仓库 **965 tests / 0 failed / 0 skipped**，336.996秒。
+- 后续：审计链已足够支撑追加批次；开发主线返回真实数据，补复牌 exact 价格边界、PIT Universe 与连续状态链。

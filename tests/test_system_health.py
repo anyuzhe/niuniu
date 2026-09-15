@@ -71,6 +71,27 @@ class SystemHealthTests(unittest.TestCase):
         self.assertEqual(health['status'],'OK');self.assertEqual(health['evidence']['latest_accepted_end'],'2026-09-14')
         self.assertTrue(any('not strict-PIT' in note for note in health['limitations']))
 
+    def test_official_market_rules_v2_inventory_is_visible_and_tampering_warns(self):
+        from quantlab.data.official_rule_archive import archive_official_rules
+        url='https://www.sse.com.cn/test/rule.html';published='2024-12-31T18:00:00+08:00'
+        rules=[{'symbol':'sh.600000','effective_at':'2025-01-02T09:30:00+08:00','available_at':'2025-01-01T09:00:00+08:00',
+            'expires_at':'2025-01-03T00:00:00+08:00','suspended':True,'st':False,'limit_up':None,'limit_down':None,
+            'commission_bps':0,'minimum_commission':0,'sell_tax_bps':0,'transfer_bps':0,'source':url}]
+        class OfficialResponse:
+            def geturl(self):return url
+            def read(self,_n):return b'official rule health fixture'
+        archived=archive_official_rules(self.data,rules,[url],{url:published},confirm_publication_time=True,
+            opener=lambda *_a,**_k:OfficialResponse(),now_fn=lambda:self.now)
+        health=self.service().build()['components']['pit_playbook'];audit=health['evidence']['official_rule_archive']
+        self.assertTrue(health['evidence']['official_rule_archive_verified_present'])
+        self.assertTrue(health['evidence']['official_rule_receipt_present']);self.assertEqual(audit['verified_receipts'],1)
+        self.assertEqual(audit['invalid_receipts'],0);self.assertIn('global integrity inventory',health['limitations'][0])
+        path=Path(archived['path']);value=json.loads(path.read_text());value['rules'][0]['suspended']=False;path.write_text(json.dumps(value))
+        broken=self.service().build()['components']['pit_playbook'];audit=broken['evidence']['official_rule_archive']
+        self.assertFalse(broken['evidence']['official_rule_archive_verified_present'])
+        self.assertFalse(broken['evidence']['official_rule_receipt_present']);self.assertEqual(audit['invalid_receipts'],1)
+        self.assertIn('official_rule_receipts_invalid',broken['warnings'])
+
     def test_unread_notification_is_attention_not_data_correctness(self):
         watch=str(uuid4());folder=self.output/'_tracking_control'/watch;folder.mkdir(parents=True)
         write_checked(folder/'state.json',{'watch_id':watch,'notices':{'n1':{'unread':True}}})
