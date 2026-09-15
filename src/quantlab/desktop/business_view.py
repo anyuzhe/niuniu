@@ -24,9 +24,9 @@ LABELS.update({'proposal_id':'提案编号','request_id':'幂等请求编号','p
     'max_bar_evaluations':'K 线评价量上限','max_resamples':'重采样次数上限',
     'max_resample_date_draws':'重采样工作量上限','max_pending_proposals':'待处理提案上限',
     'max_active_jobs':'新提案提交时活动任务上限','cooperative_seconds':'每次执行合作式时限（秒）',
-    'output':'研究产物目录','data_root':'只读行情目录','device':'存储设备标识','inode':'目录身份标识'})
+    'output':'研究产物目录','data_root':'只读行情目录','device':'存储设备标识','inode':'目录身份标识','approval_freeze':'审批输入冻结','freeze_id':'冻结编号','manifest_hash':'冻结清单校验值'})
 VALUES.update({'pending':'待人工批准','approved':'已批准，待入队确认','submitted':'已交付原任务队列',
-    'rejected':'已拒绝','execution_time_snapshot_not_approval_time_freeze':'批准时不冻结行情字节；执行时保存数据快照'})
+    'rejected':'已拒绝','execution_time_snapshot_not_approval_time_freeze':'历史口径：批准时不冻结行情字节','approval_time_actual_byte_freeze_on_host_approval':'人工批准时冻结实际研究输入字节并从冻结包执行'})
 
 
 class BusinessDetails(QWidget):

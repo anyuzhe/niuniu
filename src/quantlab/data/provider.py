@@ -5,6 +5,9 @@ from quantlab.data.mqc import MQCParquetProvider
 
 def local_data_provider(root, adjustment='raw'):
     root = Path(root).resolve()
+    from quantlab.storage.approval_inputs import is_approval_freeze_root,ApprovalFrozenDataProvider
+    if is_approval_freeze_root(root):
+        return ApprovalFrozenDataProvider(root,adjustment)
     series = root/'baostock-series.json'
     if series.is_symlink() or series.exists():
         from quantlab.data.baostock_series import BaostockSeriesProvider

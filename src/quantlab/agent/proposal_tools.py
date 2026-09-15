@@ -30,7 +30,8 @@ class ResearchProposalAPI(ReadOnlyResearchAPI):
                 result['data'].update(version='1.1',access='read_and_propose',
                     tools=[t['name'] for t in self.schemas()],host_approval_submission_available=True,
                     approval_tools_available_to_model=False,data_qualification_available=True,
-                    qualification_levels=['research_only','retrospective_reference','strict_pit','official_rule_covered'])
+                    qualification_levels=['research_only','retrospective_reference','strict_pit','official_rule_covered'],
+                    approval_time_actual_byte_freeze=True,approval_freeze_model_write=False)
                 result['data']['limitations'][0]='尚未连接聊天模型；AI 只能查询和生成提案，不能自行批准或启动研究。'
             return result
         definition = next((t for t in PROPOSAL_TOOLS if t['name']==name),None)
@@ -49,7 +50,7 @@ class ResearchProposalAPI(ReadOnlyResearchAPI):
                 data = self.proposals.propose(arguments['request_id'],parse_spec(arguments['spec_json']))
                 evidence=[{'kind':'proposal','proposal_id':data['proposal_id']}]
             else:
-                data = self.proposals.store.get(arguments['proposal_id'])
+                data = self.proposals.get(arguments['proposal_id'])
                 evidence=[{'kind':'proposal','proposal_id':data['proposal_id']}]
             result = {'ok':True,'tool':name,'data':compact(data),'evidence':evidence,
                 'warnings':['提案不等于已批准、已执行或数据已验收；完整配置以人工批准面板为准。'],'error':None}

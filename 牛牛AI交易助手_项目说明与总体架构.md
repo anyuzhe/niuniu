@@ -3,7 +3,7 @@
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
 - 架构口径更新：2026-09-15
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：P8.7 R2/R3 Orchestrator + MarketSnapshot Provider framework 已完成，全仓 `905 passed / 0 failed / 0 skipped`
+- 当前稳定基线：Approval-time Actual-byte Freeze v1 已完成，全仓 `912 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -223,13 +223,14 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 - Selection、Execution Access 与账户收益的分层表现。
 
 系统复盘产生的新经验只能回到 `SYSTEM_REVIEW` 来源，再形成新的 DRAFT 或新版本；不能直接覆盖旧 Playbook。旧版本、失败预测和反例必须永久可追溯。
-## 11. 当前实现状态（2026-09-14）
+## 11. 当前实现状态（2026-09-15）
 
 | 层 | 当前状态 |
 |---|---|
 | Trading Desk / Decision / Dossier / Theme / Frame / Strategy Intent | 已完成主体 |
 | AI Team / Peer Review / Git-first Memory | 已完成主体 |
 | Research Lab / Strict PIT / Campaign / Factory / Watch | 已有成熟基础 |
+| Approval-time Actual-byte Freeze | **已完成 v1**：人工批准时冻结实际规范化研究输入、qfq/raw/context 与 Universe mask；执行/恢复不再读取变化后的源数据 |
 | Playbook Lab 六类结构化对象 | 已完成 |
 | `ExpertSource` 作为交易者来源 | 已完成，并兼容投影为 StrategySource(TRADER) |
 | PREP 全市场扫描 / MarketSnapshot / AUCTION / R1 Scanner | 已完成 |
@@ -247,16 +248,16 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**905 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**912 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：
 
 1. **P13-B1 Live Read-only Broker Adapter**：只有出现明确可用的具体券商实时只读通道后才开始；目标是账户/持仓/资金/回执只读连接，不默认包含订单权限。
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
-3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；R2/R3 Orchestrator 已补齐，下一数据侧缺口是选择/实现可审计的正式实时 MarketSnapshot provider，同时继续补 Strict PIT 原始资料。
+3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；外部数据侧继续寻找可审计 live MarketSnapshot provider，内部 Research Lab 下一主线为 Research Session Grant、Strict PIT 原始资料和 Watch 序贯统计。
 
-并行继续补 Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计。
+Approval-time actual-byte freeze 已完成；并行继续补 **Research Session Grant、Strict PIT 原始资料与 Watch 序贯统计**。
 
 ### P8.7 当前边界
 

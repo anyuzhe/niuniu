@@ -56,9 +56,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**905 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v2（含 R2/R3）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1。
-下一阶段：P13-B1 Live Read-only Broker Adapter；等待明确可用的具体券商通道，订单能力仍不默认开启。
+当前正式代码全仓基线：**912 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator v2（含 R2/R3）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1。
+外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：Research Session Grant。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -276,9 +276,9 @@
 
 ### 7.3 Research Lab
 
-已完成：数据/PIT、Factor、理论、结构事件、组合评分、Holdout、Walk-forward、Bootstrap、多重检验、独立成交回测、Campaign、Alpha Factory、Watch、复算归档。
+已完成：数据/PIT、Factor、理论、结构事件、组合评分、Holdout、Walk-forward、Bootstrap、多重检验、独立成交回测、Campaign、Alpha Factory、Watch、复算归档，以及 Approval-time Actual-byte Freeze。
 
-仍需加强：approval-time actual-byte freeze、Research Session Grant、更多 Strict PIT 历史原始资料、Watch 序贯统计。
+仍需加强：Research Session Grant、更多 Strict PIT 历史原始资料、Watch 序贯统计。
 
 ### 7.4 Trading Knowledge / Playbook Lab
 
@@ -296,7 +296,7 @@
 ## 9. 当前推荐的后续主线
 
 1. 出现具体券商通道后推进 P13-B1，只做实时只读 Adapter；不把 Paper/Mobile/Broker Snapshot/Shadow MATCH/完整 policy 自动外推为订单权限。
-2. 无 B1 通道期间，R2/R3 Orchestrator 已补齐；下一优先级转为真实可审计 MarketSnapshot provider、Strict PIT 原始资料、approval-time actual-byte freeze、Research Session Grant 与 Watch 序贯统计，同时继续积累真实前瞻 Paper 样本。
+2. 无 B1 通道期间，R2/R3 Orchestrator 与 approval-time actual-byte freeze 已补齐；下一优先级为 Research Session Grant、真实可审计 MarketSnapshot provider、Strict PIT 原始资料与 Watch 序贯统计，同时继续积累真实前瞻 Paper 样本。
 
 ## 10. 关键测试基线演进
 
@@ -328,6 +328,7 @@
 | 2026-09-15 | P13-A Broker Read-only / Shadow v1 | **889 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P13-B0 RealTrade Readiness v1 | **897 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | P8.7 v2 R2/R3 + MarketSnapshot Provider | **905 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | Approval-time Actual-byte Freeze v1 | **912 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -541,3 +542,16 @@
 - 真实烟测：Provider BLOCKED（AUCTION/R1/R2/R3 均缺 live source），System Health Provider=NOT_CONFIGURED，Research Readiness= WARN；artifacts **77006→77006**。
 - 测试/验收：R2/R3+Provider 专项 **27/27**，Provider/Scanner/Orchestrator/System Health/MCP 联合 **44/44**；完整仓库 **905 tests / 0 failed / 0 skipped**，380.437秒。
 - 后续事项：R2/R3 状态机已收尾；下一数据侧缺口是真实、可审计的 live MarketSnapshot Provider。无合适数据源时继续 Strict PIT / approval-time actual-byte freeze / Research Session Grant / Watch 序贯统计等并行线。
+
+### 2026-09-15 11:55｜[研究基础设施] Approval-time Actual-byte Freeze v1
+
+- 模块：Research Proposal / JobQueue / DataProvider / Universe / Campaign / Execution / System Health。
+- 关键变化：正式 Proposal 在宿主批准时先创建 `_approval_input_freezes/<proposal_id>/`，冻结实际规范化研究 bars、Context、qfq/raw 双价格输入与 Universe eligibility mask，再进入 approved/submitted。
+- 执行语义：submit/resume/run 都验证同一 freeze receipt、manifest、spec digest 与文件 SHA256；批准后源数据变化或下线不改变任务，冻结包自身变化则 fail-closed，不回退 live data。
+- 来源语义：冻结执行仍保留原 provider / adjustment；`approval_time_frozen=true` 进入文件元数据和 receipt，避免 Watch/Rebase 把冻结存储误判成新行情口径。
+- 组合研究：Holdout/Walk-forward 从冻结大区间切片；Campaign 多节点共享一个 approval bundle；精细账户模式同时冻结 qfq signal 与 raw execution；PIT Universe 使用批准时 eligibility mask。
+- 权限：模型仍只能 qualify/preview/propose/query，不能 approve、创建/替换 freeze 或修改 JobQueue guard。旧 direct JobQueue / tracking input_signature 保持兼容。
+- 可观察性：System Health 新增 Approval Input Freeze 轻量 manifest/文件存在性视图；真正使用边界才做完整 SHA256。
+- 真实烟测：capability/System Health 查询前后 artifacts **89484→89484**，未创建冻结目录；冻结目录只在真实宿主批准时生成。
+- 测试/验收：专项 **7/7**，Proposal/Campaign/JobQueue/System Health/Execution/Qualification 联合 **64/64**；完整仓库 **912 tests / 0 failed / 0 skipped**，366.669秒。
+- 后续事项：内部主线进入 Research Session Grant；外部依赖继续等待正式 live MarketSnapshot provider 与 P13-B1 券商只读通道。

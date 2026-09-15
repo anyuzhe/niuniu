@@ -73,11 +73,11 @@ def prepare_campaign(spec, budget=None):
         if estimate[key] > maximum: raise ProposalError('BUDGET_EXCEEDED','整个研究包的 '+key+' 超出预算。')
     return {'spec':spec,'spec_digest':digest(spec),'resolved':CampaignSubmission(spec).preview(),
         'estimate':estimate,'budget':asdict(budget),'order':order,'registry_plan':registry,
-        'node_previews':previews,'data_policy':'execution_time_fingerprint_not_approval_time_freeze',
+        'node_previews':previews,'data_policy':'approval_time_actual_byte_freeze_on_host_approval',
         'warnings':['一次批准固定全部节点和总预算；依赖只按执行成功判断，不按显著性或收益择优。',
             '统计节点须显式配置 permutation；失败、跳过和不可检验项保留原检验族名额。',
             '成交与相关性节点仅为诊断，不混入 IC 检验族；没有新增净收益显著性检验。',
             '仅在本机任务运行期间推进；退出、取消后需人工恢复。不是24小时服务。',
-            '首次执行记录数据指纹，恢复与各节点前后复查；不是批准时冻结数据字节。',
+            '宿主批准时逐节点冻结实际规范化输入字节与资格 mask；恢复和各节点执行只读同一批准包。',
             '合作式时限覆盖一次整包尝试；中断保留已完成节点，终止失败节点不自动重跑。',
             'Holm仅覆盖本包固定检验族；本地登记不证明未见数据，也不控制跨包探索与反复查看。']}

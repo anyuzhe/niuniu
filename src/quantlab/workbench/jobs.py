@@ -201,7 +201,11 @@ def execute(submission, data_root, artifact_root, *, campaign_job_id=None):
         return TheoryStudyRunner(runner).run(config,submission.theory_study)
     if submission.mode == 'execution':
         from quantlab.execution.rules import MarketRules
-        return ExecutionStudy(runner).run(config, submission.execution, submission.portfolio, submission.execution_backend, MarketRules(submission.market_rules) if submission.market_rules is not None else None)
+        execution_data=None
+        if submission.execution.price_mode=='account' and submission.adjustment!='raw':
+            from quantlab.data.provider import local_data_provider
+            execution_data=local_data_provider(data_root,'raw')
+        return ExecutionStudy(runner,execution_data).run(config, submission.execution, submission.portfolio, submission.execution_backend, MarketRules(submission.market_rules) if submission.market_rules is not None else None)
     if submission.mode == 'sweep':
         return SweepRunner(runner).run(config, submission.grid, split=submission.split, schedule=submission.schedule)
     if submission.mode == 'holdout':
@@ -215,11 +219,14 @@ def execute(submission, data_root, artifact_root, *, campaign_job_id=None):
 
 def validate_execution_guard(guard):
     if guard is None: return
-    base={'runtime','cooperative_seconds','max_active_jobs'}
-    if not isinstance(guard,dict) or set(guard) not in (base,base|{'input_signature'}):
+    base={'runtime','cooperative_seconds','max_active_jobs'};optional={'input_signature','approval_freeze'}
+    if not isinstance(guard,dict) or not base<=set(guard) or set(guard)-base-optional:
         raise ValueError('Invalid approved execution guard')
     if 'input_signature' in guard and (not isinstance(guard['input_signature'],str) or not re.fullmatch(r'[0-9a-f]{64}',guard['input_signature'])):
         raise ValueError('Invalid approved input signature')
+    if 'approval_freeze' in guard:
+        from quantlab.storage.approval_inputs import validate_approval_freeze_receipt
+        validate_approval_freeze_receipt(guard['approval_freeze'])
     if type(guard['max_active_jobs']) is not int or guard['max_active_jobs'] < 1:
         raise ValueError('Invalid approved active-job budget')
     seconds = guard['cooperative_seconds']
@@ -297,8 +304,13 @@ class JobQueue:
             if execution_guard and sum(j['status'] in ('queued','running') for j in self.jobs.values()) >= execution_guard['max_active_jobs']:
                 raise ValueError('BUDGET_EXCEEDED：共享队列活动任务已达本次批准上限')
             submission = prepare(spec)
-            from quantlab.data.qualification import qualify_spec
-            qualification=qualify_spec(self.data_root,spec)
+            if execution_guard and 'approval_freeze' in execution_guard:
+                from quantlab.storage.approval_inputs import ApprovalInputFreezeStore
+                frozen=ApprovalInputFreezeStore(self.root,self.data_root).verify(execution_guard['approval_freeze'],spec)
+                qualification=frozen['manifest']['qualification']
+            else:
+                from quantlab.data.qualification import qualify_spec
+                qualification=qualify_spec(self.data_root,spec)
             if not qualification['qualified']:
                 raise ValueError('DATA_QUALIFICATION_BLOCKED：'+', '.join(qualification.get('blockers',[])[:12]))
             record = {'job_id': job_id, 'status': 'queued', 'created_at': now(),
@@ -321,11 +333,17 @@ class JobQueue:
                 raise ValueError('只有中断、取消或失败的任务可以恢复')
             validate_execution_guard(record.get('execution_guard'))
             submission=prepare(record['spec'])
-            from quantlab.data.qualification import qualify_spec
-            qualification=qualify_spec(self.data_root,record['spec'])
+            guard=record.get('execution_guard')
+            if guard and 'approval_freeze' in guard:
+                from quantlab.storage.approval_inputs import ApprovalInputFreezeStore
+                frozen=ApprovalInputFreezeStore(self.root,self.data_root).verify(guard['approval_freeze'],record['spec'])
+                qualification=frozen['manifest']['qualification']
+            else:
+                from quantlab.data.qualification import qualify_spec
+                qualification=qualify_spec(self.data_root,record['spec'])
             stored_qualification=record.get('qualification')
             if not qualification['qualified'] or (stored_qualification is not None and qualification!=stored_qualification):
-                raise ValueError('数据资格或来源已变化，请新建研究并重新批准')
+                raise ValueError('数据资格或审批冻结证据已变化，请新建研究并重新批准')
             if stored_qualification is None and qualification.get('required_level')!='research_only':
                 raise ValueError('旧任务没有严格资格回执，请新建研究并重新批准')
             current_resolved=submission.preview()
@@ -375,7 +393,20 @@ class JobQueue:
             import time
             guard = record.get('execution_guard'); validate_execution_guard(guard)
             deadline = time.monotonic()+guard['cooperative_seconds'] if guard else None
+            effective_data_root=self.data_root
+            if guard and 'approval_freeze' in guard:
+                from quantlab.storage.approval_inputs import ApprovalInputFreezeStore
+                frozen=ApprovalInputFreezeStore(self.root,self.data_root).verify(guard['approval_freeze'],record['spec'])
+                if frozen['manifest']['qualification']!=record.get('qualification'):
+                    raise ValueError('审批冻结的数据资格回执与任务记录不一致')
+                effective_data_root=frozen['path']
             def check_inputs():
+                if guard and 'approval_freeze' in guard:
+                    from quantlab.storage.approval_inputs import ApprovalInputFreezeStore
+                    frozen_now=ApprovalInputFreezeStore(self.root,self.data_root).verify(guard['approval_freeze'],record['spec'])
+                    if frozen_now['manifest']['qualification']!=record.get('qualification'):
+                        raise ValueError('审批冻结输入或资格证据发生变化；停止执行')
+                    return
                 from quantlab.data.qualification import qualify_spec
                 current_qualification=qualify_spec(self.data_root,record['spec'])
                 if not current_qualification['qualified'] or current_qualification!=record.get('qualification'):
@@ -398,7 +429,7 @@ class JobQueue:
                 progress('准备执行',None,None)
                 check_inputs()
                 try:
-                    result = execute(submission, self.data_root, self.root, **({"campaign_job_id":job_id} if submission.mode=="campaign" else {}))
+                    result = execute(submission, effective_data_root, self.root, **({"campaign_job_id":job_id} if submission.mode=="campaign" else {}))
                     check_inputs()
                 finally:
                     with self.lock:record['checkpoint_summary']=children.summary()

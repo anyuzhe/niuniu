@@ -139,6 +139,40 @@ class SystemHealthService:
             limitations=['Historical failed jobs may remain archived; only the last 24h is treated as a current warning.',
                 'Health exposes recent job metadata only; research specs and error text are intentionally omitted.'])
 
+    def _approval_input_freezes(self,now):
+        from quantlab.storage.codec import digest
+        root=self.output/'_approval_input_freezes'
+        if not root.exists():return _component('NOT_CONFIGURED','尚无审批时实际输入冻结包。')
+        if root.is_symlink():return _component('WARN','审批输入冻结目录是符号链接。',warnings=['approval_freeze_root_symlink'])
+        valid=invalid=pending=data_files=0;latest=None;latest_id=None
+        try:entries=list(root.iterdir())
+        except OSError as exc:return _component('WARN','审批输入冻结目录不可读。',warnings=['approval_freeze_root_unreadable'],evidence={'error':type(exc).__name__})
+        for folder in entries:
+            if folder.name.startswith('.pending-'):
+                pending+=1;continue
+            try:
+                if folder.is_symlink() or not folder.is_dir() or str(UUID(folder.name))!=folder.name:raise ValueError()
+                manifest_path=folder/'manifest.json'
+                if manifest_path.is_symlink() or not manifest_path.is_file():raise ValueError()
+                value=json.loads(manifest_path.read_text());manifest=value.get('manifest')
+                if digest(manifest)!=value.get('checksum') or manifest.get('format')!='niuniu-approval-input-freeze-v1' or manifest.get('freeze_id')!=folder.name:raise ValueError()
+                files=[*(manifest.get('data_entries') or []),*(manifest.get('universes') or [])]
+                for row in files:
+                    target=folder/str(row.get('file',''))
+                    if target.is_symlink() or not target.is_file():raise ValueError()
+                valid+=1;data_files+=len(files)
+                captured=_parse(manifest.get('captured_at'))
+                if captured and (latest is None or captured>latest):latest=captured;latest_id=folder.name
+            except (OSError,ValueError,TypeError,KeyError,json.JSONDecodeError):invalid+=1
+        warnings=[]
+        if invalid:warnings.append('approval_freeze_metadata_invalid')
+        if pending:warnings.append('approval_freeze_pending_staging_present')
+        status='WARN' if warnings else ('OK' if valid else 'NOT_CONFIGURED')
+        return _component(status,f'审批输入冻结包 valid={valid} invalid={invalid} pending={pending}。',
+            evidence={'valid_freezes':valid,'invalid_freezes':invalid,'pending_staging':pending,'referenced_data_files':data_files,
+                'latest_freeze_id':latest_id,'latest_captured_at':latest.isoformat() if latest else None},warnings=warnings,
+            limitations=['System Health checks freeze manifest/file presence only; submit/resume/run re-hash every frozen data file before use.'])
+
     def _tracking_daemon(self,now):
         from quantlab.agent.tracking_daemon import daemon_status
         try:value=daemon_status(self.output)
@@ -401,7 +435,7 @@ class SystemHealthService:
     def build(self):
         now=_aware(self.now_fn());components={
             'workspace':self._workspace(now),'artifact_growth':self._artifact_growth(now),'jobs':self._jobs(now),
-            'tracking_daemon':self._tracking_daemon(now),'mcp':self._mcp(now),'notifications':self._notifications(now),
+            'approval_input_freezes':self._approval_input_freezes(now),'tracking_daemon':self._tracking_daemon(now),'mcp':self._mcp(now),'notifications':self._notifications(now),
             'market_data_series':self._market_data_series(now),'daily_market':self._daily_market(now),'market_snapshots':self._market_snapshots(now),
             'market_snapshot_provider':self._market_snapshot_provider(now),'daily_orchestrator':self._orchestrator(now),'pit_playbook':self._pit_playbook(now),
             'paper_lifecycle':self._paper(now),'broker_shadow':self._broker_shadow(now),

@@ -115,7 +115,7 @@ def preview_experiment(spec, budget=None):
     estimate = {'symbols':len(symbols),'calendar_days':days,'leaf_studies':leaves,
         'bar_evaluations_upper_estimate':work,'resample_date_draws_upper_estimate':draws}
     warnings = ['这是配置与规模预检，未读取行情，也不证明历史资料覆盖。',
-        '数据字节尚未在批准时冻结；执行时使用现有数据源并由原引擎保存快照。',
+        '宿主批准时冻结实际规范化输入字节、资格 mask 与源快照身份；执行和恢复只读该批准包。',
         '预算是保守工作量估算，不是内存、耗时或磁盘空间的精确预测。',
         '执行时限在合作式检查点生效，不能强行中断正在运行的原生计算。',
         '任务完成不等于发现 Alpha；标签收益、成本后模拟与真实可成交性必须区分。']
@@ -123,4 +123,4 @@ def preview_experiment(spec, budget=None):
         warnings.append('已选择历史资格算法，但尚未检查具体历史资料；缺失时由原引擎报错，不静默降级。')
     return {'spec':spec,'spec_digest':digest(spec),'resolved':submission.preview(),
         'estimate':estimate,'budget':asdict(budget),'warnings':warnings,
-        'data_policy':'execution_time_snapshot_not_approval_time_freeze'}
+        'data_policy':'approval_time_actual_byte_freeze_on_host_approval'}

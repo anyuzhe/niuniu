@@ -90,6 +90,9 @@ class HistoricalUniverse:
 
 def build_universe(root, symbols, config=None):
     config = config or UniverseConfig()
+    from quantlab.storage.approval_inputs import is_approval_freeze_root,frozen_universe
+    if is_approval_freeze_root(root):
+        return frozen_universe(root,symbols,config)
     if config.mode == 'explicit':
         return ExplicitUniverse(symbols)
     if config.reference_manifest:

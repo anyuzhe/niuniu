@@ -357,8 +357,8 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 
 产品层改造期间继续按原计划补：
 
-1. Approval-time data freeze：批准时冻结实际输入字节，而不是只冻结配置。
-2. Research Session Grant：有限自主研究沙箱，而不是无限授权。
+1. **Approval-time data freeze（已完成，2026-09-15）**：宿主批准时冻结实际规范化输入字节、qfq/raw/context 与 Universe eligibility mask；submit/resume/run 从冻结包执行，篡改 fail-closed。
+2. **Research Session Grant（下一内部主线）**：有限自主研究沙箱，而不是无限授权。
 3. Strict PIT 原始资料继续补齐。
 4. Watch 高级指标与序贯/在线衰减统计。
 5. 跨 workspace 研究记忆与用户研究偏好。
@@ -569,7 +569,7 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 1. **P13-B1 Live Read-only Broker Adapter**：等待明确可用的具体券商实时只读通道；只读账户/持仓/资金/回执，不默认带订单能力。
 2. **P13-B2/B3**：认证/密钥持久化、实时 Shadow、kill switch、风险限额、逐单确认、订单 Gateway 与最终真实订单继续分别评审；默认关闭。
 
-并行继续 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
+并行 Research Lab 基础设施线：approval-time actual-byte freeze 已完成；继续 Research Session Grant、Strict PIT 数据补齐、Watch 序贯统计。
 
 - 2026-09-13：根据新增对标信息，确认“主 Agent 动态拆 Subagent + Shared Workspace + Main Agent 最终验收”主要借鉴到 P10 Dev Studio，并抽象为 Research/Dev 两种 profile；同时新增 P8.5 Expert Playbook Lab，把 A 股短线模式发现从 Factor-first 调整为 Playbook-first + Quant Validation。
 - 2026-09-13：P8.5-A Expert Playbook Lab 基础框架完成。新增 ExpertSource / PlaybookDefinition / PlaybookCase / CandidateSet / SelectionDecision / PlaybookValidation 六类严格对象；完整候选全集、selected/unselected、冻结时点 SYSTEM_PREDICTION、FROZEN/FULL/STRICT_PIT/VERIFIED 正式验证门槛和 A 股执行审计均已落地。AI Team 仅获得 Playbook 只读证据工具；Research Lab 与 Stock Dossier 已接入。`playbooks/qimofenshu/` 仍固定为 SOURCE_REQUIRED，不用二手总结填充正式规则。最终全仓 750 项通过。阶段说明见 `牛牛AI交易工作台_P8_5PlaybookLab基础框架_验收说明.md`。P8.5 尚未整体结束，下一步仍是取得可核验“期末50分”原始资料并重建第一批真实 Case/CandidateSet。
@@ -652,3 +652,5 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 - 2026-09-15：P13-A Broker Read-only / Shadow v1 完成。新增 `ReadOnlyBrokerAdapter`、脱敏/append-only `BrokerSnapshotStore`、`BrokerShadowReconciler`、`niuniu-broker-shadow`、MCP `get_broker_shadow` 与 System Health Broker Shadow 观察项；拒绝凭证/真实账号字段，宿主导入需 `--confirm`。真实工作区未配置 Broker 时 artifacts 77006→77006，CLI/MCP 返回 NOT_CONFIGURED，模型无 connect/import/order/cancel/fund-transfer 工具。专项7/7、联合24/24、完整仓库889/0/0。当时计划进入 P13-B+；随后已拆为 B0 Readiness、B1 实时只读、B2/B3 后续权限层。
 - 2026-09-15：P13-B0 RealTrade Readiness v1 完成。新增 Broker capability registry、禁用态 RealTrade safety policy、`RealTradeReadinessService`、`niuniu-real-trade-readiness`、MCP `get_real_trade_readiness` 与 System Health 观察项；当前只有 `json-export-v1` offline Adapter，因此真实工作区固定 `NO_LIVE_BROKER_CHANNEL`、不可连接、不可下单。Policy 不猜用户风险限额，`enabled=true` 或关闭核心安全门直接拒绝。真实 artifacts 77006→77006；专项8/8、联合32/32、完整仓库897/0/0。下一步 P13-B1 等待具体券商实时只读通道。
 - 2026-09-15：P8.7 v2 R2/R3 + MarketSnapshot Provider framework 完成。Forward/Scanner/Orchestrator 扩展到 R2 11:30 与 R3 15:00，R2/R3 只做 continuation review，必须引用前序冻结 SYSTEM_PREDICTION 且禁止新增 R1 未选股票；BACKFILL/缺快照继续 fail-closed。新增 Provider Protocol/Registry/Readiness、`niuniu-market-provider-status`、MCP/System Health 只读状态；真实工作区明确四个 live frame 均缺失，artifacts 77006→77006。专项27/27、联合44/44、完整仓库905/0/0。下一数据侧缺口是真实可审计 live MarketSnapshot Provider。
+
+- 2026-09-15：Approval-time Actual-byte Freeze v1 完成。正式 Proposal 在宿主批准时把实际规范化 bars、Context、精细账户 qfq/raw 输入和 Universe mask 冻结到 `_approval_input_freezes/<proposal_id>/`；JobQueue submit/resume/run 只读同一冻结包并强校验 SHA256。批准后原 qfq 目录移走仍可执行，冻结包自身篡改则 fail-closed；Campaign/holdout/PIT/Execution 均覆盖。System Health 增加轻量冻结包观察项，模型无批准/冻结写权限。专项7/7、相关联合64/64、完整仓库912/0/0。下一内部主线 Research Session Grant。
