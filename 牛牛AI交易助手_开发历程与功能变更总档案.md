@@ -56,9 +56,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**945 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1。
-外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：Strict PIT 历史原始资料补齐。
+当前正式代码全仓基线：**950 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3 与三源实时 MarketSnapshot Provider）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio v1、P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze v1、Research Session Grant v1、Watch Sequential Monitor v1、Strict PIT Evidence Archive v1。
+外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部下一阶段：归档真实官方历史资格/行业/每日市值资料并提升 Strict PIT coverage。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -278,7 +278,7 @@
 
 已完成：数据/PIT、Factor、理论、结构事件、组合评分、Holdout、Walk-forward、Bootstrap、多重检验、独立成交回测、Campaign、Alpha Factory、Watch、复算归档、Approval-time Actual-byte Freeze 与 Research Session Grant。
 
-仍需加强：更多 Strict PIT 历史原始资料；Watch 序贯/在线衰减统计 v1 已完成。
+仍需加强：真实官方 Strict PIT 历史资料 coverage；Evidence Archive v1 与 Watch 序贯/在线衰减统计 v1 已完成。
 
 ### 7.4 Trading Knowledge / Playbook Lab
 
@@ -295,7 +295,7 @@
 ## 9. 当前推荐的后续主线
 
 1. 出现具体券商通道后推进 P13-B1，只做实时只读 Adapter；不把 Paper/Mobile/Broker Snapshot/Shadow MATCH/完整 policy 自动外推为订单权限。
-2. 无 B1 通道期间，R2/R3 Orchestrator、三源实时 MarketSnapshot、approval-time actual-byte freeze、Research Session Grant 与 Watch Sequential Monitor 已补齐；下一内部优先级收敛到 Strict PIT 历史原始资料，同时继续积累真实前瞻 Paper 样本。
+2. 无 B1 通道期间，R2/R3 Orchestrator、三源实时 MarketSnapshot、approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor 与 Strict PIT Evidence Archive 已补齐；下一内部优先级是实际归档官方历史资料、量化 receipt coverage，同时继续积累真实前瞻 Paper 样本。
 
 ## 10. 关键测试基线演进
 
@@ -331,6 +331,7 @@
 | 2026-09-15 | Research Session Grant v1 | **925 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | 三源实时 MarketSnapshot Provider v1 | **935 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Watch Sequential Monitor v1 | **945 passed / 0 failed / 0 skipped** |
+| 2026-09-15 | Strict PIT Evidence Archive v1 | **950 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -593,3 +594,16 @@
 - 解释边界：e-process 相对冻结经验基线，不把样本均值冒充总体真值；跨多个事后选择 Watch 不共享一次全局 family-alpha 认证。
 - 验收：Watch/Tracking/Agenda/Factory/System Health 联合 **99/99**；真实工作区 Watch=0，只读查询 artifacts **77006→77006**；完整仓库 **945 tests / 0 failed / 0 skipped**，376.376秒。
 - 后续事项：内部主线集中到 Strict PIT 历史原始资料补齐；外部继续等待券商/QMT级行情和 P13-B1，并持续积累真实前瞻 Paper 样本。
+
+### 2026-09-15 15:15｜[数据资格] Strict PIT Evidence Archive v1
+
+- 模块：Data Qualification / PIT Universe / Industry & Size Neutralization / System Health / 宿主 CLI。
+- 改动内容：新增 `niuniu-pit-evidence-v1` publication-evidence 归档，支持 `universe_eligibility / industry_membership / daily_market_cap` 三类 statement；新增宿主 CLI `niuniu-pit-evidence` 的 list/verify/archive。
+- 证据合同：每条严格证据绑定规范化 statement digest、交易所/CNINFO 权威 HTTPS URL、宿主明确确认的 `published_at`、本地官方原文字节、SHA256、`fetched_at`；`published_at` 不得晚于 statement 的 `available_at`。同一 statement + source + publication_at + document SHA 重复归档幂等，fetched_at 不参与 identity。
+- Fail-closed：非权威 URL、未确认 publication time、原文或 receipt checksum 篡改均拒绝；CLI 不自动联网下载，避免把抓取时间冒充历史首次可用时间。
+- Qualification：磁盘 `universe_events.parquet` 现在只有 receipt 全覆盖时才标 `historical_publication_verified=true`；Industry / daily market cap 不再因为只写 CNINFO/交易所 URL 就通过 Strict PIT，缺 receipt 分别产生 publication-evidence blocker。
+- 兼容：`research_only / retrospective_reference` 保持原行为；旧 PIT records 仍可运行时间逻辑，但无 receipt 只能是 timing contract。Approval-time Freeze 保留已验证的 Universe metadata/qualification identity。
+- 可观察性：System Health 的 PIT/Playbook 组件显示 receipt 总数与三类计数；损坏 receipt 显示 WARN，不静默当空库。
+- 真实烟测：`/Volumes/Lexar/MQC-DATA` 当前 receipt **0**，因此没有虚假升级 Strict PIT；只读 list/System Health 前后 `artifacts` **77006→77006**。
+- 测试/验收：PIT Evidence + Qualification + Universe **15/15**；Qualification/Neutralization/Approval Freeze/Proposal/System Health/Session Grant 联合 **75/75**；完整仓库 **950 tests / 0 failed / 0 skipped**，443.920秒。
+- 后续事项：框架已收尾；下一内部工作是实际归档官方历史资格、行业变更和每日市值资料，并按证券/交易日/statement 类型量化 coverage。

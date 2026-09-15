@@ -110,22 +110,28 @@ def qualify_research(data_root,spec):
             for row in bars.select('symbol','datetime').iter_rows(named=True):
                 if history.at(row['symbol'],row['datetime']) is None:missing+=1
             bad=sorted({r['source'] for r in history.records if not _authoritative_pit_source(r['source'])})
+            from quantlab.data.pit_evidence import verify_pit_statements
+            proof=verify_pit_statements(root,'industry_membership',history.records)
             if missing:result['blockers'].append('industry_history_missing_at_requested_bar_times')
             if bad:result['blockers'].append('industry_history_source_not_authoritative')
-            result['components']['industry_history']=_component('strict_pit' if not missing and not bad else 'incomplete',
-                'Industry neutralization requires contemporaneously available membership at every requested bar.',
-                [{'records':len(history.records),'missing_bar_rows':missing,'non_authoritative_sources':bad}])
+            if not proof['verified']:result['blockers'].append('industry_history_publication_evidence_unverified')
+            result['components']['industry_history']=_component('strict_pit' if not missing and not bad and proof['verified'] else 'incomplete',
+                'Industry neutralization requires contemporaneously available membership plus archived authoritative publication evidence.',
+                [{'records':len(history.records),'missing_bar_rows':missing,'non_authoritative_sources':bad},proof])
         if methods & {'size_neutralization','neutralization'}:
             from quantlab.processing.neutralization import SizeHistory
             history=SizeHistory(processor.size_events);missing=0
             for row in bars.select('symbol','datetime').iter_rows(named=True):
                 if history.at(row['symbol'],row['datetime']) is None:missing+=1
             bad=sorted({r['source'] for r in history.records if not _authoritative_pit_source(r['source'])})
+            from quantlab.data.pit_evidence import verify_pit_statements
+            proof=verify_pit_statements(root,'daily_market_cap',history.records)
             if missing:result['blockers'].append('daily_market_cap_missing_or_expired_at_requested_bar_times')
             if bad:result['blockers'].append('market_cap_source_not_authoritative')
-            result['components']['daily_market_cap']=_component('strict_pit' if not missing and not bad else 'incomplete',
-                'Size neutralization requires positive point-in-time market cap with effective/available/expiry timestamps.',
-                [{'records':len(history.records),'missing_bar_rows':missing,'non_authoritative_sources':bad}])
+            if not proof['verified']:result['blockers'].append('market_cap_publication_evidence_unverified')
+            result['components']['daily_market_cap']=_component('strict_pit' if not missing and not bad and proof['verified'] else 'incomplete',
+                'Size neutralization requires point-in-time market cap plus archived authoritative publication evidence.',
+                [{'records':len(history.records),'missing_bar_rows':missing,'non_authoritative_sources':bad},proof])
     universe=submission.universe
     if universe.mode=='explicit':
         result['components']['universe']=_component('fixed_cohort',

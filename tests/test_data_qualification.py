@@ -10,6 +10,7 @@ from quantlab.data.qualification import qualify_research,qualify_spec
 from quantlab.execution.rules import MarketRules
 from quantlab.agent.proposals import ProposalService
 from quantlab.agent.planning import ProposalError
+from quantlab.data.pit_evidence import archive_pit_evidence
 from quantlab.workbench.jobs import JobQueue
 
 
@@ -110,6 +111,24 @@ class DataQualificationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'上交所'):
                 archive_official_rules(root,bad,['https://example.com/rule'],opener=opener)
 
+
+    def test_pit_universe_requires_archived_authoritative_publication_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);batch=self.trusted_batch(root);provider=type('P',(),{'load':lambda _s,_r:batch})()
+            research=root/'research';research.mkdir();stamp=datetime(2025,1,1,15,tzinfo=__import__('zoneinfo').ZoneInfo('Asia/Shanghai'))
+            event={'symbol':'sh.600000','effective_at':stamp,'available_at':stamp,'eligible':True}
+            pl.DataFrame([event]).write_parquet(research/'universe_events.parquet')
+            spec={'question':'PIT universe receipt fixture','symbols':['sh.600000'],'start':'2025-01-02','end':'2025-01-03',
+                'adjustment':'raw','factor':'BASE.MOMENTUM','parameters':{'lookback':1},'horizons':[1],'quantiles':2,
+                'replay':True,'qualification':'strict_pit','universe':{'mode':'pit'}}
+            with patch('quantlab.data.provider.local_data_provider',return_value=provider):missing=qualify_research(root,spec)
+            self.assertIn('pit_universe_timing_present_but_provenance_not_certified',missing['blockers'])
+            source='https://www.sse.com.cn/assortment/stock/list/share/'
+            document=root/'sse-universe.html';document.write_text('official eligibility publication fixture')
+            archive_pit_evidence(root,'universe_eligibility',[event],source,'2025-01-01T14:00:00+08:00',document,confirm_publication_time=True)
+            with patch('quantlab.data.provider.local_data_provider',return_value=provider):good=qualify_research(root,spec)
+            self.assertTrue(good['qualified'],good);self.assertTrue(good['components']['universe']['evidence'][0]['historical_publication_verified'])
+
     def test_legacy_research_only_job_can_migrate_on_explicit_resume(self):
         from quantlab.storage.codec import encode
         spec={**self.base,'qualification':'research_only'};job_id=str(uuid4())
@@ -140,5 +159,9 @@ class DataQualificationTests(unittest.TestCase):
             self.assertIn('market_cap_source_not_authoritative',bad['blockers'])
             event['source']='https://www.cninfo.com.cn/new/disclosure/stock?stockCode=600000'
             spec={**base,'processor':{'steps':[{'method':'size_neutralization'}],'size_events':[event]}}
+            with patch('quantlab.data.provider.local_data_provider',return_value=provider):unarchived=qualify_research(root,spec)
+            self.assertIn('market_cap_publication_evidence_unverified',unarchived['blockers'])
+            document=root/'cninfo-cap.html';document.write_text('official market-cap publication fixture')
+            archive_pit_evidence(root,'daily_market_cap',[event],event['source'],'2025-01-01T14:00:00+08:00',document,confirm_publication_time=True)
             with patch('quantlab.data.provider.local_data_provider',return_value=provider):good=qualify_research(root,spec)
             self.assertTrue(good['qualified'],good);self.assertEqual(good['components']['daily_market_cap']['status'],'strict_pit')

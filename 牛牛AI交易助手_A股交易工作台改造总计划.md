@@ -360,7 +360,7 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 
 1. **Approval-time data freeze（已完成，2026-09-15）**：宿主批准时冻结实际规范化输入字节、qfq/raw/context 与 Universe eligibility mask；submit/resume/run 从冻结包执行，篡改 fail-closed。
 2. **Research Session Grant（已完成，2026-09-15）**：宿主显式冻结证券/日期/周期/因子/模式/有效期和总预算；模型只能在有效 Grant 内向共享 JobQueue 提交有限研究，每个任务单独冻结实际输入，撤销/过期在 checkpoint fail-closed。
-3. **Strict PIT 原始资料继续补齐（当前内部主线）**。
+3. **Strict PIT Evidence Archive v1 已完成；真实官方历史资料 coverage 继续补齐（当前内部主线）**：PIT Universe / industry / daily market cap 只有绑定权威 URL、本地官方原文 SHA256 与确认 publication_at 的 receipt 才能升级 strict PIT；真实 MQC 当前 receipt=0。
 4. **Watch 序贯/在线衰减统计（已完成 v1，2026-09-15）**：新 Watch 冻结 family alpha、最小 Rank IC 衰减、最少新增成熟日期与非重叠 block；新增成熟样本进入 mixture e-process，legacy Watch 不静默迁移，越界只进入人工复核。
 5. 跨 workspace 研究记忆与用户研究偏好。
 
@@ -570,7 +570,7 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 1. **P13-B1 Live Read-only Broker Adapter**：等待明确可用的具体券商实时只读通道；只读账户/持仓/资金/回执，不默认带订单能力。
 2. **P13-B2/B3**：认证/密钥持久化、实时 Shadow、kill switch、风险限额、逐单确认、订单 Gateway 与最终真实订单继续分别评审；默认关闭。
 
-并行 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant 与 Watch Sequential Monitor v1 已完成；当前继续 Strict PIT 历史原始资料补齐。
+并行 Research Lab 基础设施线：approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor 与 Strict PIT Evidence Archive v1 已完成；当前从“继续改框架”转为真实官方历史资料归档与 coverage 提升。
 
 - 2026-09-13：根据新增对标信息，确认“主 Agent 动态拆 Subagent + Shared Workspace + Main Agent 最终验收”主要借鉴到 P10 Dev Studio，并抽象为 Research/Dev 两种 profile；同时新增 P8.5 Expert Playbook Lab，把 A 股短线模式发现从 Factor-first 调整为 Playbook-first + Quant Validation。
 - 2026-09-13：P8.5-A Expert Playbook Lab 基础框架完成。新增 ExpertSource / PlaybookDefinition / PlaybookCase / CandidateSet / SelectionDecision / PlaybookValidation 六类严格对象；完整候选全集、selected/unselected、冻结时点 SYSTEM_PREDICTION、FROZEN/FULL/STRICT_PIT/VERIFIED 正式验证门槛和 A 股执行审计均已落地。AI Team 仅获得 Playbook 只读证据工具；Research Lab 与 Stock Dossier 已接入。`playbooks/qimofenshu/` 仍固定为 SOURCE_REQUIRED，不用二手总结填充正式规则。最终全仓 750 项通过。阶段说明见 `牛牛AI交易工作台_P8_5PlaybookLab基础框架_验收说明.md`。P8.5 尚未整体结束，下一步仍是取得可核验“期末50分”原始资料并重建第一批真实 Case/CandidateSet。
@@ -658,3 +658,5 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 - 2026-09-15：Research Session Grant v1 完成。宿主通过桌面/CLI 明确预览和确认授权，范围精确绑定证券、日期、周期、复权、qualification、白名单因子与 mode；有效期5分钟～24小时，任务/并行/叶子研究/K线评价/重采样/时限均有硬预算。模型只能读取 Grant 并在有效范围内 `submit_granted_experiment`，request_id 由宿主重写；每项任务仍做 approval input freeze 并进入唯一共享 JobQueue。撤销/过期后禁止新任务、运行任务在 checkpoint 取消；失败/取消不返还额度。专项12/12、相关联合110/110、完整仓库925/0/0。下一内部主线 Strict PIT 原始资料 + Watch 序贯统计。
 - 2026-09-15：P8.7 v3 三源实时 MarketSnapshot Provider 完成。新增 `public-web-consensus-v1`：腾讯主实时源、东方财富第二源、新浪备用校验；单证券至少两源在前收/当前价及 Frame 所需 OHLC 上一致才可用，一源异常可剔除，只剩一源 fail-closed。来源日期不属于目标交易日或时间明显未来时自动剔除；公开网页源固定 `strict_pit_source_verified=false`。新增 `niuniu-market-snapshot-live`，必须 `--confirm-network` 才联网，`--store` 才写快照；Daily Orchestrator 新增宿主显式 `--allow-market-snapshot-capture`，每 Frame 30秒冷却、最多3次，只消费 FULL+LIVE_NEAR_REALTIME。真实烟测出现过3/3三源一致，也验证东财临时无返回时腾讯+新浪2/2仍可共识，artifacts 77006→77006。专项28/28、联合74/74、完整仓库935/0/0。未来 QMT/XtQuant/券商级行情可替代正式主源，三家网页源保留备份/校验。
 - 2026-09-15：Watch Sequential Monitor v1 完成。新建 Watch 在基线创建时冻结 family alpha、Rank IC 最小实际衰减、最少新增成熟日期、固定非重叠 block 和算法指纹；默认5个交易日组成一个 block，尾部不足 block 的新成熟样本不进入证据。后续只消费 baseline_as_of 之后成熟的每日 Rank IC，并使用 fixed-lambda mixture e-process 控制同一 Watch 内重复查看；family alpha 在 horizons 间预先分配。历史输入 revision、基线不足、算法变化均 fail-closed。旧 Watch 保持 LEGACY_NOT_CONFIGURED，不静默换统计口径；Rebase 保留原设置。衰减越界只生成 review alert / Research Agenda，不自动停因子、改参数或交易。相关联合99/99、完整仓库945/0/0，真实只读 smoke artifacts 77006→77006。当前内部主线收敛为 Strict PIT 历史原始资料补齐。
+
+- 2026-09-15：Strict PIT Evidence Archive v1 完成。新增 `universe_eligibility / industry_membership / daily_market_cap` 三类 publication-evidence receipt，将 statement digest、权威 HTTPS URL、宿主确认 `published_at`、本地官方原文字节 SHA256 与 fetched_at 绑定；原文或 receipt 任一篡改 fail-closed，同一证据重复归档幂等。PIT Universe receipt 全覆盖后才允许 `historical_publication_verified=true`；industry/market-cap 不再因仅填写 CNINFO/交易所 URL 而自动通过 strict PIT。新增 `niuniu-pit-evidence` 宿主 CLI 与 System Health 计数；CLI 不自动联网，archive 必须显式确认 publication time。核心15/15、联合75/75、完整仓库950/0/0；真实 `/Volumes/Lexar/MQC-DATA` receipt=0、artifacts 77006→77006。下一内部主线为实际归档官方历史资料并提高 coverage。

@@ -101,6 +101,11 @@ def build_universe(root, symbols, config=None):
         return HistoricalUniverse(symbols,frame,config,metadata)
     relative = 'lake/bronze/provider=baostock/stock_basic/stock_basic.parquet' if config.mode=='listing' else 'research/universe_events.parquet'
     path=Path(root)/relative
-    payload=path.read_bytes()
-    return HistoricalUniverse(symbols,pl.read_parquet(io.BytesIO(payload)),config,
-        {'path':str(path.resolve()),'sha256':hashlib.sha256(payload).hexdigest()})
+    payload=path.read_bytes();frame=pl.read_parquet(io.BytesIO(payload))
+    metadata={'path':str(path.resolve()),'sha256':hashlib.sha256(payload).hexdigest()}
+    if config.mode=='pit':
+        from quantlab.data.pit_evidence import verify_pit_statements
+        proof=verify_pit_statements(root,'universe_eligibility',frame.select('symbol','effective_at','available_at','eligible').to_dicts())
+        metadata={**metadata,'official_source':proof['verified'],'historical_publication_verified':proof['verified'],
+            'pit_evidence':proof,'knowledge_policy':'effective/available timestamps plus archived authoritative publication receipts' if proof['verified'] else 'timing_contract_only_without_verified_publication_receipts'}
+    return HistoricalUniverse(symbols,frame,config,metadata)
