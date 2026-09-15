@@ -339,7 +339,7 @@ python -m unittest discover -s tests -v
 - 部分复杂业务表单尚未逐项完成真实客户端验收。
 - Strict PIT Evidence Archive v1 已支持四类 statement：PIT Universe、SecurityStatus、历史行业、每日市值。当前 `/Volumes/Lexar/niuniu-data` 已有 `security_status=14` verified receipts（7只深市股票的明确停牌/复牌及 ST 生效事件），其它三类仍为0；这不代表历史状态链完整。季度股本不能直接当成每日股本。
 - Strict PIT Coverage v1 已完成：按年份/证券/字段统计经过深度校验的 evidence presence，并把 `stock_basic`、单快照行业、历史 bar lake 等回顾性资料单独列为 inventory。当前日线仍是5215个证券文件、17,075,243行（1990-12-19～2026-09-04），bar lake 本身无 `tradestatus/isST`；现有14条 SecurityStatus 只覆盖7只股票的明确事件日，Coverage 不输出伪造总完成率。
-- Official MarketRules publication receipt v2 已完成 append-only、实际 records、官方原文 SHA256 与 `published_at <= available_at` 验证；`official-rule-audit` 和 System Health 可全局深度核验。当前真实数据为1个 verified snapshot、7只证券各1个明确停牌 session（7/7 audit covered）；全局 inventory 不代表最新 CandidateSet 已引用。复牌/ST 的 exact 涨跌停价、全市场逐日价格边界及特殊上市/退市规则仍缺。
+- Official MarketRules publication receipt v2 已完成 append-only、实际 records、官方原文 SHA256 与 `published_at <= available_at` 验证；`official-rule-audit` 和 System Health 可全局深度核验。当前真实数据仍为1个 verified snapshot、7只证券各1个明确停牌 session（7/7 audit covered）。另已用深交所公告比例、2023交易规则公式/舍入及官方历史 `qss` 核出7组复牌 exact 算术值，并由 `official-rule-reference-audit` 深验回顾性参考包；由于行情响应是在 session 后取得，缺开盘前 publication receipt，`strict_pit_eligible=false` 且没有追加 MarketRules。全市场逐日价格边界及特殊上市/退市规则仍缺。
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
@@ -369,6 +369,7 @@ python -m unittest discover -s tests -v
 - [Strict PIT SecurityStatus 第二批验收说明](牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md)：新增4份深交所公告、8条 verified receipt，累计7只证券/14条事件及真实 PREP fail-closed 烟测。
 - [首轮 Daily Orchestrator 前瞻 NO_TRADE 验收说明](牛牛AI交易工作台_首轮DailyOrchestrator前瞻NoTrade_验收说明.md)：2026-09-15 DailyMarket、2026-09-16 PREP 前瞻冻结、空候选终态、NO_TRADE bridge、幂等和数据资格边界。
 - [Official MarketRules Publication Receipt v2 验收说明](牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md)：append-only 规则快照、publication-time 防回填、首批7个真实停牌 session、全局深度审计/System Health、篡改/幂等验证与未覆盖边界。
+- [复牌日 Exact 价格边界参考证据验收说明](牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md)：7组官方前收+公告比例+规则公式的 exact 算术核对、内容寻址参考包，以及因缺历史开盘前 byte vintage 而不追加 MarketRules 的 fail-closed 边界。
 - [总体方案与架构说明](统一技术交易因子实验平台_总体方案与架构说明.md)：目标设计，包含尚未实现的部分。
 - [PyQt 桌面说明](PyQt桌面界面说明.md)、[核心建设进度](核心功能建设进度.md)：中文技术及阶段记录；历史产物链接仅在原开发环境可用。
 - [威克夫 A–E 规则与链路](威克夫_AE规则与因子链路.md)、[缠论确认推进规则](Chan确认推进_线段背驰与买卖点规则.md)。

@@ -11,9 +11,10 @@
 - `niuniu-security-status` 只允许宿主执行 `status/materialize`，不联网下载，也不创建事实。
 - PREP Scanner 可以消费该派生表，但在没有“完整状态事件链”证明前，只把 receipt 明确 `effective_at` 的交易日视为 Strict 状态证据；不得把最近一次状态无限向前/向后传播成严格覆盖。
 - 已验证 ST/停牌状态不等于官方逐日涨跌停规则。缺 MarketRules 时，PREP 即使拥有 Strict status evidence 也保持 `RETROSPECTIVE_REFERENCE`。
-- 当前7份公告已另形成 MarketRules v2 的7个停牌-session records；这只认证停牌当日没有可执行价格，不认证次日5%/20%的 exact `limit_up/limit_down`，不得由百分比和回顾性前收盘自动补齐。
+- 当前7份公告已另形成 MarketRules v2 的7个停牌-session records；这只认证停牌当日没有可执行价格。
+- 7个次日复牌/ST session 已用公告比例、适用交易规则公式及深交所官方历史前收核出 exact 算术值；但 ShowReport 响应均在 session 后取得，缺历史开盘前 publication receipt，因此只进入 `official_market_rule_references`，不得进入 MarketRules/Strict PIT。
 - SecurityStatus 不等于 PIT Universe：是否属于研究股票池与是否 ST/停牌是不同维度，禁止自动合并。
 
 ## 当前真实数据
 
-当前 `/Volumes/Lexar/niuniu-data` 已归档 7 份深交所官方公告，对应 `sz.000040 / sz.002055 / sz.002217 / sz.002512 / sz.002538 / sz.300081 / sz.300376` 共 14 条 security_status evidence，覆盖各自明确的停牌日与复牌/ST 生效日。它们仍是稀疏真实样本，不代表全市场或任一证券的完整历史状态链；第二批来源、哈希与验收见 `../../牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md`。
+当前 `/Volumes/Lexar/niuniu-data` 已归档 7 份深交所官方公告，对应 `sz.000040 / sz.002055 / sz.002217 / sz.002512 / sz.002538 / sz.300081 / sz.300376` 共 14 条 security_status evidence，覆盖各自明确的停牌日与复牌/ST 生效日。它们仍是稀疏真实样本，不代表全市场或任一证券的完整历史状态链；第二批来源、哈希与验收见 `../../牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md`，复牌价格参考见 `../../牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md`。

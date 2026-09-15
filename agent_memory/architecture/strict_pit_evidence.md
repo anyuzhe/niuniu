@@ -22,6 +22,13 @@ Official MarketRules 不计入上面四类 PIT statement 数量，但其最高�
 - v2 证明来源字节、发布时间、record 身份和请求覆盖，不自动证明人工语义映射或券商费用假设正确。
 - 停牌 session 可显式保存无价格边界，但 RulesAudit 必须将其统计为 suspended，不得写成可无限价格交易。
 
+## Official MarketRules derivation reference
+
+- `research/official_market_rule_references/<reference_snapshot>.json` 只保存回顾性推导参考，不属于 PIT Evidence 或 Official MarketRules receipt。
+- 本地导入必须显式确认 `--confirm-retrospective-only`，不联网；receipt 绑定已验证公告 evidence、交易规则 PDF/通知元数据、深交所 ShowReport JSON 与 HTTP headers，并重算 Decimal exact 上下限。
+- 历史行情响应若在目标 session 后才被观察，必须固定 `historical_reference_publication_verified_before_open=false / market_rules_eligible=false`，blocker 为 `historical_reference_price_publication_receipt_missing`。
+- `official-rule-reference-audit` 只核完整性与算术；任何 reference record 永不进入 Qualification、PREP 或 execution，不得借“官方历史值正确”冒充历史开盘前 byte vintage。
+
 ## Qualification / Freeze 边界
 
 - PIT Universe 只有 `effective_at + available_at` 但没有 receipt 时，只能是 `timing_contract_only`；receipt 全覆盖后才允许 `historical_publication_verified=true`。
@@ -31,4 +38,4 @@ Official MarketRules 不计入上面四类 PIT statement 数量，但其最高�
 - `niuniu-pit-evidence` 是宿主工具；archive 必须显式 `--confirm-publication-time`，CLI 不自动下载官方网页。
 - System Health 的 PIT/Playbook 组件显示 receipt 数量；receipt 损坏显示 WARN，不能静默当作空库。
 
-当前独立数据根 `/Volumes/Lexar/niuniu-data` 已有 14 条 `security_status` verified receipt（7只深市股票的明确停牌/复牌及 ST 生效事件）；其它三类仍为 0。另有 1 个 MarketRules v2 snapshot，覆盖同7只股票各1个明确停牌 session，共7条规则。禁止把这些稀疏事件写成“历史 Strict PIT/MarketRules 覆盖已完成”。
+当前独立数据根 `/Volumes/Lexar/niuniu-data` 已有 14 条 `security_status` verified receipt（7只深市股票的明确停牌/复牌及 ST 生效事件）；其它三类仍为 0。另有 1 个 MarketRules v2 snapshot，覆盖同7只股票各1个明确停牌 session，共7条规则。7个复牌 session 已有1个深验通过的回顾性推导 reference snapshot（7组 exact 算术值），但 Strict PIT eligible records=0、MarketRules appended=0。禁止把这些稀疏事件或参考值写成“历史 Strict PIT/MarketRules 覆盖已完成”。

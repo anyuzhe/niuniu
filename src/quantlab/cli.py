@@ -227,6 +227,12 @@ def main() -> None:
     official_archive.add_argument('--confirm-publication-time',action='store_true',help='宿主确认所填publication time；未确认不联网')
     official_audit=commands.add_parser('official-rule-audit',help='只读深度校验全部Official MarketRules v2回执、records和官方原文字节')
     official_audit.add_argument('--data-root',type=Path,required=True)
+    reference_archive=commands.add_parser('official-rule-reference-archive',help='从已下载的深交所字节归档复牌日价格推导参考；固定为回顾性且不生成MarketRules')
+    reference_archive.add_argument('--data-root',type=Path,required=True)
+    reference_archive.add_argument('--plan',type=Path,required=True,help='公式原文、已验证公告evidence id、行情响应及HTTP headers的本地导入计划')
+    reference_archive.add_argument('--confirm-retrospective-only',action='store_true',help='宿主确认只能作为回顾性推导参考')
+    reference_audit=commands.add_parser('official-rule-reference-audit',help='只读深验复牌日价格推导参考；结果永不通过Strict PIT/Official MarketRules')
+    reference_audit.add_argument('--data-root',type=Path,required=True)
     feed.add_argument('--require-fresh',action='store_true',help='行情过期或最新截面不齐时拒绝推进账户')
     archive=commands.add_parser('archive-bars',help='在独立工作目录保存不可变行情版本，显式处理修订')
     archive.add_argument('--bars',type=Path,required=True,help='规范化行情 Parquet')
@@ -326,6 +332,16 @@ def main() -> None:
     if args.command=='official-rule-audit':
         from quantlab.data.official_rule_archive import audit_official_rule_archive
         print(encode(audit_official_rule_archive(args.data_root)));return
+    if args.command=='official-rule-reference-archive':
+        from quantlab.data.official_rule_reference import archive_official_rule_references
+        if args.plan.is_symlink() or not args.plan.is_file() or args.plan.stat().st_size>1_000_000:
+            raise ValueError('reference plan缺失、为符号链接或超过1MB')
+        plan=json.loads(args.plan.read_text())
+        print(encode(archive_official_rule_references(args.data_root,plan,
+            confirm_retrospective_only=args.confirm_retrospective_only)));return
+    if args.command=='official-rule-reference-audit':
+        from quantlab.data.official_rule_reference import audit_official_rule_references
+        print(encode(audit_official_rule_references(args.data_root)));return
     if args.command=='paper-reconcile':
         from quantlab.execution.reconcile import reconcile_account
         if args.output.exists():raise FileExistsError(args.output)

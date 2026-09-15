@@ -58,7 +58,7 @@ quantlab official-rule-audit --data-root /path/to/data
 
 该命令核对 snapshot、实际 records、publication time、来源映射、content-addressed path 与官方原文字节。输出是全局 archive inventory，不表示任一 CandidateSet 已引用对应 snapshot。
 
-首批真实 v2 数据已归档7份深交所公告对应的7个明确停牌 session；该回执证明“本地规则 records 绑定了所列官方原文及发布时间”，仍不自动证明人工语义映射、复牌日 exact 价格界限或费用假设正确。`official_rule_covered` 继续要求请求内逐证券逐日规则全覆盖且其他 strict PIT 组件同时通过。
+首批真实 v2 数据已归档7份深交所公告对应的7个明确停牌 session；该回执证明“本地规则 records 绑定了所列官方原文及发布时间”，仍不自动证明人工语义映射或费用假设正确。后续虽已用官方历史前收、公告比例和适用规则公式核出7个复牌日 exact 算术值，但历史行情响应只在 session 后取得，因此仅保存为 `niuniu-official-market-rule-reference-v1`，固定 `strict_pit_eligible=false / market_rules_snapshot_appended=false`。`official-rule-reference-audit` 的通过不能替代 v2 publication receipt；`official_rule_covered` 继续要求请求内逐证券逐日规则全覆盖且其他 strict PIT 组件同时通过。
 
 ## 五、执行链
 

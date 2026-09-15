@@ -1,10 +1,10 @@
 # 牛牛 AI 交易助手：项目说明与总体架构
 
 - 文档性质：当前项目定位、总体架构和长期边界的权威说明
-- 架构口径更新：2026-09-15
+- 架构口径更新：2026-09-16
 - 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session及全局深度审计；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `965 passed / 0 failed / 0 skipped`
+- 当前稳定基线：SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `967 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -238,7 +238,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Strict PIT Evidence Archive | **已完成 v1 基础设施**：支持 Universe / SecurityStatus / Industry / Daily Market Cap 四类 statement；当前 `niuniu-data` 已有 SecurityStatus 14条/7只股票，其它三类仍为0 |
 | Strict PIT Coverage | **已完成 v1**：深度验证 receipt 后按年份/证券/字段展示 evidence presence，并分开展示回顾性 inventory 与 gap；不生成数据集总覆盖率；当前 SecurityStatus 有14条 verified evidence，其它三类仍缺 |
 | Strict PIT SecurityStatus | **第二批真实资料已接入**：累计7份深交所官方公告→14条状态事件→silver派生表→PREP消费；稀疏 receipt 只证明明确生效日，不跨日外推 |
-| Official MarketRules Receipt | **v2、首批真实资料与全局审计已完成**：按 snapshot append-only 保存 records/官方原文/`published_at`；CLI/System Health 深度核验1个 receipt、7条规则、7份原文；当前仅7个停牌 session，复牌 exact 涨跌停价和全市场覆盖仍缺 |
+| Official MarketRules Receipt | **v2、首批真实资料与全局审计已完成**：按 snapshot append-only 保存 records/官方原文/`published_at`；CLI/System Health 深度核验1个 receipt、7条停牌规则、7份原文。7个复牌日已另核出 exact 算术参考值，但历史行情 byte vintage 只在事后取得，reference audit 固定 Strict PIT eligible=0、MarketRules appended=0；全市场覆盖仍缺 |
 | Playbook Lab 六类结构化对象 | 已完成 |
 | `ExpertSource` 作为交易者来源 | 已完成，并兼容投影为 StrategySource(TRADER) |
 | PREP 全市场扫描 / MarketSnapshot / AUCTION / R1 Scanner | 已完成 |
@@ -257,7 +257,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**965 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**967 tests / 0 failed / 0 skipped**。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：
@@ -266,7 +266,7 @@ P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
 3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已补齐。后续外部数据升级目标是券商/QMT/交易所级行情；内部 Research Lab 下一主线转为**真实官方历史资料归档与 receipt coverage 提升**，而不是再改 Strict PIT/Coverage 引擎。
 
-Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。Official MarketRules publication receipt v2 已落地，并把同7份公告映射为7个明确停牌 session；当前内部主线继续扩充 **真实官方 SecurityStatus 历史事件链**，补复牌日 exact 价格边界与更多逐日 MarketRules/PIT Universe，随后补历史行业与每日真实市值。任何稀疏 receipt 均不视为完整覆盖。
+Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。Official MarketRules publication receipt v2 已落地，并把同7份公告映射为7个明确停牌 session；7个复牌日的官方前收+比例+公式 exact 算术值也已形成回顾性 reference snapshot，但因缺开盘前 publication receipt 没有追加 MarketRules。当前内部主线转向当前时点可前瞻留存的 **PIT Universe 与连续 SecurityStatus 状态链**，并继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何稀疏 receipt 或回顾性参考均不视为完整覆盖。
 
 ### P8.7 当前边界
 

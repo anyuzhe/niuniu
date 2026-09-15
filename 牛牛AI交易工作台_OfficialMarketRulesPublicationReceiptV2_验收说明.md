@@ -168,3 +168,9 @@ v2 首批提交后继续补齐只读可观察性：
 - 最新 CandidateSet 仍为 `PARTIAL / RETROSPECTIVE_REFERENCE`，Research Readiness 仍为 WARN
 
 验证：相关专项 **42/42 passed**；完整仓库 **965 tests / 0 failed / 0 skipped**，336.996 秒。
+
+## 12. 后续复牌价格调查（2026-09-16 00:05）
+
+已从深交所官方历史行情取得7个复牌日的 `qss`，结合对应公告的5%/20%比例及《深圳证券交易所交易规则（2023年修订）》第3.3.11、3.3.14、3.3.19条，核出7组 Decimal exact 上下限；7/7推导跌停均与官方当日最低价一致。
+
+但 ShowReport 原响应与 HTTP `Date` 均在2026-09-15本轮查询时才观察到，无法证明目标 session 开盘前的同一 byte vintage。故只新增 `niuniu-official-market-rule-reference-v1` 回顾性参考包与 `official-rule-reference-audit`，固定 Strict PIT eligible=0、MarketRules appended=0；本 v2 archive 仍只有原7条停牌规则。详见《牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md》。
