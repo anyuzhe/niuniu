@@ -49,15 +49,15 @@
 
 - **Trading Desk**：今日交易、主线市场、股票中心、Decision Frame、Strategy Intent、复盘。
 - **AI Team**：Chief、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；不采用多数票替代证据。
-- **Trading Knowledge / Playbook Lab**：当前已有 ExpertSource、候选全集、Selection、Validation、前瞻冻结；架构 v2 将其继续泛化为 StrategySource 多来源模型。
+- **Trading Knowledge / Playbook Lab**：当前已有 ExpertSource、候选全集、Selection、Validation、前瞻冻结及 StrategySource 多来源模型；External Research Skill v1 在其上游只读适配外部原文/方法/言行结果，不把第三方脚本接入交易核心。
 - **Research Lab**：因子、理论、PIT、Campaign、Alpha Factory、Watch、统计验证、执行回测、数据归档。
 - **Dev Studio / System**：P10 Dev Studio / Dynamic Agent Orchestrator 与 P11 System Health v1 均已完成；System Center 已统一服务/任务/数据/PIT/通知/Dev/日志的只读可观察性。
 - **Mobile / Broker / Readiness**：P12 同源移动端、P13-A 只读 Broker/Shadow 与 P13-B0 RealTrade Readiness 均已完成；当前无具体券商实时通道，真实券商连接、认证与订单能力仍未启用。
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**967 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio / P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage/SecurityStatus 和 Official MarketRules publication receipt v2 + 全局深度审计。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session，另有7个复牌日 exact 算术回顾性参考但未获得 Strict PIT 资格。
+当前正式代码全仓基线：**971 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.6-A External Research Skill Adapter、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio / P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage/SecurityStatus 和 Official MarketRules publication receipt v2 + 全局深度审计。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session，另有7个复牌日 exact 算术回顾性参考但未获得 Strict PIT 资格。
 外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部并行主线：持续真实前瞻每日运行，优先建设 PIT Universe/连续 SecurityStatus，并继续寻找复牌日开盘前静态参数 publication receipt，再推进历史行业与每日真实市值。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
@@ -338,6 +338,7 @@
 | 2026-09-15 | Official MarketRules Publication Receipt v2 / 首批7个停牌 session | **964 passed / 0 failed / 0 skipped** |
 | 2026-09-15 | Official MarketRules v2 全局审计 / System Health 接线 | **965 passed / 0 failed / 0 skipped** |
 | 2026-09-16 | 复牌日 Exact 价格边界回顾性参考归档 / 审计 | **967 passed / 0 failed / 0 skipped** |
+| 2026-09-16 | External Research Skill Adapter / 郑希 SOURCE_REQUIRED 脚手架 | **971 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -712,3 +713,17 @@
 - 验证：Reference + Qualification + Rules Audit + PREP + System Health 专项 **44/44 passed**；完整仓库 **967 tests / 0 failed / 0 skipped**，355.564秒。
 - 文档：新增《牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md》，同步 README、总体架构、总计划、核心进度、Official MarketRules v2 说明与 Agent Memory。
 - 后续：优先取得历史开盘前 `cashauctionparams_YYYYMMDD.xml` 或同等 publication-time-confirmed 官方静态快照；在其不可得时保持 blocker，主线转向当前时点可前瞻留存的 PIT Universe 与连续 SecurityStatus 状态链。
+
+### 2026-09-16 01:16｜[知识架构/安全边界] External Research Skill Adapter v1
+
+- 模块：`quantlab.knowledge` / Research Skill package audit / StrategySource preview / Agent Operating Memory。
+- Git：本条与代码、郑希脚手架及验收文档同一提交发布，提交标题 `feat: 建立外部Research Skill接入边界`；SHA 以该提交 Git 历史为准。
+- 决策：不把外部 `zhengxi-views` 或以后 Brooks/ICT/基金经理库整体塞进 Trading/Execution 核心；统一先走 `Research Skill → StrategySource → Playbook DRAFT → Quant Validation`。
+- 包合同：固定 `skill.yml / SKILL.md / references / method.md / scorecard.md / scripts`；manifest 使用 JSON-compatible YAML，资源清单闭合且逐项核 bytes/SHA256，拒绝 symlink、路径越界、重复 ID/key、超预算和证据时点倒置。
+- 认知分层：原始观点、披露行为、后续结果分别建模；claim 区分 DIRECT_QUOTE、METHOD_INFERENCE、FACT_TO_VERIFY；alignment 保存“说/做/结果”及 CONSISTENT/INCONSISTENT/MIXED/UNKNOWN，不将一致性写成因果或 Alpha。
+- 权限：`research-skill-audit` 只读本地字节，不联网、不执行声明脚本、不写 Playbook SQLite；只返回与现有 StrategySource 合同兼容的 PENDING/PARTIAL preview，宿主仍需人工复核导入。
+- 评分/数据边界：score 固定 `SOURCE_STYLE_SIMILARITY_ONLY`，hypothesis 固定 DRAFT；Strict PIT、Alpha、Daily Scanner、direct trade 均 false。季度机构持仓只作为 Theme/Dossier 中期辅助证据，不进入 AUCTION/R1/R2/R3。
+- 郑希脚手架：snapshot=`d9660110e0105404adb2ee4ddfc757214b27e59985c0359c18fbd58be05dd43c`；5 resources、5 DRAFT hypothesis，0 primary statement/claim/disclosed action/outcome/alignment，状态 SOURCE_REQUIRED，preview=PENDING。未联网或复制外部 corpus/基金数据/脚本。
+- 测试：Research Skill + StrategySource + Playbook Lab/Tools 专项 **23/23 passed**；完整仓库按互斥集合复核为非Desktop 853/853 + Desktop 118/118，合计 **971 tests / 0 failed / 0 skipped**。单进程 discover 亦报告971/OK，但一次在输出结果后的 macOS/PyQt teardown 触发 Bus error，已如实记录且不影响双进程0退出码复核。
+- 文档：新增《牛牛AI交易工作台_外部ResearchSkill接入规范_验收说明.md》，同步 README、项目架构、总计划、核心进度、Playbook 说明及 Agent Memory。
+- 后续：若宿主提供外部仓库本地路径，或对明确 URL 单独授权联网，再逐项归档原文、publication metadata、季度持仓和结果；之后仍只建立 StrategySource/Playbook DRAFT，Alpha 交由牛牛 Quant Validation。

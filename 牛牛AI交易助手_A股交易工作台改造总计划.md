@@ -288,6 +288,15 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 验收：旧 ExpertSource 全部可读；新来源类型可统一归档、检索、引用和审计；任何新来源都不能绕过 DRAFT→验证→冻结门槛。
 - 实际交付：schema v2 新增 `strategy_sources / source_links`；旧库只读无需迁移，首次写新对象时兼容迁移；AI/MCP/Reviewer 只读，桌面宿主可人工导入。全仓 **793/0/0**。
 
+### P8.6-A External Research Skill Adapter（v1 已完成，2026-09-16）
+
+- 外部专家/机构知识库先进入独立 `research_skills/`，不把第三方评分脚本塞进 Trading/Execution 核心。
+- 固定 `skill.yml + SKILL.md + references + method.md + scorecard.md + scripts`；只读审计核闭合文件清单、SHA256、publication/availability、claim 回链及“说/做/结果”alignment。
+- `DIRECT_QUOTE / METHOD_INFERENCE / FACT_TO_VERIFY` 分层；机构评分固定为 `SOURCE_STYLE_SIMILARITY_ONLY`，季度持仓固定只作 Theme/Dossier 辅助证据。
+- 审计不联网、不执行脚本、不写数据库，只生成 `PENDING/PARTIAL StrategySource` 预览；所有 hypothesis 固定 DRAFT，Strict PIT/Alpha/Daily Scanner/交易资格均为 false。
+- 首个 `research_skills/zhengxi` 只是 SOURCE_REQUIRED 脚手架；没有原始 corpus、持仓、结果和外部脚本，不把用户二次概述伪装为原话。
+- 验收：完整三联包、篡改、symlink、claim 角色错配、政策提权和空来源脚手架均有专项测试；完整仓库结果见持续变更日志。
+
 ### P8.7 Daily Orchestrator：每日受控运行闭环（v3 已完成，2026-09-15）
 - 串起 DailyMarket 数据增量、就绪检查、PREP、09:25 AUCTION、09:35 R1，并继续支持 R2/R3。
 - 调度器只触发已定义的确定性阶段，不让模型自己修改时间窗、候选全集或历史结果。
@@ -510,6 +519,12 @@ P8 Peer Review 不改成“共享答案一起讨论”。P8 保留独立 Reviewe
 
 当前代码已有 `ExpertSource`，先视为 `StrategySource(type=TRADER)` 的兼容实现；后续通用化不得破坏已有 ID、哈希、Case 和 Validation。
 
+#### 22.1.1 外部 Research Skill 接入层
+
+外部知识包不是新的交易系统。它先在 `research_skills/` 保存原始观点、披露行为、结果、方法和脚本清单；审计只生成 StrategySource 预览。观点/持仓一致只是 alignment，评分只是来源风格相似度，二者都不能替代 CandidateSet 或 Alpha 验证。
+
+季度基金持仓按披露后 `available_at` 使用，只能辅助 Theme Matrix / Stock Dossier 的中期研究；不能回填季度内，更不能用于 AUCTION/R1/R2/R3。包内脚本永不由审计器执行；任何联网抓取仍需宿主另行授权并遵守 Strict PIT receipt。
+
 ### 22.2 Playbook 是来源之上的独立对象
 
 一个来源可以支持多个 Playbook，一个 Playbook 也可以由多个来源共同支持或反对。长期目标不是“期末50分策略”“某某高手策略”，而是独立的规则对象，例如 high_low_switch、leader_reentry、mid_board_theme_leader_acceleration。
@@ -669,3 +684,4 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 - 2026-09-15：Official MarketRules Publication Receipt v2 与首批真实停牌规则完成。回执改为 `research/official_market_rules/<snapshot>.json` append-only 保存实际 records、官方原文 SHA256、宿主确认 `published_at` 与 `fetched_at`；`published_at > available_at`、record/原文篡改、非官方来源均 fail-closed，旧无发布时间 v1 只读但不再通过最高资格门。真实 `niuniu-data` 使用同7份深交所公告形成 snapshot `94b7cf...1a1`，覆盖7只股票各1个明确停牌 session，逐项 audit 7/7；重复归档不联网且 receipt hash/mtime 不变。停牌 null bounds 独立统计为 suspended，不冒充 unbounded。专项28/28、完整仓库964/0/0；详情见《牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md》。下一步补7个复牌/ST session 的官方参考价与 exact 上下限，并继续 PIT Universe/连续状态链。
 - 2026-09-15：Official MarketRules v2 全局深度审计与 System Health 接线完成。新增只读 `official-rule-audit`，逐个重建 snapshot 并核对 records、source、publication time、content-addressed path 和官方原文字节；重复 source、非法 SHA、非标准路径、symlink 与畸形字段 fail-closed。System Health 显示全局 archive inventory，invalid receipt 触发 WARN，同时明确不代表最新 CandidateSet 已引用对应 snapshot。真实数据审计1/1 verified、0 invalid、7 records/7 sources/7 documents，最新 PREP 仍保持 PARTIAL。专项42/42、完整仓库965/0/0；下一步不再堆审计框架，转回复牌 exact 价格边界与 PIT Universe/连续状态链。
 - 2026-09-16：7个复牌/ST session 的价格边界参考调查完成。深交所官方历史行情给出前收，已验证公告给出的5%/20%比例与2023交易规则第3.3.11/3.3.14/3.3.19条，核出 exact 上下限且7/7推导跌停等于官方当日最低。新增 append-only `official_market_rule_references`、本地导入命令及深度审计；真实 reference snapshot=`d8b9c1...4b36`，1/1 verified、7 records、16 documents。因响应字节/HTTP Date 均在历史 session 后观察，固定 Strict PIT eligible=0、MarketRules appended=0，原 v2 仍仅7个停牌 session。专项44/44、完整仓库967/0/0；下一步优先 PIT Universe/连续状态链，并继续寻找历史开盘前 `cashauctionparams` 或等价静态文件。
+- 2026-09-16：External Research Skill Adapter v1 完成。新增独立 `quantlab.knowledge` 只读审计器与 `research-skill-audit`；外部包按 `skill.yml/SKILL.md/references/method/scorecard/scripts` 固定资源哈希、时点、claim 和“说/做/结果”三联关系，脚本不执行、网络不启用、结构化库不写入。所有评分/假设固定非 Alpha、非 Strict PIT、非 Daily Scanner/交易资格。首个 `research_skills/zhengxi` 仅为 SOURCE_REQUIRED 脚手架，snapshot=`d9660110...5dd43c`，5 resources/5 DRAFT hypotheses、0原文/claim/持仓/结果；缺口显式留存。专项23/23、完整仓库971/0/0；数据主线仍为 PIT Universe/连续 SecurityStatus。

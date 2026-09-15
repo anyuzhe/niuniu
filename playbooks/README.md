@@ -23,6 +23,12 @@
 7. 可执行收益必须另审 T+1、涨跌停、停牌、费用、滑点、资金占用和 execution access。
 8. Git/Markdown 只保存人类可读知识；数值和时点事实以 Structured Evidence 为权威源。
 
+## 外部 Research Skill 边界
+
+`../research_skills/` 是进入本层之前的独立知识适配区。它可以按专家/方法保存 `SKILL.md + references + method.md + scorecard.md + scripts`，并通过 `research-skill-audit` 核文件哈希、时点、原话/推演/待核实事实和“说/做/结果”关系。
+
+审计只生成 `PENDING/PARTIAL StrategySource` 预览，不写本数据库；外部评分固定为来源风格相似度，季度机构数据只可作为 Theme/Dossier 中期辅助证据。任何包都不能自动变成 FROZEN Playbook、Daily Scanner、Strict PIT、Alpha 或交易信号。
+
 ## 目录约定
 
-目录可以按 Playbook 或研究主题组织，不要求“每个高手一个目录”。现有 `qimofenshu/` 保留为首个 TRADER 来源历史试点；后续规则应逐步按规则本身命名和组织，来源通过结构化关系关联。
+本目录可以按 Playbook 或研究主题组织，不要求“每个高手一个目录”。现有 `qimofenshu/` 保留为首个 TRADER 来源历史试点；后续规则应逐步按规则本身命名和组织，来源通过结构化关系关联。外部专家原始知识包放 `research_skills/`，不要把其独立评分/脚本直接复制进 Playbook 或 execution。

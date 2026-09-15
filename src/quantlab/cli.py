@@ -233,6 +233,8 @@ def main() -> None:
     reference_archive.add_argument('--confirm-retrospective-only',action='store_true',help='宿主确认只能作为回顾性推导参考')
     reference_audit=commands.add_parser('official-rule-reference-audit',help='只读深验复牌日价格推导参考；结果永不通过Strict PIT/Official MarketRules')
     reference_audit.add_argument('--data-root',type=Path,required=True)
+    skill_audit=commands.add_parser('research-skill-audit',help='只读审计外部Research Skill知识包；不执行脚本、不联网、不写StrategySource/Playbook')
+    skill_audit.add_argument('--package',type=Path,required=True,help='包含skill.yml、SKILL.md、method.md、scorecard.md的本地知识包')
     feed.add_argument('--require-fresh',action='store_true',help='行情过期或最新截面不齐时拒绝推进账户')
     archive=commands.add_parser('archive-bars',help='在独立工作目录保存不可变行情版本，显式处理修订')
     archive.add_argument('--bars',type=Path,required=True,help='规范化行情 Parquet')
@@ -342,6 +344,9 @@ def main() -> None:
     if args.command=='official-rule-reference-audit':
         from quantlab.data.official_rule_reference import audit_official_rule_references
         print(encode(audit_official_rule_references(args.data_root)));return
+    if args.command=='research-skill-audit':
+        from quantlab.knowledge.research_skill import audit_research_skill
+        print(encode(audit_research_skill(args.package)));return
     if args.command=='paper-reconcile':
         from quantlab.execution.reconcile import reconcile_account
         if args.output.exists():raise FileExistsError(args.output)

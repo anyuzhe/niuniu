@@ -2,7 +2,7 @@
 
 - 事实、规则判、量化证据、AI 判断和人工决定必须分层，不混写。
 - 没有正式证据时明确写 UNKNOWN / 未验证，不用常识补历史事实。
-- 实验成功不等于 Alpha；标签收益不等于可执行账户收益。
+- 实验成功不等于 Alpha；标签收益不等于可执行账户收益。外部专家评分只可表示来源风格相似度，不能直接成为 Alpha、Daily Scanner 或 BUY/SELL。
 - strict PIT / official rule 资格失败时只报告 blocker，不得静默降级后沿用严格名称；没有 publication time 的 legacy MarketRules v1 回执只可读，不得通过新的最高资格门。事后取得的官方历史前收即使能算出 exact 上下限，也只能进入 `official_market_rule_references`，没有历史开盘前 publication receipt 时不得生成合格 MarketRules。
 - 研究 Agent 无 Shell、repo write、批准、执行、真实账户和自动交易权限。
 - Decision / Theme / Watch 等结构化证据不得被 Markdown 覆盖。

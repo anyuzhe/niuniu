@@ -1,0 +1,145 @@
+{
+  "format": "niuniu-research-skill-v1",
+  "skill_key": "zhengxi",
+  "title": "郑希机构投资方法 Research Skill 接入脚手架",
+  "version": "source-required-1",
+  "status": "SOURCE_REQUIRED",
+  "strategy_source_kind": "TRADER",
+  "summary": "仅固化外部机构投资者知识包的接入协议和候选研究维度；尚未导入或核验 zhengxi-views 原始语料、持仓数据与脚本。",
+  "keywords": ["郑希", "基金经理", "机构持仓", "行业景气", "ROE", "全球竞争优势"],
+  "resources": [
+    {
+      "resource_id": "behavior-contract",
+      "path": "SKILL.md",
+      "role": "BEHAVIOR_CONTRACT",
+      "sha256": "65f8029ebc27a8cce5689be24dec5bfa6307307a93ebdedfdf817fc0b37edce5",
+      "bytes": 1511,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "method-scaffold",
+      "path": "method.md",
+      "role": "METHOD",
+      "sha256": "488a62bf3becc4f44f3cdaf70bff70746bdda63a4f8f5d17e97014d1a9062781",
+      "bytes": 1121,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "scorecard-contract",
+      "path": "scorecard.md",
+      "role": "SCORECARD",
+      "sha256": "ee797e848b2eac15a8bad4a02019a2d4f04c99ab99c4e60bcf4fef6e46c13db8",
+      "bytes": 647,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "references-policy",
+      "path": "references/README.md",
+      "role": "DOCUMENTATION",
+      "sha256": "c682759db7cd4ca9766fd7cdc3e2f523f4e7e28c3969aef41b0f6a7f7080cc51",
+      "bytes": 1029,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "script-policy",
+      "path": "scripts/README.md",
+      "role": "SCRIPT_POLICY",
+      "sha256": "05e411e81282c635a3f5d93cc881419c123b9897033ba807d3de64d177621bec",
+      "bytes": 631,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    }
+  ],
+  "claims": [],
+  "alignments": [],
+  "hypotheses": [
+    {
+      "hypothesis_key": "industry-upcycle",
+      "title": "行业景气上行候选维度",
+      "status": "DRAFT",
+      "claim_ids": [],
+      "feature_candidates": ["行业收入与利润扩散", "订单或价格景气代理"],
+      "required_data": ["PIT 行业分类", "带 publication time 的行业基本面"],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "roe-low-base-recovery",
+      "title": "ROE 低位修复候选维度",
+      "status": "DRAFT",
+      "claim_ids": [],
+      "feature_candidates": ["ROE 水平与变化", "盈利修复确认"],
+      "required_data": ["首次公告与修订分离的财务数据", "每日真实市值"],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "global-competitive-advantage",
+      "title": "全球竞争优势候选维度",
+      "status": "DRAFT",
+      "claim_ids": [],
+      "feature_candidates": ["海外收入与份额代理", "毛利率与研发强度"],
+      "required_data": ["PIT 财务与公司披露", "可复核行业比较数据"],
+      "target_horizon": "LONG_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "value-chain-profit-shift",
+      "title": "产业链利润再分配候选维度",
+      "status": "DRAFT",
+      "claim_ids": [],
+      "feature_candidates": ["上下游毛利变化", "价格与库存传导"],
+      "required_data": ["PIT 行业链映射", "带可用时间的财务与产业数据"],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "institutional-liquidity-fit",
+      "title": "机构可承载流动性候选维度",
+      "status": "DRAFT",
+      "claim_ids": [],
+      "feature_candidates": ["成交额与自由流通市值", "基金持仓集中度"],
+      "required_data": ["每日真实市值", "披露后才可用的季度基金持仓"],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    }
+  ],
+  "policy": {
+    "network_default": "DENY",
+    "model_write_allowed": false,
+    "direct_trade_eligible": false,
+    "daily_scanner_eligible": false,
+    "quarterly_data_intraday_eligible": false,
+    "strict_pit_eligible": false,
+    "alpha_claimed": false,
+    "institutional_data_role": "THEME_DOSSIER_AUXILIARY_ONLY",
+    "score_semantics": "SOURCE_STYLE_SIMILARITY_ONLY",
+    "intended_pipeline": [
+      "RESEARCH_SKILL",
+      "STRATEGY_SOURCE",
+      "PLAYBOOK_DRAFT",
+      "QUANT_VALIDATION",
+      "DAILY_DECISION",
+      "OUTCOME_REVIEW"
+    ]
+  }
+}

@@ -18,6 +18,16 @@
 - SYSTEM_REVIEW
 
 当前 `ExpertSource` 是 TRADER 类型的兼容实现，不得破坏性改写已有 ID、哈希、Case 或 Validation。
+
+## External Research Skill adapter
+
+- 外部专家知识库不直接进入交易核心；先放在 `research_skills/<skill>/`，由 `research-skill-audit` 只读验证 `skill.yml / SKILL.md / references / method.md / scorecard.md / scripts`。
+- 原始观点、披露行为与后续结果分别使用 `PRIMARY_STATEMENT / DISCLOSED_ACTION / REALIZED_OUTCOME`；claim 必须区分 `DIRECT_QUOTE / METHOD_INFERENCE / FACT_TO_VERIFY`。
+- “说/做/结果” alignment 是交叉核验，不是因果或 Alpha 证明。季度持仓只能作为 Theme Matrix / Stock Dossier 中期辅助证据，不能进入 AUCTION/R1/R2/R3。
+- 外部评分只能是 `SOURCE_STYLE_SIMILARITY_ONLY`；所有 hypothesis 固定 DRAFT。审计不执行脚本、不联网、不写结构化库，只给 `PENDING/PARTIAL StrategySource` 预览。
+- Research Skill 永不自行签发 Strict PIT、Daily Scanner 或交易资格；publication-time、CandidateSet、Holdout/Walk-forward 与 execution 继续走牛牛既有门。
+- `research_skills/zhengxi` 当前只是 `SOURCE_REQUIRED` 脚手架；没有外部 corpus、持仓、结果或脚本，不得把用户二次概述冒充原话。
+
 ## 规则与证据边界
 
 - 来源不是规则；Playbook 初始必须为 DRAFT。
