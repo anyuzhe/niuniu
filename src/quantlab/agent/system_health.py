@@ -214,9 +214,8 @@ class SystemHealthService:
         if importlib.util.find_spec('mcp') is None:
             return _component('NOT_CONFIGURED','MCP 可选依赖未安装。',limitations=['MCP is optional and its absence does not block local desktop research.'])
         try:
-            from quantlab.agent.market_data_tools import MarketDataResearchAPI
-            from quantlab.agent.mcp_server import WRITE_PREFIXES
-            names=[item['name'] for item in MarketDataResearchAPI(self.output,self.data_root).schemas()]
+            from quantlab.agent.mcp_server import WRITE_PREFIXES,build_mcp_api
+            names=[item['name'] for item in build_mcp_api(self.output,self.data_root).schemas()]
             writes=[name for name in names if any(name.startswith(prefix) for prefix in WRITE_PREFIXES)]
         except (ImportError,OSError,ValueError,KeyError,TypeError) as exc:
             return _component('BLOCKED','MCP adapter 无法构建工具目录。',blockers=['mcp_adapter_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300]})

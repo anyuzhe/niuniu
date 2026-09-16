@@ -29,7 +29,7 @@
 
 宿主授权取得的Git上游先由 `research-skill-git-archive` 固定origin/commit/tree和全部blob，再由显式curation plan从verified对象生成独立数据根DRAFT包；归档/策展不执行上游脚本，Git metadata也不替代官方publication receipt。
 
-审计只生成 `PENDING/PARTIAL StrategySource` 预览，不写本数据库；外部评分固定为来源风格相似度，季度机构数据只可作为 Theme/Dossier 中期辅助证据。任何包都不能自动变成 FROZEN Playbook、Daily Scanner、Strict PIT、Alpha 或交易信号。
+审计只生成 `PENDING/PARTIAL StrategySource` 预览，不写本数据库；`research_skills/library.json` 只授权桌面/Agent/MCP按精确snapshot检索策展证据和有限非SCRIPT片段，也没有本目录写入接口。外部评分固定为来源风格相似度，季度机构数据只可作为 Theme/Dossier 中期辅助证据。任何包都不能自动变成 FROZEN Playbook、Daily Scanner、Strict PIT、Alpha 或交易信号。
 
 ## 目录约定
 

@@ -6,8 +6,7 @@ import sys,tempfile,unittest
 MCP_AVAILABLE=find_spec('mcp') is not None
 if MCP_AVAILABLE:
     from mcp import Client,StdioServerParameters
-    from quantlab.agent.mcp_server import build_mcp_server,run_mcp
-    from quantlab.agent.market_data_tools import MarketDataResearchAPI
+    from quantlab.agent.mcp_server import build_mcp_api,build_mcp_server,run_mcp
 
 
 @unittest.skipUnless(MCP_AVAILABLE,'optional mcp dependency is not installed')
@@ -15,7 +14,7 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_in_process_tools_match_existing_model_boundary(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);server=build_mcp_server(root)
-            expected=[t['name'] for t in MarketDataResearchAPI(root).schemas()]
+            expected=[t['name'] for t in build_mcp_api(root).schemas()]
             async with Client(server) as client:
                 listed=await client.list_tools();names=[t.name for t in listed.tools]
                 self.assertEqual(names,expected);self.assertTrue(client.protocol_version)
@@ -23,6 +22,7 @@ class MCPServerTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(result.is_error);self.assertIn('execution_tools_available',result.content[0].text)
                 by_name={t.name:t for t in listed.tools}
                 self.assertTrue(by_name['describe_factor'].annotations.read_only_hint)
+                self.assertTrue(by_name['read_research_skill_resource_excerpt'].annotations.read_only_hint)
                 self.assertFalse(by_name['propose_dsl_candidate'].annotations.read_only_hint)
             for forbidden in ('approve_proposal','register_dsl_candidate','execute_incremental_evidence','submit_alpha_factory',
                     'sync_alpha_factory','promote_alpha_candidate','download_baostock','authorize_tracking','run_shell'):

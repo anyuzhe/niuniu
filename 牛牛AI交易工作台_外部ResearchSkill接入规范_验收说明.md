@@ -213,3 +213,5 @@ source_authenticity_host_review_required
 3. 再决定是否显式写入 PARTIAL StrategySource；
 4. 五个假设只能转成独立 Playbook DRAFT，并使用牛牛自己的 PIT Universe、SecurityStatus、行业、财务、市值和行情执行 Quant Validation；
 5. 上游未来更新必须形成新 commit/tree、新 archive receipt 与新 package snapshot，禁止覆盖本批。
+
+> 后续只读界面/Agent/MCP检索已在 v3 完成，见《牛牛AI交易工作台_ResearchSkillLibrary只读集成_验收说明.md》。v3不改变本文件的来源真实性、publication time、Strict PIT、Alpha与交易边界。

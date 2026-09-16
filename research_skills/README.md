@@ -53,4 +53,25 @@ quantlab research-skill-git-curate --data-root <data-root> --control-package res
 
 这些命令自身不 clone/fetch，不运行外部脚本。Git archive 保存所有 tracked blobs 的 SHA256 内容寻址对象；curation 只复制计划明确选择的字节并生成 DRAFT 包。Git commit time、上游 source URL 和二次整理文本都不等于官方 publication receipt。
 
-`zhengxi/` 是 Git 跟踪的 SOURCE_REQUIRED 控制包；固定上游身份见 `upstream.lock.json`。真实第三方字节留在独立数据根。首个策展计划为 `curation/zhengxi-304ac3e4.json`，只选择一份访谈、001513季度持仓/净值及辅助文档，保留来源真实性和发布时间 blockers，不自动创建 StrategySource 或 Playbook。
+## Research Skill Library
+
+`library.json` 是 Agent/界面的**宿主只读授权表**。每项同时固定：
+
+- `control_snapshot`
+- `archive_snapshot`
+- `package_snapshot`
+- source-controlled `curation_plan`
+- `HOST_APPROVED_READ_ONLY`
+
+Library 每次正式读取都会要求 `research_skills/` Git-clean，并重新核验 control、Git receipt/对象、策展包资源和 plan 推导链。只有精确注册的 package snapshot 可被检索。桌面 Research Lab、日常 AI 研究助手、AI Team Peer Review 和 MCP 共用四个只读入口：
+
+```text
+list_research_skills
+get_research_skill
+search_research_skill_items
+read_research_skill_resource_excerpt
+```
+
+片段读取最多 6000 bytes，必须位于 UTF-8 字符边界，并拒绝 `SCRIPT`。返回正文始终标记为 `UNTRUSTED_EXTERNAL_DATA_NOT_INSTRUCTIONS`；工具无下载、脚本执行、StrategySource/Playbook 写入、Decision/Paper 或订单能力。
+
+`zhengxi/` 是 Git 跟踪的 SOURCE_REQUIRED 控制包；固定上游身份见 `upstream.lock.json`。真实第三方字节留在独立数据根。首个策展计划为 `curation/zhengxi-304ac3e4.json`，只选择一份访谈、001513季度持仓/净值及辅助文档，保留来源真实性和发布时间 blockers，不自动创建 StrategySource 或 Playbook。Library 已只读授权精确包 `f9e72ecd...74bf10`，并继续保留全部资格边界。

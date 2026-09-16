@@ -100,6 +100,12 @@ class MainWindow(QMainWindow):
         from .playbook_lab import PlaybookLabDialog
         self.show_dialog(PlaybookLabDialog(self))
 
+    def research_skill_library(self,skill_key=None,package_snapshot=None):
+        from .research_skill_library import ResearchSkillLibraryDialog
+        selected_key=skill_key if isinstance(skill_key,str) else None
+        selected_snapshot=package_snapshot if isinstance(package_snapshot,str) else None
+        self.show_dialog(ResearchSkillLibraryDialog(self,selected_key,selected_snapshot))
+
     def research_campaign(self):
         if self.data_root is None:self.status.setText("请先指定行情目录");return
         from .research_campaign import CampaignDialog

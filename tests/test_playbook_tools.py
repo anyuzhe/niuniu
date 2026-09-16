@@ -56,6 +56,7 @@ class PlaybookToolTests(unittest.TestCase):
         api=ReviewReadOnlyAPI(self.root,self.root);names={tool['name'] for tool in api.schemas()}
         self.assertIn('get_playbook_overview',names);self.assertIn('get_playbook_case_bundle',names)
         self.assertIn('list_strategy_sources',names);self.assertIn('list_playbook_source_links',names)
+        self.assertIn('list_research_skills',names);self.assertIn('read_research_skill_resource_excerpt',names)
         self.assertNotIn('get_agent_scorecard',names)
         result=api.call('get_playbook_overview',{})
         self.assertTrue(result['ok']);self.assertEqual(result['data']['sources'],0)

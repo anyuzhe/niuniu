@@ -64,9 +64,10 @@ def ai_team_page(window):
     box.addWidget(AITeamWidget(window),1)
 
 def research_lab_page(window):
-    box=window.page('研究实验室','保留原牛牛全部研究能力；Trading Knowledge / Playbook Lab 吸收多来源交易经验并做完整候选与验证。')
-    box.addWidget(row(button('交易知识 / Playbook Lab',window.playbook_lab,True),
-        label('StrategySource → Playbook · 来源不是规则；保留完整候选、反例、NO_TRADE 与验证证据。','note',True)))
+    box=window.page('研究实验室','保留原牛牛全部研究能力；外部经验先进入只读Research Skill，再经宿主复核进入Trading Knowledge。')
+    box.addWidget(row(button('Research Skill Library',window.research_skill_library,True),
+        button('交易知识 / Playbook Lab',window.playbook_lab),
+        label('Research Skill只读证据 → 人工StrategySource → Playbook；不自动写库、选股或交易。','note',True)))
     entries=[
         ('研究总览',0),('数据中心',1),('因子库',2),('市场状态',3),('结构与事件',4),('序列构建器',5),
         ('理论实验室',6),('实验中心',7),('组合与模型',8),('策略回测',9),('结果对比',10),('研究设置',11),

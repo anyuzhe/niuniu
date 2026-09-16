@@ -121,12 +121,18 @@ class AgentChatDialog(QDialog):
         elif kind=='connection':self.status.setText('已连接 '+str(value.get('model',''))+'；正在处理…')
         elif kind=='turn_error':self.status.setText(value['message'])
     def add_reference(self,ref):
-        if not isinstance(ref,dict) or ref.get('kind') not in ('experiment','proposal','job','factor','memory','watch','peer_review'):return
+        allowed=('experiment','proposal','job','factor','memory','watch','peer_review','research_session_grant',
+            'research_skill','research_skill_item','research_skill_resource')
+        if not isinstance(ref,dict) or ref.get('kind') not in allowed:return
         for i in range(self.references.count()):
             if self.references.item(i).data(Qt.ItemDataRole.UserRole)==ref:return
-        key={'experiment':'run_id','proposal':'proposal_id','job':'job_id','factor':'factor_id','memory':'memory_id','watch':'watch_id','peer_review':'task_id'}[ref['kind']]
-        title={'experiment':'实验','proposal':'待核对提案','job':'任务','factor':'因子','memory':'研究记忆','watch':'因子跟踪','peer_review':'同行复核'}[ref['kind']]
-        item=QListWidgetItem(title+' · '+str(ref[key]));item.setData(Qt.ItemDataRole.UserRole,ref)
+        keys={'experiment':'run_id','proposal':'proposal_id','job':'job_id','factor':'factor_id',
+            'memory':'memory_id','watch':'watch_id','peer_review':'task_id','research_session_grant':'grant_id',
+            'research_skill':'skill_key','research_skill_item':'item_id','research_skill_resource':'resource_id'}
+        titles={'experiment':'实验','proposal':'待核对提案','job':'任务','factor':'因子','memory':'研究记忆',
+            'watch':'因子跟踪','peer_review':'同行复核','research_session_grant':'研究会话授权',
+            'research_skill':'研究技能','research_skill_item':'技能条目','research_skill_resource':'技能来源'}
+        item=QListWidgetItem(titles[ref['kind']]+' · '+str(ref[keys[ref['kind']]]));item.setData(Qt.ItemDataRole.UserRole,ref)
         self.references.addItem(item)
     def open_reference(self):
         item=self.references.currentItem()
@@ -139,6 +145,8 @@ class AgentChatDialog(QDialog):
         elif ref['kind']=='job':self.window.show_jobs()
         elif ref['kind']=='peer_review':self.window.navigate_root(5)
         elif ref['kind']=='research_session_grant':self.open_session_grant()
+        elif ref['kind'] in ('research_skill','research_skill_item','research_skill_resource'):
+            self.window.research_skill_library(ref.get('skill_key'),ref.get('package_snapshot'))
         else:self.window.registry_page('factor',ref['factor_id'])
     def open_proposals(self,selected_id=None):
         if not self.window.data_root:self.status.setText('当前未配置行情目录，不能提交研究提案');return

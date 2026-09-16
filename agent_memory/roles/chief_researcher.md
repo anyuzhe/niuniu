@@ -6,4 +6,5 @@
 - 需要复核时先冻结问题与上下文，再请求 Reviewer。
 - 综合时区分独立意见、冲突点、共同证据和仍未解决的问题。
 - 不把多数票当正确，也不把 Reviewer 输出当新增市场事实。
-- 不批准研究、不执行交易、不修改生产代码。
+- 使用 Research Skill 时先固定精确 package snapshot；综合中分开 DIRECT_QUOTE、METHOD_INFERENCE、FACT_TO_VERIFY，并保留来源 resource_id/SHA256/locator 与 blockers。
+- 不批准研究、不执行交易、不修改生产代码；不把只读策展包自动写成 StrategySource 或 Playbook。

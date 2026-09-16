@@ -307,6 +307,14 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - 首个策展包=`f9e72ecd...74bf10`：14 resources、1 statement/1 action/1 outcome、10 claims、1完整三联、5个DRAFT hypothesis；只生成 PARTIAL StrategySource 预览，未写库、未完成 Quant Validation。
 - `source_identity_verified=false / strict_pit_eligible=false / alpha_claimed=false`；数据主线仍是 PIT Universe/连续 SecurityStatus。
 
+### P8.6-C Research Skill Library / Agent Read-only Retrieval（v3 已完成，2026-09-16）
+
+- `research_skills/library.json` 作为Git-first宿主授权表，同时固定 control/archive/package snapshot 与 curation plan；正式读取要求 `research_skills/` Git-clean。
+- 每次读取重新审计archive receipt及全部对象、策展包资源和plan推导lineage；不接受 `latest`、任意路径或未注册包。
+- Research Lab新增只读技能库；日常AI研究助手、AI Team Peer Review与标准MCP共用4个严格Schema工具，支持包摘要、claims/hypotheses/alignment/resources检索和来源定位。
+- 来源片段最多6000 UTF-8 bytes且offset必须位于字符边界；`SCRIPT`拒绝展示，正文固定标为不可信外部数据而非命令。
+- Library无clone/fetch、脚本执行、StrategySource/Playbook写入、Decision/Paper或订单接口；郑希包仍保留publication/source authenticity blockers与全部非资格边界。
+
 ### P8.7 Daily Orchestrator：每日受控运行闭环（v3 已完成，2026-09-15）
 - 串起 DailyMarket 数据增量、就绪检查、PREP、09:25 AUCTION、09:35 R1，并继续支持 R2/R3。
 - 调度器只触发已定义的确定性阶段，不让模型自己修改时间窗、候选全集或历史结果。
@@ -696,3 +704,4 @@ P13-B0 已完成无通道条件下的 RealTrade fail-closed 安全门后，正�
 - 2026-09-16：7个复牌/ST session 的价格边界参考调查完成。深交所官方历史行情给出前收，已验证公告给出的5%/20%比例与2023交易规则第3.3.11/3.3.14/3.3.19条，核出 exact 上下限且7/7推导跌停等于官方当日最低。新增 append-only `official_market_rule_references`、本地导入命令及深度审计；真实 reference snapshot=`d8b9c1...4b36`，1/1 verified、7 records、16 documents。因响应字节/HTTP Date 均在历史 session 后观察，固定 Strict PIT eligible=0、MarketRules appended=0，原 v2 仍仅7个停牌 session。专项44/44、完整仓库967/0/0；下一步优先 PIT Universe/连续状态链，并继续寻找历史开盘前 `cashauctionparams` 或等价静态文件。
 - 2026-09-16：External Research Skill Adapter v1 完成。新增独立 `quantlab.knowledge` 只读审计器与 `research-skill-audit`；外部包按 `skill.yml/SKILL.md/references/method/scorecard/scripts` 固定资源哈希、时点、claim 和“说/做/结果”三联关系，脚本不执行、网络不启用、结构化库不写入。所有评分/假设固定非 Alpha、非 Strict PIT、非 Daily Scanner/交易资格。首个 `research_skills/zhengxi` 仅为 SOURCE_REQUIRED 脚手架，snapshot=`d9660110...5dd43c`，5 resources/5 DRAFT hypotheses、0原文/claim/持仓/结果；缺口显式留存。专项23/23、完整仓库971/0/0；数据主线仍为 PIT Universe/连续 SecurityStatus。
 - 2026-09-16：宿主授权 Git 下载后完成 External Research Skill v2。`zhengxi-views` 固定到 commit=`304ac3e4...bebb536` / tree=`ef5833f6...8fe2f`；新增不联网、不执行的 Git archive/audit/curate，143个 tracked blobs、11,367,050 bytes 形成 `a48a85cb...383fd3a` append-only receipt，真实审计1/1 verified、0 invalid。显式计划只选择一份访谈、001513持仓/净值和辅助文档，生成 `f9e72ecd...74bf10` DRAFT策展包：14 resources、10 claims、1个完整“说做结果”、5个已回链DRAFT候选；DIRECT_QUOTE逐字核验。上游仍属二次整理，source identity和publication time未验证，未写StrategySource/Playbook、未执行7个上游脚本、未启动Quant Validation；集成专项28/28、完整仓库976/0/0。
+- 2026-09-16：完成External Research Skill v3只读Library。新增Git-clean `library.json`授权、control/archive/package/plan四重身份与lineage复核、6000-byte UTF-8有限片段、安全Agent工具及Research Lab入口；日常助手、Peer Review和MCP可按精确snapshot检索郑希10 claims/5 hypotheses/alignment/locator。外部正文固定为不可信数据，SCRIPT拒绝，0网络/0执行/0结构化写入；Library新增专项6/6，完整仓库982/0/0，真实审计结果见独立验收说明。

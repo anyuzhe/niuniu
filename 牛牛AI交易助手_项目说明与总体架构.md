@@ -4,7 +4,7 @@
 - 架构口径更新：2026-09-16
 - 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；External Research Skill v2 已固定首个真实上游 Git archive 与回顾性策展包；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `976 passed / 0 failed / 0 skipped`
+- 当前稳定基线：SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；External Research Skill v3 已固定真实Git archive/策展包并接入只读Library；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `982 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -101,7 +101,9 @@ v2 增加 Git archive/curation 两层：宿主先自行授权并完成 clone；�
 
 审计最多输出宿主可复核的 `PENDING/PARTIAL StrategySource` 预览，绝不执行外部脚本、联网或写 Playbook Lab。外部评分仅代表来源风格相似度；季度机构数据只进入 Theme Matrix / Stock Dossier 中期辅助证据。之后仍必须经过 Playbook DRAFT、牛牛自己的 PIT CandidateSet、Holdout/Walk-forward 与执行验证。
 
-首个 `research_skills/zhengxi` 在 Git 中仍是 source-free `SOURCE_REQUIRED` 控制包；上游已固定到 `304ac3e4...bebb536`，独立数据根 archive 为143文件/11,367,050 bytes。首个 `f9e72ecd...74bf10` 策展包含1份上游访谈、001513持仓/结果、10条claim和1个“说做结果”alignment，结构上可成为 Playbook DRAFT 候选；但上游二次整理不是官方原始字节，source identity需宿主复核且publication time未验证，不能称为已验证 Alpha。
+v3 增加只读 Research Skill Library：`research_skills/library.json` 是 Git-clean 宿主授权表，同时固定 control/archive/package snapshot 和 curation plan。服务在每次读取时重新核验 Git archive对象、策展资源及lineage；桌面Research Lab、日常AI助手、AI Team Peer Review和MCP共用精确snapshot的list/get/search/excerpt。来源片段上限6000 UTF-8 bytes并拒绝SCRIPT，所有正文都标为不可信外部数据而非指令。Library没有下载、脚本执行、结构化写入、Decision/Paper或订单接口。
+
+首个 `research_skills/zhengxi` 在 Git 中仍是 source-free `SOURCE_REQUIRED` 控制包；上游已固定到 `304ac3e4...bebb536`，独立数据根 archive 为143文件/11,367,050 bytes。首个 `f9e72ecd...74bf10` 策展包含1份上游访谈、001513持仓/结果、10条claim和1个“说做结果”alignment，现已获只读Library授权，可用于受控检索和假设生成；但上游二次整理不是官方原始字节，source identity需宿主复核且publication time未验证，不能称为已验证 Alpha。
 
 ## 4. 知识提炼与 Playbook 层
 
@@ -256,7 +258,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | DailyMarket 全市场日增量归档 | 已完成 |
 | 真实前瞻冻结与防历史回填 | 已完成并已启动样本积累 |
 | 通用 StrategySource 多来源对象 | **已完成 P8.6**：六类来源 + 多对多 PlaybookSourceLink |
-| External Research Skill Adapter | **已完成 v2**：v1包审计 + 固定 Git origin/commit/tree/tracked blobs + append-only对象/receipt + 选择性回顾策展；不执行外部脚本、不自动写库。郑希控制包为SOURCE_REQUIRED，外部DRAFT策展包为PARTIAL预览 |
+| External Research Skill Adapter | **已完成 v3**：v1包审计 + v2 Git archive/选择性策展 + v3 Git-clean只读Library；Research Lab、日常助手、AI Team、MCP可检索精确策展snapshot，不执行脚本/联网/自动写库。郑希DRAFT包仍仅为PARTIAL预览 |
 | 受控每日自动编排 PREP→AUCTION→R1→R2→R3 | **已完成**：持久计划、幂等恢复、R2/R3 continuation review、错过窗口不回填；空 PREP CandidateSet 进入 `COMPLETE_NO_TRADE` 且不抓无标的行情；实时三源抓取需宿主显式授权 |
 | Live MarketSnapshot Provider | **已完成 v1**：腾讯主源 + 东财第二源 + 新浪备用校验；至少两源一致、异常源剔除、时间戳防脏数据、公开网页源不升级 Strict PIT |
 | Agent Scorecard | **P9 v1 已完成**：按任务类型只读评价，样本不足 UNKNOWN，无总分/自动调权 |
@@ -269,7 +271,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**976 tests / 0 failed / 0 skipped**。
+当前生产代码最近完整回归基线：**982 tests / 0 failed / 0 skipped**（非Desktop 863 + Desktop 119）。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：
@@ -278,7 +280,7 @@ P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
 3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已补齐。后续外部数据升级目标是券商/QMT/交易所级行情；内部 Research Lab 下一主线转为**真实官方历史资料归档与 receipt coverage 提升**，而不是再改 Strict PIT/Coverage 引擎。
 
-Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。Official MarketRules publication receipt v2 已落地，并把同7份公告映射为7个明确停牌 session；7个复牌日的官方前收+比例+公式 exact 算术值也已形成回顾性 reference snapshot，但因缺开盘前 publication receipt 没有追加 MarketRules。External Research Skill v2 已把首个真实 Git 上游固定并选择性策展，但只形成 PARTIAL StrategySource 预览和 Playbook DRAFT 候选，不改变数据优先级。当前内部主线仍是当前时点可前瞻留存的 **PIT Universe 与连续 SecurityStatus 状态链**，并继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何稀疏 receipt、回顾性参考或外部知识评分均不视为完整覆盖/Alpha。
+Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。Official MarketRules publication receipt v2 已落地，并把同7份公告映射为7个明确停牌 session；7个复牌日的官方前收+比例+公式 exact 算术值也已形成回顾性 reference snapshot，但因缺开盘前 publication receipt 没有追加 MarketRules。External Research Skill v3 已把首个真实 Git 上游固定、选择性策展并接入宿主授权只读Library，但仍只形成 PARTIAL StrategySource 预览和 Playbook DRAFT 候选，不改变数据优先级。当前内部主线仍是当前时点可前瞻留存的 **PIT Universe 与连续 SecurityStatus 状态链**，并继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何稀疏 receipt、回顾性参考或外部知识评分均不视为完整覆盖/Alpha。
 
 ### P8.7 当前边界
 

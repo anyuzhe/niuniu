@@ -1,0 +1,13 @@
+{
+  "format": "niuniu-research-skill-library-v1",
+  "skills": [
+    {
+      "skill_key": "zhengxi",
+      "control_snapshot": "7185219deebfe271d28e8f77abb72fc9077246ae2a7ddb69bd560de454a9dd6f",
+      "archive_snapshot": "a48a85cb1d0dacddbaa54cb88761bf34c7d47ac0d621fee6be28e8f6e383fd3a",
+      "package_snapshot": "f9e72ecd207af9850fe86ee71b0bc6133d5101c2a1b70ec200094221d574bf10",
+      "curation_plan": "curation/zhengxi-304ac3e4.json",
+      "authorization": "HOST_APPROVED_READ_ONLY"
+    }
+  ]
+}
