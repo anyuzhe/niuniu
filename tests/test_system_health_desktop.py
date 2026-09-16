@@ -27,9 +27,14 @@ class SystemHealthDesktopTests(unittest.TestCase):
         self.window.close();QTest.qWait(30);self.temp.cleanup()
 
     def test_system_center_renders_read_only_health_without_creating_service_state(self):
-        index=NAV.index('系统中心');self.window.navigate_root(index);QTest.qWait(250)
+        index=NAV.index('系统中心');self.window.navigate_root(index)
         widgets=self.window.scroll.widget().findChildren(SystemHealthWidget);self.assertEqual(len(widgets),1)
-        labels=[w.text() for w in self.window.scroll.widget().findChildren(QLabel)]
+        def texts():return [w.text() for w in self.window.scroll.widget().findChildren(QLabel)]
+        # Health is aggregated asynchronously; wait for the rendered cards instead of a fixed delay.
+        for _ in range(200):
+            QTest.qWait(50)
+            if any(text=='Runtime' for text in texts()):break
+        labels=texts()
         self.assertTrue(any('System Health' in text for text in labels))
         self.assertTrue(any(text=='Runtime' for text in labels));self.assertTrue(any(text=='Research Readiness' for text in labels))
         self.assertFalse((self.output/'_tracking_daemon').exists());self.assertFalse((self.output/'_daily_orchestrator').exists())
