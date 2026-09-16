@@ -77,6 +77,14 @@ class RegimeTests(unittest.TestCase):
         self.assertEqual(limit_rule('sh.601065',date(2023,4,7),listing_date=date(2023,4,10))['reason'],'BEFORE_LISTING')
         self.assertFalse(limit_rule('sh.601065',date(2023,5,31))['listing_window_checked'])
 
+    def test_listing_date_resolves_when_no_multi_session_window_exists(self):
+        old_main=limit_rule('sh.603999',date(2023,1,5),listing_date=date(2023,1,3))
+        self.assertEqual((old_main['status'],old_main['rate'],old_main['listing_window_checked']),(NORMAL,0.10,True))
+        self.assertEqual(limit_rule('sh.603999',date(2023,1,3),listing_date=date(2023,1,3))['reason'],'LISTING_WINDOW_UNRESOLVED')
+        self.assertEqual(limit_rule('bj.920118',date(2026,9,17),listing_date=date(2026,9,16))['status'],NORMAL)
+        self.assertEqual(limit_rule('sz.300999',date(2020,8,24),listing_date=date(2020,8,20))['status'],NORMAL)
+        self.assertEqual(limit_rule('sh.688001',date(2026,9,17),listing_date=date(2026,9,16))['reason'],'LISTING_WINDOW_UNRESOLVED')
+
     def test_near_delisting_and_unknown_board_are_excluded(self):
         self.assertEqual(limit_rule('sz.000001',date(2026,9,16),sessions_to_delisting=30)['reason'],'NEAR_DELISTING_UNMODELED')
         self.assertEqual(limit_rule('sz.000001',date(2026,9,16),sessions_to_delisting=31)['status'],NORMAL)

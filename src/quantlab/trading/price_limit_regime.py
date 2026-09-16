@@ -135,6 +135,9 @@ def limit_rule(symbol, session, *, is_st=False, listing_date=None, sessions_sinc
             checked = True
         elif (session - listing).days > LISTING_WINDOW_MAX_CALENDAR_DAYS:
             checked = True
+        elif session > listing and no_limit <= 1:
+            # The special/no-limit window is at most the listing day itself, which is already past.
+            checked = True
         else:
             return _result(board, UNMODELED, None, 'LISTING_WINDOW_UNRESOLVED', False)
     if to_delisting is not None and to_delisting <= NEAR_DELISTING_SESSIONS:
