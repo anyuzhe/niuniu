@@ -26,7 +26,7 @@ from quantlab.storage.codec import digest, encode
 
 FORMAT = 'public-evidence-capture-v1'
 TZ = ZoneInfo('Asia/Shanghai')
-ALLOWED_HOSTS = frozenset({'push2ex.eastmoney.com', 'push2.eastmoney.com', 'datacenter-web.eastmoney.com',
+ALLOWED_HOSTS = frozenset({'push2ex.eastmoney.com', 'push2.eastmoney.com', 'push2delay.eastmoney.com', 'datacenter-web.eastmoney.com',
                            'emappdata.eastmoney.com'})
 HTTP_TIMEOUT = 15
 MAX_BODY = 10_000_000
@@ -81,6 +81,8 @@ class Source:
     parser_version = ''
     description = ''
     limitations: tuple = ()
+    snapshot_only = False
+    max_requests = MAX_REQUESTS_PER_CAPTURE
 
     def requests(self, day):
         raise NotImplementedError
@@ -202,7 +204,7 @@ class PublicEvidenceArchive:
     def _fetch_all(self, source, day):
         responses, queue, last = [], list(source.requests(day)), None
         while queue:
-            if len(responses) >= MAX_REQUESTS_PER_CAPTURE:
+            if len(responses) >= getattr(source, 'max_requests', MAX_REQUESTS_PER_CAPTURE):
                 raise PublicEvidenceError('BUDGET_EXCEEDED', '单次抓取请求数超过上限。')
             spec = queue.pop(0)
             if last is not None:
@@ -247,6 +249,8 @@ class PublicEvidenceArchive:
         timing = capture_timing(day, started)
         if timing == 'NOT_AFTER_CLOSE':
             raise PublicEvidenceError('NOT_AFTER_CLOSE', '只授权收盘后归档；盘中或未来日期不抓取。')
+        if timing == 'LATE' and getattr(source, 'snapshot_only', False):
+            raise PublicEvidenceError('SNAPSHOT_SOURCE_LATE', '该来源只提供当前快照，过了下一交易日 09:15 无法代表该交易日，禁止补抓。')
         if timing == 'LATE' and allow_late is not True:
             raise PublicEvidenceError('LATE_CAPTURE_NOT_ALLOWED', '已过下一交易日 09:15，补抓需显式 allow_late，结果标记为 LATE。')
         folder = self._day_dir(source_id, day)

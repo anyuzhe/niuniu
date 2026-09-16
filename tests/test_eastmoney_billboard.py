@@ -90,7 +90,7 @@ class BillboardTests(unittest.TestCase):
         self.assertEqual(secucode_symbol('920071.BJ'), 'bj.920071')
         with self.assertRaises(PublicEvidenceError):
             secucode_symbol('920071')
-        self.assertEqual(len(default_sources()), 8)
+        self.assertEqual(len(default_sources()), 13)
 
 
 if __name__ == '__main__':

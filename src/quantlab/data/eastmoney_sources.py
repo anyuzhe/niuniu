@@ -282,6 +282,236 @@ def billboard_sources():
     ]
 
 
+SNAPSHOT_LIMITATIONS = (
+    '板块与人气数据是抓取时刻的快照，不能按日期回查；只允许当日收盘后或下一交易日开盘前抓取。',
+    '板块划分、成分与领涨股为东方财富口径，成分变动时间未知，不是官方行业分类。',
+    '板块数据取自东方财富延时行情主机 push2delay；收盘后与收盘值一致，盘中不可用作实时数据。',
+)
+CLIST_PAGE = 100
+BOARD_FIELDS = 'f12,f13,f14,f2,f3,f5,f6,f8,f104,f105,f128,f140,f141,f136'
+MEMBER_FIELDS = 'f12,f13,f14,f2,f3,f6'
+BOARD_FAMILIES = {'concept': 'm:90+t:3+f:!50', 'industry': 'm:90+t:2+f:!50'}
+BOARD_CODE = re.compile(r'^BK\d{4}$')
+
+
+def _clist_url(fs, page, fields, sort='f12'):
+    return ('https://push2delay.eastmoney.com/api/qt/clist/get?pn=' + str(page) + f'&pz={CLIST_PAGE}&po=0&np=1&fltt=2&invt=2&fid={sort}'
+            + '&fs=' + quote(fs, safe='') + '&fields=' + quote(fields, safe=''))
+
+
+def _clist_page(response, source_id):
+    try:
+        value = json.loads(response.body.decode('utf-8'))
+    except (UnicodeDecodeError, ValueError):
+        raise PublicEvidenceError('DATA_SCHEMA', source_id + ' 响应不是 JSON。') from None
+    if not isinstance(value, dict) or value.get('rc') != 0:
+        raise PublicEvidenceError('PROVIDER_ERROR', source_id + ' 返回错误码。')
+    data = value.get('data')
+    if data is None:
+        return 0, []
+    total, diff = data.get('total'), data.get('diff')
+    if type(total) is not int or total < 0 or not isinstance(diff, list):
+        raise PublicEvidenceError('DATA_SCHEMA', source_id + ' 列表结构无效。')
+    return total, diff
+
+
+def _pages(total):
+    return max(1, -(-total // CLIST_PAGE))
+
+
+def _fs_of(url):
+    from urllib.parse import parse_qs, urlparse
+    return parse_qs(urlparse(url).query).get('fs', [''])[0]
+
+
+def _page_of(url):
+    from urllib.parse import parse_qs, urlparse
+    return int(parse_qs(urlparse(url).query).get('pn', ['0'])[0])
+
+
+def _nullable_number(value, key):
+    return None if value in ('-', None, '') else _number(value, key)
+
+
+def _member_symbol(code, market):
+    if not isinstance(code, str) or not CODE.fullmatch(code) or market not in (0, 1):
+        raise PublicEvidenceError('DATA_SCHEMA', f'成分证券代码无效：{code}/{market}')
+    return em_symbol(code, market)
+
+
+class EastmoneyBoardListSource(Source):
+    parser_version = 'em-board-list-v1'
+    snapshot_only = True
+
+    def __init__(self, family):
+        self.family = family
+        self.fs = BOARD_FAMILIES[family]
+        self.source_id = f'em_{family}_boards'
+        self.description = f'东方财富{"概念" if family == "concept" else "行业"}板块列表与收盘快照（涨跌幅、成交额、涨跌家数、领涨股）'
+        self.limitations = SNAPSHOT_LIMITATIONS
+
+    def requests(self, day):
+        return [RequestSpec(_clist_url(self.fs, 1, BOARD_FIELDS))]
+
+    def follow_up(self, day, responses):
+        if len(responses) != 1:
+            return []
+        total, _ = _clist_page(responses[0], self.source_id)
+        return [RequestSpec(_clist_url(self.fs, page, BOARD_FIELDS)) for page in range(2, _pages(total) + 1)]
+
+    SCHEMA = {'board_code': pl.String, 'board_name': pl.String, 'index_price': pl.Float64, 'pct_change': pl.Float64,
+              'volume': pl.Float64, 'amount': pl.Float64, 'turnover_rate': pl.Float64, 'up_count': pl.Int64,
+              'down_count': pl.Int64, 'leader_name': pl.String, 'leader_symbol': pl.String, 'leader_pct_change': pl.Float64}
+
+    def parse(self, day, responses):
+        rows, totals = {}, set()
+        for response in responses:
+            total, diff = _clist_page(response, self.source_id)
+            totals.add(total)
+            for item in diff:
+                if not isinstance(item, dict) or not BOARD_CODE.fullmatch(str(item.get('f12'))):
+                    raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 板块代码无效。')
+                code = item['f12']
+                if code in rows:
+                    raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 板块重复：' + code)
+                leader = None
+                if item.get('f140') not in (None, '', '-') and item.get('f141') in (0, 1):
+                    leader = _member_symbol(item['f140'], item['f141'])
+                up, down = item.get('f104'), item.get('f105')
+                rows[code] = [code, str(item.get('f14') or ''), _nullable_number(item.get('f2'), 'f2'), _nullable_number(item.get('f3'), 'f3'),
+                              _nullable_number(item.get('f5'), 'f5'), _nullable_number(item.get('f6'), 'f6'), _nullable_number(item.get('f8'), 'f8'),
+                              up if type(up) is int else None, down if type(down) is int else None,
+                              item.get('f128') if isinstance(item.get('f128'), str) else None, leader, _nullable_number(item.get('f136'), 'f136')]
+        if len(totals) != 1 or len(rows) != totals.pop():
+            raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 板块总数与分页结果不一致。')
+        return ParsedTable([rows[k] for k in sorted(rows)], dict(self.SCHEMA), [])
+
+
+class EastmoneyBoardMembersSource(Source):
+    parser_version = 'em-board-members-v1'
+    snapshot_only = True
+    max_requests = 3000
+
+    def __init__(self, family, board_limit=None):
+        self.family = family
+        self.fs = BOARD_FAMILIES[family]
+        self.board_limit = board_limit
+        self.source_id = f'em_{family}_board_members'
+        self.description = f'东方财富{"概念" if family == "concept" else "行业"}板块成分快照'
+        self.limitations = SNAPSHOT_LIMITATIONS
+
+    def requests(self, day):
+        return [RequestSpec(_clist_url(self.fs, 1, 'f12,f14'))]
+
+    def _boards(self, responses):
+        lists = [r for r in responses if _fs_of(r.request.url) == self.fs]
+        boards = []
+        for response in lists:
+            _total, diff = _clist_page(response, self.source_id)
+            boards.extend((item['f12'], item.get('f14')) for item in diff)
+        return lists, boards
+
+    def follow_up(self, day, responses):
+        lists, boards = self._boards(responses)
+        total, _ = _clist_page(lists[0], self.source_id)
+        pages = _pages(total)
+        if len(lists) < pages:
+            return [RequestSpec(_clist_url(self.fs, page, 'f12,f14')) for page in range(2, pages + 1)]
+        if self.board_limit is not None:
+            boards = sorted(boards)[:self.board_limit]
+        members = [r for r in responses if _fs_of(r.request.url).startswith('b:')]
+        if not members:
+            return [RequestSpec(_clist_url(f'b:{code}+f:!50', 1, MEMBER_FIELDS)) for code, _name in sorted(boards)]
+        if any(_page_of(r.request.url) > 1 for r in members):
+            return []
+        extra = []
+        for response in members:
+            total, _ = _clist_page(response, self.source_id)
+            board = _fs_of(response.request.url)
+            extra.extend(RequestSpec(_clist_url(board, page, MEMBER_FIELDS)) for page in range(2, _pages(total) + 1))
+        return extra
+
+    SCHEMA = {'board_code': pl.String, 'board_name': pl.String, 'symbol': pl.String, 'code': pl.String, 'name': pl.String,
+              'price': pl.Float64, 'pct_change': pl.Float64, 'amount': pl.Float64}
+
+    def parse(self, day, responses):
+        lists, boards = self._boards(responses)
+        names = dict(boards)
+        if len(set(names)) != len(boards) or not lists:
+            raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 板块列表重复或缺失。')
+        total_boards, _ = _clist_page(lists[0], self.source_id)
+        if len(boards) != total_boards:
+            raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 板块列表未取全。')
+        expected = set(sorted(names)[:self.board_limit] if self.board_limit is not None else names)
+        per_board, totals = {}, {}
+        for response in responses:
+            fs = _fs_of(response.request.url)
+            if not fs.startswith('b:'):
+                continue
+            board = fs[2:].split('+')[0]
+            total, diff = _clist_page(response, self.source_id)
+            totals.setdefault(board, set()).add(total)
+            for item in diff:
+                symbol = _member_symbol(item.get('f12'), item.get('f13'))
+                per_board.setdefault(board, {})
+                if symbol in per_board[board]:
+                    raise PublicEvidenceError('DATA_SCHEMA', f'{self.source_id} {board} 成分重复。')
+                per_board[board][symbol] = [board, names.get(board), symbol, item['f12'], str(item.get('f14') or ''),
+                                            _nullable_number(item.get('f2'), 'f2'), _nullable_number(item.get('f3'), 'f3'),
+                                            _nullable_number(item.get('f6'), 'f6')]
+        if set(totals) != expected:
+            raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 成分请求与板块列表不一致。')
+        rows = []
+        for board in sorted(expected):
+            if len(totals[board]) != 1 or len(per_board.get(board, {})) != next(iter(totals[board])):
+                raise PublicEvidenceError('DATA_SCHEMA', f'{self.source_id} {board} 成分数量与总数不一致。')
+            rows.extend(per_board.get(board, {})[s] for s in sorted(per_board.get(board, {})))
+        warnings = [f'BOARD_LIMIT:{self.board_limit}'] if self.board_limit is not None else []
+        return ParsedTable(rows, dict(self.SCHEMA), warnings)
+
+
+class EastmoneyPopularitySource(Source):
+    source_id = 'em_popularity_rank'
+    parser_version = 'em-popularity-v1'
+    description = '东方财富个股人气榜前 100 名快照'
+    snapshot_only = True
+    limitations = SNAPSHOT_LIMITATIONS + ('人气榜为供应商基于访问与关注的排名，只提供前 100 名。',)
+    BODY = json.dumps({'appId': 'appId01', 'globalId': '786e4c21-70dc-435a-93bb-38', 'marketType': '', 'pageNo': 1, 'pageSize': 100}).encode()
+
+    def requests(self, day):
+        return [RequestSpec('https://emappdata.eastmoney.com/stockrank/getAllCurrentList', method='POST', body=self.BODY,
+                            headers=(('Content-Type', 'application/json'),))]
+
+    SCHEMA = {'rank': pl.Int64, 'symbol': pl.String, 'code': pl.String, 'rank_change': pl.Int64, 'em_his_rank_change': pl.Int64}
+
+    def parse(self, day, responses):
+        try:
+            value = json.loads(responses[0].body.decode('utf-8'))
+        except (UnicodeDecodeError, ValueError):
+            raise PublicEvidenceError('DATA_SCHEMA', '人气榜响应不是 JSON。') from None
+        if not isinstance(value, dict) or value.get('status') != 0 or not isinstance(value.get('data'), list):
+            raise PublicEvidenceError('PROVIDER_ERROR', '人气榜返回失败。')
+        rows = []
+        for item in value['data']:
+            sc = item.get('sc') if isinstance(item, dict) else None
+            match = re.fullmatch(r'(SH|SZ|BJ)(\d{6})', sc or '')
+            if not match or type(item.get('rk')) is not int:
+                raise PublicEvidenceError('DATA_SCHEMA', '人气榜条目无效。')
+            rows.append([item['rk'], match.group(1).lower() + '.' + match.group(2), match.group(2),
+                         item.get('rc') if type(item.get('rc')) is int else None,
+                         item.get('hisRc') if type(item.get('hisRc')) is int else None])
+        ranks = sorted(r[0] for r in rows)
+        if ranks != list(range(1, len(rows) + 1)) or len({r[1] for r in rows}) != len(rows):
+            raise PublicEvidenceError('DATA_SCHEMA', '人气榜排名不连续或证券重复。')
+        rows.sort(key=lambda r: r[0])
+        return ParsedTable(rows, dict(self.SCHEMA), [])
+
+
+def snapshot_sources():
+    return [EastmoneyBoardListSource('concept'), EastmoneyBoardListSource('industry'),
+            EastmoneyBoardMembersSource('concept'), EastmoneyBoardMembersSource('industry'), EastmoneyPopularitySource()]
+
+
 COMMON = [('p', 'price', 'price1000'), ('zdp', 'pct_change', 'float'), ('amount', 'amount', 'float'),
           ('ltsz', 'float_market_cap', 'float'), ('tshare', 'total_market_cap', 'float')]
 
@@ -312,8 +542,9 @@ def pool_sources():
 
 
 def default_sources():
-    return pool_sources() + billboard_sources()
+    return pool_sources() + billboard_sources() + snapshot_sources()
 
 
-__all__ = ['POOL_UT', 'EastmoneyPoolSource', 'EastmoneyDatacenterSource', 'billboard_sources', 'default_sources',
-           'em_symbol', 'pool_sources', 'secucode_symbol']
+__all__ = ['POOL_UT', 'EastmoneyPoolSource', 'EastmoneyDatacenterSource', 'EastmoneyBoardListSource', 'EastmoneyBoardMembersSource',
+           'EastmoneyPopularitySource', 'billboard_sources', 'default_sources', 'em_symbol', 'pool_sources', 'secucode_symbol',
+           'snapshot_sources']
