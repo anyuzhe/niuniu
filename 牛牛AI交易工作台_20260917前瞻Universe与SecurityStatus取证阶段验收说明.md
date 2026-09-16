@@ -199,9 +199,25 @@ complete_daily_status_confirmed=false
 8. 只有三所每个 member 都有显式 `TRADABILITY + RISK_WARNING` 时，才 archive SecurityStatus root；
 9. 之后才可把 exact Universe snapshot 绑定 Daily Orchestrator 并运行全成员 PREP。
 
-若首次归档已经到达或超过 `2026-09-17T09:15:00+08:00`，必须放弃该 session；`historical backfill is forbidden`。本阶段没有配置后台定时任务，目标日上午必须由用户显式再次启动。
+若首次归档已经到达或超过 `2026-09-17T09:15:00+08:00`，必须放弃该 session；`historical backfill is forbidden`。
 
-## 9. 验证
+## 9. 一次性无人值守执行更新
+
+用户确认无法在目标日上午人工启动后，已明确选择“条件满足才自动归档”。现已在宿主安装 macOS LaunchAgent `com.niuniu.pit-20260917`：
+
+- 08:00 启动；08:05、08:15 仅在前次进程失败且没有完成标记时恢复；
+- runner 内部对尚未就绪的目标日来源每10分钟有界重试，09:10安全停止；
+- 固定只访问六个已授权官方host，先写不可变staging、SHA256和差异审计；
+- HTTP `Date`、`Last-Modified`、网页/业务日期和抓取时间仍不能认证publication time；
+- 只有publication time、语义映射和完整官方全集全部机器验证为true时，才传入Universe三项确认参数；
+- SecurityStatus只有三所全Universe每个member的`TRADABILITY + RISK_WARNING`均明确时才归档；已知SZSE/BSE缺口仍预计使其保持0；
+- 写入完成标记后自动disable后续trigger；09:15后绝不归档。
+
+操作根为 `/Volumes/Lexar/niuniu-data/automation/pit-20260917`，固定archive/audit源码commit=`648a16275c3a6f1feb940115805bb904c2f011d0`。installation receipt SHA256=`ff1babd797ebbcfd3b9c95a28fe13d13482e8aea1685b7a9dec963807b7152fc`。安装前成功完成一次当前日只读演练：SSE 2,318、SZSE 2,901、BSE 344，共5,563只，0 errors；演练manifest=`aece8a727a631cedd9adf7337678d57395006a7c48b9b33bf11142c98d140cd8`。演练没有调用archive，正式receipt仍均为0。
+
+该任务不能自动开机，也不能突破合盖睡眠；安装时Mac已接交流电，并启动`caffeinate`至09:20。仍须保持开机、登录、联网、Lexar已挂载且上盖打开。若宿主到点不可用，runner只会错过并fail-closed。
+
+## 10. 验证
 
 本阶段执行了以下只读/结构校验：
 
@@ -214,10 +230,10 @@ complete_daily_status_confirmed=false
 
 生产源码未修改，完整测试基线仍以连续 SecurityStatus v2 阶段的 **1000 passed / 0 failed / 0 skipped** 为准。本阶段另执行 PIT Universe、SecurityStatus v2、PREP 与 Daily Orchestrator 聚焦回归：**45 passed / 0 failed / 0 skipped**，耗时 2.947 秒。
 
-## 10. 验收结论
+## 11. 验收结论
 
 - **通过**：可提前完成的官方规范收集、有界公开源排查、语义分层、原文暂存、哈希校验和目标日 runbook。
 - **未通过且保持阻断**：2026-09-17 exact-session PIT Universe receipt。
 - **未通过且保持阻断**：2026-09-17 完整 SecurityStatus v2 receipt。
-- **无权限变化**：没有新增 AI 下载、archive、审批、交易或资金权限。
+- **有限、单次权限变化**：只新增2026-09-17三所官方白名单的无人值守刷新与条件式archive；证据门不通过即不传确认参数。没有通用AI联网、其它session归档、交易或资金权限。
 - **无成熟度夸大**：本阶段不证明策略有效、Paper 表现、全市场 MarketRules 完整或实盘就绪。

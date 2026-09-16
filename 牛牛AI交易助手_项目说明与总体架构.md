@@ -289,7 +289,7 @@ P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，
 
 Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage、PIT Universe v1 与连续 SecurityStatus v2 工程合同均已完成；真实状态资料仍只有 7 只证券、14 条稀疏 statement，v2 完整逐日 receipt 为0。Official MarketRules publication receipt v2 已把同7份公告映射为7个明确停牌 session；7个复牌日 exact 算术值因缺开盘前 publication receipt 仍只作回顾性 reference。External Research Skill v3 仍只形成 PARTIAL StrategySource 预览和 Playbook DRAFT 候选。
 
-2026-09-16 已在独立数据根完成 2026-09-17 的前瞻准备：父 capture 保存5,563只三所 review-only A_SHARE 基线；独立 addendum 保存 SSE/SZSE/BSE 规范语义和SZSE有界公开源排查。官方规范只证明字段与私有分发机制，不能替代目标日逐证券值；SZSE公开批量完整状态源尚未找到，BSE公开 `xxtpbz/xxzrzt` 字典也未闭合。故四项确认均为false、archive未调用、正式receipt仍为0，目标日上午必须在09:15前人工刷新并逐项确认，错过不得历史补档。
+2026-09-16 已在独立数据根完成 2026-09-17 的前瞻准备：父 capture 保存5,563只三所 review-only A_SHARE 基线；独立 addendum 保存 SSE/SZSE/BSE 规范语义和SZSE有界公开源排查。官方规范只证明字段与私有分发机制，不能替代目标日逐证券值；SZSE公开批量完整状态源尚未找到，BSE公开 `xxtpbz/xxzrzt` 字典也未闭合。故四项确认均为false、archive未调用、正式receipt仍为0。现已根据用户明确授权安装一次性条件式LaunchAgent：目标日08:00启动、09:10安全停止，先固定官方字节与机器审计，只有publication time、语义映射、完整性全部成立才自动归档；已知证据缺口不会因定时执行而消失，错过不得历史补档。
 
 当前内部主线是：在未来 session 09:15 cutoff 前同步归档首个真实 Universe，并仅在三所完整状态均成立时归档 SecurityStatus；同时继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何 staging、稀疏 receipt、回顾性参考或外部知识评分均不视为完整覆盖/Alpha。
 

@@ -31,3 +31,5 @@ PIT Universe 的“全集完整性”不能由零散 `universe_eligibility` stat
 ## 2026-09-17 前瞻准备边界
 
 2026-09-16 的 review-only 基线为 SSE 2,318、SZSE 2,901、BSE 344，共5,563只 A_SHARE；它只用于目标日上午 diff。父 capture 与独立 semantic addendum 位于 `staging/pit_universe_security_status/2026-09-17/`，保存官方响应、规范、headers和SHA256，但不是receipt。目标日必须重新刷新三所、官方日标记、分页总数、证券类型和加入/退出；publication time、语义映射、完整官方全集三项确认均成立且仍早于09:15时，才可归档。HTTP Date、文件名日期、规范版本日期或9月16日成员均不能替代这些门。
+
+该session现有一次性无人值守例外：用户明确选择条件式自动归档，LaunchAgent `com.niuniu.pit-20260917` 于08:00执行固定官方白名单抓取，09:10安全停止。它只能把机器验证结果转成确认，不能把授权本身当确认；任一来源没有明确publication timestamp，或完整性/语义检查失败时，Universe receipt必须继续为0。授权不延续到其它session。

@@ -808,3 +808,15 @@
 - 测试：新增名称/代码解析、上下文追问、多股歧义、零网络、最近session降级、ChatRuntime注入、桌面引用与无快照写入；相关聚焦 **82/82 passed**（5.450秒），独立干净工作树完整仓库 **1006/1006 passed**（347.134秒），均0 failed/0 skipped。
 - 文档：新增《牛牛AI交易工作台_个股问答自动实时行情V1_验收说明.md》，同步README中英文、总体架构、总计划、核心进度、Provider验收与Agent Memory。
 - Git：本条与源码/测试/文档同一独立提交，标题 `feat: 个股问答自动查询实时行情`；SHA以Git历史为准，不push。
+
+### 2026-09-16 16:42｜[前瞻取证/宿主调度] 2026-09-17 一次性条件式无人值守执行
+
+- 授权：用户明确选择“条件满足才自动归档”；只适用于2026-09-17单一session、既有三所官方HTTPS白名单、staging、条件式Universe/Status archive与只读audit，不扩展到交易、资金或其它日期。
+- 调度：安装用户级LaunchAgent `com.niuniu.pit-20260917`；08:00主触发，08:05/08:15只在无完成标记时恢复，runner内部对未就绪来源每10分钟重试，09:10安全停止，09:15后绝不归档。完成后自动disable后续trigger。
+- 取证：固定抓取SSE system date、主板/科创列表与bulk status、SZSE catalog 1110/XLSX/状态公开路径、BSE服务端声明全部页；每次先写正文、headers、URL、available_at与SHA256，再做日期、分页、类型、重复、基线差异和全连接检查。
+- 确认边界：HTTP Date、Last-Modified、网页/业务日期、`xxjsrq/xxgxsj`和抓取时间都不认证publication time。只有明确带时区的官方publication字段、既定语义和全集完整性全部机器验证通过，runner才传CLI确认参数；授权本身不是确认。
+- Status边界：SZSE公开完整批量源与BSE公共字段映射仍是硬blocker；名称、`xxtpbz=F`或公告缺失不能推导NONE。因此Status v2预计仍保持0，除非目标日上午出现并通过全部显式证据。
+- 可复现：操作根=`/Volumes/Lexar/niuniu-data/automation/pit-20260917`；固定archive/audit源码commit=`648a16275c3a6f1feb940115805bb904c2f011d0`；installation receipt=`ff1babd...152fc`。
+- 演练：当前日官方只读演练返回SSE 2,318、SZSE 2,901、BSE 344，共5,563只，0 errors；manifest=`aece8a72...40cd8`。目标marker/publication gate均正确为false，archive 0次，正式Universe/Status目录继续不存在。
+- 电源前提：安装时Mac接交流电并启动`caffeinate`至09:20；LaunchAgent不能自动开机或突破合盖睡眠，必须保持登录、联网、数据盘挂载和上盖打开。若到点不可用或醒来已过安全停止，只记录missed并fail-closed。
+- 文档：同步README中英文、总体架构、总计划、核心进度、前瞻验收与Agent Memory；操作脚本和官方字节只在独立数据根，不进入主仓库。

@@ -29,3 +29,5 @@ v2 receipt 位于 `<data-root>/research/security_status_coverage/<status_snapsho
 `/Volumes/Lexar/niuniu-data` 现有 7 份深交所官方公告、7 只证券、14 条稀疏 security_status statements；它们不代表全市场或完整历史链。截至 v2 工程完成时，真实完整逐日 SecurityStatus v2 receipt 仍为 0，不得升级证据等级。第二批来源与验收见 `../../牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md`。
 
 2026-09-16 的目标日前语义复核确认：SSE IS124/IS120可证明产品状态与TradingPhaseCode语义；SZSE v1.42只证明经FTS私有下发的 `securities` 日文件及Status 1/4/5，公开站内搜索与10个受限静态路径均未找到目标日批量文件；BSE v1.1只证明FDEP `bj_securityinfo` 文件，公开 `xxtpbz/xxzrzt` 字典未闭合。规范不能替代目标日实际值，名称、缺公告或字段常量不能推导 `NONE`。因此三所完整状态未同时闭合时，v2 receipt必须继续为0。
+
+2026-09-17已有一次性条件式LaunchAgent负责目标日上午刷新，但它不改变上述语义门：runner明确把SZSE完整批量源和BSE字段映射列为blocker，固定禁止从名称、`xxtpbz=F`或公告缺失推导正常状态。只有exact Universe先归档且三所全部member两个维度都机器验证完成时才可建root；否则status archive不调用。
