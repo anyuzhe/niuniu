@@ -167,7 +167,7 @@ class ArchiveTests(unittest.TestCase):
         stream = io.StringIO()
         with redirect_stdout(stream):
             self.assertEqual(cli_main(['--output', str(self.output), '--call', 'sources']), 0)
-        self.assertEqual(len(json.loads(stream.getvalue())['data']['sources']), 5)
+        self.assertEqual(len(json.loads(stream.getvalue())['data']['sources']), 8)
         with redirect_stdout(io.StringIO()):
             self.assertEqual(cli_main(['--output', str(self.output), '--call', 'get', '--source', 'em_limit_up_pool', '--date', '2026-09-15']), 2)
 
