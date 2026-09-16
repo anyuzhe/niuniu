@@ -5,6 +5,7 @@ from queue import Queue, Empty, Full
 from threading import Thread, Event
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -17,15 +18,37 @@ class CodexTransport:
         self.config=config;self.stop=stop or Event();self.closed=False;self.sequence=0
         self.pending=deque();self.inbox=Queue(maxsize=256);self.overflow=Event()
         self.deadline=time.monotonic()+config.timeout_seconds
-        command,self.warnings=codex_command(config)
+        self.runtime_home=None
+        source_home=Path(os.environ.get('CODEX_HOME',str(Path.home()/'.codex'))).expanduser()
+        command_home=source_home
+        if config.legacy_agent_compat:
+            self.runtime_home=tempfile.TemporaryDirectory(prefix='niuniu-codex-home-')
+            command_home=Path(self.runtime_home.name)
+            (command_home/'config.toml').write_text('',encoding='utf-8')
+            auth=source_home/'auth.json'
+            if auth.is_file():
+                target=command_home/'auth.json'
+                try:
+                    shutil.copyfile(auth,target);target.chmod(0o600)
+                except OSError as exc:
+                    self.runtime_home.cleanup();self.runtime_home=None
+                    raise ModelError('Codex 登录凭据无法建立进程内副本') from exc
+        try:command,self.warnings=codex_command(config,home=command_home)
+        except Exception:
+            if self.runtime_home:self.runtime_home.cleanup();self.runtime_home=None
+            raise
+        if self.runtime_home:self.warnings.append('仅本进程隔离 Codex 配置；未修改全局配置')
         self.directory=tempfile.TemporaryDirectory(prefix='niuniu-codex-')
         env=os.environ.copy()
         env['PATH']=str(Path(command[0]).parent)+os.pathsep+env.get('PATH','')
+        env['CODEX_HOME']=str(command_home)
         try:
             self.process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,cwd=self.directory.name,env=env,bufsize=0)
         except Exception:
-            self.directory.cleanup();raise
+            self.directory.cleanup()
+            if self.runtime_home:self.runtime_home.cleanup();self.runtime_home=None
+            raise
         self.reader=Thread(target=self._read,daemon=True);self.reader.start()
         try:
             self.rpc('initialize',{'clientInfo':{'name':'niuniu_research','version':'0.1.0'},
@@ -104,6 +127,7 @@ class CodexTransport:
                 if stream:stream.close()
             self.reader.join(timeout=1)
         finally:self.directory.cleanup()
+        if self.runtime_home:self.runtime_home.cleanup();self.runtime_home=None
 
     def __enter__(self):return self
     def __exit__(self,*_):self.close()

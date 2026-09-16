@@ -6,14 +6,25 @@ from PyQt6.QtWidgets import QApplication,QDialog
 from quantlab.desktop.app import MainWindow
 from quantlab.desktop.research_chat import ResearchChatDialog
 from quantlab.agent.market_data_tools import MarketDataResearchAPI
+from quantlab.agent.peer_review_tools import PeerReviewResearchAPI
+from quantlab.agent.research_session_tools import ResearchSessionGrantAPI
+from quantlab.agent.research_skill_tools import ResearchSkillResearchAPI
 from quantlab.data.baostock_ingest import load_import
 from quantlab.data.baostock_dataset import dataset_manifest,check_dataset_file,read_dataset_bytes
+
+
+class DataConnectedResearchAPI(MarketDataResearchAPI,PeerReviewResearchAPI):
+    """Cooperative union of data and full daily-assistant read/propose tools."""
+    def schemas(self):
+        return list({tool['name']:tool for tool in super().schemas()}.values())
 
 
 class DataResearchChatDialog(ResearchChatDialog):
     def __init__(self,window):
         super().__init__(window)
-        self.runtime.api=MarketDataResearchAPI(window.output,window.data_root)
+        api=ResearchSkillResearchAPI(DataConnectedResearchAPI(window.output,window.data_root),window.data_root)
+        self.runtime.api=ResearchSessionGrantAPI(api,window.output,window.data_root,
+            getattr(window,'get_research_queue',None))
     def receive(self,kind,value):
         super().receive(kind,value)
         if kind=='tool_result':

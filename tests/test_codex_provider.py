@@ -1,4 +1,5 @@
 import json
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +8,7 @@ from unittest.mock import patch
 from quantlab.agent.model_config import ModelConfig,ModelError
 from quantlab.agent.codex_options import codex_command
 from quantlab.agent.codex_provider import CodexProvider
+from quantlab.agent.codex_transport import CodexTransport
 
 
 class TransportFixture:
@@ -24,6 +26,14 @@ class TransportFixture:
         raise AssertionError(method)
     def send(self,value):self.sent.append(value)
     def event(self):return next(self.events)
+
+
+class ProcessFixture:
+    def __init__(self):self.stdin=io.BytesIO();self.stdout=io.BytesIO();self.returncode=0
+    def poll(self):return self.returncode
+    def terminate(self):self.returncode=0
+    def kill(self):self.returncode=0
+    def wait(self,timeout=None):return self.returncode
 
 
 class CodexProviderTests(unittest.TestCase):
@@ -68,6 +78,23 @@ class CodexProviderTests(unittest.TestCase):
             self.assertIn('features.multi_agent=false',command)
             self.assertEqual(command[-3:],['app-server','--listen','stdio://'])
             self.assertEqual(source.read_text(),content);self.assertEqual(len(warnings),2)
+
+    def test_transport_isolates_invalid_global_config_and_reuses_login(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.dict('os.environ',{'CODEX_HOME':tmp}):
+            source=Path(tmp)/'config.toml';content='[agents]\nenabled=true\n[mcp_servers.bad]\ncommand="./relative"\n'
+            source.write_text(content);(Path(tmp)/'auth.json').write_text('{"fixture":true}')
+            process=ProcessFixture()
+            with patch.object(ModelConfig,'executable',return_value='/fixture/codex'), \
+                 patch('quantlab.agent.codex_transport.subprocess.Popen',return_value=process) as popen, \
+                 patch.object(CodexTransport,'rpc',return_value={}):
+                transport=CodexTransport(ModelConfig())
+            try:
+                command=popen.call_args.args[0];env=popen.call_args.kwargs['env'];runtime=Path(env['CODEX_HOME'])
+                self.assertNotEqual(runtime,Path(tmp));self.assertEqual((runtime/'config.toml').read_text(),'')
+                self.assertEqual((runtime/'auth.json').read_text(),'{"fixture":true}')
+                self.assertNotIn('agents.enabled={}',command);self.assertNotIn('mcp_servers.bad.enabled=false',command)
+                self.assertEqual(source.read_text(),content);self.assertTrue(any('隔离 Codex 配置' in v for v in transport.warnings))
+            finally:transport.close()
 
     def test_missing_auth_and_unsupported_side_effect_stop(self):
         transport=TransportFixture([{'method':'item/started','params':{'item':{'type':'commandExecution'}}}])

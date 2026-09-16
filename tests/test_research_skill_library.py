@@ -131,6 +131,8 @@ class ResearchSkillLibraryTests(unittest.TestCase):
         self.assertNotIn('archive_ref',detail['strategy_source_preview'])
         claims=library.search('manager-skill',self.package_snapshot,'CLAIM','景气','DIRECT_QUOTE',0,20)
         self.assertEqual(claims['total'],1);self.assertEqual(claims['records'][0]['resources'][0]['resource_id'],'statement')
+        multi_term=library.search('manager-skill',self.package_snapshot,'CLAIM','不存在 景气','DIRECT_QUOTE',0,20)
+        self.assertEqual(multi_term['total'],1)
         hypotheses=library.search('manager-skill',self.package_snapshot,'HYPOTHESIS','','MEDIUM_TERM',0,20)
         self.assertEqual(hypotheses['records'][0]['claims'][0]['kind'],'DIRECT_QUOTE')
         alignments=library.search('manager-skill',self.package_snapshot,'ALIGNMENT','','MIXED',0,20)
@@ -173,6 +175,9 @@ class ResearchSkillLibraryTests(unittest.TestCase):
         expected={'list_research_skills','get_research_skill','search_research_skill_items',
             'read_research_skill_resource_excerpt'}
         self.assertTrue(expected.issubset(names))
+        search_schema=next(tool for tool in api.schemas() if tool['name']=='search_research_skill_items')
+        self.assertEqual(search_schema['parameters']['properties']['item_type']['enum'],
+            ['CLAIM','HYPOTHESIS','ALIGNMENT','RESOURCE'])
         self.assertFalse(any(name.startswith(('create_research_skill','write_research_skill','execute_research_skill')) for name in names))
         capabilities=api.call('get_capabilities',{})
         self.assertTrue(capabilities['data']['research_skill_library_read_only'])
@@ -188,6 +193,10 @@ class ResearchSkillLibraryTests(unittest.TestCase):
         self.assertNotIn(str(self.base),json.dumps([listed,found,excerpt],ensure_ascii=False))
         invalid=api.call('list_research_skills',{'query':'','offset':0,'limit':20,'extra':True})
         self.assertFalse(invalid['ok']);self.assertEqual(invalid['error']['code'],'INVALID_ARGUMENT')
+        invalid_type=api.call('search_research_skill_items',{'skill_key':'manager-skill',
+            'package_snapshot':self.package_snapshot,'item_type':'','query':'','classification':'',
+            'offset':0,'limit':20})
+        self.assertFalse(invalid_type['ok']);self.assertEqual(invalid_type['error']['code'],'INVALID_ARGUMENT')
         self.assertFalse(self.executed.exists())
 
     def test_daily_assistant_and_peer_review_expose_only_read_tools(self):

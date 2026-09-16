@@ -481,6 +481,7 @@ class ResearchSkillLibrary:
         field = {'CLAIM': 'claims', 'HYPOTHESIS': 'hypotheses',
             'ALIGNMENT': 'alignments', 'RESOURCE': 'resources'}[item_type]
         rows = loaded['package'][field]
+        query_terms = [term for term in re.split(r'[\s,，;；/|]+', query.casefold()) if term]
         selected = []
         for item in rows:
             if classification:
@@ -490,7 +491,8 @@ class ResearchSkillLibrary:
                 if classification not in values:
                     continue
             enriched = self._enrich(loaded, item_type, item)
-            if query.casefold() in encode(enriched).casefold():
+            haystack = encode(enriched).casefold()
+            if not query_terms or any(term in haystack for term in query_terms):
                 selected.append(enriched)
         return {'format': LIBRARY_FORMAT, 'skill_key': loaded['entry']['skill_key'],
             'package_snapshot': loaded['entry']['package_snapshot'], 'item_type': item_type,

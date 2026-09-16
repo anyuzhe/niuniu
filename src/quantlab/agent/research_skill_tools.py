@@ -11,7 +11,8 @@ from quantlab.knowledge.research_skill_library import (
 from quantlab.storage.codec import encode
 
 SNAPSHOT = {'type': 'string', 'maxLength': 64}
-ITEM_TYPE = {'type': 'string', 'maxLength': 20}
+ITEM_TYPE = {'type': 'string', 'maxLength': 20,
+    'enum': ['CLAIM', 'HYPOTHESIS', 'ALIGNMENT', 'RESOURCE']}
 CLASSIFICATION = {'type': 'string', 'maxLength': 80}
 BYTE_OFFSET = {'type': 'integer', 'minimum': 0, 'maximum': 8_000_000}
 BYTE_LIMIT = {'type': 'integer', 'minimum': 1, 'maximum': MAX_EXCERPT_BYTES}
@@ -23,7 +24,7 @@ TOOLS = [
         '读取一个精确package_snapshot的策展摘要、verified archive、readiness、blockers和StrategySource预览；预览不会写库。',
         {'skill_key': TEXT, 'package_snapshot': SNAPSHOT}),
     schema('search_research_skill_items',
-        '在精确策展包中检索CLAIM/HYPOTHESIS/ALIGNMENT/RESOURCE。classification可留空；原话、方法推演、待核实事实必须保持分层。',
+        '在精确策展包中检索CLAIM/HYPOTHESIS/ALIGNMENT/RESOURCE。query可用空格分隔多个关键词，任一命中即返回；classification可留空；原话、方法推演、待核实事实必须保持分层。',
         {'skill_key': TEXT, 'package_snapshot': SNAPSHOT, 'item_type': ITEM_TYPE,
          'query': TEXT, 'classification': CLASSIFICATION, 'offset': OFFSET, 'limit': LIMIT}),
     schema('read_research_skill_resource_excerpt',
@@ -57,6 +58,7 @@ class ResearchSkillResearchAPI:
             value = arguments[key]
             if spec['type'] == 'string':
                 valid = isinstance(value, str) and len(value) <= spec['maxLength']
+                if valid and 'enum' in spec:valid = value in spec['enum']
             else:
                 valid = type(value) is int and spec['minimum'] <= value <= spec['maximum']
             if not valid:

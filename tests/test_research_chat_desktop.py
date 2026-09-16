@@ -40,6 +40,18 @@ class ChatDesktopTests(unittest.TestCase):
                 dialog.consent.setChecked(True);dialog.send();self.wait(lambda:not dialog.busy)
             self.assertTrue(provider.called);self.assertIn('verified fixture',dialog.transcript.toPlainText())
             self.assertGreater(dialog.evidence.count(),0)
+            reference={'kind':'research_skill_item','skill_key':'manager-skill','item_type':'HYPOTHESIS',
+                'package_snapshot':'f'*64,'item_id':'cycle'}
+            dialog.receive('tool_result',{'name':'search_research_skill_items',
+                'result':{'ok':True,'evidence':[reference]}})
+            entry=dialog.evidence.item(dialog.evidence.count()-1)
+            self.assertIn('cycle',entry.text());dialog.evidence.setCurrentItem(entry);dialog.data_root=tmp
+            result={'item_type':'HYPOTHESIS','records':[{'hypothesis_key':'cycle'}]}
+            with patch('quantlab.knowledge.research_skill_library.ResearchSkillLibrary.search',
+                    return_value=result) as open_library:
+                dialog.open_reference();self.wait(lambda:not dialog.busy)
+            open_library.assert_called_once_with('manager-skill','f'*64,'HYPOTHESIS','cycle','',0,100)
+            self.assertIn('cycle',dialog.details.toPlainText())
             identifier=dialog.session_id;dialog.close();window.research_chat()
             self.assertEqual(window._research_chat_dialog.session_id,identifier)
             self.assertIn('verified fixture',dialog.transcript.toPlainText())

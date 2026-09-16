@@ -47,7 +47,12 @@ class BaostockDesktopTests(unittest.TestCase):
         self.assertEqual(self.window.data_root,self.fixture.directory/'dataset')
         self.window.research_chat();chat=self.window._research_chat_dialog
         self.assertIsInstance(chat,DataResearchChatDialog)
-        self.assertIn('read_baostock_table',[t['name'] for t in chat.runtime.api.schemas()])
+        names=[t['name'] for t in chat.runtime.api.schemas()]
+        self.assertIn('read_baostock_table',names)
+        self.assertIn('list_research_skills',names)
+        self.assertIn('preview_peer_review',names)
+        self.assertIn('get_research_session_grant',names)
+        self.assertEqual(len(names),len(set(names)))
         self.assertFalse(chat.consent.isChecked())
         self.assertFalse(list(self.fixture.root.glob('_jobs/*.json')))
     def test_no_implicit_download_and_consent_invalidates(self):

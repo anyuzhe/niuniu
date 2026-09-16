@@ -120,7 +120,9 @@ class ResearchChatDialog(QDialog):
                     key=digest(ref)
                     if key in self.references:continue
                     self.references[key]=ref
-                    identifier=next((ref[k] for k in ('run_id','proposal_id','factor_id','job_id','memory_id','watch_id','snapshot_id') if ref.get(k)), '')
+                    identifier=next((ref[k] for k in ('run_id','proposal_id','factor_id','job_id',
+                        'memory_id','watch_id','snapshot_id','item_id','resource_id','skill_key')
+                        if ref.get(k)), '')
                     entry=QListWidgetItem(ref['kind']+' · '+identifier)
                     entry.setData(Qt.ItemDataRole.UserRole,ref);self.evidence.addItem(entry)
 
@@ -189,6 +191,28 @@ class ResearchChatDialog(QDialog):
         from .research_session_grant import ResearchSessionGrantDialog
         self.window.show_dialog(ResearchSessionGrantDialog(self.window))
 
+    def open_research_skill_reference(self,ref):
+        if self.data_root is None:
+            self.status.setText('当前未配置行情目录，不能核对 Research Skill 引用。');return
+        from quantlab.knowledge.research_skill_library import ResearchSkillLibrary
+        key=ref.get('skill_key');snapshot=ref.get('package_snapshot')
+        identifier=ref.get('item_id') or ref.get('resource_id') or key
+        def read():
+            library=ResearchSkillLibrary(self.data_root)
+            if ref['kind']=='research_skill':return library.get(key,snapshot)
+            item_type=ref.get('item_type') or 'RESOURCE'
+            return library.search(key,snapshot,item_type,identifier,'',0,100)
+        self.set_busy(True);self.status.setText('正在核对只读 Research Skill 引用…')
+        def done(result,error):
+            if sip.isdeleted(self):return
+            self.set_busy(False)
+            if error:self.status.setText('Research Skill 引用未打开：'+error)
+            else:
+                self.details.setPlainText(json.dumps(result,ensure_ascii=False,indent=2))
+                self.status.setText('已在右侧业务明细打开只读引用：'+str(identifier))
+            if self.close_requested:self.close()
+        self.window.async_call(read,done,guarded=False)
+
     def open_reference(self):
         if self.busy:return
         item=self.evidence.currentItem()
@@ -206,6 +230,8 @@ class ResearchChatDialog(QDialog):
             elif ref['kind']=='job':self.hide();self.window.show_jobs()
             elif ref['kind']=='research_session_grant':self.open_session_grant()
             elif ref['kind']=='theme_snapshot':self.hide();self.window.navigate_root(1)
+            elif ref['kind'] in ('research_skill','research_skill_item','research_skill_resource'):
+                self.open_research_skill_reference(ref)
         except Exception as error:self.status.setText('引用未打开：'+str(error))
 
     def closeEvent(self,event):

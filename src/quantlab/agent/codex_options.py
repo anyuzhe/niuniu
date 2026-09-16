@@ -15,9 +15,9 @@ LEGACY = ('enabled','max_concurrent_threads_per_session',
     'default_subagent_model','default_subagent_reasoning_effort')
 
 
-def codex_command(config):
+def codex_command(config, home=None):
     options=[];warnings=[]
-    home=Path(os.environ.get('CODEX_HOME',str(Path.home()/'.codex')))
+    home=Path(home) if home is not None else Path(os.environ.get('CODEX_HOME',str(Path.home()/'.codex')))
     source=home/'config.toml'
     try:
         settings=tomllib.loads(source.read_text(encoding='utf-8')) if source.exists() else {}
