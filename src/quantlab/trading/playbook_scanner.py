@@ -133,6 +133,13 @@ class DailyPlaybookScanner:
     def scan(self,candidate_set_id,market_snapshot_id,auction_snapshot_id='',previous_snapshot_id='',reference_prediction_id=''):
         base,case,definition=self._base(candidate_set_id);day=base['trading_day']
         snapshot=self._snapshot(market_snapshot_id,day,self.snapshots.get(market_snapshot_id)['frame'])
+        if definition.get('selection',{}).get('engine')=='qimo-source-rules-v2' and snapshot['frame'] in ('R1','R2','R3'):
+            from .qimo_rules import scan_source_rules
+            prior_id=auction_snapshot_id if snapshot['frame']=='R1' else previous_snapshot_id
+            prior_frame={'R1':'AUCTION','R2':'R1','R3':'R2'}[snapshot['frame']]
+            if not prior_id:raise PlaybookScanError('PREVIOUS_SNAPSHOT_REQUIRED','新版规则需要前一观察点。')
+            previous=self._snapshot(prior_id,day,prior_frame)
+            return scan_source_rules(self.output,base,case,definition,snapshot,previous)
         if snapshot['frame']=='AUCTION':
             rows,missing=self._auction_rows(base,snapshot);snapshots=[snapshot]
             selected=[];ranked=[row['symbol'] for row in rows]

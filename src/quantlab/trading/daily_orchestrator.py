@@ -95,7 +95,7 @@ class DailyPlaybookOrchestrator:
         state.setdefault('events',[]).append({'at':stamp.isoformat(),'status':status,'detail':str(detail)[:500]})
         if len(state['events'])>500:state['events']=state['events'][-500:]
 
-    def create_plan(self,trading_day,as_of_session,definition_id,*,target_streak=None,universe_snapshot=None,allow_daily_market_capture=False,allow_market_snapshot_capture=False,bridge_to_trading_desk=False):
+    def create_plan(self,trading_day,as_of_session,definition_id,*,target_streak=None,universe_snapshot=None,market_rules_snapshot=None,allow_daily_market_capture=False,allow_market_snapshot_capture=False,bridge_to_trading_desk=False,candidate_scope='target_streak',include_symbols=None):
         trading_day=_day(trading_day,'trading_day');as_of_session=_day(as_of_session,'as_of_session')
         if date.fromisoformat(as_of_session)>=date.fromisoformat(trading_day):
             raise DailyOrchestratorError('INVALID_ARGUMENT','as_of_session 必须早于 trading_day。')
@@ -118,6 +118,20 @@ class DailyPlaybookOrchestrator:
             'allow_market_snapshot_capture':allow_market_snapshot_capture,
             'bridge_to_trading_desk':bridge_to_trading_desk,'data_root':str(self.data_root)}
         if universe_snapshot is not None:spec['universe_snapshot']=universe_snapshot
+        if market_rules_snapshot is not None:
+            from quantlab.data.qualification import _official_rule_receipt
+            if not isinstance(market_rules_snapshot,str) or len(market_rules_snapshot)!=64 or any(c not in '0123456789abcdef' for c in market_rules_snapshot):
+                raise DailyOrchestratorError('INVALID_ARGUMENT','market_rules_snapshot 必须为 SHA256。')
+            if not _official_rule_receipt(self.data_root,market_rules_snapshot).get('verified'):
+                raise DailyOrchestratorError('INVALID_MARKET_RULES','官方逐日规则回执校验失败。')
+            spec['market_rules_snapshot']=market_rules_snapshot
+        if candidate_scope not in ('target_streak','qimo_source_v2'):
+            raise DailyOrchestratorError('INVALID_ARGUMENT','未知候选范围。')
+        if candidate_scope!='target_streak':
+            from .market_snapshot import SYMBOL
+            if include_symbols is not None and (not isinstance(include_symbols,list) or any(not isinstance(s,str) or not SYMBOL.fullmatch(s) for s in include_symbols)):
+                raise DailyOrchestratorError('INVALID_ARGUMENT','include_symbols 必须为证券代码列表。')
+            spec.update(candidate_scope=candidate_scope,include_symbols=sorted(set(include_symbols or [])))
         plan_id=str(uuid5(NAMESPACE_URL,'niuniu-daily-orchestrator-plan:'+digest(spec)))
         stamp=_stamp(self.now_fn())
         with self._locked(trading_day):
@@ -183,7 +197,16 @@ class DailyPlaybookOrchestrator:
                 stage['status']='MISSED';self._event(state,stamp,'BLOCKED_PREP_MISSED','PREP 实时窗口已错过，禁止历史补写 SYSTEM_PREDICTION。')
             return False
         if stage.get('status')!='RESERVED':
-            try:scan=scan_prep_universe(self.data_root,state['as_of_session'],target_streak=state['target_streak'],
+            try:
+                rules=None
+                if state.get('market_rules_snapshot'):
+                    import json
+                    from quantlab.data.qualification import _official_rule_receipt
+                    receipt=_official_rule_receipt(self.data_root,state['market_rules_snapshot'])
+                    if not receipt.get('verified'):raise PrepScanError('INVALID_MARKET_RULES','官方逐日规则回执校验失败。')
+                    rules=json.loads((self.data_root/receipt['receipt_path']).read_text())['rules']
+                scan=scan_prep_universe(self.data_root,state['as_of_session'],target_streak=state['target_streak'],market_rules=rules,
+                candidate_scope=state.get('candidate_scope','target_streak'),include_symbols=state.get('include_symbols'),
                 universe_snapshot=state.get('universe_snapshot'),universe_effective_session=state['trading_day'] if state.get('universe_snapshot') else None,
                 daily_market_output=self.output)
             except PrepScanError as exc:
@@ -218,8 +241,26 @@ class DailyPlaybookOrchestrator:
             if not symbols:raise ValueError('PREP CandidateSet 没有可抓取证券。')
             capture['attempts']+=1;capture['last_attempt_at']=stamp.isoformat();self._save(state)
             from .public_web_market_snapshot import PublicWebConsensusProvider
-            content=PublicWebConsensusProvider().capture(state['trading_day'],frame,symbols)
-            snapshot=MarketSnapshotStore(self.output,now_fn=lambda:stamp).create(_snapshot_request(content),content)
+            provider=PublicWebConsensusProvider()
+            parts=[provider.capture(state['trading_day'],frame,symbols[i:i+200]) for i in range(0,len(symbols),200)]
+            content=parts[0]
+            if len(parts)>1:
+                content={**content,'instruments':[item for part in parts for item in part['instruments']],
+                    'as_of':min(part['as_of'] for part in parts),'source_hash':digest([part['source_hash'] for part in parts]),
+                    'completeness':'FULL' if all(part['completeness']=='FULL' for part in parts) else 'PARTIAL',
+                    'market_metrics':{'batches':[part['market_metrics'] for part in parts]}}
+            if state.get('candidate_scope')=='qimo_source_v2':
+                from .qimo_paper import QimoMarketData
+                market=QimoMarketData(self.output,self.data_root);bound_evidence=[]
+                for item in content['instruments']:
+                    rules=market.execution_rules(date.fromisoformat(state['trading_day']),item['symbol'])
+                    rule=rules.at(item['symbol'],datetime.fromisoformat(content['as_of']))
+                    if rule is None:raise ValueError('当日官方涨跌停规则缺失。')
+                    item.update(limit_up_price=rule['limit_up'],limit_down_price=rule['limit_down'],
+                        tradable=item['tradable'] and not rule['suspended'])
+                    item['metrics']['official_rule_hash']=digest(rule);bound_evidence.append(digest(rule))
+                content['source_hash']=digest({'quote_hash':content['source_hash'],'official_bounds':bound_evidence})
+            snapshot=MarketSnapshotStore(self.output,now_fn=self.now_fn).create(_snapshot_request(content),content)
             capture.update(last_error=None,snapshot_id=snapshot['snapshot_id'],completeness=snapshot['completeness'],
                 capture_status=snapshot['capture_status'],provider=snapshot['provider']);return snapshot
         except (OSError,ValueError,KeyError,TypeError,MarketSnapshotError,PlaybookError) as exc:
@@ -239,6 +280,7 @@ class DailyPlaybookOrchestrator:
 
     def _freeze_scan(self,state,stage_name,snapshot,stamp,auction_snapshot=None,previous_snapshot=None,reference_prediction_id=''):
         stage=state[stage_name]
+        if state.get('candidate_scope')=='qimo_source_v2':stamp=max(stamp,_stamp(self.now_fn()))
         try:
             result=DailyPlaybookScanner(self.output).scan(state['prep']['candidate_set_id'],snapshot['snapshot_id'],
                 auction_snapshot['snapshot_id'] if auction_snapshot else '',

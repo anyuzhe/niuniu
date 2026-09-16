@@ -155,6 +155,20 @@ class PrepScannerTests(unittest.TestCase):
         self.assertIn('official_market_rules_missing',scan['blockers'])
         self.assertIn('historical_st_tradestatus_missing',scan['blockers'])
         self.assertIn('pit_universe_not_certified',scan['blockers'])
+
+    def test_source_scope_keeps_different_streaks_and_non_leader_holdings(self):
+        sequences={'sh.600001':[10.,11.,12.1],'sh.600002':[10.,10.,11.],
+            'sh.600003':[10.,10.2,10.3],'sh.600004':[10.,10.1,10.2]}
+        for symbol,closes in sequences.items():self.write_symbol(symbol,closes)
+        rules=[r for symbol,closes in sequences.items() for r in self.rules_for(symbol,closes)]
+        self.archive_rules(rules);universe=self.archive_universe(list(sequences))
+        scan=scan_prep_universe(self.data,'2026-09-09',market_rules=rules,
+            universe_snapshot=universe,universe_effective_session='2026-09-10',lookback_sessions=3,
+            candidate_scope='qimo_source_v2',include_symbols=['sh.600003'])
+        self.assertEqual(scan['completeness'],'FULL')
+        self.assertEqual([x['symbol'] for x in scan['candidates']],list(sequences)[:3])
+        self.assertIsNone(scan['target_streak'])
+        self.assertTrue(scan['candidates'][2]['features']['existing_holding'])
     def test_explicit_rules_and_verified_universe_can_be_full_strict(self):
         closes1=[10.0,11.0,12.1];closes2=[10.0,10.2,10.3]
         self.write_symbol('sh.600001',closes1);self.write_symbol('sh.600002',closes2)

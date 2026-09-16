@@ -103,6 +103,22 @@ class TradingCockpitWidget(QWidget):
 
         life=Card('长期 Paper / 生命周期统计')
         life.add(label('预测、Intent、模拟成交、复盘和账户收益分开计数；这里只读，不自动执行。','note',True))
+        automatic=lifecycle.get('automatic_paper') or {}
+        if automatic:
+            states={'WAIT_NEXT_SESSION':'等待下个交易日','WAIT_FIRST_FORWARD_SESSION':'等待授权后的首个交易日',
+                'BLOCKED_PREP_EVIDENCE':'候选池证据不足，暂停开仓','WAIT_PAPER_SETTLEMENT':'等待收盘结算',
+                'ENTRIES_PAUSED':'新开仓已暂停','DRAWDOWN_ENTRY_HALT':'回撤触发，停止新开仓',
+                'WAIT_RULE_CONTEXT':'等待可追溯板块事实','PORTFOLIO_SIGNAL_RECORDED':'组合信号已记录',
+                'HOLD_OR_NO_TRADE':'继续持有或暂无新交易',
+                'COMPLETE_NO_TRADE':'今日空仓','BLOCKED':'运行阻塞','UNREADABLE':'状态文件无法读取'}
+            blockers={'pit_universe_not_certified':'缺少目标交易日完整候选池凭证',
+                'official_market_rules_missing_or_incomplete':'缺少逐日官方交易规则',
+                'current_and_previous_theme_facts_missing':'缺少当前及前一观察点的板块事实'}
+            detail='、'.join(blockers.get(b,b) for b in automatic.get('blockers',[])) or automatic.get('error','')
+            state=automatic.get('status','未知')
+            life.add(label('期末50分实验模拟：'+states.get(state,state)+
+                (' · 后台状态待更新' if automatic.get('stale') else '')+
+                (' · '+detail if detail else '')+f"\n模拟本金 {automatic.get('initial_cash',0):,.0f} 元 · 盘中记录信号，18:30后结算；未通过完整样本外验证。",'note',True))
         life_rows=[
             ['SYSTEM_PREDICTION',lifecycle.get('system_predictions',0),f"NO_TRADE={lifecycle.get('no_trade_predictions',0)}"],
             ['Paper执行',lifecycle.get('paper_executions',0),f"有成交={lifecycle.get('paper_executions_with_fill',0)} / 无成交={lifecycle.get('paper_executions_no_fill',0)}"],
@@ -110,6 +126,9 @@ class TradingCockpitWidget(QWidget):
             ['再平衡',lifecycle.get('paper_rebalances',0),str(lifecycle.get('paper_rebalance_status',{}))],
             ['拒单',sum((lifecycle.get('paper_rejection_reasons') or {}).values()),str(lifecycle.get('paper_rejection_reasons',{}))],
         ]
+        for account in lifecycle.get('dynamic_accounts',[]):
+            life_rows.append([account['account'],account['fills'],
+                f"净收益率 {account['net_return']:.2%} · 持仓 {account['ending_positions']}" if account.get('net_return') is not None else '尚无收益记录'])
         life.add(table(['层','数量','说明'],life_rows),1);self.add_section('模拟执行',paper,life)
 
         ai=Card('AI 结论 / 风险')

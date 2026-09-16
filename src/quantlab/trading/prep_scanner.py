@@ -236,8 +236,11 @@ def _daily_market_overlay(output,as_of,lookback_sessions):
 
 def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules=None,
         universe_symbols=None,universe_pit_verified=False,universe_snapshot=None,
-        universe_effective_session=None,lookback_sessions=12,daily_market_output=None):
+        universe_effective_session=None,lookback_sessions=12,daily_market_output=None,
+        candidate_scope='target_streak',include_symbols=None):
     root=Path(data_root).resolve();as_of=_day(as_of_session,'as_of_session')
+    if candidate_scope not in ('target_streak','qimo_source_v2'):raise PrepScanError('INVALID_ARGUMENT','未知候选范围。')
+    include_symbols=set(include_symbols or [])
     if type(lookback_sessions) is not int or not 3<=lookback_sessions<=60:
         raise PrepScanError('INVALID_ARGUMENT','lookback_sessions 必须为3–60。')
     if target_streak is not None and (type(target_streak) is not int or not 1<=target_streak<=10):
@@ -397,7 +400,18 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
         effective_target=target_streak;target_source='HOST_OVERRIDE'
     else:
         effective_target=route['target_streak'];target_source='ROUTER'
-    if effective_target is not None:
+    if candidate_scope=='qimo_source_v2':
+        effective_target=None;target_source='RECENT_LEADERS_AND_HOLDINGS'
+        route={**route,'action':'SCAN_RECENT_LEADERS','target_streak':None,
+            'reasons':route['reasons']+['市场节点保留为上下文，撤销旧版固定情绪阈值开仓否决。']}
+        for item in records:
+            if item['current']['close'] is None:continue
+            recent_leader=any(row['is_limit_up_close'] for row in item['rows'])
+            if recent_leader or item['symbol'] in include_symbols:
+                candidate=_candidate(item['symbol'],item['current'],item['streak'],quality,universe_evidence_id)
+                candidate['features'].update(recent_limit_up=recent_leader,existing_holding=item['symbol'] in include_symbols)
+                candidates.append(candidate)
+    elif effective_target is not None:
         for item in records:
             if item['streak']==effective_target and item['current']['tradable']:
                 candidates.append(_candidate(item['symbol'],item['current'],effective_target,quality,universe_evidence_id))

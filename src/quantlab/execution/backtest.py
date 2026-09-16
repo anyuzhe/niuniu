@@ -5,6 +5,7 @@ Open liquidity is assumed. Current bar high/low/close/volume never decide fills.
 import math
 from dataclasses import dataclass
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 from decimal import Decimal, ROUND_HALF_UP
 import polars as pl
 from quantlab.data.validation import ordered_bars
@@ -42,9 +43,14 @@ class ExecutionConfig:
     rights_issues: list | None = None
     rights_trading: list | None = None
     max_volume_participation: float | None = None
+    single_entry_attempt: bool = False
+    entry_window_minutes: int | None = None
     price_mode: str = "research"
 
     def __post_init__(self):
+        if type(self.single_entry_attempt) is not bool:raise ValueError('single_entry_attempt must be boolean')
+        if self.entry_window_minutes is not None and (type(self.entry_window_minutes) is not int or self.entry_window_minutes < 1):
+            raise ValueError('entry_window_minutes must be a positive integer')
         if self.price_mode not in ('research','account'):raise ValueError('price_mode must be research or account')
         IndustryHistory(self.industry_events)
         traded=RightsTrading(self.rights_trading,self.corporate_action_mode)
@@ -113,7 +119,7 @@ class OpenExecutionBacktester:
             snapshots.append((key[0],dict(zip(group['symbol'],group['weight']))))
         cash=cfg.initial_cash;lots={s:[] for s in symbols};marks={};index=0;weights={};decision=None
         fills=[];rejections=[];nav=[];last_close={};risk_audit=[];rule_gaps=set()
-        prior_volume={}
+        prior_volume={};entry_attempts=set();target_keys={}
         def quantity(symbol):return sum(lot[1] for lot in lots[symbol])
         def pending(symbol):return dividends.pending(symbol)+rights.pending(symbol)+traded_rights.pending(symbol)
         def economic_quantity(symbol):return quantity(symbol)+pending(symbol)
@@ -146,7 +152,10 @@ class OpenExecutionBacktester:
             opening=end.replace(hour=9,minute=30,second=0,microsecond=0) if group['timeframe'][0]=='1d' else end-timedelta(minutes=int(group['timeframe'][0][:-1]))
             if any(dt<opening for dt in group['available_at']):raise ValueError('Bar available before its open')
             while index<len(snapshots) and snapshots[index][0]<=opening:
-                decision,weights=snapshots[index];index+=1
+                next_decision,next_weights=snapshots[index]
+                for symbol,weight in next_weights.items():
+                    if symbol not in target_keys or weight!=weights.get(symbol):target_keys[symbol]=next_decision
+                decision,weights=next_decision,next_weights;index+=1
             for action in dividends.records:
                 if action['record_at']>=first_bar and action['action_id'] not in dividends.accrued and action['ex_at']<=opening and action['symbol'] in symbols and (economic_quantity(action['symbol']) or ('stock_per_share' in action and dividends.entitlements.get(action['action_id'],{}).get('shares',0))) and action['symbol'] not in set(group['symbol']):
                     raise ValueError('Missing ex-date valuation bar for held dividend stock')
@@ -175,9 +184,22 @@ class OpenExecutionBacktester:
             if weights:
                 orders=[]
                 for symbol,price in prices.items():
+                    if weights[symbol]>0:
+                        if cfg.single_entry_attempt and (symbol,target_keys[symbol]) in entry_attempts:continue
+                        if cfg.entry_window_minutes is not None:
+                            entry_at=target_keys[symbol].astimezone(ZoneInfo('Asia/Shanghai'))
+                            # A-share lunch recess does not consume a signal's entry window.
+                            lunch_start=entry_at.replace(hour=11,minute=30,second=0,microsecond=0)
+                            lunch_end=entry_at.replace(hour=13,minute=0,second=0,microsecond=0)
+                            deadline=entry_at+timedelta(minutes=cfg.entry_window_minutes)
+                            if entry_at<lunch_end and deadline>lunch_start:
+                                deadline+=lunch_end-max(entry_at,lunch_start)
+                            if opening>deadline:continue
                     desired=math.floor(equity*weights[symbol]/price/cfg.lot_size)*cfg.lot_size
                     delta=desired-economic_quantity(symbol)
-                    if delta:orders.append((delta>0,symbol,delta,price))
+                    if delta:
+                        orders.append((delta>0,symbol,delta,price))
+                        if weights[symbol]>0:entry_attempts.add((symbol,target_keys[symbol]))
                     else:audit.previous_attempt.pop(symbol,None)
                 for buying,symbol,delta,price in sorted(orders):
                     requested=abs(delta);size=requested;reason=None;capacity=None

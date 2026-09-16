@@ -64,6 +64,23 @@ class DailyOrchestratorTests(unittest.TestCase):
 
     def service(self,now):return DailyPlaybookOrchestrator(self.output,self.data,now_fn=lambda:now)
 
+    def test_verified_rule_snapshot_is_loaded_relative_to_data_root_for_prep(self):
+        from quantlab.trading.prep_scanner import PrepScanError
+        snapshot='a'*64;relative='research/official_market_rules/'+snapshot+'.json'
+        path=self.data/relative;path.parent.mkdir(parents=True);records=[{'fixture':'exact records'}]
+        path.write_text(json.dumps({'rules':records}))
+        now=datetime.fromisoformat('2026-09-14T08:30:00+08:00');service=self.service(now)
+        with patch('quantlab.data.qualification._official_rule_receipt',return_value={'verified':True,'receipt_path':relative}):
+            plan=service.create_plan('2026-09-14','2026-09-11',self.definition['definition_id'],
+                candidate_scope='qimo_source_v2',include_symbols=['sh.600001'],market_rules_snapshot=snapshot)
+            with patch('quantlab.trading.daily_orchestrator.scan_prep_universe',side_effect=PrepScanError('FIXTURE','stop after wiring')) as scan:
+                self.assertFalse(service._prep(plan,now))
+                self.assertEqual(scan.call_args.kwargs['market_rules'],records)
+                self.assertEqual(scan.call_args.kwargs['candidate_scope'],'qimo_source_v2')
+                self.assertEqual(scan.call_args.kwargs['include_symbols'],['sh.600001'])
+        with self.assertRaises(DailyOrchestratorError):
+            service.create_plan('2026-09-15','2026-09-14',self.definition['definition_id'],market_rules_snapshot='invalid')
+
     def init(self,now,allow=False,bridge=False,market=False):
         return self.service(now).create_plan('2026-09-14','2026-09-11',self.definition['definition_id'],
             target_streak=2,allow_daily_market_capture=allow,allow_market_snapshot_capture=market,

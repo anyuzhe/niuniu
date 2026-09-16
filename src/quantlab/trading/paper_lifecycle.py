@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime,timezone
 from pathlib import Path
 import math
 
@@ -66,6 +67,19 @@ class PaperLifecycleAnalytics:
                     'ending_positions':(value.get('summary') or {}).get('ending_positions',{})})
         review_counts=Counter(row.get('review_frame','UNKNOWN') for row in reviews)
         open_recorded=sum(row.get('open_recorded',0) for row in fill_receipts);fill_no_trade=sum(row.get('no_fill',0) for row in fill_receipts)
+        automatic={}
+        control_path=self.output/'_qimo_paper'/'control.json'
+        if control_path.is_file():
+            try:
+                control=read_checked(control_path);status_path=control_path.with_name('status.json')
+                status=read_checked(status_path) if status_path.exists() else {}
+                updated=status.get('updated_at')
+                automatic={'account':control['account'],'enabled':control['enabled'],
+                    'status':status.get('status','NOT_STARTED'),'updated_at':updated,
+                    'stale':not updated or (datetime.now(timezone.utc)-datetime.fromisoformat(updated)).total_seconds()>300,
+                    'blockers':status.get('blockers',[]),'error':status.get('error',''),
+                    'initial_cash':control['policy']['config']['initial_cash']}
+            except (OSError,ValueError,KeyError,TypeError):automatic={'status':'UNREADABLE','stale':True}
         return {'system_predictions':len(predictions),'no_trade_predictions':sum(not row.get('selected_symbols') for row in predictions),
             'selected_predictions':sum(bool(row.get('selected_symbols')) for row in predictions),
             'selected_symbol_events':sum(len(row.get('selected_symbols') or []) for row in predictions),
@@ -77,7 +91,7 @@ class PaperLifecycleAnalytics:
             'paper_reviews':len(reviews),'paper_reviews_by_frame':dict(review_counts),'paper_rebalances':len(rebalances),
             'paper_rebalance_status':dict(Counter(row.get('status','UNKNOWN') for row in rebalances)),
             'paper_rebalance_outcomes':len(rebalance_outcomes),'dynamic_accounts':dynamic,
-            'dynamic_account_count':len(dynamic),'automatic_real_trade':False,
+            'dynamic_account_count':len(dynamic),'automatic_paper':automatic,'automatic_real_trade':False,
             'scope':'Read-only observed lifecycle counts. Selection, execution access, Paper fill and account return remain separate.'}
 
 

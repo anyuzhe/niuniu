@@ -25,3 +25,13 @@
 - `notes/forward_prediction_20260916_prep.md`：2026-09-15 accepted DailyMarket 驱动的 `EXTREME_RISK / NO_TRADE`；CandidateSet 为空，Orchestrator 正常进入 `COMPLETE_NO_TRADE`。
 
 这些记录只证明预测是在目标交易日前冻结，不改变本 Playbook 的 `SOURCE_REQUIRED / DRAFT` 边界，也不证明 Strict PIT、Alpha 或可交易收益。
+
+## 公开经验补充
+
+- [2026-09-16 本人公开回复与营业部变更声明](notes/public_experience_supplement_20260916.md)：新增 10 条 `PARTIAL` 来源，覆盖板块比较、卖出线索、仓位个体差异、空仓与复盘；保留回复编号、快照哈希和上下文缺口，不改变规则状态。
+
+## 自动模拟实验
+
+- [百万模拟 v2：规则、工程近似与运行边界](notes/automatic_paper_v2.md)：当前版本。100万元、多标的、条件式持有/退出；撤销单股20%和固定持有天数等旧限制，仍为DRAFT。
+- [新增15条本人回复与复刻边界](notes/source_rules_supplement_v2_20260916.md)：不同身位、板块助攻、等待修复、分批退出等原始证据。
+- [自动模拟 v1 历史记录](notes/automatic_paper_v1.md)：旧版已停用，保留审计。

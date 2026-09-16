@@ -7,6 +7,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
+from unittest.mock import patch
 
 from quantlab.trading.market_snapshot import MarketSnapshotError,MarketSnapshotStore
 from quantlab.trading.playbook_forward import freeze_forward_snapshot
@@ -86,6 +87,47 @@ class MarketSnapshotScannerTests(unittest.TestCase):
             'provider_ref':'archive:'+frame.lower(),'source_hash':('d' if frame=='R2' else 'e')*64,'completeness':'FULL',
             'instruments':instruments,'market_metrics':{},'notes':''}
         return MarketSnapshotStore(self.root,now_fn=lambda:self.clock).create(str(uuid4()),payload)
+
+    def test_source_rules_use_as_of_theme_facts_and_freeze_multiple_selections(self):
+        from quantlab.trading.theme_store import ThemeStore
+        from quantlab.trading.qimo_rules import ENGINE
+        definition=self.playbooks.create_definition(str(uuid4()),{'playbook_key':'qimofenshu',
+            'name':'source rules','version':'v2','state':'DRAFT','source_ids':[self.source['source_id']],
+            'selection':{'engine':ENGINE}})
+        case=self.playbooks.create_case(str(uuid4()),{'definition_id':definition['definition_id'],
+            'trading_day':'2026-09-14','frame':'PREP','as_of':'2026-09-13T23:58:00+08:00',
+            'source_ids':[self.source['source_id']],'summary':'source fixture'})
+        content={k:self.base[k] for k in ('trading_day','frame','as_of','completeness','pit_status',
+            'universe_source','generation_method','candidates','evidence_ids')}
+        base=self.playbooks.create_candidate_set(str(uuid4()),{**content,'case_id':case['case_id'],
+            'definition_id':definition['definition_id']})
+        auction=self.create_auction();self.clock=datetime.fromisoformat('2026-09-14T09:36:00+08:00')
+        market_payload=self.r1_payload()
+        for item in market_payload['instruments']:
+            if item['symbol']=='sz.002201':item.update(last=11.3,high=11.4)
+        r1=self.market.create(str(uuid4()),market_payload);themes=ThemeStore(self.root)
+        scanner=DailyPlaybookScanner(self.root)
+        self.assertEqual(scanner.scan(base['candidate_set_id'],r1['snapshot_id'],auction['snapshot_id'])['selected_symbols'],[])
+        stored=[]
+        for frame,stamp,up,ret in [('AUCTION','09:25:00',5,1.),('R1','09:35:00',7,3.)]:
+            for symbol in ('sz.000823','sz.002201'):
+                payload={'theme':symbol,'trading_day':'2026-09-14','frame':frame,
+                    'facts':{'leader_symbol':symbol,'leader_return':ret,'breadth_up':up,'breadth_down':1,'limit_up_count':1},
+                    'facts_source':'synthetic archive','facts_as_of':'2026-09-14T'+stamp+'+08:00'}
+                with patch('quantlab.trading.theme_store.datetime') as clock:
+                    clock.now.return_value=datetime.fromisoformat(payload['facts_as_of'])
+                    saved=themes.create(str(uuid4()),payload)
+                if frame=='R1':stored.append((payload,saved))
+        # Later corrections must not erase the facts available at decision time.
+        payload,saved=stored[0]
+        with patch('quantlab.trading.theme_store.datetime') as clock:
+            clock.now.return_value=datetime.fromisoformat('2026-09-14T10:00:00+08:00')
+            themes.create(str(uuid4()),{**payload,'revision_of':saved['snapshot_id'],
+                'facts_as_of':'2026-09-14T10:00:00+08:00','facts':{**payload['facts'],'breadth_up':0}})
+        result=scanner.scan(base['candidate_set_id'],r1['snapshot_id'],auction['snapshot_id'])
+        self.assertEqual(set(result['selected_symbols']),{'sz.000823','sz.002201'})
+        frozen=freeze_forward_snapshot(self.root,result['forward_payload'],now_fn=lambda:self.clock)
+        self.assertTrue(frozen)
 
     def test_live_snapshot_is_immutable_auditable_and_future_is_blocked(self):
         saved=self.create_auction()
