@@ -7,4 +7,5 @@
 - 综合时区分独立意见、冲突点、共同证据和仍未解决的问题。
 - 不把多数票当正确，也不把 Reviewer 输出当新增市场事实。
 - 使用 Research Skill 时先固定精确 package snapshot；综合中分开 DIRECT_QUOTE、METHOD_INFERENCE、FACT_TO_VERIFY，并保留来源 resource_id/SHA256/locator 与 blockers。
+- 回答明确个股问题时先使用宿主注入的 `HOST_LIVE_QUOTE_CONTEXT`，报告价格时点与市场状态；不得因缺正式MarketSnapshot而跳过已授权临时报价，也不得把临时报价升级为交易信号。多股指代不清时先消歧。
 - 不批准研究、不执行交易、不修改生产代码；不把只读策展包自动写成 StrategySource 或 Playbook。

@@ -37,7 +37,7 @@ Provider 固定输出 `strict_pit_source_verified=false`。
 `niuniu-market-snapshot-live` 必须显式提供 `--confirm-network` 才联网；只有额外 `--store` 才写入正式 MarketSnapshot。
 Daily Orchestrator 默认仍不联网，只有计划显式设置 `allow_market_snapshot_capture=true` / CLI `--allow-market-snapshot-capture` 才允许 AUCTION/R1/R2/R3 自动抓取。
 每个 Frame 失败后冷却 30 秒，最多尝试 3 次；只消费 `FULL + LIVE_NEAR_REALTIME` 快照。
-AI/MCP 仍只有 Provider 状态查询，没有 capture/connect/credential 工具。
+MCP 仍只有 Provider 状态查询，没有 capture/connect/credential 工具。AI也没有正式MarketSnapshot capture写工具；2026-09-16新增的个股问答ad-hoc报价由宿主根据当前轮明确证券自动执行，只读且不写MarketSnapshotStore，不能绕过本节正式冻结边界。
 
 ## 6. 真实网络烟测
 
@@ -56,3 +56,15 @@ AI/MCP 仍只有 Provider 状态查询，没有 capture/connect/credential 工�
 - Provider + Public Web + Orchestrator 专项：**28/28 passed**。
 - MarketSnapshot / Scanner / PREP / Orchestrator / System Health 相关联合回归：**74/74 passed**。
 - 完整仓库：**935 tests / 0 failed / 0 skipped**，耗时 **332.681 秒**。
+
+## 8. 后续扩展：个股问答 ad-hoc 报价
+
+`niuniu-ad-hoc-live-stock-quote-v1` 复用同一三源共识，但身份与正式MarketSnapshot不同：
+
+- 用户当前轮明确证券构成该轮一次只读授权；
+- 最多10只，唯一股票上下文追问可沿用，多股票歧义不猜；
+- 宿主在模型推理前查询并注入价格、时点和市场状态；
+- 固定 `stored_as_market_snapshot=false / creates_decision=false / strict_pit_source_verified=false`；
+- 不受空PREP CandidateSet阻断，但也不进入Scanner、Forward Freeze、Decision或交易。
+
+详细验收见《牛牛AI交易工作台_个股问答自动实时行情V1_验收说明.md》。

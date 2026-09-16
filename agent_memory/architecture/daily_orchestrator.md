@@ -21,6 +21,7 @@ P8.7 当前版只负责编排，不定义新交易规则；实时行情由独立
 - AI/Reviewer/MCP 无 init/tick/run 权限；宿主负责计划和运行授权。
 - 当前 live Provider 为 `public-web-consensus-v1`（腾讯主源、东财第二源、新浪备用校验）；只消费 FULL + LIVE_NEAR_REALTIME，共识不足或网页端点异常时等待/错过，不降级成单源猜值。
 - 当前没有后台定时任务。任何目标日08:00刷新或09:15前PIT归档都必须由宿主当日显式启动；runbook不是scheduler，也不授予联网、确认或archive权限。错过cutoff后Orchestrator不得推动历史补档。
+- AI个股问答的ad-hoc实时查询独立于Orchestrator：即使CandidateSet为空也可回答用户明确询问股票的当前价格，但固定不写MarketSnapshot、不恢复已跳过Frame、不创建SYSTEM_PREDICTION或Decision。
 
 状态必须 checksum、原子持久化并可重启恢复；同一计划重复 tick 不得重复 Case、CandidateSet、Prediction 或 MarketSnapshot。
 

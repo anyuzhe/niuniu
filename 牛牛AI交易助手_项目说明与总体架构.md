@@ -4,7 +4,7 @@
 - 架构口径更新：2026-09-16
 - 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：PIT Universe Receipt v1 与连续 SecurityStatus v2 工程合同已完成（两者真实完整 snapshot 均仍为0）；SecurityStatus 现有真实资料仍为7只证券/14条稀疏 verified statement；2026-09-17 前瞻取证已有三所5,563只review基线与规范addendum，但目标日刷新和归档确认仍未完成；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；External Research Skill v3 已固定真实Git archive/策展包并接入只读Library；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `1000 passed / 0 failed / 0 skipped`
+- 当前稳定基线：PIT Universe Receipt v1 与连续 SecurityStatus v2 工程合同已完成（两者真实完整 snapshot 均仍为0）；SecurityStatus 现有真实资料仍为7只证券/14条稀疏 verified statement；2026-09-17 前瞻取证已有三所5,563只review基线与规范addendum，但目标日刷新和归档确认仍未完成；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；External Research Skill v3 已固定真实Git archive/策展包并接入只读Library；AI个股问答已支持明确证券的三源临时只读实时报价；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓基线 **1006 tests / 0 failed / 0 skipped**
 
 ## 1. 一句话定位
 
@@ -192,6 +192,8 @@ Strategy Intent
 `Daily Scanner` 是规则运行器，不是模型自由选股器。它读取冻结事实和冻结规则；证据不足时输出 `UNKNOWN / NO_TRADE / PARTIAL`，不得为了每天有结果而强行推荐股票。
 
 当前已完成 PREP 全市场扫描、MarketSnapshot、AUCTION/R1/R2/R3 Scanner、DailyMarket 增量归档与 P8.7 受控 Daily Orchestrator。实时层已接入 `public-web-consensus-v1`：腾讯主源、东方财富第二源、新浪备用校验，至少两源一致才形成可用快照。R2 为 11:30 午间复核、R3 为 15:00 收盘定稿，均必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只延续其中已选标的。PREP CandidateSet 为空时直接保存前瞻 NO_TRADE 并进入 `COMPLETE_NO_TRADE`，后续 Frame 标记跳过；非空 CandidateSet 下 PREP 暂未选股仍继续等待 AUCTION。2026-09-15 已用5,219行 accepted DailyMarket 为 2026-09-16 冻结首条此类真实时钟 NO_TRADE 样本。公开网页源适合当前研发/个人自用，但不认证 Strict PIT，也不具备交易所级 SLA。
+
+个股信息问答与上述正式交易链分离：用户当前轮次明确 A 股代码或本地正式名称，即授权宿主针对这些明确股票执行一次最多10只的三源只读报价；唯一股票上下文的明确追问可沿用，多股票歧义不猜。报价在模型推理前注入价格、时点与市场状态，并在聊天工具事件中留证，但固定不写 MarketSnapshotStore、不创建Decision/信号/订单。于是“没有已冻结MarketSnapshot”只阻断正式交易证据，不再阻断普通个股情况回答。
 ## 8. AI Team：独立研究，不做投票系统
 
 AI Team 当前正式研究角色包括 Chief Researcher、Market Scanner、Skeptic / Risk Reviewer、Quant Researcher；Developer 属于已落地的 P10 Dev Studio 开发 profile，不进入交易研究投票或判断链。
@@ -265,6 +267,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | External Research Skill Adapter | **已完成 v3**：v1包审计 + v2 Git archive/选择性策展 + v3 Git-clean只读Library；Research Lab、日常助手、AI Team、MCP可检索精确策展snapshot，不执行脚本/联网/自动写库。郑希DRAFT包仍仅为PARTIAL预览 |
 | 受控每日自动编排 PREP→AUCTION→R1→R2→R3 | **已完成**：持久计划、幂等恢复、R2/R3 continuation review、错过窗口不回填；空 PREP CandidateSet 进入 `COMPLETE_NO_TRADE` 且不抓无标的行情；实时三源抓取需宿主显式授权 |
 | Live MarketSnapshot Provider | **已完成 v1**：腾讯主源 + 东财第二源 + 新浪备用校验；至少两源一致、异常源剔除、时间戳防脏数据、公开网页源不升级 Strict PIT |
+| 个股问答自动实时行情 | **v1 已完成**：当前轮明确代码/正式名称或唯一股票追问即触发一次三源只读报价，自动注入模型上下文；最多10只、多股歧义不猜、不写正式MarketSnapshot/Decision/订单 |
 | Agent Scorecard | **P9 v1 已完成**：按任务类型只读评价，样本不足 UNKNOWN，无总分/自动调权 |
 | Dynamic Agent Orchestrator / Dev Studio | **P10 v1 已完成**：隔离 worktree + depth-1 动态 Subagent + path lease + Reviewer + Human Merge Gate |
 | System Health | **P11 v1 已完成**：Runtime / Research Readiness 双轴，只读聚合服务、任务、数据新鲜度、PIT、通知、Dev 与日志；MarketRules v2 显示全局完整性 inventory 但不冒充 case coverage；无健康总分/自动修复 |
@@ -275,7 +278,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**1000 tests / 0 failed / 0 skipped**（非Desktop 879 + Desktop 121）。PIT Universe v1 / SecurityStatus v2 工程通过不代表真实数据资格已自动升级。
+当前生产代码最近完整回归基线：**1006 tests / 0 failed / 0 skipped**。PIT Universe v1 / SecurityStatus v2 工程通过不代表真实数据资格已自动升级。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：

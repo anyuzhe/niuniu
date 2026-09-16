@@ -56,8 +56,8 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**1000 passed / 0 failed / 0 skipped**（非Desktop 879 + Desktop 121）。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.6-A/B/C External Research Skill Adapter + Git Archive/Curation + Read-only Library、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio / P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage、PIT Universe Receipt v1、连续SecurityStatus v2工程合同和 Official MarketRules publication receipt v2 + 全局深度审计。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session，另有7个复牌日 exact 算术回顾性参考但未获得 Strict PIT 资格。郑希上游Git字节已归档、生成首个回顾性DRAFT策展包并接入精确snapshot只读检索，但未写StrategySource/Playbook且未完成Quant Validation。
+当前正式代码全仓基线：**1006 passed / 0 failed / 0 skipped**。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.6-A/B/C External Research Skill Adapter + Git Archive/Curation + Read-only Library、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider、个股问答ad-hoc只读报价与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio / P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage、PIT Universe Receipt v1、连续SecurityStatus v2工程合同和 Official MarketRules publication receipt v2 + 全局深度审计。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session，另有7个复牌日 exact 算术回顾性参考但未获得 Strict PIT 资格。郑希上游Git字节已归档、生成首个回顾性DRAFT策展包并接入精确snapshot只读检索，但未写StrategySource/Playbook且未完成Quant Validation。
 外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部并行主线：持续真实前瞻每日运行，经宿主授权在未来09:15前同步取得首个真实PIT Universe与完整SecurityStatus snapshot，并继续寻找复牌日开盘前静态参数publication receipt，再推进历史行业与每日真实市值。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
@@ -343,6 +343,7 @@
 | 2026-09-16 | Research Skill Library / Agent只读检索 | **982 passed / 0 failed / 0 skipped** |
 | 2026-09-16 | PIT Universe Receipt v1 / Qualification-PREP-Orchestrator接线 | **990 passed / 0 failed / 0 skipped** |
 | 2026-09-16 | 连续 SecurityStatus Coverage v2 / silver-PREP-Coverage-Health接线 | **1000 passed / 0 failed / 0 skipped** |
+| 2026-09-16 | 个股问答自动实时行情 v1 / 宿主临时报价注入 | **1006 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -794,3 +795,16 @@
 - 文档：新增《牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md》，同步README中英文、总体架构、总计划、核心进度和Agent Memory。
 - Git：本条与文档同一独立提交发布，提交标题 `docs: 固化前瞻Universe与状态取证边界`；SHA以Git历史为准，不push。
 - 后续：目标日08:00–08:15人工刷新三所Universe和官方日标记，逐项完成差异审计及三项宿主确认；09:15前先归档/审计Universe，只有三所完整状态全部闭合才归档SecurityStatus。错过cutoff必须顺延，不得历史补档。
+
+### 2026-09-16 15:22｜[AI个股问答/实时只读行情] 明确股票问题自动查询 v1
+
+- 用户口径：询问具体股票天然需要当前价格；“没有已冻结MarketSnapshot”只能阻止正式交易证据，不能阻止普通股票情况回答。
+- 触发合同：当前轮明确 `sh/sz/bj.XXXXXX`、六位代码或本地 `stock_basic.code_name`，即授权仅对这些证券执行一次只读三源查询；唯一股票上下文的明确追问可沿用最近记录，多股指代不清时不猜。单轮上限10只。
+- 实现：新增 `LiveStockQuoteService`，宿主在模型推理前自动调用现有 `public-web-consensus-v1`，把价格、涨跌、昨收、OHLC、量额、买卖盘、来源时点、市场状态与source hash注入 `HOST_LIVE_QUOTE_CONTEXT`；工具事件与 `live_stock_quote` evidence进入会话审计。
+- Fail-closed：无明确股票零网络；两源不足返回UNAVAILABLE；超过上限或多股歧义不联网；当日无值仅可标记最近 `LAST_AVAILABLE_SESSION`。外部结果固定为不可信数据，不可改变权限。
+- 正式证据隔离：固定 `stored_as_market_snapshot=false / creates_decision=false / strict_pit_source_verified=false`，不写MarketSnapshotStore，不创建Theme/Decision/Playbook/订单，不恢复Orchestrator已跳过Frame，也不替代SecurityStatus/MarketRules。
+- 桌面：工具/证据列表显示临时报价及证券代码；打开引用明确说明它不是正式MarketSnapshot。
+- 真实烟测：`301396 宏景科技` 于15:22只读查询成功，行情时点15:20:45、market_status=CLOSED，腾讯/东财/新浪3/3一致，最新170.57、昨收165.45、约+3.0946%，未写正式快照。
+- 测试：新增名称/代码解析、上下文追问、多股歧义、零网络、最近session降级、ChatRuntime注入、桌面引用与无快照写入；相关聚焦 **82/82 passed**（5.450秒），独立干净工作树完整仓库 **1006/1006 passed**（347.134秒），均0 failed/0 skipped。
+- 文档：新增《牛牛AI交易工作台_个股问答自动实时行情V1_验收说明.md》，同步README中英文、总体架构、总计划、核心进度、Provider验收与Agent Memory。
+- Git：本条与源码/测试/文档同一独立提交，标题 `feat: 个股问答自动查询实时行情`；SHA以Git历史为准，不push。

@@ -52,6 +52,12 @@ class ChatDesktopTests(unittest.TestCase):
                 dialog.open_reference();self.wait(lambda:not dialog.busy)
             open_library.assert_called_once_with('manager-skill','f'*64,'HYPOTHESIS','cycle','',0,100)
             self.assertIn('cycle',dialog.details.toPlainText())
+            live={'kind':'live_stock_quote','symbol':'sz.301396','trading_day':'2026-09-16',
+                'as_of':'2026-09-16T14:50:00+08:00','provider':'public-web-consensus-v1','source_hash':'a'*64}
+            dialog.receive('tool_result',{'name':'get_live_stock_quote','result':{'ok':True,'evidence':[live]}})
+            entry=dialog.evidence.item(dialog.evidence.count()-1)
+            self.assertIn('sz.301396',entry.text());dialog.evidence.setCurrentItem(entry);dialog.open_reference()
+            self.assertIn('sz.301396',dialog.details.toPlainText());self.assertIn('未创建正式 MarketSnapshot',dialog.status.text())
             identifier=dialog.session_id;dialog.close();window.research_chat()
             self.assertEqual(window._research_chat_dialog.session_id,identifier)
             self.assertIn('verified fixture',dialog.transcript.toPlainText())

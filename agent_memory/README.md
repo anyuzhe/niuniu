@@ -15,7 +15,7 @@
 - Mobile / Bot 任务必须读取 `architecture/mobile.md`；手机/机器人只复用现有状态源，禁止建立第二份 Decision、持仓、记忆或移动端数据库。
 - Broker / Shadow / P13 任务必须读取 `architecture/broker_shadow.md`；P13-A 只允许只读券商证据和 Shadow 对账，任何真实连接、认证、资金或订单能力必须单独评审。
 - RealTrade / P13-B0+ 任务必须读取 `architecture/real_trade_readiness.md`；没有明确券商通道时必须 fail-closed，不能用完整 policy、Shadow MATCH 或 Agent 判断替代真实 Adapter/认证/订单安全门。
-- Daily Orchestrator / 日内 Scanner 任务必须读取 `architecture/daily_orchestrator.md`；MarketSnapshot 数据源任务同时读取 `architecture/market_snapshot_provider.md`，不得把手工/BACKFILL 快照冒充 live provider。
+- Daily Orchestrator / 日内 Scanner 任务必须读取 `architecture/daily_orchestrator.md`；MarketSnapshot 数据源任务同时读取 `architecture/market_snapshot_provider.md`，不得把手工/BACKFILL快照或个股问答临时报价冒充正式live MarketSnapshot。用户当前轮明确股票即授权该明确范围的一次只读实时报价；这不授权全市场下载、后台刷新、写Decision或交易。
 - Research Proposal / JobQueue / Campaign 审批任务必须读取 `architecture/approval_input_freeze.md`；人工批准后的实际输入以 approval freeze 为执行权威，禁止回退变化后的 live data。
 - Research Session Grant / 有限自主研究任务必须读取 `architecture/research_session_grant.md`；Grant 只扩大精确范围内的本地研究执行，不得扩展到 Shell、下载、代码写、Campaign/Execution 或真实交易。
 - Strict PIT Coverage / 数据缺口盘点任务同时读取 `architecture/strict_pit_coverage.md`；Coverage 只表示证据 presence/inventory，不生成数据集总完成率或资格证书。

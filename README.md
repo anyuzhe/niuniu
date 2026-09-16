@@ -72,6 +72,7 @@ D1 / D2 / D3+ 复盘
 | Trading Knowledge / Playbook Lab | 已支持六类 `StrategySource`、旧 `ExpertSource→TRADER` 兼容投影、Playbook 多对多来源关系、完整 CandidateSet、selected/unselected、Selection/Veto、前瞻冻结、历史回放与执行访问分层 |
 | External Research Skill | 外部专家/机构知识的只读边界适配：固定包内资源与 Git origin/commit/tree/tracked blobs；`library.json` 同时锁定 control/archive/package/curation plan，Research Lab、日常助手、AI Team 与 MCP 可按精确 snapshot 检索 claim/假设/“说做结果”及有限来源片段；不执行脚本、不联网、不自动写 StrategySource/Playbook/Decision/交易 |
 | Daily Scanner / 每日编排 | PREP 全市场扫描、MarketSnapshot、AUCTION/R1/R2/R3 确定性扫描、DailyMarket 全市场日增量归档，以及持久 `Daily Orchestrator` 五阶段幂等可恢复链路；腾讯主源+东财第二源+新浪备用校验的 live Provider 已接入；错过窗口不回填；空 PREP CandidateSet 以 `COMPLETE_NO_TRADE` 正常结束 |
+| 个股问答实时行情 | 用户在当前问题中明确证券代码/正式名称，或在唯一股票上下文中明确追问，即授权该轮最多10只股票的一次三源只读实时报价；结果自动进入模型上下文并显示时点/市场状态，不写正式 MarketSnapshot、Decision 或订单，多股票指代不清时不猜测 |
 | AI Team | Chief Researcher、Market Scanner、Skeptic、Quant Researcher 与按需 Peer Review；第一轮独立判断，Chief 综合，不用多数票代替证据 |
 | AI 研究与自动化基础 | 结构化研究记忆、固定研究包、受限 DSL、Research Agenda、Safe Alpha Factory、Watch + Sequential Monitor、标准 MCP、approval-time actual-byte freeze 与 Research Session Grant；新 Watch 可冻结序贯 Rank IC 衰减门槛，但模型不能自动停因子、换参数、扩大授权或实盘 |
 | System Health | P11 只读聚合 Workspace、Artifacts、JobQueue、daemon heartbeat、MCP adapter、Notifications、Market Data/Series、DailyMarket、MarketSnapshot、Orchestrator、PIT/Playbook、Paper、Dev Studio 与日志；PIT Universe v1、SecurityStatus v2 与 MarketRules v2 显示全局深度审计 inventory；运行在线和研究正确分轴，无健康总分/自动修复 |
@@ -183,6 +184,8 @@ quantlab desktop --output ./artifacts
 外部专家/机构知识包先运行 `quantlab research-skill-audit --package research_skills/<skill>`。该命令只读本地资源并生成 StrategySource 预览，不联网、不执行包内脚本，也不写 Playbook Lab。宿主已授权 clone 的仓库可用 `research-skill-git-archive` 固定 origin/commit/tree 和全部 tracked blobs，再以 `research-skill-git-audit` 深验、`research-skill-git-curate --confirm-retrospective-only` 选择性生成独立数据根 DRAFT 包；三个命令自身均不 clone/fetch。`research_skills/library.json` 进一步以 Git-clean 授权表同时固定 control/archive/package/curation plan；Research Lab、日常助手、AI Team 与 MCP 只暴露 `list/get/search/excerpt` 四个查询工具，必须使用精确 package snapshot，资源片段限 6000 UTF-8 bytes 且拒绝 SCRIPT。郑希上游已固定至 commit `304ac3e4...bebb536`，143个文件/11,367,050 bytes 的 archive receipt 验证通过；首个14资源策展包含1份上游访谈、001513持仓与净值快照、10条 claim 和1组“说/做/结果”，但来源真实性仍需宿主复核、发布时间未验证，不具 Strict PIT/Alpha/Scanner/交易资格，也未写入 StrategySource 或 Playbook。
 
 每日 Playbook 编排使用 `niuniu-daily-orchestrator`。宿主先用 `--init` 为**单个交易日**冻结 definition、上一交易日、可选 target_streak，以及可选的目标日 `--universe-snapshot`；指定 snapshot 后 PREP 会核对 exact `effective_session` 并扫描 receipt 全部成员。默认不联网，只有显式 `--allow-daily-market-capture` 才允许在数据就绪后抓取 DailyMarket。之后可用 `--tick` 单步运行或 `--run` 以固定轮询持续到该日终态。当前已编排 PREP/AUCTION/R1/R2/R3：R2 在 11:30 午间收盘复核，R3 在 15:00 收盘定稿；R2/R3 必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只延续其中已选标的，不新增股票。实时行情现已可由 `public-web-consensus-v1` 生成：腾讯主源、东方财富第二源、新浪备用校验；至少两源一致才形成可用证券快照。Daily Orchestrator 默认仍不联网，初始化计划时显式 `--allow-market-snapshot-capture` 才会自动抓 AUCTION/R1/R2/R3。PREP CandidateSet 为空时，系统先保存可选的 Trading Desk NO_TRADE receipt，再以 `COMPLETE_NO_TRADE` 终止并把后续 Frame 标为 `SKIPPED_NO_TRADE`，不会请求无标的实时行情；这与“CandidateSet 非空但 PREP 暂不提前选具体股票”严格区分。公开网页行情固定不认证 Strict PIT，未来券商/QMT 可替代为正式主源。
+
+个股问答与 Daily Orchestrator 分开：在 AI 研究助手当前消息中明确股票代码或 `stock_basic` 正式名称，本身即构成该轮、该明确证券的只读实时报价授权；唯一股票上下文中的“这只股票/它现在”等追问可沿用，多股票指代不清时不联网。宿主在调用模型前自动执行最多10只证券的三源共识查询，把价格、涨跌、OHLC、成交、来源时点和市场状态以 `HOST_LIVE_QUOTE_CONTEXT` 注入，并在工具记录中留证。它不写 MarketSnapshotStore、不创建 Decision/交易信号，也不放宽 Strict PIT、官方规则或实盘权限。
 
 ### 3. 接入自己的本地行情
 
@@ -352,7 +355,7 @@ python -m unittest discover -s tests -v
 - 缠论以外递归算法及复杂父研究的通用断点续算仍未完成。
 - 部分理论剩余规则、独立等高/等低流动性池生命周期尚未覆盖；主观解释不自动转为可验证算法。
 - Tick/L2 与 OrderFlow 暂不推进；P8.8-C 已实现动态跨日 universe Paper、成交回执驱动 Intent、ADD/REDUCE/EXIT 再平衡、D1/D2/D3+ 因果复盘和生命周期统计，但尚未积累数月真实前瞻 Paper 运行样本，不能把“代码闭环完成”写成“长期实盘表现已验证”。
-- P8.7 Daily Orchestrator 已完成 PREP/AUCTION/R1/R2/R3；`public-web-consensus-v1` 已接入腾讯/东财/新浪三源实时行情。三源至少两源一致才可用，单源异常可剔除；该层适合当前研发/个人自用，但无交易所级 SLA，且固定 `strict_pit_source_verified=false`。P9 Agent Scorecard、P10 Dev Studio、P11 System Health、P12 Mobile / Bot、P13-A Broker Shadow 与 P13-B0 RealTrade Readiness v1 均已完成。B0 已把当前“没有具体券商通道”编码为 `NO_LIVE_BROKER_CHANNEL`。
+- P8.7 Daily Orchestrator 已完成 PREP/AUCTION/R1/R2/R3；`public-web-consensus-v1` 已接入腾讯/东财/新浪三源实时行情。三源至少两源一致才可用，单源异常可剔除；AI个股问答现在会对用户本轮明确证券自动执行一次临时只读查询，因此“没有已冻结MarketSnapshot”不再阻止普通股票情况回答。临时报价不落正式快照、无交易所级 SLA，且固定 `strict_pit_source_verified=false`。P9 Agent Scorecard、P10 Dev Studio、P11 System Health、P12 Mobile / Bot、P13-A Broker Shadow 与 P13-B0 RealTrade Readiness v1 均已完成。B0 已把当前“没有具体券商通道”编码为 `NO_LIVE_BROKER_CHANNEL`。
 - 下一层 P13-B1 只有出现明确可用的具体券商实时**只读**通道后才开始；认证/密钥、真实资金与任何下单/撤单/资金划转仍未启用。B2/B3 若涉及风险门、kill switch、逐单人工确认、订单 Gateway 或真实订单，必须继续单独评审。任何 Paper/Shadow/完整 policy/Agent 判断都不能自动外推为实盘权限。
 - Research Proposal 已完成 approval-time actual-byte freeze；Research Session Grant v1 也已完成：宿主可按证券/日期/周期/因子/模式/有效期与总预算授予有限自主研究，模型只能在该范围内向同一 JobQueue 提交任务，每项仍冻结实际输入；撤销/过期后新任务立即禁止、运行任务在 checkpoint 取消。
 - Watch Sequential Monitor v1 已完成：新 Watch 创建时冻结 family alpha、最小 Rank IC 衰减幅度、新增成熟日期门槛与非重叠 block；重复查看使用 e-process 控制，历史修订/样本不足 fail-closed。旧 Watch 不静默升级，衰减证据只进入人工复核 Agenda，不自动停用/换参数。
@@ -369,6 +372,7 @@ python -m unittest discover -s tests -v
 - [P13-B0 实盘安全门验收说明](牛牛AI交易工作台_P13B0实盘安全门_验收说明.md)：Broker capability、禁用态 safety policy、fail-closed readiness、无券商通道 blocker 与 B1/B2/B3 后续分层。
 - [P8.7 R2/R3 与 MarketSnapshot Provider 验收说明](牛牛AI交易工作台_P8_7R2R3与MarketSnapshotProvider_验收说明.md)：午间/收盘 continuation review、五阶段 Orchestrator 与正式 Provider fail-closed 能力合同。
 - [三源实时 MarketSnapshot Provider v1 验收说明](牛牛AI交易工作台_三源实时MarketSnapshotProvider_验收说明.md)：腾讯主源、东财第二源、新浪备用校验、两源共识、时间戳防脏数据、Strict PIT 边界与 Orchestrator 显式联网授权。
+- [个股问答自动实时行情 v1 验收说明](牛牛AI交易工作台_个股问答自动实时行情V1_验收说明.md)：明确股票问题即本轮只读查询授权、名称/代码解析、单股上下文追问、三源临时报价注入及不写正式MarketSnapshot/Decision/订单边界。
 - [Approval-time Actual-byte Freeze 验收说明](牛牛AI交易工作台_ApprovalTimeActualByteFreeze_验收说明.md)：宿主批准时冻结实际研究输入字节、Universe mask、qfq/raw/context，并从冻结包执行/恢复。
 - [Research Session Grant v1 验收说明](牛牛AI交易工作台_ResearchSessionGrant_验收说明.md)：宿主有限授权、预算/范围/有效期、共享 JobQueue、逐任务实际输入冻结、撤销/过期 fail-closed。
 - [Watch 序贯统计与 Alpha 衰减监测 v1 验收说明](牛牛AI交易工作台_Watch序贯统计与Alpha衰减监测_验收说明.md)：冻结经验基线、非重叠 block、anytime-valid e-process、legacy Watch 兼容与无自动停用边界。

@@ -121,9 +121,9 @@ class ResearchChatDialog(QDialog):
                     if key in self.references:continue
                     self.references[key]=ref
                     identifier=next((ref[k] for k in ('run_id','proposal_id','factor_id','job_id',
-                        'memory_id','watch_id','snapshot_id','item_id','resource_id','skill_key')
+                        'memory_id','watch_id','snapshot_id','item_id','resource_id','skill_key','symbol')
                         if ref.get(k)), '')
-                    entry=QListWidgetItem(ref['kind']+' · '+identifier)
+                    entry=QListWidgetItem(ref['kind']+' · '+str(identifier))
                     entry.setData(Qt.ItemDataRole.UserRole,ref);self.evidence.addItem(entry)
 
     def show_tool(self,item,previous=None):
@@ -232,6 +232,9 @@ class ResearchChatDialog(QDialog):
             elif ref['kind']=='theme_snapshot':self.hide();self.window.navigate_root(1)
             elif ref['kind'] in ('research_skill','research_skill_item','research_skill_resource'):
                 self.open_research_skill_reference(ref)
+            elif ref['kind']=='live_stock_quote':
+                self.details.setPlainText(json.dumps(ref,ensure_ascii=False,indent=2))
+                self.status.setText('临时只读实时报价仅保留在本轮会话证据中；未创建正式 MarketSnapshot。')
         except Exception as error:self.status.setText('引用未打开：'+str(error))
 
     def closeEvent(self,event):
