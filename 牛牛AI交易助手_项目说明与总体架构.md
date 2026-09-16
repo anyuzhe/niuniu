@@ -293,6 +293,8 @@ Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Mon
 
 当前内部主线是：在未来 session 09:15 cutoff 前同步归档首个真实 Universe，并仅在三所完整状态均成立时归档 SecurityStatus；同时继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何 staging、稀疏 receipt、回顾性参考或外部知识评分均不视为完整覆盖/Alpha。
 
+**P14 / AR 自主研究与打板情绪研究线（2026-09-16 建立规划）**：目标是让牛牛围绕行情、市场情绪和打板规律持续做可复现、可证伪的研究。先补正确的涨停事实（按日期生效的涨跌幅制度、触板/炸板/连板、回溯全市场 ST/停牌数据）和日度情绪指标，再做收盘后公开证据归档、事件研究与保守成交模型，最后接入 AI 复盘、可验证预测与有限授权的夜间研究循环。所有新数据默认 research_only 或前瞻抓取留证，AI 不获得交易权限。详见《牛牛AI交易助手_自主研究与打板情绪研究_规划与进度》。
+
 ### P8.7 当前边界
 
 Daily Orchestrator v2 是**单交易日、宿主先建计划**的持久状态机：DailyMarket 可显式授权 capture；PREP 使用正式全市场扫描；AUCTION/R1/R2/R3 只消费已经存在的 `LIVE_NEAR_REALTIME MarketSnapshot`。R2 在 11:30、R3 在 15:00 做 continuation review，必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只能延续其中已选标的。若冻结的 PREP CandidateSet 为空，状态机以 `COMPLETE_NO_TRADE` 正常终止并将后续阶段写成 `SKIPPED_NO_TRADE`；若 CandidateSet 非空，即使 PREP `selected_symbols=[]` 也仍等待 AUCTION。它不会自己选择未经审计的实时行情网站，也不会在错过时间窗后生成 SYSTEM_PREDICTION。Provider Registry 当前同时有离线 `manual-import-v1` 与 live `public-web-consensus-v1`。实时 Provider 必须至少两源一致；Orchestrator 默认不联网，只有宿主计划显式 `allow_market_snapshot_capture=true` 才自动抓取；每 Frame 失败冷却30秒、最多3次。公开网页源固定不认证 Strict PIT。

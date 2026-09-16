@@ -364,6 +364,7 @@ python -m unittest discover -s tests -v
 
 - [牛牛 AI 项目说明与总体架构](牛牛AI交易助手_项目说明与总体架构.md)：当前项目定位、StrategySource / Playbook / Daily Decision 主循环和完成度边界。
 - [A股交易工作台改造总计划](牛牛AI交易助手_A股交易工作台改造总计划.md)：P1～P13 与架构 v2 的正式开发路线。
+- [自主研究与打板情绪研究：规划与进度](牛牛AI交易助手_自主研究与打板情绪研究_规划与进度.md)：AR 主线，涨跌幅制度表、涨停事件库、情绪指标与周期、公开证据收盘后归档、事件研究与保守成交模型、AI 复盘/预测校准和自主研究循环；逐步实施进度与验收记录。
 - [P9 Agent Scorecard 验收说明](牛牛AI交易工作台_P9AgentScorecard_验收说明.md)：按任务类型评价、样本门槛、System Baseline 与无总分/无自动调权边界。
 - [P10 Dev Studio 验收说明](牛牛AI交易工作台_P10DevStudio动态Agent_验收说明.md)：isolated worktree、动态 Subagents、path lease、frozen tests、Reviewer 与 Human Merge Gate。
 - [P11 System Health 验收说明](牛牛AI交易工作台_P11SystemHealth_验收说明.md)：Runtime/Research Readiness 双轴、服务/任务/数据/PIT/通知/Dev 只读健康证据与无自动修复边界。

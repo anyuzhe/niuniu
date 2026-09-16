@@ -290,6 +290,7 @@ Offscreen GUI tests exercise controls and application logic. They do not replace
 
 Detailed design and historical development documents are currently in Chinese:
 
+- [Autonomous research and limit-up / sentiment research plan](牛牛AI交易助手_自主研究与打板情绪研究_规划与进度.md): AR roadmap for date-aware price-limit rules, a limit-up event library, market sentiment metrics and cycles, after-close public evidence capture, event studies with conservative fills, AI reviews/calibrated predictions and an autonomous research loop, with step-by-step progress and acceptance records.
 - [Overall design and architecture](统一技术交易因子实验平台_总体方案与架构说明.md): target architecture, including unfinished capabilities.
 - [Prospective 2026-09-17 Universe / SecurityStatus evidence-stage acceptance](牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md): review baseline, official specification semantics, bounded source diagnostics, closed archive gates, and the pre-09:15 runbook (Chinese).
 - [Automatic live quotes for explicit stock questions v1](牛牛AI交易工作台_个股问答自动实时行情V1_验收说明.md): turn-scoped authorization, consensus lookup, context injection, and the non-persistent/non-trading boundary (Chinese).

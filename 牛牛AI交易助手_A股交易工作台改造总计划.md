@@ -381,6 +381,13 @@ HIGH/CRITICAL 必须 Developer + Reviewer + 人工批准；任何 Agent 均不�
 - **P13-B2/B3**：认证/密钥、风险限额执行、逐单人工确认、kill switch、订单 Gateway、真实回执/成交/撤单对账和最终真实订单继续分层单独评审。
 - 不得把 Paper fill、Mobile 按钮、AI Decision、Shadow MATCH、完整 policy 或 Agent 共识直接映射为真实订单。
 
+### P14 自主研究与打板情绪研究线（AR，2026-09-16 建立规划）
+
+- 权威规划与进度：[牛牛AI交易助手_自主研究与打板情绪研究_规划与进度.md](牛牛AI交易助手_自主研究与打板情绪研究_规划与进度.md)。
+- 范围：AR-1 打板研究数据底座（按日期生效的涨跌幅制度表、涨停状态、回溯全市场日线、涨停事件库、情绪指标与周期）；AR-2 公开市场证据收盘后归档；AR-3 事件研究、打板成交模型与题材引擎；AR-4 AI 只读工具、收盘复盘与预测校准；AR-5 研究计划授权与夜间自主研究循环；AR-6 付费/Level-2 数据只预留。
+- 边界：新数据默认 research_only 或前瞻抓取留证，不冒充 strict PIT / official rule；AI 只读与预注册研究，不给 shell、写代码、联网或交易权限；不自动下单。
+- 已定：每步独立本地提交不推送；付费源暂不接；授权收盘后低频公开数据归档；盘中/竞价采集待授权。
+
 ## 16. Research Lab 基础设施并行线
 
 产品层改造期间继续按原计划补：
@@ -428,6 +435,8 @@ Git 纪律：
 - 2026-09-13：P6 策略动作状态机完成。Strategy Intent 已正式约束 DISCOVERED/WATCH/READY/PLAN_OPEN/OPEN/ADD/HOLD/REDUCE/EXIT 与 INVALIDATED/REJECTED/EXPIRED；非法跳级、同 Frame 重复当前状态、历史插入和后续状态下改写旧动作均被阻断；当前状态按 trading_day + Frame 业务时间计算，策略意图继续与 Paper/真实成交严格分离。最终全仓 720 项通过，隔离端到端新增研究任务 0、模型写状态工具 0。阶段说明见 `牛牛AI交易工作台_P6策略动作状态机_验收说明.md`。下一阶段：P7 今日交易驾驶舱。
 
 - 2026-09-13：P7 今日交易驾驶舱完成。默认首页已统一聚合 Strategy Intent、Theme Snapshot 正式 facts、已保存 AI Thesis、Risk Review、Research Agenda 与 Watch；默认日期取工作空间最新有证据的业务日，不按自然时钟猜盘中 Frame；首页只读，不调用模型、不刷新 Watch、不下载或执行研究。最终全仓 724 项通过，隔离端到端新增研究任务 0、Watch/失败任务归档前后未改。阶段说明见 `牛牛AI交易工作台_P7今日交易驾驶舱_验收说明.md`。下一阶段：P8 AI Team / Peer Review。
+
+- 2026-09-16：建立 P14 / AR 自主研究与打板情绪研究线规划（基线 `bada159`），实施进度与验收记录统一维护在《牛牛AI交易助手_自主研究与打板情绪研究_规划与进度》。
 
 ## 20. AI Team / Dev Studio 记忆架构：Git-first Markdown Memory
 
