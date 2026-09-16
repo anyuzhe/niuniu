@@ -16,8 +16,10 @@ class UniverseConfig:
     mode: str = 'explicit'
     min_listed_days: int = 0
     reference_manifest: str | None = None
+    pit_snapshot_ids: tuple[str,...] = ()
 
     def __post_init__(self):
+        if isinstance(self.pit_snapshot_ids,list):object.__setattr__(self,'pit_snapshot_ids',tuple(self.pit_snapshot_ids))
         if self.mode not in {'explicit','listing','pit'}:
             raise ValueError('universe mode must be explicit, listing or pit')
         if type(self.min_listed_days) is not int or self.min_listed_days < 0:
@@ -26,6 +28,12 @@ class UniverseConfig:
             raise ValueError('min_listed_days only applies to listing mode')
         if self.reference_manifest is not None and (self.mode!='listing' or not isinstance(self.reference_manifest,str) or not self.reference_manifest.strip()):
             raise ValueError('Baostock reference archives support retrospective listing eligibility only; verified historical publication times are required for PIT')
+        snapshots=self.pit_snapshot_ids
+        if (not isinstance(snapshots,tuple) or len(snapshots)!=len(set(snapshots))
+                or any(not isinstance(value,str) or len(value)!=64 or any(c not in '0123456789abcdef' for c in value) for value in snapshots)):
+            raise ValueError('pit_snapshot_ids must be unique lowercase SHA256 values')
+        if self.mode!='pit' and snapshots:
+            raise ValueError('pit_snapshot_ids only apply to pit universe mode')
 
 
 class HistoricalUniverse:
@@ -88,6 +96,54 @@ class HistoricalUniverse:
         return pl.DataFrame(decisions).sort('symbol','datetime')
 
 
+class PITReceiptUniverse:
+    """Exact-session membership from deeply verified complete universe receipts."""
+    def __init__(self,symbols,receipts,config):
+        self.symbols=tuple(symbols);self.config=config;self.universe_id='pit_universe_receipt_v1'
+        self.receipts=tuple(receipts);self._by_session={}
+        for receipt in self.receipts:self._by_session.setdefault(receipt['effective_session'],[]).append(receipt)
+        self.metadata={'receipt_contract':'niuniu-pit-universe-v1','official_source':True,
+            'historical_publication_verified':True,'snapshots':[row['universe_snapshot'] for row in self.receipts],
+            'knowledge_policy':'exact effective-session receipt only; missing or ambiguous session is ineligible'}
+        self.version='1.0.0:'+digest({'symbols':self.symbols,'snapshots':self.metadata['snapshots'],'config':config})
+
+    def _resolve(self,sessions):
+        prefix={'sh':'SSE','sz':'SZSE','bj':'BSE'}
+        required={prefix.get(symbol[:2]) for symbol in self.symbols};required.discard(None)
+        selected={};missing=[];ambiguous=[];scope_missing=[]
+        for session in sorted(set(sessions)):
+            candidates=[]
+            for receipt in self._by_session.get(session,[]):
+                covered=set(receipt['scope']['exchanges'])
+                if required<=covered:candidates.append(receipt)
+            if not candidates:
+                if self._by_session.get(session):scope_missing.append(session)
+                else:missing.append(session)
+            elif len(candidates)>1:ambiguous.append(session)
+            else:selected[session]=candidates[0]
+        return selected,missing,ambiguous,scope_missing
+
+    def coverage(self,bars):
+        sessions=[value.date().isoformat() for value in bars['datetime'].to_list()] if bars.height else []
+        selected,missing,ambiguous,scope_missing=self._resolve(sessions)
+        return {'format':'niuniu-pit-universe-request-coverage-v1',
+            'verified':bool(sessions) and not missing and not ambiguous and not scope_missing,
+            'requested_sessions':len(set(sessions)),'covered_sessions':len(selected),
+            'missing_sessions':missing,'ambiguous_sessions':ambiguous,'scope_missing_sessions':scope_missing,
+            'universe_snapshots':[selected[key]['universe_snapshot'] for key in sorted(selected)],
+            'scope':'Every requested bar session requires exactly one deeply verified complete receipt covering all requested symbol exchanges.'}
+
+    def mask(self,bars):
+        if bars.is_empty():return bars.select('symbol','datetime',pl.lit(False).alias('eligible'))
+        sessions=[value.date().isoformat() for value in bars['datetime'].to_list()]
+        selected,_,_,_=self._resolve(sessions);members={key:{row['symbol'] for row in receipt['members']} for key,receipt in selected.items()}
+        rows=[]
+        for symbol,moment in bars.select('symbol','datetime').iter_rows():
+            rows.append({'symbol':symbol,'datetime':moment,
+                'eligible':bool(symbol in self.symbols and symbol in members.get(moment.date().isoformat(),set()))})
+        return pl.DataFrame(rows)
+
+
 def build_universe(root, symbols, config=None):
     config = config or UniverseConfig()
     from quantlab.storage.approval_inputs import is_approval_freeze_root,frozen_universe
@@ -99,6 +155,16 @@ def build_universe(root, symbols, config=None):
         from quantlab.data.reference_archive import listing_reference
         frame,metadata=listing_reference(config.reference_manifest,symbols)
         return HistoricalUniverse(symbols,frame,config,metadata)
+    if config.mode=='pit':
+        root_path=Path(root).resolve();archive=root_path/'research/pit_universe'
+        if config.pit_snapshot_ids or archive.exists():
+            from quantlab.data.pit_universe import audit_pit_universe,list_pit_universe_snapshots,load_pit_universe_snapshot
+            audit=audit_pit_universe(root_path)
+            if audit['invalid_receipts']:raise ValueError('PIT universe archive contains invalid receipts')
+            receipts=([load_pit_universe_snapshot(root_path,value) for value in config.pit_snapshot_ids]
+                if config.pit_snapshot_ids else list_pit_universe_snapshots(root_path))
+            if not receipts:raise ValueError('PIT universe receipt archive has no verified snapshots')
+            return PITReceiptUniverse(symbols,receipts,config)
     relative = 'lake/bronze/provider=baostock/stock_basic/stock_basic.parquet' if config.mode=='listing' else 'research/universe_events.parquet'
     path=Path(root)/relative
     payload=path.read_bytes();frame=pl.read_parquet(io.BytesIO(payload))

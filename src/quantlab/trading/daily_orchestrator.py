@@ -95,19 +95,29 @@ class DailyPlaybookOrchestrator:
         state.setdefault('events',[]).append({'at':stamp.isoformat(),'status':status,'detail':str(detail)[:500]})
         if len(state['events'])>500:state['events']=state['events'][-500:]
 
-    def create_plan(self,trading_day,as_of_session,definition_id,*,target_streak=None,allow_daily_market_capture=False,allow_market_snapshot_capture=False,bridge_to_trading_desk=False):
+    def create_plan(self,trading_day,as_of_session,definition_id,*,target_streak=None,universe_snapshot=None,allow_daily_market_capture=False,allow_market_snapshot_capture=False,bridge_to_trading_desk=False):
         trading_day=_day(trading_day,'trading_day');as_of_session=_day(as_of_session,'as_of_session')
         if date.fromisoformat(as_of_session)>=date.fromisoformat(trading_day):
             raise DailyOrchestratorError('INVALID_ARGUMENT','as_of_session 必须早于 trading_day。')
         identifier(definition_id,'definition_id');PlaybookStore(self.output).get_definition(definition_id)
         if target_streak is not None and (type(target_streak) is not int or not 1<=target_streak<=10):
             raise DailyOrchestratorError('INVALID_ARGUMENT','target_streak 必须为1–10或None。')
+        if universe_snapshot is not None and (not isinstance(universe_snapshot,str) or len(universe_snapshot)!=64
+                or any(c not in '0123456789abcdef' for c in universe_snapshot)):
+            raise DailyOrchestratorError('INVALID_ARGUMENT','universe_snapshot 必须为小写 SHA256。')
+        if universe_snapshot is not None:
+            try:
+                from quantlab.data.pit_universe import load_pit_universe_snapshot
+                load_pit_universe_snapshot(self.data_root,universe_snapshot,effective_session=trading_day)
+            except (OSError,ValueError,TypeError,KeyError) as exc:
+                raise DailyOrchestratorError('PIT_UNIVERSE_INVALID','目标交易日 PIT Universe snapshot 无效：'+str(exc)) from None
         if any(type(v) is not bool for v in (allow_daily_market_capture,allow_market_snapshot_capture,bridge_to_trading_desk)):
             raise DailyOrchestratorError('INVALID_ARGUMENT','capture/bridge 开关必须是布尔值。')
         spec={'trading_day':trading_day,'as_of_session':as_of_session,'definition_id':definition_id,
             'target_streak':target_streak,'allow_daily_market_capture':allow_daily_market_capture,
             'allow_market_snapshot_capture':allow_market_snapshot_capture,
             'bridge_to_trading_desk':bridge_to_trading_desk,'data_root':str(self.data_root)}
+        if universe_snapshot is not None:spec['universe_snapshot']=universe_snapshot
         plan_id=str(uuid5(NAMESPACE_URL,'niuniu-daily-orchestrator-plan:'+digest(spec)))
         stamp=_stamp(self.now_fn())
         with self._locked(trading_day):
@@ -173,7 +183,9 @@ class DailyPlaybookOrchestrator:
                 stage['status']='MISSED';self._event(state,stamp,'BLOCKED_PREP_MISSED','PREP 实时窗口已错过，禁止历史补写 SYSTEM_PREDICTION。')
             return False
         if stage.get('status')!='RESERVED':
-            try:scan=scan_prep_universe(self.data_root,state['as_of_session'],target_streak=state['target_streak'],daily_market_output=self.output)
+            try:scan=scan_prep_universe(self.data_root,state['as_of_session'],target_streak=state['target_streak'],
+                universe_snapshot=state.get('universe_snapshot'),universe_effective_session=state['trading_day'] if state.get('universe_snapshot') else None,
+                daily_market_output=self.output)
             except PrepScanError as exc:
                 self._event(state,stamp,'BLOCKED_PREP_DATA',exc.code+': '+str(exc));return False
             if scan['route']['action']=='UNKNOWN' and scan['target_streak'] is None:
@@ -356,7 +368,7 @@ class DailyPlaybookOrchestrator:
             state=self._load(trading_day)
             if state['status'] in TERMINAL:return state
             # Old v1 in-progress plans are upgraded in place; historical terminal plans remain untouched.
-            state.setdefault('allow_market_snapshot_capture',False)
+            state.setdefault('allow_market_snapshot_capture',False);state.setdefault('universe_snapshot',None)
             state.setdefault('r2',{'status':'PENDING'});state.setdefault('r3',{'status':'PENDING'})
             state['supported_frames']=['PREP','AUCTION','R1','R2','R3'];state.pop('unsupported_frames',None)
             try:

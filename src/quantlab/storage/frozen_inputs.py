@@ -2,11 +2,12 @@
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
+import json
 import polars as pl
 from quantlab.data.base import DataBatch, DataRequest, DataSnapshot, ExplicitUniverse
-from quantlab.data.universe import HistoricalUniverse, UniverseConfig
+from quantlab.data.universe import HistoricalUniverse, PITReceiptUniverse, UniverseConfig
 from quantlab.domain import Timeframe
-from quantlab.storage.codec import digest
+from quantlab.storage.codec import digest,encode
 
 
 class CaptureData:
@@ -38,6 +39,10 @@ def freeze_inputs(data, universe, manifest):
             if provider.config.mode=='listing':
                 frame=frame.select(pl.col('symbol').alias('code'),pl.col('listed').dt.strftime('%Y-%m-%d').alias('ipoDate'),pl.col('delisted').dt.strftime('%Y-%m-%d').fill_null('').alias('outDate'))
             return {'kind':'historical','symbols':list(provider.symbols),'config':asdict(provider.config),'metadata':provider.metadata,'frame':save(frame),'version':provider.version}
+        if isinstance(provider,PITReceiptUniverse):
+            frozen=pl.DataFrame({'receipt_json':[encode(list(provider.receipts))]})
+            return {'kind':'pit_universe_receipt','symbols':list(provider.symbols),'config':asdict(provider.config),
+                'frame':save(frozen),'version':provider.version}
         if isinstance(provider,_PeriodUniverse):return {'kind':'period','source':universe_spec(provider.source),'name':provider.name,'start':provider.start.isoformat(),'end':provider.end.isoformat()}
         if isinstance(provider,_CommonUniverse):return {'kind':'common','frame':save(provider.values),'id':provider.universe_id,'version':provider.version}
         return {'kind':'unsupported','id':provider.universe_id,'version':provider.version}
@@ -65,6 +70,12 @@ def load_frozen_inputs(path, manifest):
         if kind=='historical':
             result=HistoricalUniverse(spec['symbols'],frame(spec['frame']),UniverseConfig(**spec['config']),spec['metadata'])
             if result.version!=spec['version']:raise ValueError('Historical universe version mismatch')
+            return result
+        if kind=='pit_universe_receipt':
+            frozen=frame(spec['frame'])
+            if frozen.columns!=['receipt_json'] or frozen.height!=1:raise ValueError('Frozen PIT universe receipt frame invalid')
+            receipts=json.loads(frozen['receipt_json'][0]);result=PITReceiptUniverse(spec['symbols'],receipts,UniverseConfig(**spec['config']))
+            if result.version!=spec['version']:raise ValueError('PIT universe version mismatch')
             return result
         if kind=='period':
             from quantlab.experiments.holdout import _PeriodUniverse

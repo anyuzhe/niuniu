@@ -77,7 +77,8 @@ class StrictPITCoverageTests(unittest.TestCase):
     def test_verified_receipts_are_grouped_by_year_symbol_and_scope(self):
         self.archive_all_kinds()
         value=strict_pit_coverage(self.root,symbols=['sh.600000','sz.000001'],start='2025-01-01',end='2025-12-31')
-        self.assertEqual(value['status'],'EVIDENCE_PRESENT_NOT_CERTIFIED_COMPLETE')
+        self.assertEqual(value['status'],'PARTIAL_EVIDENCE')
+        self.assertIn('NO_VERIFIED_PIT_UNIVERSE_RECEIPTS',{row['code'] for row in value['gaps']})
         by=value['strict_evidence']['by_kind']
         self.assertEqual(by['universe_eligibility']['verified_statements'],1)
         self.assertEqual(by['security_status']['verified_statements'],1)

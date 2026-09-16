@@ -196,8 +196,9 @@ def _active_as_of(rows,as_of):
     return next((row for row in reversed(rows) if row['date']==as_of),None)
 
 
-def _candidate(symbol,row,streak,quality):
+def _candidate(symbol,row,streak,quality,universe_evidence_id=None):
     evidence=[row['security_status_evidence_id']] if row.get('security_status_evidence_id') else []
+    if universe_evidence_id:evidence.append(universe_evidence_id)
     return {'symbol':symbol,'eligibility_reasons':[f'{row["date"].isoformat()}收盘连续{streak}板'],
         'features':{'prior_streak':streak,'last_close':float(row['close']),
             'previous_trade_close':row['previous_trade_close'],'limit_up_price':row['limit_up_price'],
@@ -231,7 +232,8 @@ def _daily_market_overlay(output,as_of,lookback_sessions):
 
 
 def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules=None,
-        universe_symbols=None,universe_pit_verified=False,lookback_sessions=12,daily_market_output=None):
+        universe_symbols=None,universe_pit_verified=False,universe_snapshot=None,
+        universe_effective_session=None,lookback_sessions=12,daily_market_output=None):
     root=Path(data_root).resolve();as_of=_day(as_of_session,'as_of_session')
     if type(lookback_sessions) is not int or not 3<=lookback_sessions<=60:
         raise PrepScanError('INVALID_ARGUMENT','lookback_sessions 必须为3–60。')
@@ -240,6 +242,23 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
     rules=MarketRules(market_rules) if isinstance(market_rules,list) else market_rules
     if rules is not None and not isinstance(rules,MarketRules):
         raise PrepScanError('INVALID_ARGUMENT','market_rules 必须是 MarketRules 或规则数组。')
+    universe_receipt=None;universe_receipt_summary=None;universe_evidence_id=None
+    if universe_snapshot is not None:
+        if universe_effective_session is None:
+            raise PrepScanError('INVALID_ARGUMENT','引用 PIT Universe snapshot 时必须指定 universe_effective_session。')
+        try:
+            from quantlab.data.pit_universe import load_pit_universe_snapshot
+            universe_receipt=load_pit_universe_snapshot(root,universe_snapshot,effective_session=universe_effective_session)
+        except (OSError,ValueError,TypeError,KeyError) as exc:
+            code=getattr(exc,'code','SNAPSHOT_INVALID')
+            raise PrepScanError('PIT_UNIVERSE_'+code,'PIT Universe receipt 校验失败：'+str(exc)) from None
+        receipt_symbols=[row['symbol'] for row in universe_receipt['members']]
+        if universe_symbols is not None and (len(universe_symbols)!=len(receipt_symbols) or set(universe_symbols)!=set(receipt_symbols)):
+            raise PrepScanError('PIT_UNIVERSE_MEMBERSHIP_MISMATCH','显式 universe_symbols 必须与 PIT Universe receipt 完全一致，禁止子集扫描冒充完整候选集。')
+        universe_symbols=receipt_symbols;universe_evidence_id='pit_universe:'+universe_receipt['universe_snapshot']
+        universe_receipt_summary={key:universe_receipt[key] for key in ('universe_snapshot','effective_session','available_at','cutoff_at','created_at','member_count','members_digest','scope')}
+    elif universe_effective_session is not None:
+        raise PrepScanError('INVALID_ARGUMENT','universe_effective_session 只能与 universe_snapshot 同时使用。')
     directory=_daily_directory(root)
     if directory.is_symlink() or not directory.is_dir():
         raise PrepScanError('DATA_NOT_FOUND','找不到原始日线目录。')
@@ -268,7 +287,7 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
                 raise PrepScanError('INVALID_ARGUMENT','universe_symbols 含无效证券。')
             if symbol not in seen:seen.append(symbol)
         paths=[(symbol,directory/(symbol.replace('.','_')+'.parquet')) for symbol in seen]
-        universe_mode='EXPLICIT'
+        universe_mode='PIT_UNIVERSE_RECEIPT' if universe_receipt is not None else 'EXPLICIT'
     if len(paths)>10000:
         raise PrepScanError('BUDGET_EXCEEDED','全市场证券数超过10000，拒绝静默截断。')
     stat_dates=[]
@@ -329,6 +348,7 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
         raise PrepScanError('NO_AS_OF_DATA','指定 as_of_session 没有任何可扫描日线。')
     status_identity=None if status_manifest is None else {k:status_manifest.get(k) for k in ('table_sha256','evidence_digest','rows')}
     source_hash=digest({'files':file_hashes,'daily_market':overlay_evidence,'security_status':status_identity,
+        'pit_universe_snapshot':universe_receipt['universe_snapshot'] if universe_receipt else None,
         'as_of_session':as_of.isoformat(),'lookback_sessions':lookback_sessions})
     breadth_up=breadth_down=limit_up_count=limit_down_count=0;max_streak=0
     candidate_counts={};candidates=[]
@@ -356,7 +376,7 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
         if unofficial_rule_sources:blockers.append('market_rule_source_not_official_exchange_url')
         if official_rule_receipt is not None and not official_rule_receipt.get('verified'):
             blockers.append(official_rule_receipt.get('reason','official_rule_receipt_unverified'))
-    if universe_mode!='EXPLICIT' or not universe_pit_verified:
+    if universe_receipt is None:
         blockers.append('pit_universe_not_certified')
     completeness='FULL' if not blockers else 'PARTIAL'
     pit_status='STRICT_PIT' if not blockers else 'RETROSPECTIVE_REFERENCE'
@@ -376,10 +396,14 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
     if effective_target is not None:
         for item in records:
             if item['streak']==effective_target and item['current']['tradable']:
-                candidates.append(_candidate(item['symbol'],item['current'],effective_target,quality))
+                candidates.append(_candidate(item['symbol'],item['current'],effective_target,quality,universe_evidence_id))
     candidates.sort(key=lambda row:row['symbol'])
     return {'as_of_session':as_of.isoformat(),'latest_available_session':latest_available_session.isoformat() if latest_available_session else None,
         'universe_mode':universe_mode,'universe_file_count':len(paths),'active_symbol_rows':len(records),
+        'universe_snapshot':universe_receipt['universe_snapshot'] if universe_receipt else None,
+        'universe_effective_session':universe_receipt['effective_session'] if universe_receipt else None,
+        'universe_receipt':universe_receipt_summary,'universe_evidence_id':universe_evidence_id,
+        'legacy_universe_pit_assertion_ignored':bool(universe_pit_verified and universe_receipt is None),
         'missing_files':missing_files,'stale_as_of_symbols':stale_as_of_symbols,'managed_status_rows':managed_status_count,
         'strict_security_status_rows':strict_status_count,'strict_security_status_observations':strict_status_observations,
         'security_status_materialized':status_manifest is not None,'security_status_evidence_ids':sorted(status_evidence_ids),
@@ -408,7 +432,8 @@ def prep_market_snapshot_content(scan,trading_day,as_of,data_root):
             'last':f['last_close'],'limit_up_price':f['limit_up_price'],'tradable':f['tradable'],
             'execution_profile':'UNKNOWN','metrics':{'prior_streak':f['prior_streak'],'rule_quality':f['rule_quality']}})
     metrics={**scan['market_metrics'],'route':scan['route'],'blockers':scan['blockers'],
-        'quality':scan['quality'],'target_streak':scan['target_streak'],'target_source':scan['target_source']}
+        'quality':scan['quality'],'target_streak':scan['target_streak'],'target_source':scan['target_source'],
+        'universe_snapshot':scan.get('universe_snapshot'),'universe_effective_session':scan.get('universe_effective_session')}
     return {'trading_day':trading,'frame':'PREP','as_of':moment.isoformat(),
         'provider':'niuniu-prep-universe-scan','provider_ref':str(Path(data_root).resolve()),
         'source_hash':scan['source_hash'],'completeness':scan['completeness'],'instruments':instruments,
@@ -419,6 +444,9 @@ def build_prep_forward_payload(scan,snapshot,definition):
     if scan['route']['action']=='UNKNOWN' and scan['target_streak'] is None:
         raise PrepScanError('ROUTE_UNKNOWN','市场节点Router未给出目标身位；可保存PREP快照，但不能冻结CandidateSet。')
     evidence=['market_snapshot:'+snapshot['snapshot_id']]
+    if scan.get('universe_evidence_id'):evidence.append(scan['universe_evidence_id'])
+    if scan.get('official_rules_verified') and scan.get('rule_snapshot_id'):
+        evidence.append('official_market_rules:'+scan['rule_snapshot_id'])
     candidates=[]
     for item in scan['candidates']:
         candidates.append({**item,'evidence_ids':list(dict.fromkeys(item.get('evidence_ids',[])+evidence))})
@@ -431,7 +459,7 @@ def build_prep_forward_payload(scan,snapshot,definition):
         'summary':f"PREP自动扫描：node={scan['route']['market_node']} target={target} action={action}",
         'notes':f"router={ROUTER_VERSION}; origin={ROUTER_ORIGIN}; blockers={','.join(scan['blockers']) or 'none'}",
         'candidate_set':{'completeness':scan['completeness'],'pit_status':pit,
-            'universe_source':f"prep_universe_scan:{scan['source_hash']}",
+            'universe_source':(scan['universe_evidence_id'] if scan.get('universe_evidence_id') else f"prep_universe_scan:{scan['source_hash']}"),
             'generation_method':f"{ROUTER_VERSION}; target_source={scan['target_source']}",
             'candidates':candidates,'evidence_ids':evidence},
         'prediction':{'selected_symbols':[],'ranked_symbols':[], 'reasons':{},'evidence_ids':evidence,

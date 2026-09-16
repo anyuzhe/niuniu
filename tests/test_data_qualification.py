@@ -11,6 +11,7 @@ from quantlab.execution.rules import MarketRules
 from quantlab.agent.proposals import ProposalService
 from quantlab.agent.planning import ProposalError
 from quantlab.data.pit_evidence import archive_pit_evidence
+from quantlab.data.pit_universe import archive_pit_universe
 from quantlab.workbench.jobs import JobQueue
 
 
@@ -156,7 +157,7 @@ class DataQualificationTests(unittest.TestCase):
             self.assertFalse(malformed['verified']);self.assertEqual(malformed['reason'],'official_rule_document_path_invalid')
 
 
-    def test_pit_universe_requires_archived_authoritative_publication_receipt(self):
+    def test_pit_universe_requires_complete_exact_session_receipts(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);batch=self.trusted_batch(root);provider=type('P',(),{'load':lambda _s,_r:batch})()
             research=root/'research';research.mkdir();stamp=datetime(2025,1,1,15,tzinfo=__import__('zoneinfo').ZoneInfo('Asia/Shanghai'))
@@ -166,12 +167,28 @@ class DataQualificationTests(unittest.TestCase):
                 'adjustment':'raw','factor':'BASE.MOMENTUM','parameters':{'lookback':1},'horizons':[1],'quantiles':2,
                 'replay':True,'qualification':'strict_pit','universe':{'mode':'pit'}}
             with patch('quantlab.data.provider.local_data_provider',return_value=provider):missing=qualify_research(root,spec)
-            self.assertIn('pit_universe_timing_present_but_provenance_not_certified',missing['blockers'])
+            self.assertIn('pit_universe_complete_snapshot_receipt_missing',missing['blockers'])
             source='https://www.sse.com.cn/assortment/stock/list/share/'
             document=root/'sse-universe.html';document.write_text('official eligibility publication fixture')
             archive_pit_evidence(root,'universe_eligibility',[event],source,'2025-01-01T14:00:00+08:00',document,confirm_publication_time=True)
+            with patch('quantlab.data.provider.local_data_provider',return_value=provider):legacy=qualify_research(root,spec)
+            self.assertIn('pit_universe_complete_snapshot_receipt_missing',legacy['blockers'])
+            snapshots=[]
+            for session in ('2025-01-02','2025-01-03'):
+                plan={'format':'niuniu-pit-universe-plan-v1','effective_session':session,
+                    'cutoff_at':session+'T09:15:00+08:00','scope':{'market':'CN_A_SHARE','exchanges':['SSE'],
+                        'instrument_types':['A_SHARE'],'completeness':'FULL_OFFICIAL_LIST'},
+                    'sources':[{'source_id':'sse-list','exchange':'SSE','url':source,
+                        'published_at':'2025-01-01T08:00:00+08:00','available_at':'2025-01-01T09:00:00+08:00',
+                        'document':str(document),'sha256':hashlib.sha256(document.read_bytes()).hexdigest()}],
+                    'members':[{'symbol':'sh.600000','source_id':'sse-list'}]}
+                snapshots.append(archive_pit_universe(root,plan,confirm_publication_times=True,
+                    confirm_semantic_mapping=True,confirm_complete_official_universe=True,
+                    now_fn=lambda:datetime.fromisoformat('2025-01-01T10:00:00+08:00'))['universe_snapshot'])
+            spec={**spec,'universe':{'mode':'pit','pit_snapshot_ids':snapshots}}
             with patch('quantlab.data.provider.local_data_provider',return_value=provider):good=qualify_research(root,spec)
-            self.assertTrue(good['qualified'],good);self.assertTrue(good['components']['universe']['evidence'][0]['historical_publication_verified'])
+            self.assertTrue(good['qualified'],good);self.assertEqual(good['components']['universe']['status'],'strict_pit')
+            self.assertEqual(good['components']['universe']['evidence'][1]['covered_sessions'],2)
 
     def test_legacy_research_only_job_can_migrate_on_explicit_resume(self):
         from quantlab.storage.codec import encode

@@ -10,7 +10,7 @@ P11 System Health 是**只读可观察性层**，不是自动修复器，也不�
 - Notification Qt hand-off 不等于用户已看见；应用内 notice 是权威提醒。
 - 历史 Orchestrator blocker 必须保留，但不能永久阻断今天；当天 blocker 才进入当前 BLOCKED。
 - Artifact growth 使用快速顶层代理，不允许为了健康页递归扫描整个 artifacts 大树。
-- PIT/Playbook 组件对 Official MarketRules v2 做全局 receipt/records/官方原文字节完整性审计；invalid receipt 必须 WARN，不能被当成空库。该 inventory 不是最新 CandidateSet 的 case-specific coverage 证明。
+- PIT/Playbook 组件对 PIT Universe v1 与 Official MarketRules v2 做全局 receipt/records/官方原文字节完整性审计；invalid receipt 必须 WARN，不能被当成空库。该 inventory 不是最新 CandidateSet 的 case-specific snapshot/coverage 证明。
 - System Health 不自动 restart、retry、download、接受数据修订、修改 PIT、merge/push 或交易。
 - AI/MCP 只能只读调用 `get_system_health`。
 - P11 相关状态语义变化必须同步验收说明与开发史。

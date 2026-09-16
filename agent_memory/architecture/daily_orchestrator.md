@@ -14,6 +14,7 @@ P8.7 当前版只负责编排，不定义新交易规则；实时行情由独立
 - R2/R3 只做 continuation review：必须引用前一阶段真实冻结的 SYSTEM_PREDICTION，只能延续其中 selected 的股票，禁止在盘中后段自动新增标的。
 - BACKFILL MarketSnapshot 永远不能被 Orchestrator 当实时预测输入。
 - CandidateSet/PIT 不完整时允许正常冻结 NO_TRADE；自动化不是降低证据门槛的理由。
+- 计划可固定目标交易日 `universe_snapshot`；PREP 必须深验该 `niuniu-pit-universe-v1` receipt 的 `effective_session == trading_day` 并扫描全部 members。缺 snapshot 时保持 PARTIAL；旧 `universe_pit_verified` 布尔值无认证权。
 - PREP 已冻结且 CandidateSet 为空时，不存在可供后续 Frame 抓取的证券：可先落 Trading Desk NO_TRADE receipt，再进入终态 `COMPLETE_NO_TRADE`，AUCTION/R1/R2/R3 标记 `SKIPPED_NO_TRADE / EMPTY_PREP_CANDIDATE_SET`。
 - 必须区分“空 CandidateSet”和“非空 CandidateSet 但 PREP `selected_symbols=[]`”：后者只是盘前不提前选具体股票，仍应等待 AUCTION，不能提前终止。
 - AI/Reviewer/MCP 无 init/tick/run 权限；宿主负责计划和运行授权。

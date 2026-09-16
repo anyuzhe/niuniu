@@ -31,11 +31,11 @@ Official MarketRules 不计入上面四类 PIT statement 数量，但其最高�
 
 ## Qualification / Freeze 边界
 
-- PIT Universe 只有 `effective_at + available_at` 但没有 receipt 时，只能是 `timing_contract_only`；receipt 全覆盖后才允许 `historical_publication_verified=true`。
+- 零散 PIT Universe eligibility statement 即使逐条有 publication receipt，也只能证明对应 statement；完整市场人口必须另有 `niuniu-pit-universe-v1` exact-session receipt。每个请求 session 要求唯一完整 snapshot，否则只能是 `timing_contract_only/incomplete`。
 - SecurityStatus / Industry / daily market cap 的 Strict PIT 都不能只检查 URL 域名；缺 receipt 时不得升级。SecurityStatus 另受 `security_status.md` 的稀疏事件边界约束。
 - `research_only / retrospective_reference` 不因 v1 证据门变严而失效；它们继续按原口径使用回顾性资料。
 - Approval-time Actual-byte Freeze 会冻结已验证的 universe metadata 与资格回执，执行/恢复不得重新解释成更高或更低等级。
 - `niuniu-pit-evidence` 是宿主工具；archive 必须显式 `--confirm-publication-time`，CLI 不自动下载官方网页。
 - System Health 的 PIT/Playbook 组件显示 receipt 数量；receipt 损坏显示 WARN，不能静默当作空库。
 
-当前独立数据根 `/Volumes/Lexar/niuniu-data` 已有 14 条 `security_status` verified receipt（7只深市股票的明确停牌/复牌及 ST 生效事件）；其它三类仍为 0。另有 1 个 MarketRules v2 snapshot，覆盖同7只股票各1个明确停牌 session，共7条规则。7个复牌 session 已有1个深验通过的回顾性推导 reference snapshot（7组 exact 算术值），但 Strict PIT eligible records=0、MarketRules appended=0。禁止把这些稀疏事件或参考值写成“历史 Strict PIT/MarketRules 覆盖已完成”。
+当前独立数据根 `/Volumes/Lexar/niuniu-data` 已有 14 条 `security_status` verified receipt（7只深市股票的明确停牌/复牌及 ST 生效事件）；其它三类 statement 仍为 0，PIT Universe v1 真实 snapshot 也仍为 0。另有 1 个 MarketRules v2 snapshot，覆盖同7只股票各1个明确停牌 session，共7条规则。7个复牌 session 已有1个深验通过的回顾性推导 reference snapshot（7组 exact 算术值），但 Strict PIT eligible records=0、MarketRules appended=0。禁止把这些稀疏事件或参考值写成“历史 Strict PIT/MarketRules 覆盖已完成”。

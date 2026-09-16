@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import hashlib
 import tempfile
 import unittest
 from datetime import date,datetime,timezone
@@ -11,6 +12,7 @@ from uuid import uuid4
 import polars as pl
 
 from quantlab.data.daily_market_archive import DailyMarketArchive,EXPECTED_FIELDS
+from quantlab.data.pit_universe import archive_pit_universe
 from quantlab.trading.daily_orchestrator import DailyOrchestratorError,DailyPlaybookOrchestrator
 from quantlab.trading.market_snapshot import MarketSnapshotStore
 from quantlab.trading.playbook_store import PlaybookError,PlaybookStore
@@ -98,6 +100,27 @@ class DailyOrchestratorTests(unittest.TestCase):
                     'volume':2000,'amount':25000,'tradable':True,'execution_profile':'STANDARD_ACCESS','metrics':{}}],
             'market_metrics':{},'notes':''}
         return MarketSnapshotStore(self.output,now_fn=lambda:datetime.fromisoformat(captured)).create(str(uuid4()),content)
+
+    def test_plan_binds_only_verified_exact_trading_day_universe_snapshot(self):
+        document=self.root/'universe.json';document.write_text('{"symbols":["sh.600001"]}')
+        plan={'format':'niuniu-pit-universe-plan-v1','effective_session':'2026-09-14',
+            'cutoff_at':'2026-09-14T09:15:00+08:00','scope':{'market':'CN_A_SHARE','exchanges':['SSE'],
+                'instrument_types':['A_SHARE'],'completeness':'FULL_OFFICIAL_LIST'},
+            'sources':[{'source_id':'sse-list','exchange':'SSE','url':'https://www.sse.com.cn/test/list',
+                'published_at':'2026-09-13T14:00:00+08:00','available_at':'2026-09-13T15:00:00+08:00',
+                'document':str(document),'sha256':hashlib.sha256(document.read_bytes()).hexdigest()}],
+            'members':[{'symbol':'sh.600001','source_id':'sse-list'}]}
+        snapshot=archive_pit_universe(self.data,plan,confirm_publication_times=True,
+            confirm_semantic_mapping=True,confirm_complete_official_universe=True,
+            now_fn=lambda:datetime.fromisoformat('2026-09-13T16:00:00+08:00'))['universe_snapshot']
+        now=datetime.fromisoformat('2026-09-13T18:00:00+08:00')
+        state=self.service(now).create_plan('2026-09-14','2026-09-11',self.definition['definition_id'],
+            target_streak=2,universe_snapshot=snapshot)
+        self.assertEqual(state['universe_snapshot'],snapshot)
+        with self.assertRaises(DailyOrchestratorError) as ctx:
+            self.service(now).create_plan('2026-09-15','2026-09-14',self.definition['definition_id'],
+                target_streak=2,universe_snapshot=snapshot)
+        self.assertEqual(ctx.exception.code,'PIT_UNIVERSE_INVALID')
 
     def test_plan_defaults_to_no_network_and_waits_for_daily_market(self):
         now=datetime.fromisoformat('2026-09-13T19:00:00+08:00');state=self.init(now,allow=False)

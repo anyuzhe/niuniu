@@ -13,6 +13,7 @@ from quantlab.trading.market_snapshot import MarketSnapshotStore
 from quantlab.execution.rules import MarketRules
 from quantlab.data.daily_market_archive import DailyMarketArchive,EXPECTED_FIELDS
 from quantlab.data.pit_evidence import archive_pit_evidence
+from quantlab.data.pit_universe import archive_pit_universe
 from quantlab.data.security_status import materialize_security_status
 
 
@@ -74,6 +75,21 @@ class PrepScannerTests(unittest.TestCase):
              'published_at':'2026-09-06T16:00:00+08:00','publication_time_confirmed':True}]}
         (receipt_dir/(snapshot+'.json')).write_text(json.dumps(receipt));return snapshot
 
+    def archive_universe(self,symbols,session='2026-09-10'):
+        exchanges={'sh':'SSE','sz':'SZSE','bj':'BSE'};hosts={'SSE':'www.sse.com.cn','SZSE':'www.szse.cn','BSE':'www.bse.cn'}
+        exchange=exchanges[symbols[0][:2]];self.assertTrue(all(exchanges[s[:2]]==exchange for s in symbols))
+        document=self.root/('universe-'+exchange+'.json');document.write_text(json.dumps({'symbols':symbols}))
+        source_id=exchange.lower()+'-a-share-list';plan={'format':'niuniu-pit-universe-plan-v1',
+            'effective_session':session,'cutoff_at':session+'T09:15:00+08:00',
+            'scope':{'market':'CN_A_SHARE','exchanges':[exchange],'instrument_types':['A_SHARE'],'completeness':'FULL_OFFICIAL_LIST'},
+            'sources':[{'source_id':source_id,'exchange':exchange,'url':'https://'+hosts[exchange]+'/test/universe',
+                'published_at':'2026-09-09T15:00:00+08:00','available_at':'2026-09-09T16:00:00+08:00',
+                'document':str(document),'sha256':hashlib.sha256(document.read_bytes()).hexdigest()}],
+            'members':[{'symbol':symbol,'source_id':source_id} for symbol in symbols]}
+        return archive_pit_universe(self.data,plan,confirm_publication_times=True,
+            confirm_semantic_mapping=True,confirm_complete_official_universe=True,
+            now_fn=lambda:datetime.fromisoformat('2026-09-09T17:00:00+08:00'))['universe_snapshot']
+
     def archive_security_status(self,symbol,rows):
         document=self.root/'status-evidence.pdf';document.write_bytes(b'%PDF strict status fixture')
         url='https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-09-06/status.PDF'
@@ -115,13 +131,27 @@ class PrepScannerTests(unittest.TestCase):
         closes1=[10.0,11.0,12.1];closes2=[10.0,10.2,10.3]
         self.write_symbol('sh.600001',closes1);self.write_symbol('sh.600002',closes2)
         rules=self.rules_for('sh.600001',closes1)+self.rules_for('sh.600002',closes2)
-        self.archive_rules(rules)
+        self.archive_rules(rules);universe=self.archive_universe(['sh.600001','sh.600002'])
         scan=scan_prep_universe(self.data,'2026-09-09',target_streak=2,market_rules=rules,
-            universe_symbols=['sh.600001','sh.600002'],universe_pit_verified=True,lookback_sessions=3)
+            universe_snapshot=universe,universe_effective_session='2026-09-10',lookback_sessions=3)
         self.assertEqual(scan['completeness'],'FULL');self.assertEqual(scan['pit_status'],'STRICT_PIT')
         self.assertEqual(scan['quality'],'OFFICIAL_RULES');self.assertFalse(scan['blockers'])
         self.assertEqual([x['symbol'] for x in scan['candidates']],['sh.600001'])
-        self.assertTrue(scan['rule_snapshot_id'])
+        self.assertTrue(scan['rule_snapshot_id']);self.assertEqual(scan['universe_snapshot'],universe)
+        self.assertEqual(scan['universe_mode'],'PIT_UNIVERSE_RECEIPT')
+        self.assertIn('pit_universe:'+universe,scan['candidates'][0]['evidence_ids'])
+
+    def test_pit_universe_session_and_full_membership_are_exact(self):
+        self.write_symbol('sh.600001',[10.0,11.0,12.1]);self.write_symbol('sh.600002',[10.0,10.2,10.3])
+        snapshot=self.archive_universe(['sh.600001','sh.600002'])
+        with self.assertRaises(PrepScanError) as session:
+            scan_prep_universe(self.data,'2026-09-09',target_streak=2,
+                universe_snapshot=snapshot,universe_effective_session='2026-09-11',lookback_sessions=3)
+        self.assertEqual(session.exception.code,'PIT_UNIVERSE_SESSION_MISMATCH')
+        with self.assertRaises(PrepScanError) as subset:
+            scan_prep_universe(self.data,'2026-09-09',target_streak=2,universe_symbols=['sh.600001'],
+                universe_snapshot=snapshot,universe_effective_session='2026-09-10',lookback_sessions=3)
+        self.assertEqual(subset.exception.code,'PIT_UNIVERSE_MEMBERSHIP_MISMATCH')
 
     def test_complete_rule_json_without_archived_official_receipt_is_not_strict(self):
         closes=[10.0,11.0,12.1];self.write_symbol('sh.600001',closes)
@@ -131,6 +161,8 @@ class PrepScannerTests(unittest.TestCase):
         self.assertEqual(scan['completeness'],'PARTIAL');self.assertEqual(scan['pit_status'],'RETROSPECTIVE_REFERENCE')
         self.assertEqual(scan['quality'],'EXPLICIT_RULES_UNVERIFIED')
         self.assertIn('official_rule_receipt_missing',scan['blockers'])
+        self.assertIn('pit_universe_not_certified',scan['blockers'])
+        self.assertTrue(scan['legacy_universe_pit_assertion_ignored'])
         self.assertFalse(scan['official_rules_verified'])
 
     def test_missing_rule_session_never_silently_infers_strict_limit(self):

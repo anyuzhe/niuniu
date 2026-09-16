@@ -3,7 +3,7 @@
 宿主批准研究 Proposal 时，必须先冻结该次执行实际使用的规范化输入字节，再把 Proposal 标记为 approved / submitted。
 
 - 权威目录：`_approval_input_freezes/<proposal_id>/`；一个 Proposal 对应一个 append-only 冻结包。
-- 冻结内容覆盖主行情、Context、高精账户模式所需 qfq/raw 双价格输入，以及 Universe eligibility mask。
+- 冻结内容覆盖主行情、Context、高精账户模式所需 qfq/raw 双价格输入，以及 Universe eligibility mask；PIT Universe v1 同时冻结完整 receipt JSON/membership 与版本，不在执行时回读变化后的 archive。
 - Campaign 各 node 共享同一 approval bundle，但 manifest 保留 node/role 关联；Holdout/Walk-forward 可从已冻结的大区间只读切片。
 - 冻结包保存源 `DataSnapshot` 身份与原文件校验信息，同时对冻结 Parquet/Universe 文件保存独立 SHA256。
 - 执行产物继续保留原 provider / adjustment 语义；`approval_time_frozen=true` 放在文件元数据与 approval receipt 中，不伪造新的行情来源口径。

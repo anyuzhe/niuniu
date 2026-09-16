@@ -187,12 +187,24 @@ def qualify_research(data_root,spec):
         from quantlab.data.universe import build_universe
         built=build_universe(root,config.data.symbols,universe);built.mask(bars)
         provenance=(getattr(built,'metadata',{}) or {})
-        if not provenance.get('official_source') and not provenance.get('historical_publication_verified'):
-            result['blockers'].append('pit_universe_timing_present_but_provenance_not_certified')
-            status='timing_contract_only'
-        else:status='strict_pit'
-        result['components']['universe']=_component(status,
-            'PIT universe uses effective_at and available_at; provenance certification is evaluated separately.',[provenance])
+        if hasattr(built,'coverage'):
+            coverage=built.coverage(bars)
+            if not coverage['verified']:
+                result['blockers'].append('pit_universe_daily_receipt_coverage_incomplete')
+                if coverage['missing_sessions']:result['blockers'].append('pit_universe_receipt_session_missing')
+                if coverage['ambiguous_sessions']:result['blockers'].append('pit_universe_receipt_session_ambiguous')
+                if coverage['scope_missing_sessions']:result['blockers'].append('pit_universe_receipt_scope_incomplete')
+            status='strict_pit' if coverage['verified'] else 'incomplete'
+            result['components']['universe']=_component(status,
+                'Every requested session is bound to exactly one complete, prospective PIT Universe v1 receipt.',
+                [provenance,coverage],['Receipt coverage applies only to its declared exchanges and A-share instrument scope.'])
+        else:
+            result['blockers'].append('pit_universe_complete_snapshot_receipt_missing')
+            if not provenance.get('official_source') and not provenance.get('historical_publication_verified'):
+                result['blockers'].append('pit_universe_timing_present_but_provenance_not_certified')
+            result['components']['universe']=_component('timing_contract_only',
+                'Legacy eligibility events do not prove a complete daily market population; PIT Universe v1 receipts are required.',
+                [provenance],['Individual positive/negative statements cannot certify that no securities were omitted.'])
     if level=='official_rule_covered':
         if submission.mode!='execution':
             result['blockers'].append('official_rule_covered_requires_execution_mode')

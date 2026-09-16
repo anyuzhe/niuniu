@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--trading-day',required=True,help='本次PREP对应的目标交易日')
     parser.add_argument('--target-streak',type=int,help='宿主显式覆盖目标身位；不等于专家规则')
     parser.add_argument('--market-rules-json');parser.add_argument('--universe-json')
+    parser.add_argument('--universe-snapshot',help='目标 trading-day 的 PIT Universe v1 snapshot SHA256')
     parser.add_argument('--snapshot-as-of',help='带时区ISO时间；默认使用当前Asia/Shanghai时钟')
     parser.add_argument('--save-snapshot',action='store_true')
     parser.add_argument('--freeze',action='store_true',help='保存快照并尝试冻结PREP SYSTEM_PREDICTION')
@@ -41,6 +42,8 @@ def main():
         rules=_read_json(args.market_rules_json);universe=_symbols(args.universe_json)
         scan=scan_prep_universe(args.data_root,args.as_of_session,target_streak=args.target_streak,
             market_rules=rules,universe_symbols=universe,universe_pit_verified=False,
+            universe_snapshot=args.universe_snapshot,
+            universe_effective_session=args.trading_day if args.universe_snapshot else None,
             daily_market_output=args.output)
         result={'ok':True,'scan':scan,'snapshot':None,'freeze':None}
         if args.save_snapshot or args.freeze:

@@ -56,9 +56,9 @@
 
 知识存储采用双轨：Git/Markdown 保存人类可读规则、经验、架构和 Agent Operating Memory；结构化存储保存来源哈希、CandidateSet、MarketSnapshot、Decision、PIT、实验、成交和收益。
 
-当前正式代码全仓基线：**982 passed / 0 failed / 0 skipped**。
-当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.6-A/B/C External Research Skill Adapter + Git Archive/Curation + Read-only Library、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio / P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage/SecurityStatus 和 Official MarketRules publication receipt v2 + 全局深度审计。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session，另有7个复牌日 exact 算术回顾性参考但未获得 Strict PIT 资格。郑希上游Git字节已归档、生成首个回顾性DRAFT策展包并接入精确snapshot只读检索，但未写StrategySource/Playbook且未完成Quant Validation。
-外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部并行主线：持续真实前瞻每日运行，优先建设 PIT Universe/连续 SecurityStatus，并继续寻找复牌日开盘前静态参数 publication receipt，再推进历史行业与每日真实市值。
+当前正式代码全仓基线：**990 passed / 0 failed / 0 skipped**（非Desktop 871 + Desktop 119）。
+当前已完成：P1～P8、P8.5-A～E1、P8.6 StrategySource、P8.6-A/B/C External Research Skill Adapter + Git Archive/Curation + Read-only Library、P8.7 Daily Orchestrator（含 R2/R3、三源实时 MarketSnapshot Provider 与空候选 `COMPLETE_NO_TRADE`）、P8.8 长期 Paper 核心闭环、P9 Agent Scorecard v1、P10 Dev Studio / P11 System Health v1、P12 Mobile / Bot v1、P13-A Broker Read-only / Shadow v1、P13-B0 RealTrade Readiness v1，以及 Research Lab Approval-time Actual-byte Freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage/SecurityStatus、PIT Universe Receipt v1 工程合同和 Official MarketRules publication receipt v2 + 全局深度审计。2026-09-16 首轮当前工作空间前瞻 PREP 已以 `EXTREME_RISK / NO_TRADE` 正常留证；MarketRules 真实证据现有7个停牌 session，另有7个复牌日 exact 算术回顾性参考但未获得 Strict PIT 资格。郑希上游Git字节已归档、生成首个回顾性DRAFT策展包并接入精确snapshot只读检索，但未写StrategySource/Playbook且未完成Quant Validation。
+外部下一阶段：P13-B1 Live Read-only Broker Adapter，等待明确券商通道；内部并行主线：持续真实前瞻每日运行，经宿主授权取得首个未来 session PIT Universe snapshot，优先建设连续 SecurityStatus，并继续寻找复牌日开盘前静态参数 publication receipt，再推进历史行业与每日真实市值。
 
 ## 4. 第一阶段：统一量化研究平台形成（2026-09-10 ～ 2026-09-12）
 
@@ -341,6 +341,7 @@
 | 2026-09-16 | External Research Skill Adapter / 郑希 SOURCE_REQUIRED 脚手架 | **971 passed / 0 failed / 0 skipped** |
 | 2026-09-16 | External Research Skill Git Archive / 郑希回顾性策展包 | **976 passed / 0 failed / 0 skipped** |
 | 2026-09-16 | Research Skill Library / Agent只读检索 | **982 passed / 0 failed / 0 skipped** |
+| 2026-09-16 | PIT Universe Receipt v1 / Qualification-PREP-Orchestrator接线 | **990 passed / 0 failed / 0 skipped** |
 
 说明：本表只记录仓库文档中已有明确证据的基线，不补猜未记录阶段的测试数量。
 
@@ -752,3 +753,16 @@
 - 测试：Library新增专项6/6；Research Skill/Playbook/MCP聚焦集成12/12。完整仓库按互斥集合复核为非Desktop **863/863** + Desktop **119/119**，合计 **982 tests / 0 failed / 0 skipped**，两进程退出码均为0。覆盖未授权snapshot、lineage漂移、Git dirty、UTF-8 byte边界、参数Schema、桌面入口、Peer Review和MCP只读注解。
 - 文档：新增《牛牛AI交易工作台_ResearchSkillLibrary只读集成_验收说明.md》，同步README、总体架构、总计划、核心进度、Research Skill说明和Agent Memory。
 - 后续：Library只解决受控读取，不解决source authenticity/publication receipt。下一步仍是宿主语义复核与官方原始响应；是否显式创建PARTIAL StrategySource必须另行决定。
+
+### 2026-09-16｜[数据资格/全集完整性] PIT Universe Receipt v1
+
+- 问题：旧 `universe_eligibility` receipt 只能证明单条证券资格，不能证明目标交易日证券全集无遗漏；调用方 `universe_pit_verified=True` 也不应拥有自我认证权。
+- 合同：新增 `niuniu-pit-universe-v1`，每个 snapshot 精确绑定一个 `effective_session`、声明 exchanges/A_SHARE scope、全部 members、逐成员 source、官方原文字节/SHA256 及 publication/availability/cutoff。
+- 防回填：强制 `published_at <= available_at <= created_at <= cutoff_at <= session 09:15 Asia/Shanghai`；cutoff 后首次创建拒绝。相同已验证 snapshot 重试幂等，receipt/document append-only、symlink/篡改/路径逃逸 fail-closed。
+- 宿主边界：archive 完全离线，要求 publication time、语义映射、完整官方全集三项独立确认；本轮未授权联网，因此真实 `niuniu-data` snapshot 仍为0，没有用当前列表补历史。
+- 接线：`UniverseConfig.pit_snapshot_ids` 与 Qualification 对每个 bar session 要求唯一 receipt；approval-time freeze 保存完整 receipt membership；PREP/Orchestrator 校验 snapshot session 等于目标 trading day 并扫描全部 members；snapshot 进入 source hash、MarketSnapshot、CandidateSet universe_source/evidence。
+- 可观察性：Coverage 新增 PIT Universe archive inventory/gap；System Health 深验 receipt/member/document，invalid receipt WARN，但全局库存不冒充最新 CandidateSet coverage。
+- 工具：新增 `niuniu-pit-universe`、`quantlab pit-universe-archive`、`quantlab pit-universe-audit`，均不下载网络数据。
+- 测试：专项覆盖确认门、时间链、幂等、文档/receipt篡改、scope/source/member绑定、Qualification逐日覆盖、PREP证据链和approval freeze恢复，46/46；完整仓库按互斥集合为非Desktop 871/871 + Desktop 119/119，合计990/0/0。
+- 文档：新增《牛牛AI交易工作台_PITUniverseReceiptV1_验收说明.md》与 `agent_memory/architecture/pit_universe.md`，同步README、总体架构、总计划、核心进度及相关Memory。
+- 后续：经宿主明确授权，为未来交易日在09:15 cutoff前保存首个真实官方全集 snapshot；随后实现连续 SecurityStatus v2 的进入/持续/撤销与每日覆盖证明。

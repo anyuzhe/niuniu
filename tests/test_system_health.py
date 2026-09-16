@@ -92,6 +92,28 @@ class SystemHealthTests(unittest.TestCase):
         self.assertFalse(broken['evidence']['official_rule_receipt_present']);self.assertEqual(audit['invalid_receipts'],1)
         self.assertIn('official_rule_receipts_invalid',broken['warnings'])
 
+    def test_pit_universe_inventory_is_visible_and_tampering_warns(self):
+        import hashlib
+        from quantlab.data.pit_universe import archive_pit_universe
+        document=self.root/'universe.json';document.write_text('{"symbols":["sh.600000"]}')
+        plan={'format':'niuniu-pit-universe-plan-v1','effective_session':'2026-09-16',
+            'cutoff_at':'2026-09-16T09:15:00+08:00','scope':{'market':'CN_A_SHARE','exchanges':['SSE'],
+                'instrument_types':['A_SHARE'],'completeness':'FULL_OFFICIAL_LIST'},
+            'sources':[{'source_id':'sse-list','exchange':'SSE','url':'https://www.sse.com.cn/test/list',
+                'published_at':'2026-09-15T08:00:00+08:00','available_at':'2026-09-15T08:30:00+08:00',
+                'document':str(document),'sha256':hashlib.sha256(document.read_bytes()).hexdigest()}],
+            'members':[{'symbol':'sh.600000','source_id':'sse-list'}]}
+        result=archive_pit_universe(self.data,plan,confirm_publication_times=True,
+            confirm_semantic_mapping=True,confirm_complete_official_universe=True,
+            now_fn=lambda:datetime.fromisoformat('2026-09-15T09:00:00+08:00'))
+        health=self.service().build()['components']['pit_playbook'];audit=health['evidence']['pit_universe_archive']
+        self.assertEqual(audit['verified_receipts'],1);self.assertEqual(audit['member_records'],1)
+        receipt=json.loads(Path(result['path']).read_text());receipt['members'][0]['symbol']='sh.600001'
+        Path(result['path']).write_text(json.dumps(receipt))
+        broken=self.service().build()['components']['pit_playbook']
+        self.assertEqual(broken['evidence']['pit_universe_archive']['invalid_receipts'],1)
+        self.assertIn('pit_universe_receipts_invalid',broken['warnings'])
+
     def test_unread_notification_is_attention_not_data_correctness(self):
         watch=str(uuid4());folder=self.output/'_tracking_control'/watch;folder.mkdir(parents=True)
         write_checked(folder/'state.json',{'watch_id':watch,'notices':{'n1':{'unread':True}}})

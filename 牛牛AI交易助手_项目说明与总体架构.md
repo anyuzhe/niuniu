@@ -4,7 +4,7 @@
 - 架构口径更新：2026-09-16
 - 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；External Research Skill v3 已固定真实Git archive/策展包并接入只读Library；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `982 passed / 0 failed / 0 skipped`
+- 当前稳定基线：PIT Universe Receipt v1 工程合同与 Qualification/PREP/Orchestrator 接线已完成（真实 snapshot 仍为0）；SecurityStatus 7只证券/14条 verified receipt；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；External Research Skill v3 已固定真实Git archive/策展包并接入只读Library；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `990 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -160,7 +160,8 @@ Playbook 不能只靠文字经验进入当天交易。任何规则都必须经�
 - Holdout / Walk-forward / Campaign / Bootstrap / 多重检验；
 - T+1、停牌、涨跌停、费用、滑点、资金占用与成交可达性；
 - 前瞻 `SYSTEM_PREDICTION` 与历史 `HUMAN_RECONSTRUCTION` 严格分离；
-- Official MarketRules 按 snapshot append-only 保存实际 records、官方原文 SHA256 与宿主确认的 publication time，`published_at > available_at` 时 fail-closed。
+- Official MarketRules 按 snapshot append-only 保存实际 records、官方原文 SHA256 与宿主确认的 publication time，`published_at > available_at` 时 fail-closed；
+- PIT Universe 按 effective session append-only 固定完整声明 scope、全部 members、逐来源官方字节和 `published_at / available_at / created_at / cutoff_at`，零散 eligibility statement 或当前股票列表不能证明全集。
 
 验证目标至少拆成三件事：
 
@@ -248,7 +249,8 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | Approval-time Actual-byte Freeze | **已完成 v1**：人工批准时冻结实际规范化研究输入、qfq/raw/context 与 Universe mask；执行/恢复不再读取变化后的源数据 |
 | Research Session Grant | **已完成 v1**：宿主显式授权证券/日期/周期/因子/模式/有效期与总计算预算；AI 可在范围内提交有限研究，使用同一 JobQueue 和逐任务 input freeze，可撤销 |
 | Watch Sequential Monitor | **已完成 v1**：新 Watch 冻结 family alpha / min_effect / min_new_dates / block_sessions，新增成熟日进入非重叠 block + mixture e-process；legacy Watch 不静默升级，越界只触发人工复核 |
-| Strict PIT Evidence Archive | **已完成 v1 基础设施**：支持 Universe / SecurityStatus / Industry / Daily Market Cap 四类 statement；当前 `niuniu-data` 已有 SecurityStatus 14条/7只股票，其它三类仍为0 |
+| Strict PIT Evidence Archive | **已完成 v1 基础设施**：支持 Universe eligibility / SecurityStatus / Industry / Daily Market Cap 四类 statement；当前 `niuniu-data` 已有 SecurityStatus 14条/7只股票，其它三类仍为0 |
+| PIT Universe Receipt | **v1 工程完成、真实数据待前瞻获取**：目标 session 完整 scope/member、官方原文 SHA256、三项宿主确认、cutoff 防回填、append-only audit；Qualification/PREP/Orchestrator/approval freeze 已接线。真实 `niuniu-data` snapshot=0 |
 | Strict PIT Coverage | **已完成 v1**：深度验证 receipt 后按年份/证券/字段展示 evidence presence，并分开展示回顾性 inventory 与 gap；不生成数据集总覆盖率；当前 SecurityStatus 有14条 verified evidence，其它三类仍缺 |
 | Strict PIT SecurityStatus | **第二批真实资料已接入**：累计7份深交所官方公告→14条状态事件→silver派生表→PREP消费；稀疏 receipt 只证明明确生效日，不跨日外推 |
 | Official MarketRules Receipt | **v2、首批真实资料与全局审计已完成**：按 snapshot append-only 保存 records/官方原文/`published_at`；CLI/System Health 深度核验1个 receipt、7条停牌规则、7份原文。7个复牌日已另核出 exact 算术参考值，但历史行情 byte vintage 只在事后取得，reference audit 固定 Strict PIT eligible=0、MarketRules appended=0；全市场覆盖仍缺 |
@@ -271,7 +273,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | 动态跨日 Paper / fill→Intent / Rebalance / D1-D3+ Review | **P8.8-C v1 已完成**；仍需真实前瞻运行样本积累 |
 | Real Broker / Order Submission | **P13-B1+ 尚未开始**；B1 先做具体券商实时只读，B2/B3 的认证/风险门/订单继续单独评审 |
 
-当前生产代码最近完整回归基线：**982 tests / 0 failed / 0 skipped**（非Desktop 863 + Desktop 119）。
+当前生产代码最近完整回归基线：**990 tests / 0 failed / 0 skipped**（非Desktop 871 + Desktop 119）。PIT Universe v1 工程通过不代表真实数据资格已自动升级。
 ## 12. 后续开发主线
 
 P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，后续不再用假 Gateway 推进：
@@ -280,7 +282,7 @@ P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
 3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已补齐。后续外部数据升级目标是券商/QMT/交易所级行情；内部 Research Lab 下一主线转为**真实官方历史资料归档与 receipt coverage 提升**，而不是再改 Strict PIT/Coverage 引擎。
 
-Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。Official MarketRules publication receipt v2 已落地，并把同7份公告映射为7个明确停牌 session；7个复牌日的官方前收+比例+公式 exact 算术值也已形成回顾性 reference snapshot，但因缺开盘前 publication receipt 没有追加 MarketRules。External Research Skill v3 已把首个真实 Git 上游固定、选择性策展并接入宿主授权只读Library，但仍只形成 PARTIAL StrategySource 预览和 Playbook DRAFT 候选，不改变数据优先级。当前内部主线仍是当前时点可前瞻留存的 **PIT Universe 与连续 SecurityStatus 状态链**，并继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何稀疏 receipt、回顾性参考或外部知识评分均不视为完整覆盖/Alpha。
+Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已完成；SecurityStatus 第二批后累计 7 只证券、14 条 verified receipt。Official MarketRules publication receipt v2 已落地，并把同7份公告映射为7个明确停牌 session；7个复牌日的官方前收+比例+公式 exact 算术值也已形成回顾性 reference snapshot，但因缺开盘前 publication receipt 没有追加 MarketRules。External Research Skill v3 已把首个真实 Git 上游固定、选择性策展并接入宿主授权只读Library，但仍只形成 PARTIAL StrategySource 预览和 Playbook DRAFT 候选，不改变数据优先级。PIT Universe v1 代码合同已经落地，但真实前瞻 snapshot 尚未取得；当前内部主线因此转为：经宿主明确授权后在未来 session cutoff 前归档首个真实 Universe，同时建设**连续 SecurityStatus 状态链**，并继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何稀疏 receipt、回顾性参考或外部知识评分均不视为完整覆盖/Alpha。
 
 ### P8.7 当前边界
 

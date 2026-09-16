@@ -212,6 +212,14 @@ def main() -> None:
     dividends.add_argument('--include-stock-distributions',action='store_true',help='导入送转比例和上市时间，零碎股默认拒绝')
     dividends.add_argument('--tax-rate',type=float,required=True,help='显式固定税率假设，不是个人税法计算')
     dividends.add_argument('--output',type=Path,required=True)
+    pit_universe_archive=commands.add_parser('pit-universe-archive',help='离线归档目标交易日完整官方证券全集；禁止历史回填')
+    pit_universe_archive.add_argument('--data-root',type=Path,required=True)
+    pit_universe_archive.add_argument('--plan',type=Path,required=True)
+    pit_universe_archive.add_argument('--confirm-publication-times',action='store_true')
+    pit_universe_archive.add_argument('--confirm-semantic-mapping',action='store_true')
+    pit_universe_archive.add_argument('--confirm-complete-official-universe',action='store_true')
+    pit_universe_audit=commands.add_parser('pit-universe-audit',help='只读深验全部PIT Universe v1回执、成员和官方原文字节')
+    pit_universe_audit.add_argument('--data-root',type=Path,required=True)
     rules_audit=commands.add_parser('market-rules-audit',help='按请求交易日检查规则覆盖，包含无订单日期')
     rules_audit.add_argument('--data-root',type=Path,required=True)
     rules_audit.add_argument('--symbols',nargs='+',required=True)
@@ -326,6 +334,18 @@ def main() -> None:
         result=import_cash_dividends(args.data_root,args.symbols,args.tax_rate,include_stock=args.include_stock_distributions)
         args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(encode(result))
         print(encode({'path':args.output,'cash_actions':len(result['corporate_actions']),'unresolved':len(result['unresolved']),'strict_pit_ready':False}));return
+    if args.command=='pit-universe-archive':
+        from quantlab.data.pit_universe import archive_pit_universe
+        if args.plan.is_symlink() or not args.plan.is_file() or args.plan.stat().st_size>10_000_000:
+            raise ValueError('PIT Universe plan缺失、为符号链接或超过10MB')
+        plan=json.loads(args.plan.read_text())
+        print(encode(archive_pit_universe(args.data_root,plan,
+            confirm_publication_times=args.confirm_publication_times,
+            confirm_semantic_mapping=args.confirm_semantic_mapping,
+            confirm_complete_official_universe=args.confirm_complete_official_universe)));return
+    if args.command=='pit-universe-audit':
+        from quantlab.data.pit_universe import audit_pit_universe
+        print(encode(audit_pit_universe(args.data_root)));return
     if args.command=='market-rules-audit':
         import polars as pl
         from quantlab.execution.rules import MarketRules
