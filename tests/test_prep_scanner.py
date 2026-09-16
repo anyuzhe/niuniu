@@ -217,7 +217,8 @@ class PrepScannerTests(unittest.TestCase):
         self.assertEqual(scan['candidate_count'],0)
 
     def test_verified_security_status_fills_status_gap_without_certifying_inferred_limits(self):
-        symbol='sz.000001';self.write_symbol(symbol,[10.0,11.0,11.55])
+        # 2026-07-06 起沪深主板风险警示股票涨跌幅为10%，ST 当日涨停价为 11.0×1.10=12.10。
+        symbol='sz.000001';self.write_symbol(symbol,[10.0,11.0,12.1])
         self.archive_security_status(symbol,[
             {'effective_at':'2026-09-07T09:30:00+08:00','available_at':'2026-09-06T20:00:00+08:00',
              'tradable':True,'risk_warning':'NONE'},
@@ -236,6 +237,23 @@ class PrepScannerTests(unittest.TestCase):
         feature=scan['candidates'][0]['features'];self.assertEqual(feature['risk_warning'],'ST')
         self.assertEqual(feature['status_quality'],'STRICT_PIT_EVIDENCE');self.assertTrue(feature['security_status_evidence_id'])
         self.assertIn(feature['security_status_evidence_id'],scan['candidates'][0]['evidence_ids'])
+
+    def test_inferred_limits_follow_dated_board_and_risk_warning_regime(self):
+        directory=self.data/'lake/bronze/provider=baostock/stock_kline_daily'
+        def write(symbol,days,closes,st):
+            rows=[{'date':d,'code':symbol,'open':c,'high':c,'low':c,'close':c,'volume':1000,'amount':1000.0*c,
+                   'adjustflag':'3','tradestatus':'1','isST':'1' if st else '0'} for d,c in zip(days,closes)]
+            pl.DataFrame(rows).write_parquet(directory/(symbol.replace('.','_')+'.parquet'))
+        before=[date(2026,6,30),date(2026,7,1),date(2026,7,2)];after=[date(2026,9,7),date(2026,9,8),date(2026,9,9)]
+        write('sz.002001',before,[10.0,10.5,11.03],True)
+        scan=scan_prep_universe(self.data,'2026-07-02',target_streak=2,universe_symbols=['sz.002001'],lookback_sessions=3)
+        self.assertEqual([row['symbol'] for row in scan['candidates']],['sz.002001'])
+        write('sz.002002',after,[10.0,10.5,11.03],True)
+        scan=scan_prep_universe(self.data,'2026-09-09',target_streak=2,universe_symbols=['sz.002002'],lookback_sessions=3)
+        self.assertEqual(scan['candidate_count'],0)
+        write('sz.302001',after,[10.0,12.0,14.4],False)
+        scan=scan_prep_universe(self.data,'2026-09-09',target_streak=2,universe_symbols=['sz.302001'],lookback_sessions=3)
+        self.assertEqual([row['symbol'] for row in scan['candidates']],['sz.302001'])
 
     def test_complete_daily_status_v2_is_used_only_for_its_exact_session(self):
         symbol='sh.600001';self.write_symbol(symbol,[10.0,11.0,12.1]);previous=None

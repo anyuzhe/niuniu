@@ -51,6 +51,25 @@ class PlaybookReconstructionTests(unittest.TestCase):
         self.assertEqual(len(exact_limit_streak_candidates(marked,date(2026,6,30),streak=2)),1)
         self.assertEqual(exact_limit_streak_candidates(marked,date(2026,7,1),streak=2),[])
 
+    def test_default_rates_follow_board_reform_dates(self):
+        bars=pl.DataFrame([
+            {'date':date(2020,8,20),'code':'sz.300001','close':10.0},
+            {'date':date(2020,8,21),'code':'sz.300001','close':11.0},
+            {'date':date(2020,8,24),'code':'sz.300001','close':13.2},
+            {'date':date(2026,9,15),'code':'sz.302001','close':10.0},
+            {'date':date(2026,9,16),'code':'sz.302001','close':12.0},
+        ])
+        rows={(r['code'],r['date']):r for r in mark_limit_closes(bars).iter_rows(named=True)}
+        self.assertEqual(rows[('sz.300001',date(2020,8,21))]['limit_rate'],0.10)
+        self.assertTrue(rows[('sz.300001',date(2020,8,21))]['is_limit_close'])
+        self.assertEqual(rows[('sz.300001',date(2020,8,24))]['limit_rate'],0.20)
+        self.assertTrue(rows[('sz.300001',date(2020,8,24))]['is_limit_close'])
+        self.assertTrue(rows[('sz.302001',date(2026,9,16))]['is_limit_close'])
+        unknown=mark_limit_closes(pl.DataFrame([{'date':date(2026,9,15),'code':'sh.900901','close':1.0},
+            {'date':date(2026,9,16),'code':'sh.900901','close':1.1}])).sort('date')
+        self.assertIsNone(unknown.row(1,named=True)['limit_up_price'])
+        self.assertFalse(unknown.row(1,named=True)['is_limit_close'])
+
     def test_invalid_inputs_fail_closed(self):
         with self.assertRaises(ValueError):
             rounded_limit_price(float('nan'),0.10)

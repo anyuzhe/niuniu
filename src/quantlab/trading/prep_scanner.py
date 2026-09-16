@@ -13,7 +13,7 @@ import pyarrow.parquet as pq
 from quantlab.storage.codec import digest
 from quantlab.execution.rules import MarketRules
 from quantlab.data.daily_market_archive import DailyMarketArchive,DailyMarketArchiveError
-from .playbook_reconstruction import default_limit_rate
+from .price_limit_regime import NORMAL, limit_rule
 
 ROUTER_VERSION='market-node-router-v1-20260914'
 ROUTER_ORIGIN='host_engineering_policy_not_expert_rule'
@@ -174,8 +174,12 @@ def _annotate(rows,symbol,rules,status_history=None):
             else:
                 tradable=not rule['suspended'];limit_up=rule['limit_up'];limit_down=rule['limit_down']
         elif reference is not None and tradable and (status_known or status_quality=='VOLUME_HEURISTIC'):
-            rate=0.05 if is_st else default_limit_rate(symbol)
-            limit_up=_round_bound(reference,rate,True);limit_down=_round_bound(reference,rate,False)
+            # Reconstructed dated regime only when no MarketRules were supplied; listing windows are
+            # not resolved here (listing_window_checked=False) and remain an inferred-limit limitation.
+            inferred=limit_rule(symbol,day if isinstance(day,date) else date.fromisoformat(str(day)),is_st=bool(is_st))
+            if inferred['status']==NORMAL:
+                rate=inferred['rate'];limit_up=_round_bound(reference,rate,True);limit_down=_round_bound(reference,rate,False)
+            else:limit_up=limit_down=None
         else:limit_up=limit_down=None
         is_up=bool(tradable and close is not None and limit_up is not None and math.isclose(close,float(limit_up),abs_tol=1e-9))
         is_down=bool(tradable and close is not None and limit_down is not None and math.isclose(close,float(limit_down),abs_tol=1e-9))

@@ -11,11 +11,14 @@ import math
 
 import polars as pl
 
+from .price_limit_regime import NORMAL, limit_rule
+
 MAIN_PREFIXES = ('sh.600','sh.601','sh.603','sh.605','sz.000','sz.001','sz.002','sz.003')
-GROWTH_PREFIXES = ('sz.300','sz.301','sh.688')
+GROWTH_PREFIXES = ('sz.300','sz.301','sz.302','sh.688','sh.689')
 
 
 def default_limit_rate(symbol: str) -> float:
+    """Current-regime non-ST rate by board; historical/ST sessions must use price_limit_regime.limit_rule."""
     symbol = str(symbol).lower()
     if symbol.startswith(GROWTH_PREFIXES):
         return 0.20
@@ -63,9 +66,15 @@ def mark_limit_closes(bars: pl.DataFrame, *, special_rates=None) -> pl.DataFrame
         previous = None
         for row in group.sort('date').iter_rows(named=True):
             day=row['date']; row_rate=row.get('limit_rate')
-            rate = float(row_rate) if row_rate is not None else overrides.get((symbol,day),overrides.get(symbol,default_limit_rate(symbol)))
+            if row_rate is not None:rate=float(row_rate)
+            elif (symbol,day) in overrides or symbol in overrides:rate=overrides.get((symbol,day),overrides.get(symbol))
+            else:
+                # Date-aware reconstructed regime (board reform dates, STAR/BSE opening); ST and
+                # listing windows are unknown here, so non-NORMAL sessions carry no inferred bound.
+                inferred=limit_rule(symbol,day)
+                rate=inferred['rate'] if inferred['status']==NORMAL else None
             tradable=bool(row.get('tradable',True)); close=float(row['close'])
-            limit_up = rounded_limit_price(previous, rate) if tradable and previous is not None else None
+            limit_up = rounded_limit_price(previous, rate) if tradable and previous is not None and rate is not None else None
             records.append({
                 'date': day, 'code': symbol, 'close': close, 'tradable':tradable,
                 'previous_close': previous, 'limit_rate': rate,
