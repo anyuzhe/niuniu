@@ -150,7 +150,8 @@ def strict_pit_coverage(data_root,*,symbols=None,start=None,end=None,detail_limi
     if start and end and start>end:raise ValueError('coverage start cannot exceed end')
     audit=audit_pit_evidence(root);records=audit['records']
     from quantlab.data.pit_universe import audit_pit_universe
-    universe_audit=audit_pit_universe(root)
+    from quantlab.data.security_status_coverage import audit_security_status_coverage
+    universe_audit=audit_pit_universe(root);status_coverage_audit=audit_security_status_coverage(root)
     by_kind={kind:_receipt_summary(records,kind,set(symbols),start,end,detail_limit) for kind in KINDS}
     retrospective={'bars':_bars_inventory(root),
         'stock_basic':_small_table(root,'lake/bronze/provider=baostock/stock_basic/stock_basic.parquet','stock_basic'),
@@ -171,6 +172,24 @@ def strict_pit_coverage(data_root,*,symbols=None,start=None,end=None,detail_limi
             'message':'没有完整逐交易日 PIT Universe v1 回执；零散 eligibility statement 不能证明全集无遗漏。'})
     if universe_audit['invalid_receipts']:
         gaps.append({'code':'INVALID_PIT_UNIVERSE_RECEIPTS','priority':'critical','count':universe_audit['invalid_receipts']})
+    if status_coverage_audit['verified_receipts']==0:
+        gaps.append({'code':'NO_COMPLETE_DAILY_SECURITY_STATUS_RECEIPTS','kind':'security_status_coverage','priority':'high',
+            'message':'没有全Universe逐交易日 SecurityStatus v2 回执；稀疏事件不得跨日传播。'})
+    if status_coverage_audit['invalid_receipts']:
+        gaps.append({'code':'INVALID_SECURITY_STATUS_COVERAGE_RECEIPTS','priority':'critical',
+            'count':status_coverage_audit['invalid_receipts']})
+    non_strict_status=(status_coverage_audit['verified_receipts']-
+        status_coverage_audit['strict_pit_eligible_receipts'])
+    if non_strict_status:
+        gaps.append({'code':'NON_STRICT_SECURITY_STATUS_COVERAGE_RECEIPTS','priority':'high',
+            'count':non_strict_status,'message':'完整逐日receipt仍含UNKNOWN risk_warning，不能通过Strict状态门。'})
+    if status_coverage_audit['ambiguous_sessions']:
+        gaps.append({'code':'AMBIGUOUS_SECURITY_STATUS_COVERAGE_SESSIONS','priority':'critical',
+            'count':len(status_coverage_audit['ambiguous_sessions']),'sessions':status_coverage_audit['ambiguous_sessions'][:20]})
+    if status_coverage_audit['branching_previous_snapshots']:
+        gaps.append({'code':'BRANCHING_SECURITY_STATUS_COVERAGE_CHAIN','priority':'critical',
+            'count':len(status_coverage_audit['branching_previous_snapshots']),
+            'previous_snapshots':status_coverage_audit['branching_previous_snapshots'][:20]})
     if audit['invalid_records']:
         gaps.append({'code':'INVALID_PIT_EVIDENCE_RECEIPTS','priority':'critical','count':audit['invalid_records']})
     bars=retrospective['bars']
@@ -182,15 +201,16 @@ def strict_pit_coverage(data_root,*,symbols=None,start=None,end=None,detail_limi
         gaps.append({'code':'INDUSTRY_SOURCE_IS_SNAPSHOT_ONLY','priority':'high',
             'message':'现有行业表不是历史变更链，禁止向过去回填。'})
     evidence_counts={kind:by_kind[kind]['verified_statements'] for kind in KINDS}
-    total=sum(evidence_counts.values())+universe_audit['verified_receipts']
-    status='NO_STRICT_EVIDENCE' if total==0 else ('PARTIAL_EVIDENCE' if any(v==0 for v in evidence_counts.values()) or universe_audit['verified_receipts']==0 else 'EVIDENCE_PRESENT_NOT_CERTIFIED_COMPLETE')
+    total=sum(evidence_counts.values())+universe_audit['verified_receipts']+status_coverage_audit['verified_receipts']
+    status='NO_STRICT_EVIDENCE' if total==0 else ('PARTIAL_EVIDENCE' if any(v==0 for v in evidence_counts.values()) or universe_audit['verified_receipts']==0 or status_coverage_audit['verified_receipts']==0 else 'EVIDENCE_PRESENT_NOT_CERTIFIED_COMPLETE')
     return {'format':FORMAT,'status':status,'scope':{'symbols':list(symbols),'start':start.isoformat() if start else None,
         'end':end.isoformat() if end else None,'detail_limit':detail_limit},
         'strict_evidence':{'stored_records':audit['stored_records'],'verified_records':audit['verified_records'],
-            'invalid_records':audit['invalid_records'],'by_kind':by_kind,'pit_universe_archive':universe_audit},'retrospective_inventory':retrospective,
+            'invalid_records':audit['invalid_records'],'by_kind':by_kind,'pit_universe_archive':universe_audit,
+            'security_status_coverage_archive':status_coverage_audit},'retrospective_inventory':retrospective,
         'gaps':gaps,'overall_strict_pit_coverage_ratio':None,'dataset_strict_pit_certified':False,
         'qualification_required_for_claim':True,
-        'limitations':['Coverage reports evidence presence and source inventory, not event-history completeness.',
+        'limitations':['Coverage reports evidence presence and source inventory; continuous status requires exact daily v2 receipts and explicit adjacent-session links.',
             'A statement receipt proves only one fact; complete-universe claims additionally require an exact-session PIT Universe v1 receipt.',
             'Only request-scoped qualify_research_data may certify a concrete study as strict_pit.',
             'Retrospective listing, current industry snapshots and bar collection timestamps never count as historical publication evidence.']}

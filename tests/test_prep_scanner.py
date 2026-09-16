@@ -15,6 +15,7 @@ from quantlab.data.daily_market_archive import DailyMarketArchive,EXPECTED_FIELD
 from quantlab.data.pit_evidence import archive_pit_evidence
 from quantlab.data.pit_universe import archive_pit_universe
 from quantlab.data.security_status import materialize_security_status
+from quantlab.data.security_status_coverage import archive_security_status_coverage
 
 
 class _DailyResponse:
@@ -97,6 +98,33 @@ class PrepScannerTests(unittest.TestCase):
         archive_pit_evidence(self.data,'security_status',normalized,url,'2026-09-06T19:00:00+08:00',document,
             confirm_publication_time=True)
         return materialize_security_status(self.data)
+
+    def archive_daily_status(self,symbol,session,previous=None):
+        exchange={'sh':'SSE','sz':'SZSE','bj':'BSE'}[symbol[:2]];host={'SSE':'www.sse.com.cn','SZSE':'www.szse.cn','BSE':'www.bse.cn'}[exchange]
+        observed=(date.fromisoformat(session)-timedelta(days=1)).isoformat()
+        universe_doc=self.root/('daily-status-universe-'+session+'.json');universe_doc.write_text(json.dumps({'symbols':[symbol]}))
+        universe_plan={'format':'niuniu-pit-universe-plan-v1','effective_session':session,
+            'cutoff_at':session+'T09:10:00+08:00','scope':{'market':'CN_A_SHARE','exchanges':[exchange],
+                'instrument_types':['A_SHARE'],'completeness':'FULL_OFFICIAL_LIST'},
+            'sources':[{'source_id':'universe','exchange':exchange,'url':'https://'+host+'/status/universe',
+                'published_at':observed+'T08:00:00+08:00','available_at':observed+'T08:10:00+08:00',
+                'document':str(universe_doc),'sha256':hashlib.sha256(universe_doc.read_bytes()).hexdigest()}],
+            'members':[{'symbol':symbol,'source_id':'universe'}]}
+        universe=archive_pit_universe(self.data,universe_plan,confirm_publication_times=True,
+            confirm_semantic_mapping=True,confirm_complete_official_universe=True,
+            now_fn=lambda:datetime.fromisoformat(observed+'T08:20:00+08:00'))['universe_snapshot']
+        status_doc=self.root/('daily-status-'+session+'.json');status_doc.write_text(json.dumps({'symbol':symbol,'tradable':True,'risk_warning':'NONE'}))
+        status_plan={'format':'niuniu-security-status-coverage-plan-v2','effective_session':session,
+            'cutoff_at':session+'T09:10:00+08:00','universe_snapshot':universe,'previous_status_snapshot':previous,
+            'sources':[{'source_id':'status','exchange':exchange,'url':'https://'+host+'/status/daily',
+                'coverage':['TRADABILITY','RISK_WARNING'],'published_at':observed+'T08:30:00+08:00',
+                'available_at':observed+'T08:35:00+08:00','document':str(status_doc),
+                'sha256':hashlib.sha256(status_doc.read_bytes()).hexdigest()}],
+            'records':[{'symbol':symbol,'tradable':True,'risk_warning':'NONE','source_ids':['status']}]}
+        return archive_security_status_coverage(self.data,status_plan,confirm_publication_times=True,
+            confirm_semantic_mapping=True,confirm_complete_daily_status=True,
+            confirm_previous_session_continuity=previous is not None,
+            now_fn=lambda:datetime.fromisoformat(observed+'T08:45:00+08:00'))['status_snapshot']
 
     def test_router_is_conservative_and_can_no_trade(self):
         unknown=route_market_node({'breadth_up':100,'breadth_down':100,'limit_up_count':20,
@@ -194,6 +222,20 @@ class PrepScannerTests(unittest.TestCase):
         feature=scan['candidates'][0]['features'];self.assertEqual(feature['risk_warning'],'ST')
         self.assertEqual(feature['status_quality'],'STRICT_PIT_EVIDENCE');self.assertTrue(feature['security_status_evidence_id'])
         self.assertIn(feature['security_status_evidence_id'],scan['candidates'][0]['evidence_ids'])
+
+    def test_complete_daily_status_v2_is_used_only_for_its_exact_session(self):
+        symbol='sh.600001';self.write_symbol(symbol,[10.0,11.0,12.1]);previous=None
+        for session in ('2026-09-07','2026-09-08','2026-09-09'):
+            previous=self.archive_daily_status(symbol,session,previous)
+        materialize_security_status(self.data)
+        scan=scan_prep_universe(self.data,'2026-09-09',target_streak=1,
+            universe_symbols=[symbol],universe_pit_verified=False,lookback_sessions=3)
+        self.assertEqual(scan['strict_security_status_rows'],1)
+        self.assertEqual(scan['strict_security_status_observations'],3)
+        self.assertEqual(scan['quality'],'PIT_STATUS_WITH_INFERRED_LIMITS')
+        self.assertEqual(len(scan['security_status_evidence_ids']),3)
+        self.assertTrue(all(value.startswith('security_status_coverage:')
+            for value in scan['security_status_evidence_ids']))
 
     def test_tampered_security_status_materialization_blocks_prep_before_fallback(self):
         symbol='sz.000001';self.write_symbol(symbol,[10.0,11.0,11.55])

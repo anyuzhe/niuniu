@@ -22,7 +22,7 @@
 - 当前开发机牛牛独立数据根为 `/Volumes/Lexar/niuniu-data`；原 `/Volumes/Lexar/MQC-DATA` 保留为旧 MQC 数据源副本。历史 artifacts 中旧绝对路径属于来源证据，禁止批量重写。
 - Strict PIT / 历史资格、行业、市值与 publication evidence 任务必须读取 `architecture/strict_pit_evidence.md`；官方 URL 字符串本身不构成 Strict PIT，必须有本地原文字节、SHA256 与确认的 publication time receipt。`official_market_rule_references` 即使算术 exact 也固定为回顾性参考，不能作为 MarketRules/Qualification 证据。
 - PIT Universe / 全集完整性 / PREP 股票池任务必须同时读取 `architecture/pit_universe.md`；零散 eligibility statement、当前列表或调用方布尔值不能认证完整 Universe，必须使用目标 session 截止前创建且深验通过的 exact snapshot。
-- ST/*ST/停复牌 / SecurityStatus / PREP 状态过滤任务必须读取 `architecture/security_status.md`；稀疏状态 receipt 只证明明确 effective session，不能冒充完整历史状态链，也不能替代官方逐日 MarketRules。
+- ST/*ST/停复牌 / SecurityStatus / PREP 状态过滤任务必须读取 `architecture/security_status.md`；稀疏statement只证明明确 effective session，完整逐日状态必须绑定PIT Universe v1的SecurityStatus v2，连续变化必须有显式相邻snapshot链；两者都不能替代官方逐日MarketRules。
 - Watch / Tracking / Alpha 衰减监测任务必须读取 `architecture/watch_sequential.md`；序贯证据只相对冻结经验基线，不得自动停用因子、换参数或扩大交易权限。
 
 ## 固定读取顺序

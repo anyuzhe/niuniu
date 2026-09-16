@@ -1,20 +1,29 @@
 # Strict PIT Security Status
 
-`security_status` 用于保存经过官方原文与 publication-time receipt 深度验证的证券状态事件，当前字段为 `symbol / effective_at / available_at / tradable / risk_warning / source`。
+`security_status` 保存经过官方原文与 publication-time receipt 深验的证券状态。状态字段为 `symbol / effective_at / available_at / tradable / risk_warning / source`，`risk_warning` 只允许 `NONE / ST / STAR_ST / UNKNOWN`。
 
-## 语义与边界
+## 两层证据
 
-- `risk_warning` 仅允许 `NONE / ST / STAR_ST / UNKNOWN`。
-- `available_at` 不得晚于 `effective_at`；未来才知道的状态禁止回填。
-- 真实状态由 `niuniu-pit-evidence-v1` 的 `security_status` receipt 提供，本地官方原文、SHA256、来源 URL、publication time 任一失效均 fail-closed。
-- `lake/silver/security_status/security_status.parquet` 只是 verified receipt 的派生表；receipt 集合变化或表被修改后必须重新物化。
-- `niuniu-security-status` 只允许宿主执行 `status/materialize`，不联网下载，也不创建事实。
-- PREP Scanner 可以消费该派生表，但在没有“完整状态事件链”证明前，只把 receipt 明确 `effective_at` 的交易日视为 Strict 状态证据；不得把最近一次状态无限向前/向后传播成严格覆盖。
-- 已验证 ST/停牌状态不等于官方逐日涨跌停规则。缺 MarketRules 时，PREP 即使拥有 Strict status evidence 也保持 `RETROSPECTIVE_REFERENCE`。
-- 当前7份公告已另形成 MarketRules v2 的7个停牌-session records；这只认证停牌当日没有可执行价格。
-- 7个次日复牌/ST session 已用公告比例、适用交易规则公式及深交所官方历史前收核出 exact 算术值；但 ShowReport 响应均在 session 后取得，缺历史开盘前 publication receipt，因此只进入 `official_market_rule_references`，不得进入 MarketRules/Strict PIT。
-- SecurityStatus 不等于 PIT Universe：是否属于研究股票池与是否 ST/停牌是不同维度，禁止自动合并。
+1. `niuniu-pit-evidence-v1` 的 `security_status` statement 证明一条明确事件；它不能证明期间没有遗漏事件，也不得跨日传播。
+2. `niuniu-security-status-coverage-v2` 绑定一个 exact-session `niuniu-pit-universe-v1`，要求 Universe 每个 member 都有当日 `TRADABILITY + RISK_WARNING` 状态、匹配交易所的官方来源、原文字节和 `source published_at <= source available_at <= status created_at <= cutoff_at <= 09:15 Asia/Shanghai`；Universe `created_at` 也不得晚于status归档。只有这层能证明逐日完整覆盖。
+
+v2 receipt 位于 `<data-root>/research/security_status_coverage/<status_snapshot>.json`，官方原文字节位于其 `documents/<sha256>.bin`。归档器只读本地文件、不联网，并要求宿主分别确认 publication time、状态语义和全 Universe 完整性。`UNKNOWN` 可以被完整记录，但该 receipt 的 `strict_pit_eligible=false`。
+
+## 连续状态链
+
+- 首个 snapshot 是 root，只证明初始观测，不冒充“进入”；单日状态可Strict，但transition只有前后两份receipt都Strict时才具Strict资格。
+- 后续 snapshot 必须显式绑定 `previous_status_snapshot`，且宿主确认它是相邻交易 session，才能生成进入/持续/撤销：`SUSPENSION_ENTERED/CONTINUED/CLEARED`、`RISK_WARNING_ENTERED/CONTINUED/CLEARED/CHANGED`。
+- 缺 previous link、Universe 进出、同 session 多 snapshot 或 previous link 分叉都不得冒充连续状态；chain/materialization 对歧义 fail-closed。
+- `security_status_chain(...)` 和 `niuniu-security-status-coverage --call chain` 只读输出单证券链。
+
+## 派生表与消费边界
+
+- `lake/silver/security_status/security_status.parquet` 合并 verified 稀疏 statements 与完整逐日 v2 receipts；receipt 集合变化、分叉、歧义或表哈希变化后必须重新物化。
+- 同证券同一 `effective_at` 同时存在一致 sparse/v2 状态时保留完整 v2 行；冲突则拒绝物化。不同生效时刻的日内事件继续独立保留。
+- PREP 仅使用状态 `effective_at` 对应的 exact session，不向前或向后传播；v2 行标记为 `STRICT_PIT_DAILY_COVERAGE`。
+- 已验证 ST/停牌状态不等于官方逐日涨跌停规则。缺 MarketRules 时，即使状态完整，PREP 仍保持 `RETROSPECTIVE_REFERENCE`。
+- SecurityStatus 不等于 PIT Universe；股票池成员资格与 ST/停牌是不同维度。
 
 ## 当前真实数据
 
-当前 `/Volumes/Lexar/niuniu-data` 已归档 7 份深交所官方公告，对应 `sz.000040 / sz.002055 / sz.002217 / sz.002512 / sz.002538 / sz.300081 / sz.300376` 共 14 条 security_status evidence，覆盖各自明确的停牌日与复牌/ST 生效日。它们仍是稀疏真实样本，不代表全市场或任一证券的完整历史状态链；第二批来源、哈希与验收见 `../../牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md`，复牌价格参考见 `../../牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md`。
+`/Volumes/Lexar/niuniu-data` 现有 7 份深交所官方公告、7 只证券、14 条稀疏 security_status statements；它们不代表全市场或完整历史链。截至 v2 工程完成时，真实完整逐日 SecurityStatus v2 receipt 仍为 0，不得升级证据等级。第二批来源与验收见 `../../牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md`。

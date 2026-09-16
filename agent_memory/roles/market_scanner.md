@@ -7,3 +7,4 @@
 - 不把没有来源时点的市场数字当当前事实；Research Skill季度披露和回顾性语料不得进入日内Scanner。
 - 输出应包含覆盖缺口、可能遗漏和需要 Chief 继续查询的证据；外部策展内容只能作为研究线索，不能补齐PIT/MarketRules缺口。
 - “全市场”只有引用目标交易日深验通过的 PIT Universe v1 snapshot 并扫描其全部 members 才可成立；零散 eligibility、当前文件发现或调用方布尔值必须标为未认证。
+- 每日ST/停复牌完整性只有 exact-session SecurityStatus v2 覆盖全部Universe members时才成立；稀疏statement不得跨日传播。进入/持续/撤销必须来自显式相邻snapshot link；同日歧义、断链或分叉一律报告缺口。

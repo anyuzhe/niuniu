@@ -26,9 +26,13 @@ class StrictPITCoverageTests(unittest.TestCase):
         self.assertIsNone(value['overall_strict_pit_coverage_ratio'])
         self.assertFalse(value['dataset_strict_pit_certified'])
         self.assertEqual(value['strict_evidence']['verified_records'],0)
-        self.assertEqual({r['code'] for r in value['gaps']} & {
-            'NO_VERIFIED_UNIVERSE_ELIGIBILITY','NO_VERIFIED_SECURITY_STATUS','NO_VERIFIED_INDUSTRY_MEMBERSHIP','NO_VERIFIED_DAILY_MARKET_CAP'},
+        codes={r['code'] for r in value['gaps']}
+        self.assertEqual(codes & {'NO_VERIFIED_UNIVERSE_ELIGIBILITY','NO_VERIFIED_SECURITY_STATUS',
+            'NO_VERIFIED_INDUSTRY_MEMBERSHIP','NO_VERIFIED_DAILY_MARKET_CAP'},
             {'NO_VERIFIED_UNIVERSE_ELIGIBILITY','NO_VERIFIED_SECURITY_STATUS','NO_VERIFIED_INDUSTRY_MEMBERSHIP','NO_VERIFIED_DAILY_MARKET_CAP'})
+        self.assertIn('NO_VERIFIED_PIT_UNIVERSE_RECEIPTS',codes)
+        self.assertIn('NO_COMPLETE_DAILY_SECURITY_STATUS_RECEIPTS',codes)
+        self.assertEqual(value['strict_evidence']['security_status_coverage_archive']['verified_receipts'],0)
 
     def seed_retrospective(self):
         bars=self.root/'lake/bronze/provider=baostock/stock_kline_daily';bars.mkdir(parents=True)
@@ -78,7 +82,9 @@ class StrictPITCoverageTests(unittest.TestCase):
         self.archive_all_kinds()
         value=strict_pit_coverage(self.root,symbols=['sh.600000','sz.000001'],start='2025-01-01',end='2025-12-31')
         self.assertEqual(value['status'],'PARTIAL_EVIDENCE')
-        self.assertIn('NO_VERIFIED_PIT_UNIVERSE_RECEIPTS',{row['code'] for row in value['gaps']})
+        gap_codes={row['code'] for row in value['gaps']}
+        self.assertIn('NO_VERIFIED_PIT_UNIVERSE_RECEIPTS',gap_codes)
+        self.assertIn('NO_COMPLETE_DAILY_SECURITY_STATUS_RECEIPTS',gap_codes)
         by=value['strict_evidence']['by_kind']
         self.assertEqual(by['universe_eligibility']['verified_statements'],1)
         self.assertEqual(by['security_status']['verified_statements'],1)

@@ -220,6 +220,17 @@ def main() -> None:
     pit_universe_archive.add_argument('--confirm-complete-official-universe',action='store_true')
     pit_universe_audit=commands.add_parser('pit-universe-audit',help='只读深验全部PIT Universe v1回执、成员和官方原文字节')
     pit_universe_audit.add_argument('--data-root',type=Path,required=True)
+    status_coverage_archive=commands.add_parser('security-status-coverage-archive',help='离线归档目标交易日全Universe SecurityStatus v2；禁止稀疏状态跨日传播')
+    status_coverage_archive.add_argument('--data-root',type=Path,required=True)
+    status_coverage_archive.add_argument('--plan',type=Path,required=True)
+    status_coverage_archive.add_argument('--confirm-publication-times',action='store_true')
+    status_coverage_archive.add_argument('--confirm-semantic-mapping',action='store_true')
+    status_coverage_archive.add_argument('--confirm-complete-daily-status',action='store_true')
+    status_coverage_archive.add_argument('--confirm-previous-session-continuity',action='store_true')
+    status_coverage_audit=commands.add_parser('security-status-coverage-audit',help='只读深验SecurityStatus v2逐日覆盖、Universe绑定与连续状态链')
+    status_coverage_audit.add_argument('--data-root',type=Path,required=True)
+    status_chain=commands.add_parser('security-status-chain',help='只读输出单证券进入、持续、撤销状态链')
+    status_chain.add_argument('--data-root',type=Path,required=True);status_chain.add_argument('--symbol',required=True)
     rules_audit=commands.add_parser('market-rules-audit',help='按请求交易日检查规则覆盖，包含无订单日期')
     rules_audit.add_argument('--data-root',type=Path,required=True)
     rules_audit.add_argument('--symbols',nargs='+',required=True)
@@ -346,6 +357,22 @@ def main() -> None:
     if args.command=='pit-universe-audit':
         from quantlab.data.pit_universe import audit_pit_universe
         print(encode(audit_pit_universe(args.data_root)));return
+    if args.command=='security-status-coverage-archive':
+        from quantlab.data.security_status_coverage import archive_security_status_coverage
+        if args.plan.is_symlink() or not args.plan.is_file() or args.plan.stat().st_size>20_000_000:
+            raise ValueError('SecurityStatus coverage plan缺失、为符号链接或超过20MB')
+        plan=json.loads(args.plan.read_text())
+        print(encode(archive_security_status_coverage(args.data_root,plan,
+            confirm_publication_times=args.confirm_publication_times,
+            confirm_semantic_mapping=args.confirm_semantic_mapping,
+            confirm_complete_daily_status=args.confirm_complete_daily_status,
+            confirm_previous_session_continuity=args.confirm_previous_session_continuity)));return
+    if args.command=='security-status-coverage-audit':
+        from quantlab.data.security_status_coverage import audit_security_status_coverage
+        print(encode(audit_security_status_coverage(args.data_root)));return
+    if args.command=='security-status-chain':
+        from quantlab.data.security_status_coverage import security_status_chain
+        print(encode(security_status_chain(args.data_root,args.symbol)));return
     if args.command=='market-rules-audit':
         import polars as pl
         from quantlab.execution.rules import MarketRules

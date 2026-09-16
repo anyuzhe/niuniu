@@ -160,7 +160,10 @@ def _annotate(rows,symbol,rules,status_history=None):
         verified=_verified_status(status_history,symbol,day)
         if verified is not None:
             tradable=verified['tradable'];risk_warning=verified['risk_warning'];is_st=risk_warning in ('ST','STAR_ST')
-            status_known=risk_warning!='UNKNOWN';status_quality='STRICT_PIT_EVIDENCE' if status_known else 'STRICT_PIT_STATUS_UNKNOWN'
+            status_known=risk_warning!='UNKNOWN'
+            if verified.get('coverage_complete'):
+                status_quality='STRICT_PIT_DAILY_COVERAGE' if status_known else 'STRICT_PIT_DAILY_STATUS_UNKNOWN'
+            else:status_quality='STRICT_PIT_EVIDENCE' if status_known else 'STRICT_PIT_STATUS_UNKNOWN'
             evidence_id=verified.get('evidence_id')
         close_value=row.get('close');close=float(close_value) if close_value is not None else None
         explicit_pre=row.get('preclose')
@@ -331,8 +334,9 @@ def scan_prep_universe(data_root,as_of_session,*,target_streak=None,market_rules
         rows=[merged[k] for k in sorted(merged) if k<=as_of][-lookback_sessions:]
         annotated,gaps=_annotate(rows,symbol,rules,status_history);rule_gaps+=gaps
         status_complete=bool(annotated) and all(row['status_known'] for row in annotated)
-        strict_status_complete=bool(annotated) and all(row['status_quality']=='STRICT_PIT_EVIDENCE' for row in annotated)
-        strict_status_observations+=sum(row['status_quality']=='STRICT_PIT_EVIDENCE' for row in annotated)
+        strict_qualities=('STRICT_PIT_EVIDENCE','STRICT_PIT_DAILY_COVERAGE')
+        strict_status_complete=bool(annotated) and all(row['status_quality'] in strict_qualities for row in annotated)
+        strict_status_observations+=sum(row['status_quality'] in strict_qualities for row in annotated)
         status_evidence_ids.update(row['security_status_evidence_id'] for row in annotated if row.get('security_status_evidence_id'))
         managed_status_count+=int(status_complete);strict_status_count+=int(strict_status_complete)
         current=_active_as_of(annotated,as_of)

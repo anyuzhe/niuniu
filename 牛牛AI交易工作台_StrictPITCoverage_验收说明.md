@@ -64,3 +64,5 @@ AI/MCP 只能调用 `get_strict_pit_coverage`；没有 archive、download、cert
 - 完整仓库：**956 tests / 0 failed / 0 skipped**，412.711 秒。
 
 下一阶段不再继续扩 Coverage 框架，直接按 gap 开始真实官方资料采集与 receipt coverage 提升；优先顺序为历史资格/ST/停牌 → 行业历史变更 → 每日真实市值 → 逐日特殊交易制度。
+
+> 2026-09-16 增量：statement维度已扩为四类（新增稀疏`security_status`），并另列完整 `pit_universe_archive` 与 `security_status_coverage_archive`。后者报告逐日全Universe状态、continuous links、同session歧义和链分叉；它仍是全局inventory，不生成总覆盖率，也不证明某个CandidateSet已绑定完整状态。真实SecurityStatus v2 receipt仍为0。

@@ -97,3 +97,5 @@
 继续按 Coverage gap 归档可核验的 SecurityStatus 事件，优先形成同一证券的进入、持续与撤销状态链；同时设计并接入独立的官方逐日 `MarketRules` receipt，之后再推进历史行业变更与每日真实市值。所有后续批次继续要求文档同步和独立 Git 提交。
 
 > 2026-09-16 后续：Official MarketRules publication receipt v2 已用这7份公告归档7个明确停牌 session；7个复牌/ST session 也已用官方历史前收、公告比例和适用规则公式核出 exact 算术参考值。但历史行情响应在 session 后才取得，缺开盘前 publication receipt，因此没有追加 MarketRules，原 PREP blocker 不消失。详见《牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md》和《牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md》。
+
+> 2026-09-16 后续：连续 SecurityStatus v2 工程合同已完成，用绑定PIT Universe全部members的逐日snapshot及显式previous link证明进入/持续/撤销；真实v2 receipt仍为0，因此本说明的14条事件没有被自动升级。详见《牛牛AI交易工作台_连续SecurityStatusV2_验收说明.md》。

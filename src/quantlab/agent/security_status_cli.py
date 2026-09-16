@@ -9,7 +9,7 @@ from quantlab.storage.codec import encode
 
 
 def main(argv=None):
-    parser=argparse.ArgumentParser(description='牛牛 Strict PIT security_status；仅从已验证 receipt 物化，不联网下载')
+    parser=argparse.ArgumentParser(description='牛牛 Strict PIT security_status；仅从已验证稀疏statement与完整逐日v2 receipt物化，不联网下载')
     parser.add_argument('--data-root',required=True)
     parser.add_argument('--call',choices=('status','materialize'),default='status')
     args=parser.parse_args(argv)

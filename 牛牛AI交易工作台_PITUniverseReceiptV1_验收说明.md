@@ -105,4 +105,4 @@ Daily Orchestrator `--init` 新增可选 `--universe-snapshot`，计划身份固
 
 截至本说明完成时，`/Volumes/Lexar/niuniu-data` **尚未新增真实 PIT Universe v1 receipt**；实际运行 `pit-universe-audit` 返回 receipt/verified/invalid=`0/0/0`、effective_sessions=0、member_records=0。本轮没有得到针对某个未来交易日下载官方证券全集的显式联网授权，也没有用今天的列表回填历史 session。
 
-下一步必须由宿主针对一个未来交易日显式授权并准备交易所原文字节，逐项复核 publication/availability 和全量成员语义，再在 09:15 cutoff 前创建首个真实 snapshot。之后 Daily Orchestrator 计划必须显式绑定该 snapshot。即使 Universe 通过，Official MarketRules、连续 SecurityStatus、DailyMarket/bar vintage 等其它 blocker 仍需独立满足。
+下一步必须由宿主针对一个未来交易日显式授权并准备交易所原文字节，逐项复核 publication/availability 和全量成员语义，再在 09:15 cutoff 前创建首个真实 snapshot。之后 Daily Orchestrator 计划必须显式绑定该 snapshot。连续 SecurityStatus v2 工程合同现已完成，但真实逐日状态receipt仍为0；即使 Universe 通过，SecurityStatus、Official MarketRules、DailyMarket/bar vintage 等其它 blocker 仍需独立满足。

@@ -358,6 +358,11 @@ class SystemHealthService:
             'verified_receipts':0,'invalid_receipts':0,'rule_records':0,'legacy_receipt_present':False}
         pit_universe={'format':'niuniu-pit-universe-audit-v1','receipt_files':0,'verified_receipts':0,
             'invalid_receipts':0,'effective_sessions':0,'member_records':0}
+        status_coverage={'format':'niuniu-security-status-coverage-audit-v2','receipt_files':0,
+            'verified_receipts':0,'invalid_receipts':0,'strict_pit_eligible_receipts':0,
+            'effective_sessions':0,'status_records':0,
+            'ambiguous_sessions':[],'branching_previous_snapshots':[],'continuous_links':0,
+            'strict_continuous_links':0}
         pit_coverage={'available':bool(self.data_root),'claim':'evidence_presence_only_not_dataset_certificate'}
         if self.data_root:
             try:
@@ -376,6 +381,20 @@ class SystemHealthService:
             except (OSError,ValueError,KeyError,TypeError) as exc:
                 pit_universe={'error':type(exc).__name__+': '+str(exc)[:300]};pit_warning.append('pit_universe_archive_unreadable')
             try:
+                from quantlab.data.security_status_coverage import audit_security_status_coverage
+                status_coverage=audit_security_status_coverage(self.data_root)
+                pit_coverage.update(security_status_coverage_verified_receipts=status_coverage['verified_receipts'],
+                    security_status_coverage_sessions=status_coverage['effective_sessions'],
+                    security_status_continuous_links=status_coverage['continuous_links'],
+                    security_status_strict_continuous_links=status_coverage['strict_continuous_links'])
+                if status_coverage['invalid_receipts']:pit_warning.append('security_status_coverage_receipts_invalid')
+                if status_coverage['verified_receipts']>status_coverage['strict_pit_eligible_receipts']:
+                    pit_warning.append('security_status_coverage_unknown_values_present')
+                if status_coverage['ambiguous_sessions']:pit_warning.append('security_status_coverage_sessions_ambiguous')
+                if status_coverage['branching_previous_snapshots']:pit_warning.append('security_status_coverage_chain_branching')
+            except (OSError,ValueError,KeyError,TypeError) as exc:
+                status_coverage={'error':type(exc).__name__+': '+str(exc)[:300]};pit_warning.append('security_status_coverage_archive_unreadable')
+            try:
                 from quantlab.data.official_rule_archive import audit_official_rule_archive
                 official_rules=audit_official_rule_archive(self.data_root)
                 if official_rules['invalid_receipts']:pit_warning.append('official_rule_receipts_invalid')
@@ -384,11 +403,11 @@ class SystemHealthService:
                 official_rules={'error':type(exc).__name__+': '+str(exc)[:300]};pit_warning.append('official_rule_archive_unreadable')
         try:overview=store.overview();sets=store.list_candidate_sets(limit=2000)['records'] if overview['candidate_sets'] else []
         except (PlaybookError,OSError,ValueError,KeyError,TypeError) as exc:
-            return _component('BLOCKED','Playbook/PIT 结构化证据不可读。',blockers=['playbook_store_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300],'pit_evidence':pit_evidence,'pit_universe_archive':pit_universe,'official_rule_archive':official_rules})
-        if not sets:return _component('WARN' if pit_warning else 'NOT_CONFIGURED','尚无 CandidateSet/PIT 证据。',evidence={'overview':overview,'pit_evidence':pit_evidence,'pit_universe_archive':pit_universe,'pit_coverage':pit_coverage,
+            return _component('BLOCKED','Playbook/PIT 结构化证据不可读。',blockers=['playbook_store_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300],'pit_evidence':pit_evidence,'pit_universe_archive':pit_universe,'security_status_coverage_archive':status_coverage,'official_rule_archive':official_rules})
+        if not sets:return _component('WARN' if pit_warning else 'NOT_CONFIGURED','尚无 CandidateSet；PIT库存仅作全局完整性观测。',evidence={'overview':overview,'pit_evidence':pit_evidence,'pit_universe_archive':pit_universe,'security_status_coverage_archive':status_coverage,'pit_coverage':pit_coverage,
             'official_rule_archive':official_rules,'official_rule_archive_verified_present':bool(official_rules.get('verified_receipts')),
             'official_rule_receipt_present':bool(official_rules.get('verified_receipts'))},warnings=pit_warning,
-            limitations=['PIT Universe and Official-rule archive counts form a global integrity inventory; they do not prove case-specific snapshot coverage.'])
+            limitations=['PIT Universe, daily SecurityStatus and Official-rule archive counts form a global integrity inventory; they do not prove case-specific snapshot coverage.'])
         counts=Counter((row.get('completeness','UNKNOWN'),row.get('pit_status','UNKNOWN')) for row in sets)
         latest=max(sets,key=lambda r:(r.get('as_of',''),r.get('candidate_set_id','')))
         strict=latest.get('completeness')=='FULL' and latest.get('pit_status')=='STRICT_PIT';warnings=list(pit_warning)
@@ -398,11 +417,11 @@ class SystemHealthService:
         return _component(status,f"最新 CandidateSet={latest.get('completeness')}/{latest.get('pit_status')}；FROZEN definitions={overview.get('frozen_definitions',0)}。",
             evidence={'overview':overview,'latest_candidate_set':{'id':latest.get('candidate_set_id'),'trading_day':latest.get('trading_day'),
                 'frame':latest.get('frame'),'as_of':latest.get('as_of'),'completeness':latest.get('completeness'),'pit_status':latest.get('pit_status')},
-                'candidate_quality_counts':{f'{a}/{b}':n for (a,b),n in counts.items()},'pit_evidence':pit_evidence,'pit_universe_archive':pit_universe,'pit_coverage':pit_coverage,
+                'candidate_quality_counts':{f'{a}/{b}':n for (a,b),n in counts.items()},'pit_evidence':pit_evidence,'pit_universe_archive':pit_universe,'security_status_coverage_archive':status_coverage,'pit_coverage':pit_coverage,
                 'official_rule_archive':official_rules,'official_rule_archive_verified_present':bool(official_rules.get('verified_receipts')),
                 'official_rule_receipt_present':bool(official_rules.get('verified_receipts'))},
             warnings=warnings,limitations=['CandidateSet PIT is case-specific and never certifies the whole provider or data lake.',
-                'PIT Universe and Official-rule archive counts are global integrity inventories; they do not prove that the latest CandidateSet references a covered snapshot.'])
+                'PIT Universe, daily SecurityStatus and Official-rule archive counts are global integrity inventories; they do not prove that the latest CandidateSet references covered snapshots.'])
 
     def _paper(self,now):
         from quantlab.trading.paper_lifecycle import PaperLifecycleAnalytics

@@ -114,6 +114,38 @@ class SystemHealthTests(unittest.TestCase):
         self.assertEqual(broken['evidence']['pit_universe_archive']['invalid_receipts'],1)
         self.assertIn('pit_universe_receipts_invalid',broken['warnings'])
 
+    def test_complete_daily_security_status_inventory_is_visible_and_tampering_warns(self):
+        import hashlib
+        from quantlab.data.pit_universe import archive_pit_universe
+        from quantlab.data.security_status_coverage import archive_security_status_coverage
+        universe_doc=self.root/'health-universe.json';universe_doc.write_text('{"symbols":["sh.600000"]}')
+        universe=archive_pit_universe(self.data,{'format':'niuniu-pit-universe-plan-v1',
+            'effective_session':'2026-09-16','cutoff_at':'2026-09-16T09:15:00+08:00',
+            'scope':{'market':'CN_A_SHARE','exchanges':['SSE'],'instrument_types':['A_SHARE'],'completeness':'FULL_OFFICIAL_LIST'},
+            'sources':[{'source_id':'universe','exchange':'SSE','url':'https://www.sse.com.cn/health/universe',
+                'published_at':'2026-09-15T08:00:00+08:00','available_at':'2026-09-15T08:10:00+08:00',
+                'document':str(universe_doc),'sha256':hashlib.sha256(universe_doc.read_bytes()).hexdigest()}],
+            'members':[{'symbol':'sh.600000','source_id':'universe'}]},confirm_publication_times=True,
+            confirm_semantic_mapping=True,confirm_complete_official_universe=True,
+            now_fn=lambda:datetime.fromisoformat('2026-09-15T08:20:00+08:00'))['universe_snapshot']
+        status_doc=self.root/'health-status.json';status_doc.write_text('{"tradable":true,"risk_warning":"NONE"}')
+        result=archive_security_status_coverage(self.data,{'format':'niuniu-security-status-coverage-plan-v2',
+            'effective_session':'2026-09-16','cutoff_at':'2026-09-16T09:15:00+08:00',
+            'universe_snapshot':universe,'previous_status_snapshot':None,
+            'sources':[{'source_id':'status','exchange':'SSE','url':'https://www.sse.com.cn/health/status',
+                'coverage':['TRADABILITY','RISK_WARNING'],'published_at':'2026-09-15T08:30:00+08:00',
+                'available_at':'2026-09-15T08:35:00+08:00','document':str(status_doc),
+                'sha256':hashlib.sha256(status_doc.read_bytes()).hexdigest()}],
+            'records':[{'symbol':'sh.600000','tradable':True,'risk_warning':'NONE','source_ids':['status']}]},
+            confirm_publication_times=True,confirm_semantic_mapping=True,confirm_complete_daily_status=True,
+            now_fn=lambda:datetime.fromisoformat('2026-09-15T08:45:00+08:00'))
+        health=self.service().build()['components']['pit_playbook'];audit=health['evidence']['security_status_coverage_archive']
+        self.assertEqual(audit['verified_receipts'],1);self.assertEqual(audit['status_records'],1)
+        path=Path(result['path']);value=json.loads(path.read_text());value['checksum']='0'*64;path.write_text(json.dumps(value))
+        broken=self.service().build()['components']['pit_playbook']
+        self.assertEqual(broken['evidence']['security_status_coverage_archive']['invalid_receipts'],1)
+        self.assertIn('security_status_coverage_receipts_invalid',broken['warnings'])
+
     def test_unread_notification_is_attention_not_data_correctness(self):
         watch=str(uuid4());folder=self.output/'_tracking_control'/watch;folder.mkdir(parents=True)
         write_checked(folder/'state.json',{'watch_id':watch,'notices':{'n1':{'unread':True}}})
