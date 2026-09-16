@@ -147,17 +147,22 @@ def _listing_columns(panel, calendar, reference):
                               to_delisting.cast(pl.Int64).alias('sessions_to_delisting'))
 
 
-def build_event_frame(panel, calendar, reference):
+def prepare_states(panel, calendar, reference):
+    """Annotated full panel with calendar position, listing sequence and T-day returns."""
     frame = _listing_columns(panel, calendar, reference).with_columns(
         (pl.col('tradestatus') == 1).alias('tradable'), (pl.col('isST') == 1).alias('is_st'))
     states = annotate_limit_states(frame).sort('code', 'date')
     tradable = pl.col('tradable')
-    day_ret = pl.when(tradable).then(pl.col('close') / pl.col('preclose') - 1)
-    states = states.with_columns(
-        day_ret.alias('day_ret'),
+    return states.with_columns(
+        pl.when(tradable).then(pl.col('close') / pl.col('preclose') - 1).alias('day_ret'),
         pl.when(tradable).then(pl.col('open') / pl.col('preclose') - 1).alias('open_gap'),
         pl.when(tradable).then((pl.col('high') - pl.col('low')) / pl.col('preclose')).alias('amplitude'),
     )
+
+
+def build_event_frame(panel, calendar, reference, states=None):
+    states = prepare_states(panel, calendar, reference) if states is None else states
+    tradable = pl.col('tradable')
     compounding = states.filter(tradable).select('code', 'date', 'day_ret').with_columns(
         (1 + pl.col('day_ret')).log().alias('_log'))
     compounding = compounding.with_columns(
@@ -372,4 +377,4 @@ class LimitEventLibrary:
 
 
 __all__ = ['FORMAT', 'BUILDER_VERSION', 'FEATURE_COLUMNS', 'LABEL_COLUMNS', 'LIMITATIONS', 'LimitEventError',
-           'LimitEventLibrary', 'build_event_frame', 'code_fingerprint', 'load_inputs']
+           'LimitEventLibrary', 'build_event_frame', 'code_fingerprint', 'load_inputs', 'prepare_states']
