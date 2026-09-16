@@ -11,7 +11,7 @@ HAS_QT=find_spec('PyQt6') is not None
 if HAS_QT:
     from PyQt6.QtCore import QDate
     from PyQt6.QtTest import QTest
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication,QTableWidget
     from quantlab.desktop.app import MainWindow
     from quantlab.desktop.trading_cockpit import TradingCockpitWidget
     from quantlab.trading.strategy_intent import StrategyIntentService
@@ -47,6 +47,24 @@ class TradingCockpitDesktopTests(unittest.TestCase):
         widget.day.setDate(QDate(2026,9,10));self.wait()
         self.assertEqual(widget.value['trading_day'],'2026-09-10');self.assertEqual(widget.value['day_source'],'explicit')
         self.assertEqual(widget.value['themes'],[]);self.assertFalse((self.root/'_jobs').exists())
+
+    def test_home_layout_fits_window_and_keeps_section_on_refresh(self):
+        widget=self.window.scroll.widget().findChild(TradingCockpitWidget)
+        self.assertEqual(widget.tabs.count(),5)
+        self.assertEqual(len(widget.findChildren(QTableWidget)),10)
+        for width,height in [(1600,980),(1440,900),(1366,768),(1180,760)]:
+            self.window.resize(width,height);QTest.qWait(30)
+            self.assertEqual(self.window.width(),width)
+            for index in range(widget.tabs.count()):
+                widget.tabs.setCurrentIndex(index);QTest.qWait(20)
+                self.assertEqual(self.window.scroll.horizontalScrollBar().maximum(),0)
+                if height>=900:
+                    self.assertEqual(self.window.scroll.verticalScrollBar().maximum(),0)
+                for view in widget.tabs.currentWidget().findChildren(QTableWidget):
+                    self.assertEqual(view.horizontalScrollBar().maximum(),0)
+        widget.reload();self.wait()
+        self.assertEqual(widget.tabs.currentIndex(),4)
+        self.assertFalse((self.root/'_jobs').exists())
 
 
 if __name__=='__main__':unittest.main()
