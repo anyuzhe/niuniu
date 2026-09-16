@@ -11,7 +11,7 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
 
-from quantlab.agent.provider_compat import CompletionProtocol
+from quantlab.agent.provider_compat import CompletionProtocol,tool_budget_result
 
 
 class HTTPProvider(CompletionProtocol):
@@ -43,8 +43,9 @@ class HTTPProvider(CompletionProtocol):
     def run(self,system,messages,tools,dispatch,emit,stop):
         cfg=self.config;responses=cfg.provider=='responses';deadline=time.monotonic()+cfg.timeout_seconds
         wire=([{'role':'system','content':system}] if not responses else [])+list(messages)
-        calls=0;seen=set()
-        for _ in range(cfg.max_rounds):
+        calls=0;seen=set();rounds=0;synthesis_only=False
+        while rounds<cfg.max_rounds or synthesis_only:
+            this_synthesis=synthesis_only;synthesis_only=False;rounds+=1
             if stop.is_set():raise ChatStopped('已停止助手；未取消研究任务')
             remaining=deadline-time.monotonic()
             if remaining<=0:raise ModelError('模型请求达到本轮时限')
@@ -53,11 +54,11 @@ class HTTPProvider(CompletionProtocol):
             payload={'model':cfg.model,'stream':False}
             if responses:
                 payload.update(instructions=system,input=wire,store=False,max_output_tokens=cfg.max_output_tokens,
-                    tools=[{'type':'function',**t,'strict':True} for t in tools])
+                    tools=[] if this_synthesis else [{'type':'function',**t,'strict':True} for t in tools])
                 if cfg.effort:payload['reasoning']={'effort':cfg.effort}
             else:
                 payload.update(messages=wire,max_completion_tokens=cfg.max_output_tokens,
-                    tools=[{'type':'function','function':{**t,'strict':True}} for t in tools])
+                    tools=[] if this_synthesis else [{'type':'function','function':{**t,'strict':True}} for t in tools])
                 if cfg.effort:payload['reasoning_effort']=cfg.effort
             result=self.request('/responses' if responses else '/chat/completions',payload,remaining)
             if stop.is_set():raise ChatStopped('请求已返回，助手已停止；不再执行工具')
@@ -75,14 +76,23 @@ class HTTPProvider(CompletionProtocol):
                 item=choices[0]['message'];wire.append(item);text=item.get('content') or ''
                 actions=[(p.get('id'),p.get('function',{}).get('name'),p.get('function',{}).get('arguments'))
                     for p in item.get('tool_calls',[])]
-            if len(actions)+calls>cfg.max_tool_calls:raise ModelError('已达到本轮工具调用预算')
+            if this_synthesis and actions:
+                raise ModelError('模型在工具预算用尽后的收尾阶段仍请求工具')
+            blocked=False
             for call_id,name,arguments in actions:
                 if not isinstance(call_id,str) or call_id in seen:raise ModelError('无效或重复工具调用编号')
-                seen.add(call_id);calls+=1
-                value=dispatch(name,strict_json(arguments) if isinstance(arguments,str) else arguments,call_id)
+                seen.add(call_id);parsed=strict_json(arguments) if isinstance(arguments,str) else arguments
+                if calls>=cfg.max_tool_calls:
+                    blocked=True;value=tool_budget_result(name,cfg.max_tool_calls)
+                    emit('tool_call',{'name':name,'arguments':parsed,'call_id':call_id})
+                    emit('tool_result',{'name':name,'call_id':call_id,'result':value})
+                else:
+                    calls+=1;value=dispatch(name,parsed,call_id)
                 encoded=json.dumps(value,ensure_ascii=False,allow_nan=False)
                 wire.append({'type':'function_call_output','call_id':call_id,'output':encoded} if responses else
                     {'role':'tool','tool_call_id':call_id,'content':encoded})
+            if blocked:
+                synthesis_only=True;continue
             if not actions:
                 if not isinstance(text,str) or not text.strip():raise ModelError('模型没有返回最终文本')
                 if len(text)>cfg.max_output_tokens*8:raise ModelError('模型回复超过文本预算')

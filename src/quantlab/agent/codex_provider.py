@@ -16,7 +16,7 @@ def probe_codex(config,stop=None):
             'has_more':bool(response.get('nextCursor')),'warnings':connection.warnings}
 
 
-from quantlab.agent.provider_compat import CompletionProtocol
+from quantlab.agent.provider_compat import CompletionProtocol,tool_budget_result
 
 
 class CodexProvider(CompletionProtocol):
@@ -46,7 +46,7 @@ class CodexProvider(CompletionProtocol):
             turn={'threadId':thread_id,'input':[{'type':'text','text':prompt,'text_elements':[]}]}
             if cfg.effort:turn['effort']=cfg.effort
             started=connection.rpc('turn/start',turn);turn_id=started['turn']['id']
-            final='';streamed=0;calls=0;seen=set();usage={}
+            final='';streamed=0;calls=0;budget_rejections=0;seen=set();usage={}
             while True:
                 message=connection.event();method=message.get('method','');params=message.get('params',{})
                 if 'id' in message and method:
@@ -58,11 +58,17 @@ class CodexProvider(CompletionProtocol):
                     call_id=params.get('callId',str(message['id']));name=params.get('tool')
                     if not isinstance(call_id,str) or call_id in seen:
                         raise ModelError('重复或无效的 Codex 工具调用编号')
-                    seen.add(call_id);calls+=1
-                    if calls>cfg.max_tool_calls:raise ModelError('已达到本轮工具调用预算')
-                    result=dispatch(name,params.get('arguments'),call_id)
+                    seen.add(call_id)
+                    if calls>=cfg.max_tool_calls:
+                        budget_rejections+=1;result=tool_budget_result(name,cfg.max_tool_calls)
+                        emit('tool_call',{'name':name,'arguments':params.get('arguments'),'call_id':call_id})
+                        emit('tool_result',{'name':name,'call_id':call_id,'result':result})
+                    else:
+                        calls+=1;result=dispatch(name,params.get('arguments'),call_id)
                     connection.send({'id':message['id'],'result':{'success':bool(result.get('ok')),
                         'contentItems':[{'type':'inputText','text':json.dumps(result,ensure_ascii=False,allow_nan=False)}]}})
+                    if budget_rejections>=3:
+                        raise ModelError('模型在工具预算用尽后仍重复调用工具，已停止本轮')
                 elif method=='item/agentMessage/delta':
                     delta=params.get('delta','')
                     if not isinstance(delta,str):raise ModelError('无效文本片段')

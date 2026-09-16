@@ -60,6 +60,27 @@ class ChatTests(unittest.TestCase):
             new.send(cid,'继续讨论',ModelConfig(),allow_send=True,provider=p)
             self.assertEqual([m['role'] for m in p.messages],['user','assistant','user'])
             self.assertEqual(len(new.store.turns(cid)),2)
+    def test_list_limit_is_clamped_and_three_failures_still_allow_answer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r=ChatRuntime(tmp);cid=r.store.create()
+            p=FakeProvider([('list_playbook_definitions',{'query':'','offset':0,'limit':50})])
+            result=r.send(cid,'查玩法',ModelConfig(),allow_send=True,provider=p)
+            self.assertEqual(result['text'],'研究结果');self.assertTrue(p.results[0]['ok'])
+            self.assertTrue(any('limit=50' in value for value in p.results[0]['warnings']))
+            failures=FakeProvider([('search_factors',{'query':123,'offset':0,'limit':20})]*3)
+            result=r.send(cid,'继续',ModelConfig(),allow_send=True,provider=failures)
+            self.assertEqual(result['text'],'研究结果')
+            self.assertEqual(failures.results[-1]['error']['code'],'TOOL_FAILURE_LIMIT')
+    def test_tool_context_budget_reserves_final_answer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            action=('list_playbook_definitions',{'query':'','offset':0,'limit':20})
+            r=ChatRuntime(tmp);cid=r.store.create();p=FakeProvider([action])
+            huge={'ok':True,'tool':'list_playbook_definitions','data':{'blob':'x'*100000},
+                'evidence':[],'warnings':[],'error':None}
+            with patch.object(r.api,'call',return_value=huge):
+                result=r.send(cid,'查能力',ModelConfig(),allow_send=True,provider=p)
+            self.assertEqual(result['text'],'研究结果')
+            self.assertEqual(p.results[0]['error']['code'],'TOOL_CONTEXT_BUDGET_EXHAUSTED')
     def test_proposals_have_host_ids_and_do_not_execute(self):
         with tempfile.TemporaryDirectory() as tmp:
             r=ChatRuntime(tmp,tmp);cid=r.store.create();args={'request_id':'model-made-id','spec_json':json.dumps(SPEC)}

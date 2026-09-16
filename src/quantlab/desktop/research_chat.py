@@ -121,7 +121,8 @@ class ResearchChatDialog(QDialog):
                     if key in self.references:continue
                     self.references[key]=ref
                     identifier=next((ref[k] for k in ('run_id','proposal_id','factor_id','job_id',
-                        'memory_id','watch_id','snapshot_id','item_id','resource_id','skill_key','symbol')
+                        'memory_id','watch_id','snapshot_id','item_id','resource_id','skill_key','symbol',
+                        'strategy_source_id','definition_id','case_id','validation_id','link_id','source_id')
                         if ref.get(k)), '')
                     entry=QListWidgetItem(ref['kind']+' · '+str(identifier))
                     entry.setData(Qt.ItemDataRole.UserRole,ref);self.evidence.addItem(entry)
@@ -232,10 +233,39 @@ class ResearchChatDialog(QDialog):
             elif ref['kind']=='theme_snapshot':self.hide();self.window.navigate_root(1)
             elif ref['kind'] in ('research_skill','research_skill_item','research_skill_resource'):
                 self.open_research_skill_reference(ref)
+            elif ref['kind'] in ('strategy_source','playbook_definition','playbook_case','playbook_validation',
+                    'playbook_source_link','expert_source'):
+                self.open_playbook_reference(ref)
             elif ref['kind']=='live_stock_quote':
                 self.details.setPlainText(json.dumps(ref,ensure_ascii=False,indent=2))
                 self.status.setText('临时只读实时报价仅保留在本轮会话证据中；未创建正式 MarketSnapshot。')
         except Exception as error:self.status.setText('引用未打开：'+str(error))
+
+    def open_playbook_reference(self,ref):
+        from quantlab.trading.playbook_store import PlaybookStore
+        kind=ref['kind']
+        identifiers={'strategy_source':'strategy_source_id','playbook_definition':'definition_id',
+            'playbook_case':'case_id','playbook_validation':'validation_id',
+            'playbook_source_link':'link_id','expert_source':'source_id'}
+        identifier=ref[identifiers[kind]]
+        def read():
+            store=PlaybookStore(self.output)
+            if kind=='strategy_source':return store.get_strategy_source(identifier)
+            if kind=='playbook_definition':return store.definition_source_bundle(identifier)
+            if kind=='playbook_case':return store.case_bundle(identifier)
+            if kind=='playbook_validation':return store.get_validation(identifier)
+            if kind=='playbook_source_link':return store.get_source_link(identifier)
+            return store.get_source(identifier)
+        self.set_busy(True);self.status.setText('正在核对 Trading Knowledge / Playbook 引用…')
+        def done(result,error):
+            if sip.isdeleted(self):return
+            self.set_busy(False)
+            if error:self.status.setText('Playbook 引用未打开：'+error)
+            else:
+                self.details.setPlainText(json.dumps(result,ensure_ascii=False,indent=2))
+                self.status.setText('已在右侧业务明细打开只读引用：'+str(identifier))
+            if self.close_requested:self.close()
+        self.window.async_call(read,done,guarded=False)
 
     def closeEvent(self,event):
         if self.busy:

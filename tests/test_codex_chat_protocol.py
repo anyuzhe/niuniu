@@ -1,3 +1,4 @@
+import json
 import unittest
 from threading import Event
 from types import SimpleNamespace
@@ -44,10 +45,16 @@ class CodexProtocolTests(unittest.TestCase):
         c=Connection([tool(method='item/commandExecution/requestApproval')]);calls=[]
         with self.assertRaises(ModelError):self.run_with(c,calls)
         self.assertEqual(calls,[]);self.assertIn('error',c.sent[0]);self.assertTrue(c.closed)
-    def test_duplicate_call_and_tool_budget(self):
-        for events,kwargs in [([tool(),tool()],{}),([tool(),tool('two')],{'max_tool_calls':1})]:
-            c=Connection(events);calls=[]
-            with self.assertRaises(ModelError):self.run_with(c,calls,**kwargs)
-            self.assertEqual(len(calls),1);self.assertTrue(c.closed)
+    def test_duplicate_call_is_rejected(self):
+        c=Connection([tool(),tool()]);calls=[]
+        with self.assertRaises(ModelError):self.run_with(c,calls)
+        self.assertEqual(len(calls),1);self.assertTrue(c.closed)
+    def test_tool_budget_refusal_still_allows_final_answer(self):
+        c=Connection([tool(),tool('two'),*FINAL]);calls=[]
+        result=self.run_with(c,calls,max_tool_calls=1)
+        self.assertEqual(result['text'],'done');self.assertEqual(len(calls),1);self.assertTrue(c.closed)
+        blocked=json.loads(c.sent[1]['result']['contentItems'][0]['text'])
+        self.assertFalse(c.sent[1]['result']['success'])
+        self.assertEqual(blocked['error']['code'],'TOOL_BUDGET_EXHAUSTED')
     def test_json_overflow_rejected(self):
         with self.assertRaises(ModelError):strict_json('{"value":1e999}')

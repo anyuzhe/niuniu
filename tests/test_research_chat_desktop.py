@@ -58,6 +58,20 @@ class ChatDesktopTests(unittest.TestCase):
             entry=dialog.evidence.item(dialog.evidence.count()-1)
             self.assertIn('sz.301396',entry.text());dialog.evidence.setCurrentItem(entry);dialog.open_reference()
             self.assertIn('sz.301396',dialog.details.toPlainText());self.assertIn('未创建正式 MarketSnapshot',dialog.status.text())
+            source_entry=None
+            for reference,identifier in [
+                ({'kind':'strategy_source','strategy_source_id':'source-fixture'},'source-fixture'),
+                ({'kind':'playbook_definition','definition_id':'definition-fixture'},'definition-fixture'),
+                ({'kind':'playbook_case','case_id':'case-fixture'},'case-fixture')]:
+                dialog.receive('tool_result',{'name':'fixture','result':{'ok':True,'evidence':[reference]}})
+                entry=dialog.evidence.item(dialog.evidence.count()-1);self.assertIn(identifier,entry.text())
+                if reference['kind']=='strategy_source':source_entry=entry
+            dialog.evidence.setCurrentItem(source_entry)
+            with patch('quantlab.trading.playbook_store.PlaybookStore.get_strategy_source',
+                    return_value={'strategy_source_id':'source-fixture','title':'fixture'}) as open_source:
+                dialog.open_reference();self.wait(lambda:not dialog.busy)
+            open_source.assert_called_once_with('source-fixture')
+            self.assertIn('source-fixture',dialog.details.toPlainText())
             identifier=dialog.session_id;dialog.close();window.research_chat()
             self.assertEqual(window._research_chat_dialog.session_id,identifier)
             self.assertIn('verified fixture',dialog.transcript.toPlainText())

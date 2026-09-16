@@ -53,6 +53,20 @@ class HTTPProviderTests(unittest.TestCase):
         self.assertFalse(received[0][1]['store'])
         self.assertEqual(received[1][1]['input'][-1]['type'],'function_call_output')
 
+    def test_budget_exhaustion_forces_synthesis_without_more_tools(self):
+        call=lambda identifier:{'choices':[{'finish_reason':'tool_calls','message':{'role':'assistant','content':None,
+            'tool_calls':[{'id':identifier,'type':'function','function':{'name':'get_capabilities','arguments':'{}'}}]}}]}
+        final={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':'budget summary'}}]}
+        url,received=self.server([call('one'),call('two'),final]);calls=[]
+        config=ModelConfig(provider='chat_completions',model='custom',effort='',base_url=url,
+            max_tool_calls=1,max_rounds=2)
+        result=HTTPProvider(config).complete([{'role':'user','content':'query'}],[],
+            lambda name,args:calls.append((name,args)) or {'ok':True},lambda *_:None,Event())
+        self.assertEqual(result['text'],'budget summary');self.assertEqual(len(calls),1)
+        self.assertEqual(received[-1][1]['tools'],[])
+        blocked=json.loads(received[-1][1]['messages'][-1]['content'])
+        self.assertEqual(blocked['error']['code'],'TOOL_BUDGET_EXHAUSTED')
+
     def test_redirect_is_rejected_and_round_limit_applies(self):
         url,received=self.server(['redirect'])
         config=ModelConfig(provider='responses',model='custom',base_url=url)

@@ -77,7 +77,7 @@ class ResearchChatTests(unittest.TestCase):
             runtime=ChatRuntime(tmp);session=runtime.store.create()
             actions=[('approve_experiment',{}),('arbitrary_shell',{}),('delete_data',{})]
             result=runtime.run(session,'test',ModelConfig(),network_allowed=True,provider=FakeProvider(actions))
-            self.assertEqual(result['status'],'failed');self.assertIn('三次',result['error'])
+            self.assertEqual(result['status'],'completed');self.assertEqual(result['tool_calls'],3)
             session=runtime.store.create()
             actions=[('search_factors',{'query':str(i),'offset':0,'limit':1}) for i in range(3)]
             result=runtime.run(session,'test',ModelConfig(max_tool_calls=2),network_allowed=True,provider=FakeProvider(actions))
