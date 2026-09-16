@@ -1,0 +1,134 @@
+from contextlib import redirect_stdout, redirect_stderr
+from datetime import date, datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from zoneinfo import ZoneInfo
+import io
+import json
+import unittest
+
+from quantlab.agent.evidence_scheduler import SCHEDULE, EvidenceScheduler, SchedulerError
+from quantlab.agent.evidence_scheduler_cli import main as cli_main
+from quantlab.agent.system_health import SystemHealthService
+from quantlab.data.public_evidence import PublicEvidenceError
+
+TZ = ZoneInfo('Asia/Shanghai')
+
+
+def at(y, m, d, hh, mm):
+    return datetime(y, m, d, hh, mm, tzinfo=TZ)
+
+
+class FakeArchive:
+    def __init__(self):
+        self.accepted = set(); self.calls = []; self.not_ready_until = {}; self.fail = set(); self.calendar_days = None
+        self.clock = None
+    def get(self, task, day):
+        if (task, day.isoformat()) not in self.accepted:
+            raise PublicEvidenceError('NOT_FOUND', 'missing')
+        return {'capture_id': 'x'}
+    def capture(self, task, day):
+        self.calls.append((task, day.isoformat()))
+        if task in self.fail:
+            raise PublicEvidenceError('PROVIDER_ERROR', 'boom')
+        until = self.not_ready_until.get(task)
+        if until is not None and self.clock() < until:
+            raise PublicEvidenceError('NOT_READY', 'not published')
+        self.accepted.add((task, day.isoformat()))
+        return {'rows': 3, 'created': True, 'capture_timing': 'SAME_DAY_AFTER_CLOSE', 'warnings': []}
+    def list_days(self, task, limit=10):
+        days = sorted((d for t, d in self.accepted if t == task), reverse=True)
+        return [{'trading_day': d} for d in days[:limit]]
+
+
+class SchedulerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
+        self.now = [at(2026, 9, 16, 15, 30)]; self.archive = FakeArchive(); self.archive.clock = lambda: self.now[0]
+        self.holidays = set(); self.daily = []
+        def daily_market(day):
+            self.daily.append(day.isoformat()); return {'rows': 5000, 'created': True}
+        self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
+                                           calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market)
+    def tearDown(self):
+        self.tmp.cleanup()
+    def tasks(self, result):
+        return sorted(a['task'] for a in result['actions'] if a['ok'])
+
+    def test_disabled_and_enable_requires_confirmation(self):
+        self.assertEqual(self.scheduler.tick(), {'status': 'DISABLED', 'actions': []})
+        with self.assertRaises(SchedulerError):
+            self.scheduler.enable(authorization='用户授权')
+        with self.assertRaises(SchedulerError):
+            self.scheduler.enable(confirmed=True)
+        control = self.scheduler.enable(confirmed=True, authorization='用户在对话中授权收盘后低频归档')
+        self.assertTrue(control['enabled'])
+        self.scheduler.pause(); self.assertEqual(self.scheduler.tick()['status'], 'DISABLED')
+
+    def test_after_close_windows_retries_and_next_morning(self):
+        self.scheduler.enable(confirmed=True, authorization='ok')
+        self.assertEqual(self.scheduler.tick()['actions'], [])
+        self.now[0] = at(2026, 9, 16, 15, 45)
+        first = self.scheduler.tick()
+        self.assertEqual(self.tasks(first), sorted(['em_limit_up_pool', 'em_prev_limit_up_pool', 'em_broken_board_pool', 'em_limit_down_pool',
+                                                    'em_strong_pool', 'em_popularity_rank', 'em_concept_boards', 'em_industry_boards']))
+        self.archive.not_ready_until = {'em_billboard_daily': at(2026, 9, 16, 17, 50)}
+        self.now[0] = at(2026, 9, 16, 17, 35)
+        second = self.scheduler.tick()
+        failed = [a for a in second['actions'] if not a['ok']]
+        self.assertEqual([a['task'] for a in failed], ['em_billboard_daily'])
+        self.assertIn('em_concept_board_members', self.tasks(second))
+        self.now[0] = at(2026, 9, 16, 17, 40)
+        self.assertEqual(self.scheduler.tick()['actions'], [])
+        self.now[0] = at(2026, 9, 16, 17, 55)
+        self.assertEqual(self.tasks(self.scheduler.tick()), ['em_billboard_daily'])
+        self.now[0] = at(2026, 9, 17, 8, 0)
+        morning = self.scheduler.tick()
+        self.assertEqual(morning['candidates'], ['2026-09-16']); self.assertEqual(self.tasks(morning), ['daily_market'])
+        self.assertEqual(self.daily, ['2026-09-16'])
+        self.now[0] = at(2026, 9, 17, 9, 20)
+        self.assertEqual(self.scheduler.tick()['candidates'], [])
+        status = self.scheduler.status()['recent_days']['2026-09-16']
+        self.assertEqual(status['em_billboard_daily']['attempts'], 2); self.assertEqual(status['em_billboard_daily']['status'], 'ACCEPTED')
+
+    def test_holiday_weekly_and_give_up(self):
+        self.scheduler.enable(confirmed=True, authorization='ok')
+        self.holidays.add(date(2026, 10, 1)); self.now[0] = at(2026, 10, 1, 16, 0)
+        self.assertEqual(self.scheduler.tick()['actions'], [])
+        self.assertFalse(self.scheduler.status()['recent_days'])
+        self.now[0] = at(2026, 9, 18, 16, 40)
+        self.assertIn('em_industry_board_members', self.tasks(self.scheduler.tick()))
+        self.now[0] = at(2026, 9, 21, 16, 40)
+        monday = self.scheduler.tick()
+        self.assertNotIn('em_concept_board_members', self.tasks(monday))
+        self.assertEqual(self.scheduler.status()['recent_days']['2026-09-21']['em_concept_board_members']['status'], 'SKIPPED_NOT_DUE')
+        self.archive.fail.add('em_limit_up_pool'); self.now[0] = at(2026, 9, 22, 15, 41)
+        for minute in range(0, 8 * 16, 16):
+            self.now[0] = at(2026, 9, 22, 15 + (41 + minute) // 60, (41 + minute) % 60)
+            self.scheduler.tick()
+        entry = self.scheduler.status()['recent_days']['2026-09-22']['em_limit_up_pool']
+        self.assertEqual((entry['attempts'], entry['status']), (8, 'GAVE_UP'))
+        health = SystemHealthService(self.output, now_fn=lambda: self.now[0]).build()['components']['public_evidence']
+        self.assertEqual(health['status'], 'WARN'); self.assertIn('evidence_capture_gave_up', health['warnings'])
+
+    def test_lock_and_cli(self):
+        self.scheduler.enable(confirmed=True, authorization='ok'); self.now[0] = at(2026, 9, 16, 15, 45)
+        with self.scheduler._lock():
+            with self.assertRaises(SchedulerError) as ctx:
+                self.scheduler.tick()
+        self.assertEqual(ctx.exception.code, 'ALREADY_RUNNING')
+        stream = io.StringIO()
+        with redirect_stdout(stream):
+            self.assertEqual(cli_main(['--output', str(self.output), '--status']), 0)
+        self.assertTrue(json.loads(stream.getvalue())['enabled']); self.assertEqual(len(json.loads(stream.getvalue())['schedule']), len(SCHEDULE))
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(cli_main(['--output', str(self.output), '--enable']), 1)
+        fresh = TemporaryDirectory()
+        try:
+            self.assertEqual(SystemHealthService(Path(fresh.name)).build()['components']['public_evidence']['status'], 'NOT_CONFIGURED')
+        finally:
+            fresh.cleanup()
+
+
+if __name__ == '__main__':
+    unittest.main()

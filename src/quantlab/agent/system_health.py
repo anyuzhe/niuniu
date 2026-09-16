@@ -488,6 +488,25 @@ class SystemHealthService:
             evidence={'counts':dict(counts),'missing_active_worktrees':missing,'stale_running_tasks':stale},blockers=blockers,warnings=warnings,
             limitations=['READY_FOR_HUMAN is an attention state, not a software failure.'])
 
+    def _public_evidence(self,now):
+        from quantlab.agent.evidence_scheduler import EvidenceScheduler
+        try:status=EvidenceScheduler(self.output,now_fn=lambda:now).status()
+        except (OSError,ValueError,KeyError,TypeError) as exc:
+            return _component('BLOCKED','公开证据调度状态不可读。',blockers=['evidence_scheduler_state_invalid'],evidence={'error':type(exc).__name__+': '+str(exc)[:300]})
+        if not status['enabled'] and not status['last_tick_at']:return _component('NOT_CONFIGURED','收盘后公开证据归档未启用。')
+        warnings=[];last=_parse(status['last_tick_at'])
+        if not status['enabled']:warnings.append('evidence_scheduler_paused')
+        if status['enabled'] and (last is None or now-last.astimezone(timezone.utc)>timedelta(hours=24)):warnings.append('evidence_scheduler_stale')
+        days=status['recent_days'];latest=max(days,default=None)
+        gave_up=sorted({task for tasks in days.values() for task,entry in tasks.items() if entry.get('status')=='GAVE_UP'})
+        if gave_up:warnings.append('evidence_capture_gave_up')
+        latest_state=days.get(latest) or {}
+        counts=Counter(entry.get('status','UNKNOWN') for entry in latest_state.values())
+        return _component('WARN' if warnings else 'OK',f"公开证据调度{'启用' if status['enabled'] else '暂停'}；最近交易日 {latest or 'UNKNOWN'} 状态 {dict(counts)}。",
+            evidence={'last_tick_at':status['last_tick_at'],'last_action_at':status['last_action_at'],'latest_day':latest,
+                'latest_status_counts':dict(counts),'gave_up_tasks':gave_up,'schedule_version':status['schedule_version']},
+            warnings=warnings,limitations=['只反映收盘后抓取是否完成，不证明公开网页数据准确或满足 strict PIT。'])
+
     def _logs(self,now):
         candidates=[self.output/'_tracking_daemon'/'launchd.out.log',self.output/'_tracking_daemon'/'launchd.err.log']
         rows=[];warnings=[]
@@ -510,7 +529,7 @@ class SystemHealthService:
             'market_data_series':self._market_data_series(now),'daily_market':self._daily_market(now),'market_snapshots':self._market_snapshots(now),
             'market_snapshot_provider':self._market_snapshot_provider(now),'daily_orchestrator':self._orchestrator(now),'pit_playbook':self._pit_playbook(now),
             'paper_lifecycle':self._paper(now),'broker_shadow':self._broker_shadow(now),
-            'real_trade_readiness':self._real_trade_readiness(now),'dev_studio':self._devstudio(now),'logs':self._logs(now)}
+            'real_trade_readiness':self._real_trade_readiness(now),'dev_studio':self._devstudio(now),'public_evidence':self._public_evidence(now),'logs':self._logs(now)}
         runtime=('workspace','artifact_growth','jobs','tracking_daemon','mcp','notifications','dev_studio','logs')
         readiness=('market_data_series','daily_market','market_snapshots','daily_orchestrator','pit_playbook','paper_lifecycle')
         blockers=[];warnings=[]

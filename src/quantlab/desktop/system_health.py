@@ -5,12 +5,12 @@ from quantlab.agent.system_health import SystemHealthService
 from .widgets import Card,button,kpis,label,row,table
 
 
-ORDER=('workspace','artifact_growth','jobs','approval_input_freezes','research_session_grant','tracking_daemon','mcp','notifications','market_data_series','daily_market','market_snapshots','market_snapshot_provider','daily_orchestrator','pit_playbook','paper_lifecycle','broker_shadow','real_trade_readiness','dev_studio','logs')
+ORDER=('workspace','artifact_growth','jobs','approval_input_freezes','research_session_grant','tracking_daemon','mcp','notifications','market_data_series','daily_market','market_snapshots','market_snapshot_provider','daily_orchestrator','pit_playbook','paper_lifecycle','broker_shadow','real_trade_readiness','dev_studio','public_evidence','logs')
 LABELS={'workspace':'工作空间','artifact_growth':'产物增长','jobs':'研究任务','approval_input_freezes':'Approval Input Freeze','research_session_grant':'Research Session Grant','tracking_daemon':'Tracking Daemon','mcp':'MCP',
     'notifications':'Notifications','market_data_series':'Market Data / Series','daily_market':'DailyMarket',
     'market_snapshots':'MarketSnapshot','market_snapshot_provider':'Snapshot Provider','daily_orchestrator':'Daily Orchestrator','pit_playbook':'PIT / Playbook',
     'paper_lifecycle':'Paper Lifecycle','broker_shadow':'Broker Shadow','real_trade_readiness':'RealTrade Readiness',
-    'dev_studio':'Dev Studio','logs':'后台日志'}
+    'dev_studio':'Dev Studio','public_evidence':'公开证据归档','logs':'后台日志'}
 
 
 class SystemHealthWidget(QWidget):
