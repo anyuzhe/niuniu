@@ -103,6 +103,8 @@ Daily Orchestrator `--init` 新增可选 `--universe-snapshot`，计划身份固
 
 ## 8. 当前真实状态与下一步
 
-截至本说明完成时，`/Volumes/Lexar/niuniu-data` **尚未新增真实 PIT Universe v1 receipt**；实际运行 `pit-universe-audit` 返回 receipt/verified/invalid=`0/0/0`、effective_sessions=0、member_records=0。本轮没有得到针对某个未来交易日下载官方证券全集的显式联网授权，也没有用今天的列表回填历史 session。
+截至工程验收完成时，`/Volumes/Lexar/niuniu-data` **尚未新增真实 PIT Universe v1 receipt**；实际运行 `pit-universe-audit` 返回 receipt/verified/invalid=`0/0/0`、effective_sessions=0、member_records=0。当时没有针对未来交易日的显式联网授权，也没有用今天的列表回填历史 session。
 
-下一步必须由宿主针对一个未来交易日显式授权并准备交易所原文字节，逐项复核 publication/availability 和全量成员语义，再在 09:15 cutoff 前创建首个真实 snapshot。之后 Daily Orchestrator 计划必须显式绑定该 snapshot。连续 SecurityStatus v2 工程合同现已完成，但真实逐日状态receipt仍为0；即使 Universe 通过，SecurityStatus、Official MarketRules、DailyMarket/bar vintage 等其它 blocker 仍需独立满足。
+后续更新（2026-09-16）：用户已授权对 2026-09-17 目标日相关的三所官方 HTTPS 做只读访问和暂存。现已保存 5,563 只 review-only baseline 与独立规范 addendum，但该授权不自动确认 publication time、字段映射或目标日全集；目标日尚未刷新，archive仍未调用，真实receipt继续为0。详情见《牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md》。
+
+下一步必须在目标日09:15前重新取得交易所原文字节，逐项复核 publication/availability 和全量成员语义，三项宿主确认齐全后才创建首个真实 snapshot。之后 Daily Orchestrator 计划必须显式绑定该 snapshot。连续 SecurityStatus v2 工程合同现已完成，但真实逐日状态receipt仍为0；即使 Universe 通过，SecurityStatus、Official MarketRules、DailyMarket/bar vintage 等其它 blocker 仍需独立满足。

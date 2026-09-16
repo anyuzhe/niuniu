@@ -277,6 +277,7 @@ Offscreen GUI tests exercise controls and application logic. They do not replace
 - Complete historical industry coverage, reliable publication/availability timestamps, and genuine daily market capitalization remain incomplete. Quarterly share counts cannot simply be treated as daily share counts; full neutralization acceptance with real historical inputs is pending.
 - PIT Universe Receipt v1 is implemented and wired into qualification, input freezing, PREP, and daily orchestration, but the real data root still has no prospective v1 snapshot. Current lists are never backfilled into historical sessions.
 - Complete daily SecurityStatus v2 receipts, explicit adjacent-session chains, silver materialization, PREP, Coverage, and System Health integration are implemented. The real data root still has zero v2 receipts; its 14 sparse statements for seven securities cannot be carried across sessions or presented as a complete chain.
+- A read-only staging capture for the prospective 2026-09-17 session now holds a 5,563-member review baseline (SSE 2,318; SZSE 2,901; BSE 344), official technical specifications, and bounded SZSE public-source diagnostics. It is not target-session evidence: publication times, public-field mappings, and complete daily status remain unconfirmed, so no archive command was invoked and both formal receipt counts remain zero. The target-day refresh must be run manually before 09:15 Asia/Shanghai; missed cutoffs are never backfilled.
 - Official daily price limits and special listing/delisting rules are not fully covered. Synthetic-rule backtests do not establish complete historical market-rule validation.
 - Universal continuation for recursive algorithms beyond classic Chan, and for complex parent-study subtask trees, is unfinished.
 - Some remaining theory rules and independent equal-high/equal-low liquidity-pool lifecycles are not covered. Subjective interpretations do not automatically become verifiable algorithms.
@@ -288,6 +289,7 @@ Offscreen GUI tests exercise controls and application logic. They do not replace
 Detailed design and historical development documents are currently in Chinese:
 
 - [Overall design and architecture](统一技术交易因子实验平台_总体方案与架构说明.md): target architecture, including unfinished capabilities.
+- [Prospective 2026-09-17 Universe / SecurityStatus evidence-stage acceptance](牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md): review baseline, official specification semantics, bounded source diagnostics, closed archive gates, and the pre-09:15 runbook (Chinese).
 - [PyQt desktop guide](PyQt桌面界面说明.md) and [development status](核心功能建设进度.md): technical and stage records; historical artifact links work only in the original development environment.
 - [Wyckoff A–E rules and workflow](威克夫_AE规则与因子链路.md) and [Chan confirmation/progression rules](Chan确认推进_线段背驰与买卖点规则.md).
 - [Cross-experiment trial registration and Holm correction](跨实验试验登记与Holm校正规则.md).

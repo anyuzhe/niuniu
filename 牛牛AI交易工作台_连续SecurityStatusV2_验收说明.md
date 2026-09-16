@@ -104,3 +104,9 @@ quantlab security-status-chain --data-root /Volumes/Lexar/niuniu-data --symbol s
 截至本说明完成时，实际只读审计 `/Volumes/Lexar/niuniu-data` 返回 receipt/verified/invalid=`0/0/0`、effective_sessions=0、status_records=0、continuous_links/strict_continuous_links=`0/0`。旧 silver manifest 仍按原 SHA256=`9fb12ec9731d28d5078a878c51bdce9e98a0ee78c642e6968b1fd5dee556b4e1` 只读加载14行/7只证券，证明向后兼容且没有隐式重物化。现有真实数据仍只有14条稀疏事件 statement。
 
 因此本轮完成的是**完整逐日状态与连续链的工程合同**，不是全市场真实状态覆盖。没有未来交易日前官方完整状态字节、对应 PIT Universe snapshot 和宿主逐项确认时，不得制造 v2 receipt、不得回填历史、不得升级 Qualification/PREP/Playbook/Paper 证据等级。
+
+## 7. 2026-09-17 前瞻取证更新
+
+2026-09-16 已在独立 staging 保存三所5,563只 review-only Universe baseline，并以追加式 addendum 固定 SSE/SZSE/BSE 官方状态规范。SSE规范语义较完整；SZSE仅证明FTS私有日文件，3次站内检索与10个受限公开路径未找到目标日批量文件；BSE仅证明FDEP日文件，公开 `xxtpbz/xxzrzt` 权威映射未闭合。技术规范不能替代目标日逐证券实际值，简称和缺公告也不能推导 `NONE`。
+
+因此 publication time、语义映射与完整日状态确认仍为false，SecurityStatus v2 receipt保持0。目标日上午只有在先完成exact-session Universe归档、再取得三所全部member显式 `TRADABILITY + RISK_WARNING` 后，才允许创建root。完整取证与runbook见《牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md》。

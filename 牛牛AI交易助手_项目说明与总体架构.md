@@ -4,7 +4,7 @@
 - 架构口径更新：2026-09-16
 - 当前开发机独立数据根：`/Volumes/Lexar/niuniu-data`；`/Volumes/Lexar/MQC-DATA` 仅保留旧数据副本和历史来源引用。
 - 适用仓库：`github.com:anyuzhe/niuniu`
-- 当前稳定基线：PIT Universe Receipt v1 与连续 SecurityStatus v2 工程合同已完成（两者真实完整 snapshot 均仍为0）；SecurityStatus 现有真实资料仍为7只证券/14条稀疏 verified statement；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；External Research Skill v3 已固定真实Git archive/策展包并接入只读Library；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `1000 passed / 0 failed / 0 skipped`
+- 当前稳定基线：PIT Universe Receipt v1 与连续 SecurityStatus v2 工程合同已完成（两者真实完整 snapshot 均仍为0）；SecurityStatus 现有真实资料仍为7只证券/14条稀疏 verified statement；2026-09-17 前瞻取证已有三所5,563只review基线与规范addendum，但目标日刷新和归档确认仍未完成；MarketRules v2 首批7个停牌 session及全局深度审计；7个复牌日 exact 算术参考已隔离留证但不具 Strict PIT 资格；External Research Skill v3 已固定真实Git archive/策展包并接入只读Library；2026-09-16 前瞻 PREP 以 `COMPLETE_NO_TRADE` 留证；全仓 `1000 passed / 0 failed / 0 skipped`
 
 ## 1. 一句话定位
 
@@ -240,7 +240,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 - Selection、Execution Access 与账户收益的分层表现。
 
 系统复盘产生的新经验只能回到 `SYSTEM_REVIEW` 来源，再形成新的 DRAFT 或新版本；不能直接覆盖旧 Playbook。旧版本、失败预测和反例必须永久可追溯。
-## 11. 当前实现状态（2026-09-15）
+## 11. 当前实现状态（2026-09-16）
 
 | 层 | 当前状态 |
 |---|---|
@@ -254,6 +254,7 @@ Playbook 命中只能产生候选和条件化计划，不能直接等同于“�
 | PIT Universe Receipt | **v1 工程完成、真实数据待前瞻获取**：目标 session 完整 scope/member、官方原文 SHA256、三项宿主确认、cutoff 防回填、append-only audit；Qualification/PREP/Orchestrator/approval freeze 已接线。真实 `niuniu-data` snapshot=0 |
 | Strict PIT Coverage | **已完成 v1**：深度验证 receipt 后按年份/证券/字段展示 evidence presence，并分开展示回顾性 inventory 与 gap；不生成数据集总覆盖率；当前 SecurityStatus 有14条 verified evidence，其它三类仍缺 |
 | Strict PIT SecurityStatus | **v2 工程完成、真实完整数据待获取**：累计7份深交所公告→14条稀疏状态事件；v2 新增全Universe逐日状态、显式相邻session链、进入/持续/撤销、append-only audit、silver/PREP/Coverage/System Health接线。真实v2 receipt=0，稀疏事件不跨日外推 |
+| 2026-09-17 前瞻官方取证 | **staging/runbook 已完成，归档门保持关闭**：2026-09-16 review-only A_SHARE 基线为 SSE 2,318 + SZSE 2,901 + BSE 344 = 5,563；追加式语义包固定三所规范、SZSE 3次站内检索与10个公开静态路径探测。目标日刷新、publication time、公共字段映射和全状态完整性未确认，Universe/v2 status receipt仍均为0 |
 | Official MarketRules Receipt | **v2、首批真实资料与全局审计已完成**：按 snapshot append-only 保存 records/官方原文/`published_at`；CLI/System Health 深度核验1个 receipt、7条停牌规则、7份原文。7个复牌日已另核出 exact 算术参考值，但历史行情 byte vintage 只在事后取得，reference audit 固定 Strict PIT eligible=0、MarketRules appended=0；全市场覆盖仍缺 |
 | Playbook Lab 六类结构化对象 | 已完成 |
 | `ExpertSource` 作为交易者来源 | 已完成，并兼容投影为 StrategySource(TRADER) |
@@ -283,7 +284,11 @@ P13-B0 已把“当前没有具体券商通道”做成 fail-closed 安全门，
 2. **P13-B2/B3**：实时 Shadow、kill switch、风险限额、逐单确认、订单预检与最终真实订单必须继续分层单独评审。
 3. 无 B1 通道期间，并行积累真实前瞻 Paper 日志；低成本实时 MarketSnapshot、Watch Sequential Monitor、Strict PIT Evidence Archive 与 Coverage v1 均已补齐。后续外部数据升级目标是券商/QMT/交易所级行情；内部 Research Lab 下一主线转为**真实官方历史资料归档与 receipt coverage 提升**，而不是再改 Strict PIT/Coverage 引擎。
 
-Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage、PIT Universe v1 与连续 SecurityStatus v2 工程合同均已完成；真实状态资料仍只有 7 只证券、14 条稀疏 statement，v2 完整逐日 receipt 为0。Official MarketRules publication receipt v2 已把同7份公告映射为7个明确停牌 session；7个复牌日 exact 算术值因缺开盘前 publication receipt 仍只作回顾性 reference。External Research Skill v3 仍只形成 PARTIAL StrategySource 预览和 Playbook DRAFT 候选。当前内部主线是：经宿主明确授权后，在未来 session 09:15 cutoff 前同步归档首个真实 Universe 与完整 SecurityStatus snapshot，并继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何稀疏 receipt、回顾性参考或外部知识评分均不视为完整覆盖/Alpha。
+Approval-time actual-byte freeze、Research Session Grant、Watch Sequential Monitor、Strict PIT Evidence Archive/Coverage、PIT Universe v1 与连续 SecurityStatus v2 工程合同均已完成；真实状态资料仍只有 7 只证券、14 条稀疏 statement，v2 完整逐日 receipt 为0。Official MarketRules publication receipt v2 已把同7份公告映射为7个明确停牌 session；7个复牌日 exact 算术值因缺开盘前 publication receipt 仍只作回顾性 reference。External Research Skill v3 仍只形成 PARTIAL StrategySource 预览和 Playbook DRAFT 候选。
+
+2026-09-16 已在独立数据根完成 2026-09-17 的前瞻准备：父 capture 保存5,563只三所 review-only A_SHARE 基线；独立 addendum 保存 SSE/SZSE/BSE 规范语义和SZSE有界公开源排查。官方规范只证明字段与私有分发机制，不能替代目标日逐证券值；SZSE公开批量完整状态源尚未找到，BSE公开 `xxtpbz/xxzrzt` 字典也未闭合。故四项确认均为false、archive未调用、正式receipt仍为0，目标日上午必须在09:15前人工刷新并逐项确认，错过不得历史补档。
+
+当前内部主线是：在未来 session 09:15 cutoff 前同步归档首个真实 Universe，并仅在三所完整状态均成立时归档 SecurityStatus；同时继续寻找历史静态参数文件，随后补历史行业与每日真实市值。任何 staging、稀疏 receipt、回顾性参考或外部知识评分均不视为完整覆盖/Alpha。
 
 ### P8.7 当前边界
 

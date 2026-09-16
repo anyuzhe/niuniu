@@ -27,3 +27,7 @@ PIT Universe 的“全集完整性”不能由零散 `universe_eligibility` stat
 - System Health / Coverage 的 receipt 数量是全局完整性 inventory，不证明某个 CandidateSet 已引用对应 snapshot。
 - PIT Universe 通过不代表 SecurityStatus、MarketRules、bar vintage、行业、市值或财报 PIT 已通过。
 - 当前真实 `niuniu-data` 尚无 v1 receipt；必须在未来 session cutoff 前经宿主授权取得真实官方字节，不允许用当前列表回填历史。
+
+## 2026-09-17 前瞻准备边界
+
+2026-09-16 的 review-only 基线为 SSE 2,318、SZSE 2,901、BSE 344，共5,563只 A_SHARE；它只用于目标日上午 diff。父 capture 与独立 semantic addendum 位于 `staging/pit_universe_security_status/2026-09-17/`，保存官方响应、规范、headers和SHA256，但不是receipt。目标日必须重新刷新三所、官方日标记、分页总数、证券类型和加入/退出；publication time、语义映射、完整官方全集三项确认均成立且仍早于09:15时，才可归档。HTTP Date、文件名日期、规范版本日期或9月16日成员均不能替代这些门。

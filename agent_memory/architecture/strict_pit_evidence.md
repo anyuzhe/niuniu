@@ -46,3 +46,5 @@ Official MarketRules 不计入上面四类 PIT statement 数量，但其最高�
 - System Health 的 PIT/Playbook 组件显示 receipt 数量；receipt 损坏显示 WARN，不能静默当作空库。
 
 当前独立数据根 `/Volumes/Lexar/niuniu-data` 已有 14 条 `security_status` verified sparse receipt（7只深市股票的明确停牌/复牌及 ST 生效事件）；其它三类 statement、PIT Universe v1 与 SecurityStatus v2 完整逐日 snapshot 均为0。另有1个 MarketRules v2 snapshot，覆盖同7只股票各1个明确停牌 session，共7条规则。7个复牌 session 已有1个深验通过的回顾性 reference snapshot，但 Strict PIT eligible records=0、MarketRules appended=0。禁止把这些稀疏事件或参考值写成完整历史覆盖。
+
+目标日前 staging 可保存官方响应、headers、URL、SHA256、规范和负面检索结果，但它没有receipt语义；规范中的字段定义/私有群发时间也不能证明目标日实际记录或public availability。只有正式archive合同及宿主逐项确认能改变receipt inventory。

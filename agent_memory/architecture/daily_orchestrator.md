@@ -20,6 +20,7 @@ P8.7 当前版只负责编排，不定义新交易规则；实时行情由独立
 - 必须区分“空 CandidateSet”和“非空 CandidateSet 但 PREP `selected_symbols=[]`”：后者只是盘前不提前选具体股票，仍应等待 AUCTION，不能提前终止。
 - AI/Reviewer/MCP 无 init/tick/run 权限；宿主负责计划和运行授权。
 - 当前 live Provider 为 `public-web-consensus-v1`（腾讯主源、东财第二源、新浪备用校验）；只消费 FULL + LIVE_NEAR_REALTIME，共识不足或网页端点异常时等待/错过，不降级成单源猜值。
+- 当前没有后台定时任务。任何目标日08:00刷新或09:15前PIT归档都必须由宿主当日显式启动；runbook不是scheduler，也不授予联网、确认或archive权限。错过cutoff后Orchestrator不得推动历史补档。
 
 状态必须 checksum、原子持久化并可重启恢复；同一计划重复 tick 不得重复 Case、CandidateSet、Prediction 或 MarketSnapshot。
 

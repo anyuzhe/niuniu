@@ -780,3 +780,17 @@
 - 测试：覆盖四日进入/持续/撤销链、Universe全成员、确认门、source scope、cutoff、幂等、篡改、UNKNOWN、断链/分叉、sparse冲突、silver与PREP exact-session消费；聚焦集成46/46。完整仓库按互斥集合为非Desktop879/879 + Desktop121/121，合计1000/0/0。
 - 文档：新增《牛牛AI交易工作台_连续SecurityStatusV2_验收说明.md》，同步README、总体架构、总计划、核心进度与Agent Memory。
 - 后续：宿主先在未来09:15前取得真实PIT Universe及完整官方状态字节，再创建首个root；后续逐交易日连续归档。MarketRules、历史行业、每日真实市值与财报PIT仍是独立 blocker。
+
+### 2026-09-16 14:37｜[前瞻取证/数据边界] 2026-09-17 Universe 与 SecurityStatus 准备收口
+
+- 范围：在用户已授权的 SSE/SZSE/BSE 官方 HTTPS 只读范围内，完成目标日前能够安全完成的抓取、规范补证、有界公开源排查和目标日 runbook；未调用 PIT archive，未配置后台定时任务。
+- 父 capture：`capture-20260916T132034+0800` 共77文件，review-only A_SHARE 为 SSE 2,318、SZSE 2,901、BSE 344，合计5,563；manifest=`e3174698...714a8`、review=`f2121a56...0f37`、members=`d7a4d87c...748f`，父目录未改写。
+- 语义 addendum：新增独立 `semantic-addendum-20260916T143747+0800`，46文件/19,660,328逻辑字节；21项材料包含8份三所官方页面/规范/通知、3次SZSE官方站内搜索、10次官方静态域名有界路径响应。manifest=`3ffccf93...ec41`，materials digest=`5b9f6892...edb1`。
+- SSE：IS124/IS120已证明盘前产品文件、产品状态D/S和TradingPhaseCode P/0/1语义；仍需目标日刷新、公共接口正式映射、publication time与完整性确认。
+- SZSE：v1.42及官方通知已证明FTS私有 `pre_securities/securities` 文件与Status 1/4/5；站内精确目标文件搜索为0，10个受限公开路径均404。该负面结果仅限本次有界排查；公开单证券接口不能替代2,901只的批量完整状态，继续阻塞v2。
+- BSE：v1.1已证明FDEP `bj_securityinfo` 全量文件、T-1后发送及Status 1/4/5；公开 `xxtpbz/xxzrzt` 权威字典未闭合，不能从简称或缺公告推导NONE。
+- Fail-closed：HTTP Date/Last-Modified只作候选；publication time、公共字段映射、目标日Universe完整性和逐日状态完整性均未确认。正式 `research/pit_universe` 与 `research/security_status_coverage` 目录仍不存在，receipt均为0。
+- 验证：逐项重算addendum body/headers及derived SHA256，父capture三个关键哈希未变；PIT Universe + SecurityStatus v2 + PREP + Daily Orchestrator聚焦回归 **45/45 passed**（2.947秒）。完整生产基线仍为 **1000/0/0**；本阶段未改源码，未重跑全仓。
+- 文档：新增《牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md》，同步README中英文、总体架构、总计划、核心进度和Agent Memory。
+- Git：本条与文档同一独立提交发布，提交标题 `docs: 固化前瞻Universe与状态取证边界`；SHA以Git历史为准，不push。
+- 后续：目标日08:00–08:15人工刷新三所Universe和官方日标记，逐项完成差异审计及三项宿主确认；09:15前先归档/审计Universe，只有三所完整状态全部闭合才归档SecurityStatus。错过cutoff必须顺延，不得历史补档。

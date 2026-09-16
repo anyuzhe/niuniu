@@ -23,6 +23,7 @@
 - Strict PIT / 历史资格、行业、市值与 publication evidence 任务必须读取 `architecture/strict_pit_evidence.md`；官方 URL 字符串本身不构成 Strict PIT，必须有本地原文字节、SHA256 与确认的 publication time receipt。`official_market_rule_references` 即使算术 exact 也固定为回顾性参考，不能作为 MarketRules/Qualification 证据。
 - PIT Universe / 全集完整性 / PREP 股票池任务必须同时读取 `architecture/pit_universe.md`；零散 eligibility statement、当前列表或调用方布尔值不能认证完整 Universe，必须使用目标 session 截止前创建且深验通过的 exact snapshot。
 - ST/*ST/停复牌 / SecurityStatus / PREP 状态过滤任务必须读取 `architecture/security_status.md`；稀疏statement只证明明确 effective session，完整逐日状态必须绑定PIT Universe v1的SecurityStatus v2，连续变化必须有显式相邻snapshot链；两者都不能替代官方逐日MarketRules。
+- 前瞻官方抓取任务必须把 `staging capture / semantic addendum / review-only baseline` 与正式 receipt 分开：技术规范只证明字段与分发机制，HTTP Date/Last-Modified只作候选；目标日刷新和三项宿主确认完成前不得调用archive。当前没有后台调度器，09:15截止任务必须由宿主当日显式启动，错过不得补档。
 - Watch / Tracking / Alpha 衰减监测任务必须读取 `architecture/watch_sequential.md`；序贯证据只相对冻结经验基线，不得自动停用因子、换参数或扩大交易权限。
 
 ## 固定读取顺序
