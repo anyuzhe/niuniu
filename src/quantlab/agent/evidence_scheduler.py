@@ -42,6 +42,8 @@ SCHEDULE = (
     {'task': 'forward_reference', 'after': time(18, 0)},
     {'task': 'em_concept_board_members', 'after': time(16, 0), 'weekly': True},
     {'task': 'em_industry_board_members', 'after': time(16, 30), 'weekly': True},
+    # Derived locally from the archives above; rebuilt whenever its accepted inputs change.
+    {'task': 'theme_facts', 'after': time(16, 10), 'refresh': True},
 )
 
 
@@ -106,7 +108,7 @@ def baostock_is_trading_day(day, sdk=None):
 
 
 class EvidenceScheduler:
-    def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None, reference_fn=None):
+    def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None, reference_fn=None, theme_library=None):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise SchedulerError('INVALID_WORKSPACE', '工作空间不存在。')
@@ -115,6 +117,7 @@ class EvidenceScheduler:
         self.calendar_fn = calendar_fn or baostock_is_trading_day
         self.daily_market_fn = daily_market_fn
         self.reference_fn = reference_fn
+        self.theme_library = theme_library
         self.root = self.output / '_market_data' / 'public_evidence' / '_scheduler'
 
     def _paths(self):
@@ -164,7 +167,15 @@ class EvidenceScheduler:
             self.archive = PublicEvidenceArchive(self.output)
         return self.archive
 
+    def _themes(self):
+        if self.theme_library is None:
+            from quantlab.trading.theme_engine import ThemeFactsLibrary
+            self.theme_library = ThemeFactsLibrary(self.output, evidence=self._archive())
+        return self.theme_library
+
     def _accepted(self, task, day):
+        if task == 'theme_facts':
+            return self._themes().is_current(day)
         if task == 'forward_reference':
             from quantlab.data.forward_daily import ForwardDailyError, ForwardReferenceArchive
             try:
@@ -194,6 +205,10 @@ class EvidenceScheduler:
         return latest is None or (day - latest).days >= WEEKLY_MAX_AGE_DAYS
 
     def _run(self, task, day, calendar_days, staged=False):
+        if task == 'theme_facts':
+            manifest = self._themes().build(day)
+            return {'build_id': manifest['build_id'], 'created': manifest['created'], 'families': manifest['families'],
+                    'skipped_families': manifest['skipped_families']}
         if task == 'forward_reference':
             if self.reference_fn is not None:
                 return self.reference_fn(day)
@@ -240,7 +255,7 @@ class EvidenceScheduler:
                 for item in SCHEDULE:
                     task = item['task']
                     entry = day_state.setdefault(task, {'attempts': 0, 'status': 'PENDING', 'last_attempt_at': None, 'last_error': None})
-                    if entry['status'] in ('ACCEPTED', 'SKIPPED_NOT_DUE'):
+                    if entry['status'] == 'SKIPPED_NOT_DUE' or (entry['status'] == 'ACCEPTED' and not item.get('refresh')):
                         continue
                     if local.date() == day and local.time() < item['after']:
                         continue
@@ -254,7 +269,7 @@ class EvidenceScheduler:
                         entry['status'] = 'GAVE_UP'
                         continue
                     last = datetime.fromisoformat(entry['last_attempt_at']) if entry['last_attempt_at'] else None
-                    if last is not None and now - last < RETRY_COOLDOWN:
+                    if entry['status'] == 'RETRY' and last is not None and now - last < RETRY_COOLDOWN:
                         continue
                     entry['attempts'] += 1
                     entry['last_attempt_at'] = now.astimezone(timezone.utc).isoformat()
@@ -266,6 +281,8 @@ class EvidenceScheduler:
                             entry.update(status='IN_PROGRESS', last_attempt_at=None, last_error=None, result=result)
                         else:
                             entry.update(status='ACCEPTED', last_error=None, result=result)
+                            if item.get('refresh'):
+                                entry['attempts'] = 0  # successful rebuilds of derived data never count toward giving up
                         actions.append({'day': key, 'task': task, 'ok': True, **result})
                     except Exception as error:
                         code = getattr(error, 'code', type(error).__name__)

@@ -20,6 +20,11 @@ FACT_FIELDS = {
     'leader_return': float,
     'leader_symbol': str,
     'note': str,
+    'max_streak': int,
+    'broken_count': int,
+    'persistence_days': int,
+    'seal_fund_billion': float,
+    'board_pct_change': float,
 }
 
 

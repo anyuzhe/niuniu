@@ -45,6 +45,24 @@ class FakeArchive:
         return [{'trading_day': d} for d in days[:limit]]
 
 
+class FakeThemes:
+    def __init__(self, archive):
+        self.archive = archive; self.builds = []; self.current = set()
+    RELEVANT = {'em_limit_up_pool', 'em_broken_board_pool', 'em_limit_down_pool', 'em_concept_boards', 'em_industry_boards',
+                'em_concept_board_members', 'em_industry_board_members'}
+    def _inputs(self, day):
+        return tuple(sorted(t for t, d in self.archive.accepted if d == day.isoformat() and t in self.RELEVANT))
+    def is_current(self, day):
+        return (day.isoformat(), self._inputs(day)) in self.current
+    def build(self, day):
+        pools = {'em_limit_up_pool', 'em_broken_board_pool', 'em_limit_down_pool'}
+        if not pools <= set(self._inputs(day)):
+            raise ValueError('POOLS_MISSING')
+        key = (day.isoformat(), self._inputs(day)); created = key not in self.current
+        self.current.add(key); self.builds.append(key)
+        return {'build_id': str(len(self.builds)), 'created': created, 'families': ['concept'], 'skipped_families': {}}
+
+
 class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
@@ -55,9 +73,10 @@ class SchedulerTests(unittest.TestCase):
         self.references = []
         def reference(day):
             self.references.append(day.isoformat()); return {'snapshot_id': 'x', 'as_of': day.isoformat(), 'created': True}
+        self.themes = FakeThemes(self.archive)
         self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
                                            calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market,
-                                           reference_fn=reference)
+                                           reference_fn=reference, theme_library=self.themes)
     def tearDown(self):
         self.tmp.cleanup()
     def tasks(self, result):
@@ -90,6 +109,8 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(self.scheduler.tick()['actions'], [])
         self.now[0] = at(2026, 9, 16, 17, 55)
         self.assertEqual(self.tasks(self.scheduler.tick()), ['em_billboard_daily'])
+        # 15:45 股池已就绪但未到 16:10 不建；17:35 同一 tick 内成分先抓完，题材事实只建一次；龙虎榜不是输入，不触发重建。
+        self.assertEqual(len(self.themes.builds), 1)
         self.now[0] = at(2026, 9, 17, 8, 0)
         morning = self.scheduler.tick()
         self.assertEqual(morning['candidates'], ['2026-09-16']); self.assertEqual(self.tasks(morning), ['daily_market', 'forward_reference'])
@@ -118,6 +139,23 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual((entry['attempts'], entry['status']), (8, 'GAVE_UP'))
         health = SystemHealthService(self.output, now_fn=lambda: self.now[0]).build()['components']['public_evidence']
         self.assertEqual(health['status'], 'WARN'); self.assertIn('evidence_capture_gave_up', health['warnings'])
+
+    def test_theme_facts_rebuild_when_inputs_change(self):
+        self.scheduler.enable(confirmed=True, authorization='ok')
+        self.archive.staged_rounds = {'em_concept_board_members': 1}
+        self.now[0] = at(2026, 9, 18, 16, 15)
+        self.scheduler.tick()  # 股池/板块就绪，成分进行中 → 先用已有输入构建
+        self.assertEqual(len(self.themes.builds), 1)
+        self.now[0] = at(2026, 9, 18, 16, 25)
+        self.scheduler.tick()  # 概念成分完成 → 输入变化 → 重建
+        self.assertEqual(len(self.themes.builds), 2)
+        self.now[0] = at(2026, 9, 18, 16, 35)
+        self.scheduler.tick()
+        self.assertIn('em_industry_board_members', dict(self.themes.builds[-1:])['2026-09-18'])
+        self.now[0] = at(2026, 9, 18, 16, 45)
+        before = len(self.themes.builds); self.scheduler.tick()
+        self.assertEqual(len(self.themes.builds), before)
+        self.assertEqual(self.scheduler.status()['recent_days']['2026-09-18']['theme_facts']['status'], 'ACCEPTED')
 
     def test_staged_member_capture_continues_next_tick_without_using_attempts(self):
         self.scheduler.enable(confirmed=True, authorization='ok')
