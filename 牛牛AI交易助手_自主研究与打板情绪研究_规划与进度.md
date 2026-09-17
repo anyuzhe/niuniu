@@ -191,9 +191,9 @@
 
 | 编号 | 事项 | 当前处理 |
 |---|---|---|
-| D-1 | 是否授权 09:25 集合竞价与盘中定时采集（AR-2.7） | 已授权（2026-09-17），AR-2.7 实施中 |
+| D-1 | 是否授权 09:25 集合竞价与盘中定时采集（AR-2.7） | 已授权（2026-09-17），代码与开关已完成；待在 Mac 上安装盘中 LaunchAgent |
 | D-2 | qimo 模拟盘授权配置未计印花税与过户费，是否修改（需重新授权 `control.json`） | 已决定（2026-09-17）：按成交日计法定费用；qimo 升级 v3，待宿主在 Mac 上重新授权 |
-| D-3 | 回溯日线约 1.6 万个小文件，在 exFAT 移动盘上占用约 11 GB（数据本身约 3.3 GB）；是否合并为少量大文件（需要删除原目录） | 已决定（2026-09-17）：合并，实施中 |
+| D-3 | 回溯日线约 1.6 万个小文件，在 exFAT 移动盘上占用约 11 GB（数据本身约 3.3 GB）；是否合并为少量大文件（需要删除原目录） | 已完成（2026-09-17）：合并为 16 个 pack，原小文件已删除，占用 11 GB → 639 MB |
 | D-4 | 是否授权第一个自主研究计划（研究族前缀、样本内区间、允许的结果列与成交模型、每周/每晚预算、有效期） | 未授权；工具与夜间任务已就绪，Agent 目前不能提案 |
 
 ## 9. 实施进度
@@ -210,17 +210,18 @@
 | AR-1.5 日度情绪指标 | 已完成 | `2106886`（代码）+ `cbd250d`（分批构建） | 聚焦 4/4；全仓 1102/0/0；真实构建 1,870 个交易日，重算一致；与东财股池核对 | 2026-09-17 09:20 |
 | AR-1.6 情绪周期与相似日 | 已完成 | `a183c20`（代码） | 全仓 1102/0/0；真实数据截断前后逐日一致 | 2026-09-17 09:20 |
 | AR-1.7 前瞻日线增量并入 | 已完成 | `2e02609` | 聚焦 67/67；全仓 1119/0/0；真实延伸到 2026-09-16 并与东财股池核对 | 2026-09-17 10:06 |
+| AR-1.8 回溯日线合并（D-3） | 已完成（原小文件已删除） | 本提交 | 聚焦 12/12；全仓 1153/0/0；真实合并与逐值核对 | 2026-09-17 16:35 |
 | AR-2.1 公开证据采集框架 | 已完成 | `737c5c9`（与 AR-2.2 同一提交） | 聚焦 8/8；全仓 1083/0/0 | 2026-09-17 00:07 |
 | AR-2.2 涨停/炸板/跌停池 | 已完成 | `737c5c9`（与 AR-2.1 同一提交） | 同上；真实归档 2026-09-16 五个股池 | 2026-09-17 00:07 |
 | AR-2.3 龙虎榜 | 已完成 | `2158bdc` | 聚焦 11/11；全仓 1086/0/0；真实归档 2026-09-16 | 2026-09-17 00:20 |
 | AR-2.4 板块与成分 | 已完成（成分全量抓取待 AR-2.6 调度在 Mac 上执行） | `acdb771`（与 AR-2.5 同一提交） | 聚焦 15/15；全仓 1090/0/0；真实归档 2026-09-16 板块列表 | 2026-09-17 00:34 |
 | AR-2.5 人气榜 | 已完成 | `acdb771`（与 AR-2.4 同一提交） | 同上；真实归档 2026-09-16 | 2026-09-17 00:34 |
 | AR-2.6 收盘后调度与健康 | 代码已完成；LaunchAgent 待用户在 Mac 上安装 | `d13d833` | 聚焦 21/21；全仓 1094/0/0 | 2026-09-17 00:44 |
-| AR-2.7 竞价/盘中采集 | 已完成代码（D-1 已授权）；首次真实抓取待 Mac 安装盘中 LaunchAgent | 本提交 | 聚焦 30/30（快照 12、账单 3、调度 11、归档 8 中相关）；全仓 1152/0/0；竞价全市场分页与解析真实预演 | 2026-09-17 16:22 |
+| AR-2.7 竞价/盘中采集 | 已完成代码（D-1 已授权）；首次真实抓取待 Mac 安装盘中 LaunchAgent | `023bf6b` | 聚焦 30/30（快照、龙虎榜、调度、归档四个模块）；全仓 1152/0/0；竞价全市场分页与解析真实预演 | 2026-09-17 16:22 |
 | AR-2.8 长抓取可续抓 | 已完成 | `a615f0c` | 聚焦 23/23；全仓 1115/0/0 | 2026-09-17 09:47 |
 | AR-3.1 事件研究引擎 | 已完成 | `13ee577`（代码）+ `1ee1b92`（报告标注方向） | 聚焦 8/8；全仓 1111/0/0；首批 7 项真实研究 | 2026-09-17 09:37 |
 | AR-3.2 打板成交模型 | 已完成 | `54139b3` | 聚焦 15/15（成交模型 7、事件研究 8）；全仓 1111/0/0；真实烟测 138,718 个事件 | 2026-09-17 09:26 |
-| AR-3.3 题材引擎 | 进行中：代码已合并，待收盘后抓取板块成分做真实验证 | `e1be61e`（代码） | 聚焦 17/17；全仓 1123/0/0；真实 2026-09-16 股池行业分布 | 2026-09-17 10:19 |
+| AR-3.3 题材引擎 | 已完成（2026-09-17 板块成分真实验证） | `e1be61e`（代码） | 聚焦 17/17；全仓 1123/0/0；真实 2026-09-16 股池行业分布 | 2026-09-17 10:19 |
 | AR-3.4 前瞻明细并入事件库 | 已完成（明细随归档逐日积累） | `2909164` | 聚焦 31/31；全仓 1126/0/0；真实 2026-09-16 明细 213 行，核对一致 | 2026-09-17 10:27 |
 | AR-4.1 AI 只读工具 | 已完成 | `074c7a1` | 聚焦 35/35；全仓 1129/0/0；真实数据 5 个工具烟测 | 2026-09-17 10:37 |
 | AR-4.2 每日收盘复盘 | 已完成 | `442d0f5` | 聚焦 24/24；全仓 1131/0/0；真实 2026-09-16 复盘 | 2026-09-17 10:44 |
@@ -1049,3 +1050,109 @@
   - 来源总数断言由 13 改为 26。
   - Agent Memory 有改动，全仓测试在临时本地提交后运行。
   - Linux 隔离克隆逐模块全仓 **1152 个测试，0 failed / 0 errors / 0 skipped**。
+
+### AR-1.8 回溯日线合并（D-3，2026-09-17 16:35）
+
+- 用户决定（2026-09-17）：合并回溯日线小文件。
+- 新增 `RetroDailyStore.consolidate`（CLI `niuniu-retro-daily --call consolidate --capture-id … --confirm [--remove-originals]`，可续跑）。
+  - 数据格式：分片记录 `retro-daily-pack-part-v1`，索引 `retro-daily-pack-v1`。
+  - 按证券哈希分 8 片，每片各写 1 个 Parquet pack 和 1 个原始行 pack。
+  - 每个 pack：写入、fsync、复读哈希一致后才改名落盘，并附带校验记录。
+  - 全部分片完成、清单摘要与原数据一致后，才发布索引；读取从此改走 pack。
+  - 删除原证券目录前，再对全部 pack 做一次全文件哈希复核。
+- 读取兼容：
+  - `symbol_manifest`、`read_panel`、`panel_evidence`、`status(deep)` 自动识别 pack。
+  - 已合并的 capture 不再写入；`fetch` 返回 `packed`；按目录隔离的操作被拒绝。
+  - 每只证券的字节与 SHA256 不变，数据集身份和研究构建输入都不变。
+- 真实数据（capture `0b774158…`）：
+  - 合并：16 个 pack 共 646,425,833 字节，用时 1 分 45 秒。
+  - 清单摘要 `fa4c88ff…` 与合并前一致，8,644,474 行，5,455 只证券。
+  - 抽样 304 只证券 486,031 行，逐行哈希一致；读取从 1.3 秒降到 0.5 秒。
+  - 用 pack 重建 09-16 事件库：新 build `9a017a9f…` 与原 build `047aa58b…` 的输入与 `events.parquet` 哈希完全相同，只有代码指纹不同（今天早些时候的提交改过 `limit_events.py`）。
+  - 删除原证券目录 5,455 个，用时 21 秒；删除后复核清单摘要与抽样仍一致。
+  - 占用：11 GB、16,368 个文件 → 639 MB、37 个文件。
+- 测试：新增 `tests/test_retro_pack.py` 1 项：
+  - 未完成抓取拒绝、需确认、按时间续跑；
+  - 合并后全量与窗口读取逐值一致、清单与深度校验一致；
+  - CLI 删除原文件后读取仍一致；
+  - 事件库与情绪 build 在相同输入下复用（不新建）；
+  - 抓取返回 `packed`、拒绝按目录隔离、pack 被篡改时报 `CORRUPT_ARCHIVE`。
+  - Linux 隔离克隆逐模块全仓 **1153 个测试，0 failed / 0 errors / 0 skipped**。
+
+### AR-3.3 题材引擎真实验证与 2026-09-17 收盘后归档（2026-09-17 16:35）
+
+- 今天收盘后已归档：
+  - 股池：涨停 47、昨日涨停 89、炸板 20、跌停 1、强势 137。
+  - 人气榜 100；概念板块 504、行业板块 496。
+  - 概念成分 72,009 行（5 次续抓）；行业成分 16,944 行（4 次续抓）。
+  - 抓取时刻都是 `SAME_DAY_AFTER_CLOSE`。
+- 题材事实 `c3f5cdcd…`（首次带当天板块成分，成分日龄 0 天）：
+  - 概念：504 个板块中通用板块 107 个被排除（如融资融券 26 家、昨日高振幅 21 家、沪股通、机构重仓）；有涨停的非通用板块 169 个参与排名。
+    - 前列：央国企改革 20、新能源车 12（最高 5 板澳弘电子）、西部大开发 8、一带一路 6、华为概念 6、人工智能 5。
+  - 行业：前列为汽车 10、汽车零部件 8、电子 5、农林牧渔 4、底盘与发动机系统 4。
+    - 与股池行业分布（汽车零部 8）相互印证。
+  - 发现的规则局限（v1 不改，留待 v2 决定）：
+    - 按涨停家数排序，成分上千的宽泛概念（央国企改革 1,447 只）容易排在前面，需要按涨停占比或规模校正；
+    - 东方财富行业板块含多个层级，同一批涨停会在上下级行业重复出现；
+    - 持续天数只有 2 天历史，标记为截断。
+- 今晚尚未执行（收盘后调度安装后会在今晚或明天 09:15 前自动补做）：
+  - 17:30 龙虎榜；18:00 DailyMarket 与前瞻参考；18:10 事件库与情绪重建到 09-17；
+  - 前瞻明细；收盘复盘；09-18 机器基准预测；自主研究与结论监控；09-18 盘前简报。
+
+## 11. 使用与运维清单
+
+### 11.1 需要在 Mac 上做一次的事
+
+1. 安装收盘后调度（开关已于 2026-09-16 按授权启用；LaunchAgent 只能在 Mac 上安装）：
+   `cd /Volumes/Lexar/niuniu && .venv/bin/python -m quantlab.agent.evidence_scheduler_cli --output artifacts --install-agent`
+   - 每 10 分钟 tick 一次，只做收盘后低频归档和本地构建；在下一交易日 09:15 前会自动补做当天剩余任务。
+2. 安装竞价/盘中快照调度（开关已于 2026-09-17 按 D-1 授权启用）：
+   `.venv/bin/python -m quantlab.agent.evidence_scheduler_cli --output artifacts --install-intraday-agent`
+3. 重新授权 qimo 模拟盘 v3（D-2；v2 无信号和持仓）：
+   `.venv/bin/python -m quantlab.agent.qimo_paper_cli --output artifacts --data-root /Volumes/Lexar/niuniu-data --enable --source-definition-id 4d69e27c-c89d-4562-9cea-e977d6dd807b --confirm`
+4. 让新命令名生效（可选；不重装也能用 `.venv/bin/python -m quantlab.agent.<模块>` 调用）：
+   `cd /Volumes/Lexar/niuniu && .venv/bin/python -m pip install -e . --no-deps`
+5. 题材事实写入 Theme Matrix 只能在 Mac 上执行，并且要明确确认：
+   `.venv/bin/python -m quantlab.agent.theme_facts_cli --output artifacts --call publish --date <交易日> --confirm`
+
+### 11.2 每个交易日自动发生的事（北京时间）
+
+| 时间 | 任务 |
+|---|---|
+| 15:40 | 涨停/昨日涨停/炸板/跌停/强势股池、人气榜 |
+| 15:45 | 概念/行业板块列表 |
+| 16:00 起 | 概念/行业成分（每周五或距上次满 7 天；可续抓） |
+| 16:10 起 | 题材事实（成分或股池变化即重建） |
+| 17:30 | 龙虎榜（每日、买入席位、卖出席位） |
+| 18:00 | Baostock 当日全市场日线（DailyMarket）与前瞻参考快照 |
+| 18:10 | 涨停事件库与情绪指标重建到当天 |
+| 18:15 | 前瞻明细并与日线核对 |
+| 18:20 | 收盘复盘 |
+| 18:25 | 判定当天预测；为下一个工作日生成机器基准预测 |
+| 19:00 | 自主研究夜间筛选（仅在有有效研究计划时） |
+| 19:30 | 运行宿主晋级的确认研究；已确认结论前瞻监控 |
+| 19:40 | 下一个工作日的盘前简报（当天复盘生成后；输入变化即重建） |
+
+### 11.3 常用查看命令
+
+- 盘前简报：`.venv/bin/python -m quantlab.agent.premarket_brief_cli --output artifacts --call markdown --date <目标交易日>`
+- 收盘复盘：`.venv/bin/python -m quantlab.agent.daily_review_cli --output artifacts --call markdown --date <交易日>`
+- 预测记分卡：`.venv/bin/python -m quantlab.agent.limit_forecast_cli --output artifacts --call scorecard`
+- 调度状态：`.venv/bin/python -m quantlab.agent.evidence_scheduler_cli --output artifacts --status`
+- 自主研究与结论：`.venv/bin/python -m quantlab.agent.auto_research_cli --output artifacts --call status`（或 `--call conclusions`）
+- 对话与 MCP 中的 AI 可以直接用只读工具查看以上内容。
+
+### 11.4 授权第一个自主研究计划（D-4，示例）
+
+1. 写研究范围文件，例如 `scope.json`：
+   ```json
+   {"family_prefix": "auto-board", "start": "2019-01-02", "in_sample_end": "2023-12-31",
+    "outcomes": ["t1_open_ret", "t1_close_ret", "t1_is_limit_up_close", "net_return"],
+    "executions": [{"entry": "t1_open", "exit": "next_open", "scenario": "conservative", "commission_bps": 2.5, "slippage_bps": 5.0, "max_hold_sessions": 1}],
+    "allow_sentiment": true, "allow_details": false, "min_events": 200}
+   ```
+2. 预览：`.venv/bin/python -m quantlab.agent.auto_research_cli --output artifacts --call preview --scope-file scope.json --expires-at 2026-10-16T15:00:00+08:00 --studies-per-week 10 --runs-per-night 3 --plan-out plan.json`
+3. 核对输出里的锁定样本外起点、确认族、预算后，30 分钟内授权：`--call authorize --plan-file plan.json --digest <plan_digest> --confirm`
+4. 之后 AI 可以在对话里提案；每晚 19:00 在预算内筛选。通过筛选的提案由你决定是否晋级：
+   `--call promote-preview --item-id <提案ID> --confirm-end <确认终点> --preview-out promote.json`，核对后 `--call promote --preview-file promote.json --digest <preview_digest> --confirm`
+5. 撤销计划：`--call revoke --plan-id <计划ID> --confirm`；退役结论：`--call retire --conclusion-id <结论ID> --reason <原因> --confirm`

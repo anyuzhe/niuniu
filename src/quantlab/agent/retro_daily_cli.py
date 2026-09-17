@@ -22,7 +22,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='沪深A股回溯日线（research_only）；plan/fetch/forward-reference 会联网，其余只读')
     parser.add_argument('--output', required=True)
     parser.add_argument('--call', required=True, choices=('list', 'plan', 'fetch', 'status', 'verify', 'quarantine',
-                                                                   'forward-reference', 'forward-references'))
+                                                                   'forward-reference', 'forward-references', 'consolidate'))
+    parser.add_argument('--remove-originals', action='store_true', help='consolidate：合并并复核后删除原证券目录（可续跑）')
     parser.add_argument('--start', default='')
     parser.add_argument('--end', default='')
     parser.add_argument('--capture-id', default='')
@@ -54,6 +55,9 @@ def main(argv=None):
                 data = store.status(args.capture_id)
             elif args.call == 'verify':
                 data = store.status(args.capture_id, deep=True)
+            elif args.call == 'consolidate':
+                data = store.consolidate(args.capture_id, confirmed=args.confirm, remove_originals=args.remove_originals,
+                                         max_seconds=args.max_seconds)
             else:
                 data = store.quarantine_corrupt(args.capture_id, confirmed=args.confirm)
         result = {'ok': True, 'data': data}

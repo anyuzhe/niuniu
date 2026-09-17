@@ -5,6 +5,10 @@ calendar reference bytes. Per-symbol data is fetched resumably (optionally by di
 shards in parallel processes) and each symbol directory is written atomically with
 SHA256-verified raw rows, a typed Parquet file and a checksummed manifest.
 
+A complete capture can be consolidated into a few pack files that keep every symbol's exact
+Parquet and raw bytes (same SHA256, same manifests), so dataset identities and research builds are
+unchanged while tens of thousands of small files are removed from the disk.
+
 Values are provider observations at fetch time. They do not certify historical first
 publication, a PIT Universe, official SecurityStatus or official price limits.
 """
@@ -19,6 +23,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 import re
 import socket
 import time
@@ -41,6 +46,12 @@ EARLIEST = date(1990, 12, 19)
 TZ = ZoneInfo('Asia/Shanghai')
 MAX_ROWS_PER_SYMBOL = 20000
 MAX_CONSECUTIVE_FAILURES = 5
+PACK_FORMAT = 'retro-daily-pack-v1'
+PACK_PART_FORMAT = 'retro-daily-pack-part-v1'
+PACK_DIR = 'packs'
+PACK_SHARDS = 8
+PACK_PARTS = (('daily', 'daily.parquet', 'parquet_sha256'), ('raw', 'rows.json.gz', 'raw_sha256'))
+PACK_NAME = re.compile(r'^(daily|raw)-\d{2}\.pack$')
 SCHEMA = {'date': pl.Date, 'code': pl.String, 'open': pl.Float64, 'high': pl.Float64, 'low': pl.Float64,
           'close': pl.Float64, 'preclose': pl.Float64, 'volume': pl.Float64, 'amount': pl.Float64,
           'adjustflag': pl.String, 'turn': pl.Float64, 'tradestatus': pl.UInt8, 'pctChg': pl.Float64, 'isST': pl.UInt8}
@@ -243,6 +254,7 @@ class RetroDailyStore:
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.today_fn = today_fn or (lambda: datetime.now(TZ).date())
         self.root = self.output / '_market_data' / 'retro_daily'
+        self._pack_cache = {}
 
     # ---- paths -------------------------------------------------------------------------------
     def _guard(self):
@@ -380,7 +392,70 @@ class RetroDailyStore:
     def _symbol_dir(self, capture_id, symbol):
         return self._capture_dir(capture_id) / 'symbols' / self._symbol_key(symbol)
 
+    # ---- packs --------------------------------------------------------------------------------
+    def _pack_dir(self, capture_id):
+        folder = self._capture_dir(capture_id) / PACK_DIR
+        if folder.is_symlink():
+            raise RetroDailyError('INVALID_WORKSPACE', 'pack 目录不能是符号链接。')
+        return folder
+
+    def pack_index(self, capture_id):
+        """The verified pack index of a consolidated capture, or None when the capture still uses per-symbol directories."""
+        path = self._pack_dir(capture_id) / 'index.json'
+        if path.is_symlink():
+            raise RetroDailyError('INVALID_WORKSPACE', 'pack index 不能是符号链接。')
+        if not path.exists():
+            return None
+        stat = path.stat()
+        cached = self._pack_cache.get(capture_id)
+        if cached is not None and cached[0] == (stat.st_mtime_ns, stat.st_size):
+            return cached[1]
+        value = _verify_checked(_read_json(path, 'pack index', limit=200_000_000), 'pack index')
+        if value.get('format') != PACK_FORMAT or value.get('capture_id') != capture_id or not isinstance(value.get('symbols'), dict) \
+                or any(not PACK_NAME.fullmatch(name) for name in value.get('packs', {})):
+            raise RetroDailyError('CORRUPT_ARCHIVE', 'pack index 字段或身份无效。')
+        self._pack_cache[capture_id] = ((stat.st_mtime_ns, stat.st_size), value)
+        return value
+
+    def _read_slices(self, capture_id, index, refs):
+        """Read ``[(key, [pack, offset, length]), ...]`` grouped by pack and in offset order; returns {key: bytes}."""
+        folder, result, by_pack = self._pack_dir(capture_id), {}, {}
+        for key, (name, offset, length) in refs:
+            if name not in index['packs'] or type(offset) is not int or type(length) is not int or offset < 0 or length < 0 \
+                    or offset + length > index['packs'][name]['bytes']:
+                raise RetroDailyError('CORRUPT_ARCHIVE', 'pack 引用越界或无效。')
+            by_pack.setdefault(name, []).append((offset, length, key))
+        for name, items in by_pack.items():
+            path = folder / name
+            if path.is_symlink() or not path.is_file() or path.stat().st_size != index['packs'][name]['bytes']:
+                raise RetroDailyError('CORRUPT_ARCHIVE', name + ' 缺失或大小不符。')
+            with path.open('rb') as stream:
+                for offset, length, key in sorted(items):
+                    stream.seek(offset)
+                    payload = stream.read(length)
+                    if len(payload) != length:
+                        raise RetroDailyError('CORRUPT_ARCHIVE', name + ' 读取长度不足。')
+                    result[key] = payload
+        return result
+
     def symbol_manifest(self, capture_id, symbol, *, deep=True):
+        index = self.pack_index(capture_id)
+        if index is not None:
+            entry = index['symbols'].get(symbol)
+            if entry is None:
+                return None
+            value = entry.get('manifest')
+            required = {'format', 'capture_id', 'symbol', 'status', 'rows', 'first_date', 'last_date', 'tradable_rows',
+                        'st_rows', 'raw_sha256', 'parquet_sha256', 'content_hash', 'fetched_at', 'sdk_version'}
+            if not isinstance(value, dict) or set(value) != required or value['format'] != SYMBOL_FORMAT or value['capture_id'] != capture_id \
+                    or value['symbol'] != symbol:
+                raise RetroDailyError('CORRUPT_ARCHIVE', symbol + ' pack manifest 字段或身份无效。')
+            if deep:
+                payloads = self._read_slices(capture_id, index, [(part, entry[part]) for part, _name, _key in PACK_PARTS])
+                for part, _name, key in PACK_PARTS:
+                    if _sha(payloads[part]) != value[key]:
+                        raise RetroDailyError('CORRUPT_ARCHIVE', f'{symbol} pack {part} 哈希校验失败。')
+            return value
         folder = self._symbol_dir(capture_id, symbol)
         if folder.is_symlink():
             raise RetroDailyError('CORRUPT_ARCHIVE', '证券目录不能是符号链接。')
@@ -415,6 +490,8 @@ class RetroDailyStore:
                     'raw_sha256': _sha(raw_bytes), 'parquet_sha256': _sha(parquet_bytes),
                     'content_hash': digest(raw_value), 'fetched_at': fetched.astimezone(timezone.utc).isoformat(),
                     'sdk_version': version}
+        if self.pack_index(capture_id) is not None:
+            raise RetroDailyError('CAPTURE_PACKED', 'capture 已合并为 pack，不能再写入证券目录。')
         parent = self._capture_dir(capture_id) / 'symbols'
         temporary = parent / ('.tmp-' + self._symbol_key(symbol) + '-' + str(uuid4()))
         temporary.mkdir()
@@ -498,8 +575,11 @@ class RetroDailyStore:
         if type(max_seconds) not in (int, float) or not 1 <= max_seconds <= 86400:
             raise RetroDailyError('INVALID_ARGUMENT', 'max_seconds 必须为 1–86400。')
         folder = self._capture_dir(capture_id)
-        cleaned = self._cleanup_temporaries(capture_id, shard, shards)
         mine = [s for s in plan['symbols'] if shard_of(s, shards) == shard]
+        if self.pack_index(capture_id) is not None:
+            return {'capture_id': capture_id, 'shard': shard, 'shards': shards, 'shard_symbols': len(mine), 'attempted': 0, 'completed': 0,
+                    'empty': 0, 'failed': 0, 'rows': 0, 'relogins': 0, 'stopped_by': 'packed', 'cleaned_temporaries': 0, 'remaining_in_shard': 0}
+        cleaned = self._cleanup_temporaries(capture_id, shard, shards)
         pending = [s for s in mine if not (folder / 'symbols' / self._symbol_key(s)).exists()]
         start, end = _day(plan['start']), _day(plan['end'])
         trading_days = set(self.trading_days(capture_id))
@@ -626,7 +706,20 @@ class RetroDailyStore:
         start = _day(start, 'start') if start is not None else None
         end = _day(end, 'end') if end is not None else None
         paths, manifests, missing, expected_rows = [], [], [], 0
-        for symbol in wanted:
+        index = self.pack_index(capture_id)
+        if index is not None:
+            present = [s for s in wanted if s in index['symbols']]
+            missing = [s for s in wanted if s not in index['symbols']]
+            payloads = self._read_slices(capture_id, index, [(s, index['symbols'][s]['daily']) for s in present])
+            for symbol in present:
+                manifest = self.symbol_manifest(capture_id, symbol, deep=False)
+                if _sha(payloads[symbol]) != manifest['parquet_sha256']:
+                    raise RetroDailyError('CORRUPT_ARCHIVE', f'{symbol} pack daily 哈希校验失败。')
+                manifests.append({'symbol': symbol, 'parquet_sha256': manifest['parquet_sha256'], 'rows': manifest['rows']})
+                if manifest['rows']:
+                    paths.append(payloads[symbol])
+                    expected_rows += manifest['rows']
+        for symbol in (wanted if index is None else []):
             manifest = self.symbol_manifest(capture_id, symbol, deep=False)
             if manifest is None:
                 missing.append(symbol)
@@ -665,9 +758,145 @@ class RetroDailyStore:
                 'calendar_content_hash': plan['calendar_content_hash'], 'limitations': plan['limitations']}
         return panel.sort('date', 'code'), meta
 
+    def consolidate(self, capture_id, *, confirmed=False, remove_originals=False, max_seconds=140.0, clock=time.monotonic):
+        """Pack a complete capture's per-symbol files into ``packs/`` without changing any bytes, then optionally delete the originals.
+
+        Resumable within ``max_seconds``: each pack file is written, flushed, re-read and hashed before it is renamed into place
+        with a checksummed part record; the index is published only after all parts exist and the manifest digest is unchanged.
+        Readers switch to the packs as soon as the index exists. Originals are removed only with ``remove_originals=True`` after
+        re-hashing every pack against the index.
+        """
+        if confirmed is not True:
+            raise RetroDailyError('CONFIRMATION_REQUIRED', '合并回溯日线文件需要显式确认。')
+        if type(max_seconds) not in (int, float) or not 1 <= max_seconds <= 86400:
+            raise RetroDailyError('INVALID_ARGUMENT', 'max_seconds 必须为 1–86400。')
+        self._guard()
+        began = clock()
+        plan = self.plan(capture_id, with_symbols=True)
+        folder = self._capture_dir(capture_id)
+        packs = self._pack_dir(capture_id)
+        result = {'capture_id': capture_id, 'state': 'IN_PROGRESS', 'parts_written': 0, 'removed_symbol_dirs': 0}
+        index = self.pack_index(capture_id)
+        if index is None:
+            status = self.status(capture_id)
+            if not status['complete'] or status['failure_count']:
+                raise RetroDailyError('INCOMPLETE_CAPTURE', '只能合并已完整抓取、没有失败记录的 capture。')
+            packs.mkdir(exist_ok=True)
+            for stale in packs.glob('.*.tmp'):
+                if stale.is_file() and not stale.is_symlink():
+                    stale.unlink()
+            groups = {k: [] for k in range(PACK_SHARDS)}
+            for symbol in plan['symbols']:
+                groups[shard_of(symbol, PACK_SHARDS)].append(symbol)
+            for k in range(PACK_SHARDS):
+                for part, filename, key in PACK_PARTS:
+                    name = f'{part}-{k:02d}.pack'
+                    record_path = packs / (name + '.json')
+                    if (packs / name).is_file() and record_path.is_file():
+                        continue
+                    if clock() - began >= max_seconds:
+                        result['stopped_by'] = 'deadline'
+                        return result
+                    entries, offset, hasher = {}, 0, hashlib.sha256()
+                    temporary = packs / f'.{name}.tmp'
+                    with temporary.open('wb') as stream:
+                        for symbol in groups[k]:
+                            manifest = self.symbol_manifest(capture_id, symbol, deep=False)
+                            source = self._symbol_dir(capture_id, symbol) / filename
+                            if manifest is None or source.is_symlink() or not source.is_file():
+                                raise RetroDailyError('CORRUPT_ARCHIVE', f'{symbol} {filename} 缺失。')
+                            payload = source.read_bytes()
+                            if _sha(payload) != manifest[key]:
+                                raise RetroDailyError('CORRUPT_ARCHIVE', f'{symbol} {filename} 哈希校验失败。')
+                            stream.write(payload)
+                            hasher.update(payload)
+                            entries[symbol] = [offset, len(payload)]
+                            offset += len(payload)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    reread = hashlib.sha256()
+                    with temporary.open('rb') as stream:
+                        for chunk in iter(lambda: stream.read(1 << 22), b''):
+                            reread.update(chunk)
+                    if reread.hexdigest() != hasher.hexdigest() or temporary.stat().st_size != offset:
+                        temporary.unlink()
+                        raise RetroDailyError('CORRUPT_ARCHIVE', name + ' 写入后复读校验失败。')
+                    temporary.replace(packs / name)
+                    record = {'format': PACK_PART_FORMAT, 'capture_id': capture_id, 'name': name, 'bytes': offset, 'sha256': hasher.hexdigest(),
+                              'entries': entries}
+                    record_temporary = packs / f'.{name}.json.tmp'
+                    record_temporary.write_text(encode(_checked(record)), encoding='utf-8')
+                    record_temporary.replace(record_path)
+                    result['parts_written'] += 1
+            before = self.panel_evidence(capture_id)['manifest_digest']
+            parts, symbols = {}, {}
+            for k in range(PACK_SHARDS):
+                for part, _filename, _key in PACK_PARTS:
+                    name = f'{part}-{k:02d}.pack'
+                    record = _verify_checked(_read_json(packs / (name + '.json'), name + ' record', limit=50_000_000), name + ' record')
+                    if record.get('format') != PACK_PART_FORMAT or record.get('capture_id') != capture_id or record.get('name') != name \
+                            or sorted(record['entries']) != sorted(groups[k]) or (packs / name).stat().st_size != record['bytes']:
+                        raise RetroDailyError('CORRUPT_ARCHIVE', name + ' 分片记录与计划不一致。')
+                    parts[name] = {'bytes': record['bytes'], 'sha256': record['sha256'], 'symbols': len(record['entries'])}
+                    for symbol, (offset, length) in record['entries'].items():
+                        symbols.setdefault(symbol, {})[part] = [name, offset, length]
+            manifests = []
+            for symbol in plan['symbols']:
+                manifest = self.symbol_manifest(capture_id, symbol, deep=False)
+                symbols[symbol]['manifest'] = manifest
+                manifests.append({'symbol': symbol, 'parquet_sha256': manifest['parquet_sha256'], 'rows': manifest['rows']})
+            if digest(manifests) != before:
+                raise RetroDailyError('CORRUPT_ARCHIVE', '合并后的清单摘要与原数据不一致。')
+            index = {'format': PACK_FORMAT, 'capture_id': capture_id, 'packs': parts, 'symbols': symbols, 'symbol_count': len(symbols),
+                     'manifest_digest': before, 'created_at': self.now_fn().astimezone(timezone.utc).isoformat()}
+            temporary = packs / '.index.json.tmp'
+            temporary.write_text(encode(_checked(index)), encoding='utf-8')
+            temporary.replace(packs / 'index.json')
+            index = self.pack_index(capture_id)
+        result.update(packed=True, manifest_digest=index['manifest_digest'], symbol_count=index['symbol_count'],
+                      pack_bytes=sum(v['bytes'] for v in index['packs'].values()))
+        remaining = [s for s in plan['symbols'] if self._symbol_dir(capture_id, s).exists()]
+        if remove_originals and remaining:
+            verified_path = packs / 'verified.json'
+            verified = _verify_checked(_read_json(verified_path, 'pack verification'), 'pack verification') if verified_path.exists() else None
+            if verified is None or verified.get('index_checksum') != digest(index):
+                for name, meta in sorted(index['packs'].items()):
+                    if clock() - began >= max_seconds:
+                        result.update(stopped_by='deadline', remaining_symbol_dirs=len(remaining))
+                        return result
+                    hasher = hashlib.sha256()
+                    with (packs / name).open('rb') as stream:
+                        for chunk in iter(lambda: stream.read(1 << 22), b''):
+                            hasher.update(chunk)
+                    if hasher.hexdigest() != meta['sha256']:
+                        raise RetroDailyError('CORRUPT_ARCHIVE', name + ' 删除原文件前复核失败。')
+                verified_temporary = packs / '.verified.json.tmp'
+                verified_temporary.write_text(encode(_checked({'format': 'retro-daily-pack-verification-v1', 'index_checksum': digest(index),
+                                                               'verified_at': self.now_fn().astimezone(timezone.utc).isoformat()})), encoding='utf-8')
+                verified_temporary.replace(verified_path)
+            for symbol in list(remaining):
+                if clock() - began >= max_seconds:
+                    result['stopped_by'] = 'deadline'
+                    break
+                directory = self._symbol_dir(capture_id, symbol)
+                if directory.is_symlink():
+                    raise RetroDailyError('INVALID_WORKSPACE', '证券目录不能是符号链接。')
+                for child in directory.iterdir():
+                    if child.is_symlink() or not child.is_file():
+                        raise RetroDailyError('INVALID_WORKSPACE', f'{symbol} 目录含非普通文件，停止删除。')
+                    child.unlink()
+                directory.rmdir()
+                remaining.remove(symbol)
+                result['removed_symbol_dirs'] += 1
+        result['remaining_symbol_dirs'] = len(remaining)
+        result['state'] = 'COMPLETE' if (not remove_originals or not remaining) else 'IN_PROGRESS'
+        return result
+
     def quarantine_corrupt(self, capture_id, *, confirmed=False):
         if confirmed is not True:
             raise RetroDailyError('CONFIRMATION_REQUIRED', '隔离损坏证券目录需要显式确认。')
+        if self.pack_index(capture_id) is not None:
+            raise RetroDailyError('CAPTURE_PACKED', 'capture 已合并为 pack；pack 损坏时请从备份恢复，不能按证券目录隔离。')
         plan = self.plan(capture_id, with_symbols=True)
         folder = self._capture_dir(capture_id)
         moved = []
