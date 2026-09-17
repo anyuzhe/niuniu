@@ -1,6 +1,6 @@
 # Trading Knowledge / StrategySource Architecture
 
-架构生效：2026-09-14。完整说明见仓库根目录 `牛牛AI交易助手_项目说明与总体架构.md`。
+架构生效：2026-09-14。当前完整说明见 [总体架构](../../docs/architecture/overview.md)。
 
 ## 核心定义
 

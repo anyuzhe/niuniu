@@ -1,0 +1,387 @@
+{
+  "baseline_commit": "5a381e846bf3f94d0251b6c88436c5b2a27671a5",
+  "date": "2026-09-17",
+  "scope": "Root documentation migration; source, data and machine-readable packages remain in place",
+  "files": [
+    {
+      "old": "AI研究助手_A股数据资格与StrictPIT_验收说明.md",
+      "new": "docs/archive/data-evidence/AI研究助手_A股数据资格与StrictPIT_验收说明.md",
+      "original_sha256": "41ca0c34e219354f3017d5942718f54a45e0565982058077bb662ae8d750ec37"
+    },
+    {
+      "old": "AI研究助手_P1A提案与审批验收.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P1A提案与审批验收.md",
+      "original_sha256": "f9f3aad7aa4162b1fcdac397a836745ec2ef4d4b9c4934b02b2011f51bfe3626"
+    },
+    {
+      "old": "AI研究助手_P1B模型与对话验收.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P1B模型与对话验收.md",
+      "original_sha256": "d77ae5fe08da016cfffd105ac3a7047d944a9e283b72b7b29e4fcd3c9fa4ea71"
+    },
+    {
+      "old": "AI研究助手_P2研究记忆验收.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P2研究记忆验收.md",
+      "original_sha256": "4566bd9e1d3a38edbe9fcc3fb2cc369ee5af0a5822d46cd6b6132f6c858e3d17"
+    },
+    {
+      "old": "AI研究助手_P3整包复算与P4手动跟踪验收.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P3整包复算与P4手动跟踪验收.md",
+      "original_sha256": "d30a86a7c4ecc2f5ceadd06620a1ca42dcfe5b4764f99a37109c8780d77126b5"
+    },
+    {
+      "old": "AI研究助手_P4原任务恢复同步_验收与使用说明.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P4原任务恢复同步_验收与使用说明.md",
+      "original_sha256": "9dde1dc2cd5f623bee35841cc29e74d9578b00922118cebe643896f2397e6b79"
+    },
+    {
+      "old": "AI研究助手_P4受控自动跟踪_验收与使用说明.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P4受控自动跟踪_验收与使用说明.md",
+      "original_sha256": "ef94f3164cf153cb191602e82652c524232fbcfdd9cda2434557465908978e09"
+    },
+    {
+      "old": "AI研究助手_P4桌面通知_验收与使用说明.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P4桌面通知_验收与使用说明.md",
+      "original_sha256": "1f2a3aaac47d45971fe90b23a73dbe5cd0173936cb934e4908db69f2b6ed8480"
+    },
+    {
+      "old": "AI研究助手_P4自动下载与持续跟踪_验收说明.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P4自动下载与持续跟踪_验收说明.md",
+      "original_sha256": "ac9dd75fc744a8f08e655eaa5289f8c76aa9f71a80b2452529427cdcda0a8ec3"
+    },
+    {
+      "old": "AI研究助手_P5P6增量证据与受限DSL_验收说明.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P5P6增量证据与受限DSL_验收说明.md",
+      "original_sha256": "97f27f0e573662e4046709b68378abc8077684c00497273ff59b59245e2f7655"
+    },
+    {
+      "old": "AI研究助手_P5候选对照_验收与使用说明.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P5候选对照_验收与使用说明.md",
+      "original_sha256": "14bc3b307c2f49e2d4a53efd744284955671a2c6da4ea4a65a6011b5202b26a5"
+    },
+    {
+      "old": "AI研究助手_P7MCP与常驻部署_验收说明.md",
+      "new": "docs/archive/research-assistant/AI研究助手_P7MCP与常驻部署_验收说明.md",
+      "original_sha256": "ddc39924f8ac5008c8ab931cbd8e6d193070bfae3c0210206a81bcff3b330764"
+    },
+    {
+      "old": "AI研究助手_主动研究议程与AlphaFactory_验收说明.md",
+      "new": "docs/archive/research-assistant/AI研究助手_主动研究议程与AlphaFactory_验收说明.md",
+      "original_sha256": "914411e386192148f707af4044f99c0680aa8eed04fb40e32b18c7ccb933f7a1"
+    },
+    {
+      "old": "AI研究助手_基准换版与本轮收尾验收.md",
+      "new": "docs/archive/research-assistant/AI研究助手_基准换版与本轮收尾验收.md",
+      "original_sha256": "61a88de48292bfbc5eb1c06e4c161e5e1510c624cb0c5af63ffd72b6ee6af69f"
+    },
+    {
+      "old": "AI研究助手_首批实施与验收.md",
+      "new": "docs/archive/research-assistant/AI研究助手_首批实施与验收.md",
+      "original_sha256": "c6e708f75f92cfcad317fbd10c3b92a377d8e10c3773ef794154bd8e89dd672a"
+    },
+    {
+      "old": "AI研究工作台_改造方案.md",
+      "new": "docs/archive/plans/AI研究工作台_改造方案.md",
+      "original_sha256": "06c2c0b505e6c41db4a476c38a0a8bd5ac92134c2091ec327efdb8e7dbf4c20f"
+    },
+    {
+      "old": "Baostock数据接入_验收与使用说明.md",
+      "new": "docs/archive/data-evidence/Baostock数据接入_验收与使用说明.md",
+      "original_sha256": "2a1b0cd431a8f4ca27bd9e5150f118a7a6afa477aa4db7b6d2c3bad39d8a45d3"
+    },
+    {
+      "old": "Brooks三极值收缩反转规则.md",
+      "new": "docs/reference/theories/Brooks三极值收缩反转规则.md",
+      "original_sha256": "1e7c2a82d1927fbd18307c21b6d671aaa708edcdde15838062d6038869f7b496"
+    },
+    {
+      "old": "Brooks突破回踩与测量目标规则.md",
+      "new": "docs/reference/theories/Brooks突破回踩与测量目标规则.md",
+      "original_sha256": "c7847708dc83ab27066ad4d0b9d68454198f9763d2297231b1a8ac78065e70a8"
+    },
+    {
+      "old": "Brooks背景状态规则.md",
+      "new": "docs/reference/theories/Brooks背景状态规则.md",
+      "original_sha256": "af87bb8a9e4c5c4b475d716c87d3d748751fa05f8ee1a7eea7a9cd72630feaba"
+    },
+    {
+      "old": "Chan确认推进_线段背驰与买卖点规则.md",
+      "new": "docs/reference/theories/Chan确认推进_线段背驰与买卖点规则.md",
+      "original_sha256": "b4e8d789227512280ed33c8cdcac1684b2e42e95b9467610b527004465cec63b"
+    },
+    {
+      "old": "DEVELOPMENT_HISTORY.zh-CN.md",
+      "new": "docs/archive/legacy/DEVELOPMENT_HISTORY.zh-CN.md",
+      "original_sha256": "8b6a862fa317fc5ef7b4e8ae322db7bfebc4f254b602b77020f98865da23bd44"
+    },
+    {
+      "old": "PyQt桌面界面说明.md",
+      "new": "docs/archive/legacy/PyQt桌面界面说明.md",
+      "original_sha256": "e942698dea6cc85afe28fb7a0cbe348394cb831d5ca9c69ca7933277905c4c1e"
+    },
+    {
+      "old": "Wyckoff价格阶段_BCDE规则.md",
+      "new": "docs/reference/theories/Wyckoff价格阶段_BCDE规则.md",
+      "original_sha256": "ad7ac05d62e7cdc3737513c74fa101c6141bb9cec14d217459c9db6f017436a1"
+    },
+    {
+      "old": "余项开发说明_20260910.md",
+      "new": "docs/archive/legacy/余项开发说明_20260910.md",
+      "original_sha256": "a0a9f55df2a0f5df2e2e601f240fbef5c8c8478e04ffbda26fa1ed1a42e8608d"
+    },
+    {
+      "old": "威克夫_AE规则与因子链路.md",
+      "new": "docs/reference/theories/威克夫_AE规则与因子链路.md",
+      "original_sha256": "f377e20981d43b66203a2e25ecf3f68cc6a9283979b17c2b0d81aa254d77507b"
+    },
+    {
+      "old": "核心功能建设进度.md",
+      "new": "docs/archive/legacy/核心功能建设进度.md",
+      "original_sha256": "c299e1148b94af9c4e55af1edbdec373215d94d33b86a3c5e32bc1a56da8b7b6"
+    },
+    {
+      "old": "牛牛AI交易助手_A股交易工作台改造总计划.md",
+      "new": "docs/archive/plans/牛牛AI交易助手_A股交易工作台改造总计划.md",
+      "original_sha256": "52652d77cba220aaa45a2ad8881e89a5af2a0b376dcdc924ef4d1f090a794b3a"
+    },
+    {
+      "old": "牛牛AI交易助手_开发历程与功能变更总档案.md",
+      "new": "docs/project/changelog.md",
+      "original_sha256": "9bd57539b64b1086aeab563235f996cedda656d750ea072bac1c1bfa5b9c0541"
+    },
+    {
+      "old": "牛牛AI交易助手_扶摇MCP接入与验收说明.md",
+      "new": "docs/archive/integrations/牛牛AI交易助手_扶摇MCP接入与验收说明.md",
+      "original_sha256": "d84dcb1aa1ff1ea1800992cca9896a1b512d90f524280732efb62b52646a521f"
+    },
+    {
+      "old": "牛牛AI交易助手_自主研究与打板情绪研究_规划与进度.md",
+      "new": "docs/archive/autonomous-research/牛牛AI交易助手_自主研究与打板情绪研究_规划与进度.md",
+      "original_sha256": "d912315401f201b05eb5a62e84cc63e690c117a45d26795cd43d0016be619a3b"
+    },
+    {
+      "old": "牛牛AI交易助手_项目说明与总体架构.md",
+      "new": "docs/archive/plans/牛牛AI交易助手_项目说明与总体架构.md",
+      "original_sha256": "16117f242aa7ca3b3abf81228330a8637a688cd22bb875ee3f6507153008aa7c"
+    },
+    {
+      "old": "牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md",
+      "original_sha256": "a7b08e5013e058a8273fe1b4998026a0b59c7d6727f3fc57c7e88bae9f20ad60"
+    },
+    {
+      "old": "牛牛AI交易工作台_ApprovalTimeActualByteFreeze_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_ApprovalTimeActualByteFreeze_验收说明.md",
+      "original_sha256": "e40b4d24622ddf429bf70bb45d60dcf4b91b475351ee4e9af7eddaa4b57f0ff6"
+    },
+    {
+      "old": "牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_OfficialMarketRulesPublicationReceiptV2_验收说明.md",
+      "original_sha256": "9c4e3b5d7454207480908a8e15393a05b4ac86bdd9e2d19f07b418309dab558b"
+    },
+    {
+      "old": "牛牛AI交易工作台_P10DevStudio动态Agent_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P10DevStudio动态Agent_验收说明.md",
+      "original_sha256": "9f5cb0631c066db462848cb73b6936fa691f6752878276b4f0f57cdfe0c397ea"
+    },
+    {
+      "old": "牛牛AI交易工作台_P11SystemHealth_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P11SystemHealth_验收说明.md",
+      "original_sha256": "0857a02c60fc44b972c5b054b4db630b12dd296c13c3981f3dc48f996e7ee225"
+    },
+    {
+      "old": "牛牛AI交易工作台_P12移动端与机器人_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P12移动端与机器人_验收说明.md",
+      "original_sha256": "f6acbae4c076eb9eed9642acb9840e5aee39173c8e194f0784e6a487c2cd4f91"
+    },
+    {
+      "old": "牛牛AI交易工作台_P13A券商只读与Shadow对账_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P13A券商只读与Shadow对账_验收说明.md",
+      "original_sha256": "55f14d36db8340cb9cb652f0ed202d37646e7fc6e7827779cb0ea5f01784113f"
+    },
+    {
+      "old": "牛牛AI交易工作台_P13B0实盘安全门_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P13B0实盘安全门_验收说明.md",
+      "original_sha256": "bab5e41f921f16558d56a13fcbce7e8b7c69c96fa923400eb25d8182883e59ea"
+    },
+    {
+      "old": "牛牛AI交易工作台_P1P2新导航与DecisionLedger_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P1P2新导航与DecisionLedger_验收说明.md",
+      "original_sha256": "e68fa5aecbe13375a569680d8b97035357f8badc02e3efa70546f457eb4f59a0"
+    },
+    {
+      "old": "牛牛AI交易工作台_P3StockDossier_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P3StockDossier_验收说明.md",
+      "original_sha256": "320551c3e27bc0706d2228287eb3986efd2f2896db19812ad0a548cd192e05f4"
+    },
+    {
+      "old": "牛牛AI交易工作台_P4主线市场ThemeMatrix_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P4主线市场ThemeMatrix_验收说明.md",
+      "original_sha256": "a72e0ad5bc1529651d1d2d4ff19688c14740f204249af392e3287d586c193ced"
+    },
+    {
+      "old": "牛牛AI交易工作台_P5DecisionFrame_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P5DecisionFrame_验收说明.md",
+      "original_sha256": "b0960e22b6b839bc1af6b26a80e5c3f799a6278af14f08f0b8b0b837a6d09169"
+    },
+    {
+      "old": "牛牛AI交易工作台_P6策略动作状态机_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P6策略动作状态机_验收说明.md",
+      "original_sha256": "e90e9703326e5ebf7de0334bbb9b76c7896ea7cdeffcfee7f3dc78f00b1aa2ba"
+    },
+    {
+      "old": "牛牛AI交易工作台_P7今日交易驾驶舱_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P7今日交易驾驶舱_验收说明.md",
+      "original_sha256": "220787af36b68590c8675d1be4ec37bfb0c8b2536aed54e33270e31854b21583"
+    },
+    {
+      "old": "牛牛AI交易工作台_P8AITeam与PeerReview_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P8AITeam与PeerReview_验收说明.md",
+      "original_sha256": "e013abaf8d2481659834a624e85980dd67e175b6290f91ac45add25d0072b046"
+    },
+    {
+      "old": "牛牛AI交易工作台_P8_5D实时快照与DailyScanner_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P8_5D实时快照与DailyScanner_验收说明.md",
+      "original_sha256": "6d41bed0dd7eaee87cb07fd3b4c15a9d5465efac81cbf567e1fcce9be5e064b3"
+    },
+    {
+      "old": "牛牛AI交易工作台_P8_5E1每日全市场增量与PREP接力_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P8_5E1每日全市场增量与PREP接力_验收说明.md",
+      "original_sha256": "8ad088777df28ccb6baf4d5d77ed59e6673262c3b42d132647d10dfe5864505f"
+    },
+    {
+      "old": "牛牛AI交易工作台_P8_5PlaybookLab基础框架_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P8_5PlaybookLab基础框架_验收说明.md",
+      "original_sha256": "4043ae9559acd17385c77eeded816a2157fcbefdfdb70eae119580f0022b3e55"
+    },
+    {
+      "old": "牛牛AI交易工作台_P8_6StrategySource通用来源层_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P8_6StrategySource通用来源层_验收说明.md",
+      "original_sha256": "094a1214f7603010a32ba9de9a68af140314d489bcb53b1c931bd116f4cbbe7b"
+    },
+    {
+      "old": "牛牛AI交易工作台_P8_7DailyOrchestrator_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P8_7DailyOrchestrator_验收说明.md",
+      "original_sha256": "18ed00fd9af0a5ec8f7583a5d27fdd783553a7f3e3b8280c38c9b4348cf469f4"
+    },
+    {
+      "old": "牛牛AI交易工作台_P8_7R2R3与MarketSnapshotProvider_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P8_7R2R3与MarketSnapshotProvider_验收说明.md",
+      "original_sha256": "ee8de544945544dee8e32d485601779f94174e004db0473e1e774f7c8e62e0c6"
+    },
+    {
+      "old": "牛牛AI交易工作台_P8_8Playbook到TradingDesk与Paper_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P8_8Playbook到TradingDesk与Paper_验收说明.md",
+      "original_sha256": "a00c20da5b3b904af337662145ffc6c946026da1dc623e8eb41906d793cac1dd"
+    },
+    {
+      "old": "牛牛AI交易工作台_P9AgentScorecard_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_P9AgentScorecard_验收说明.md",
+      "original_sha256": "97f716c57a27d63c38d977f0a3f0dbed4bb3ed3407205ab543a2336596fb8b93"
+    },
+    {
+      "old": "牛牛AI交易工作台_PITUniverseReceiptV1_验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_PITUniverseReceiptV1_验收说明.md",
+      "original_sha256": "57a74cf02c0bf70c384a3f580473f8de73f580c790d00d9daf0b87ff3a087716"
+    },
+    {
+      "old": "牛牛AI交易工作台_ResearchSessionGrant_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_ResearchSessionGrant_验收说明.md",
+      "original_sha256": "36591e6fa5d7e3b20adc14a1c47ab84886810959fc4e8a897481b9410a62674b"
+    },
+    {
+      "old": "牛牛AI交易工作台_ResearchSkillLibrary只读集成_验收说明.md",
+      "new": "docs/archive/integrations/牛牛AI交易工作台_ResearchSkillLibrary只读集成_验收说明.md",
+      "original_sha256": "bc3a9b38b862601ba62913fb7575914418ffdc104d9eef63afda1b65504ed35a"
+    },
+    {
+      "old": "牛牛AI交易工作台_StrictPITCoverage_验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_StrictPITCoverage_验收说明.md",
+      "original_sha256": "09cd8e8a9bafe029160c58b235d9878ae3933982011ab7fac5598bec00001b26"
+    },
+    {
+      "old": "牛牛AI交易工作台_StrictPITEvidenceArchive_验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_StrictPITEvidenceArchive_验收说明.md",
+      "original_sha256": "0487f45b944758fe04bf13f2984c5f4ae8f861be507369c779ca11ccf4304c95"
+    },
+    {
+      "old": "牛牛AI交易工作台_StrictPITSecurityStatus_验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_StrictPITSecurityStatus_验收说明.md",
+      "original_sha256": "313bf43baffe3749e9bdf5e38381b0118ac058d9024fede8ced3063c31d401ce"
+    },
+    {
+      "old": "牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_StrictPITSecurityStatus第二批验收说明.md",
+      "original_sha256": "a7b6c7b5855ef32fd12c16d67328fa7f5fc273c3580765c19937183302f5eda5"
+    },
+    {
+      "old": "牛牛AI交易工作台_Watch序贯统计与Alpha衰减监测_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_Watch序贯统计与Alpha衰减监测_验收说明.md",
+      "original_sha256": "668da4345a33723e12de27ae2460fc1f8643a62d5fb72002935a9d285d0f0b2a"
+    },
+    {
+      "old": "牛牛AI交易工作台_三源实时MarketSnapshotProvider_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_三源实时MarketSnapshotProvider_验收说明.md",
+      "original_sha256": "e85d59f9a6ac2652ed22c8718ead219fd10339ab6d3b5afe9f1848e8c960c259"
+    },
+    {
+      "old": "牛牛AI交易工作台_个股问答自动实时行情V1_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_个股问答自动实时行情V1_验收说明.md",
+      "original_sha256": "8f04c531eddf4f9aee9304e3ba13b42c5805cfeb0a7c284177c28e9532a17bd6"
+    },
+    {
+      "old": "牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_复牌日Exact价格边界参考证据_验收说明.md",
+      "original_sha256": "d245ac1914f8ddd1aa8395fcf55bd1f2a2d0935f0df0df0bb098c1db5fba4f15"
+    },
+    {
+      "old": "牛牛AI交易工作台_外部ResearchSkill接入规范_验收说明.md",
+      "new": "docs/archive/integrations/牛牛AI交易工作台_外部ResearchSkill接入规范_验收说明.md",
+      "original_sha256": "c60ce32cf33578d4204d3324a1685f9e6eb0c8684f76ce7db78ed962440fca16"
+    },
+    {
+      "old": "牛牛AI交易工作台_连续SecurityStatusV2_验收说明.md",
+      "new": "docs/archive/data-evidence/牛牛AI交易工作台_连续SecurityStatusV2_验收说明.md",
+      "original_sha256": "6bc9e32c6794553ecbe3d4fa0d39836da4c9ca627c59dd35aa7fcd15042ab2ed"
+    },
+    {
+      "old": "牛牛AI交易工作台_首轮DailyOrchestrator前瞻NoTrade_验收说明.md",
+      "new": "docs/archive/trading-workbench/牛牛AI交易工作台_首轮DailyOrchestrator前瞻NoTrade_验收说明.md",
+      "original_sha256": "afcf69b62d5d438dbbf5869fcf847c6f9814ff6676d5200e6bb8f95a114c1526"
+    },
+    {
+      "old": "牛牛AI助手用户端实测与Bug记录_20260916.md",
+      "new": "docs/archive/testing/牛牛AI助手用户端实测与Bug记录_20260916.md",
+      "original_sha256": "d739d234120f608e0ddf1a5ecb129e1597c23fb96fdd52bdb3557fadd1c7542f"
+    },
+    {
+      "old": "牛牛UI改造说明.md",
+      "new": "docs/archive/legacy/牛牛UI改造说明.md",
+      "original_sha256": "405b5c34e13c9c9a0c3a945965ed3069997d35f824b99dfc5cf76b0b70aa457f"
+    },
+    {
+      "old": "理论扩展规则_Chan包含与ICT_OB.md",
+      "new": "docs/reference/theories/理论扩展规则_Chan包含与ICT_OB.md",
+      "original_sha256": "0f67837a1a3b1d421e303455323c3846f4f7b0c4cf44d722071902632e3c2d12"
+    },
+    {
+      "old": "统一技术交易因子实验平台_总体方案与架构说明.md",
+      "new": "docs/archive/plans/统一技术交易因子实验平台_总体方案与架构说明.md",
+      "original_sha256": "c779f8cbfbc402b31214eb8e45c4f2efd1a391a17992de81daa3c8e3821c48f7"
+    },
+    {
+      "old": "跟踪逐交易日覆盖检查_验收说明.md",
+      "new": "docs/archive/research-assistant/跟踪逐交易日覆盖检查_验收说明.md",
+      "original_sha256": "842144319af48e0e51cb8be4c08c6182018c8da17a62a769badd37a84bd0b04e"
+    },
+    {
+      "old": "跨实验试验登记与Holm校正规则.md",
+      "new": "docs/reference/theories/跨实验试验登记与Holm校正规则.md",
+      "original_sha256": "4701438a7ff344501ad7d99c61e3ca2f57f950e246c3de3f47ba51ca0dbab74c"
+    },
+    {
+      "old": "非机器学习与实盘_推进清单.md",
+      "new": "docs/archive/legacy/非机器学习与实盘_推进清单.md",
+      "original_sha256": "0c27ddbe3619028303a10f74037a526dad5316d9c4134b3e3d46b5be76ed4f2c"
+    }
+  ]
+}

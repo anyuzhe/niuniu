@@ -2,7 +2,7 @@
 
 权威人类可读开发史文件：
 
-`/牛牛AI交易助手_开发历程与功能变更总档案.md`
+[docs/project/changelog.md](../../docs/project/changelog.md)
 
 ## 强制要求
 
