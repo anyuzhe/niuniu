@@ -37,6 +37,8 @@ class SpecTestService:
                 'data_qualification':'NOT_VERIFIED','raw_diagnostic_available':False}
             if f['id']=='P07' and manifest['files']==SUPPORTED_HASHES:
                 row.update(raw_diagnostic_available=True,strict_status='MISSING_SOURCE',reason='原始成交额公式已实现；历史时点与完整候选池未认证，只许可独立原始字段诊断')
+            if f['id']=='P01' and manifest['files']==SUPPORTED_HASHES:
+                row.update(component_contract_available=True,dependency_inspection_available=True,reason='P01/基础资格纯组件合同已实现；完整原始证据字段尚未接齐，不能把组件测试当作真实因子可用')
             rows.append(row)
         return {'spec_id':sid,'source_hashes':manifest['files'],'source_pair_consistent':manifest['consistency']['matched'],
             'exact_revision_supported':manifest['files']==SUPPORTED_HASHES,'contract_test_available':manifest['files']==SUPPORTED_HASHES,'factors':rows,'factor_count':len(rows),
@@ -55,12 +57,14 @@ class SpecTestService:
         if result['spec_id']!=sid:raise ValueError('Test belongs to another specification')
         if 'observation_sha256' in result and sha((folder/'observations.parquet').read_bytes())!=result['observation_sha256']:
             raise ValueError('Test observations changed')
+        if 'coverage_sha256' in result and sha((folder/'coverage.parquet').read_bytes())!=result['coverage_sha256']:
+            raise ValueError('Coverage evidence changed')
         return result
     def run(self,sid,args):
         manifest,_,spec=self._spec(sid)
         kind=args['kind']
-        if kind not in ('CONTRACT_GUARDS','P07_DIAGNOSTIC'):raise ValueError('UNSUPPORTED_FACTOR_OR_TEST：不得以其他因子替换')
-        if kind=='CONTRACT_GUARDS' and any(args[k] for k in ('symbols','start','end')):raise ValueError('合成合同测试不接受行情参数')
+        if kind not in ('CONTRACT_GUARDS','P07_DIAGNOSTIC','BASE_RULES_GUARDS','BASE_RULES_COVERAGE'):raise ValueError('UNSUPPORTED_FACTOR_OR_TEST：不得以其他因子替换')
+        if kind in ('CONTRACT_GUARDS','BASE_RULES_GUARDS') and any(args[k] for k in ('symbols','start','end')):raise ValueError('合成合同测试不接受行情参数')
         if self.root.is_symlink():raise ValueError('Test root symlink')
         test_id=str(uuid4());folder=self.root/test_id;folder.mkdir(parents=True,exist_ok=False)
         from quantlab.experiments.runner import runtime_fingerprint
@@ -72,6 +76,20 @@ class SpecTestService:
             if kind=='CONTRACT_GUARDS':
                 from quantlab.trading.qm50_contract import contract_checks
                 detail=contract_checks(spec);result.update(status=detail['status'],detail=detail)
+            elif kind=='BASE_RULES_GUARDS':
+                from quantlab.trading.qm50_base_contract import run_base_guards
+                detail=run_base_guards();result.update(status=detail['status'],detail=detail)
+            elif kind=='BASE_RULES_COVERAGE':
+                from quantlab.agent.qm50_base_coverage import inspect_base_coverage
+                import polars as pl
+                rows,detail=inspect_base_coverage(self.data_root,args['symbols'],args['start'],args['end'])
+                flat=[{**{k:v for k,v in row.items() if k not in ('session_checks','evidence','reason_codes')},
+                    'session_checks_json':json.dumps(row['session_checks'],ensure_ascii=False),
+                    'evidence_json':json.dumps(row['evidence'],ensure_ascii=False),
+                    'reason_codes_json':json.dumps(row['reason_codes'],ensure_ascii=False)} for row in rows]
+                pl.DataFrame(flat).write_parquet(folder/'coverage.parquet')
+                result.update(status='AUDIT_COMPLETED_INPUTS_BLOCKED',detail=detail,
+                    coverage_sha256=sha((folder/'coverage.parquet').read_bytes()))
             else:
                 from quantlab.agent.spec_p07_diagnostic import diagnose
                 frame,detail=diagnose(self.data_root,args['symbols'],args['start'],args['end'])

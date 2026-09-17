@@ -110,3 +110,9 @@
 ## 原始规格监督入口（2026-09-17）
 
 [research_specs.py](../../src/quantlab/agent/research_specs.py) 固定原始文件与60项定义定位；[research_spec_tools.py](../../src/quantlab/agent/research_spec_tools.py) 提供原生模型工具和禁止替代边界；[spec_test_service.py](../../src/quantlab/agent/spec_test_service.py) 保存实际测试请求/结果。[qm50_contract.py](../../src/quantlab/trading/qm50_contract.py) 仅是合成测试使用的纯组件，[spec_p07_diagnostic.py](../../src/quantlab/agent/spec_p07_diagnostic.py) 仅诊断原始成交额字段；二者不能作为完整策略调用。对应 [test_research_spec_fidelity.py](../../tests/test_research_spec_fidelity.py)。
+
+### QM50基础依赖（2026-09-18）
+
+[qm50_base_coverage.py](../../src/quantlab/agent/qm50_base_coverage.py) 复用既有正式回执验证器，分离全局完整性与请求覆盖，按真实日历建立D/D-1/D-2矩阵；[qm50_base_contract.py](../../src/quantlab/trading/qm50_base_contract.py) 是不签发资格、不接入真实候选生产的纯组件。原生规格工具接线和持久结果仍在research_spec_tools/spec_test_service中，对应 [test_qm50_base_coverage.py](../../tests/test_qm50_base_coverage.py)。
+
+get_strict_pit_coverage曾仅加入白名单而未实际注册到ChatRuntime，真实牛牛调用发现后改为显式工具。回归必须构造真实headless_chat_runtime，不能只用伪造inner证明接线完成。

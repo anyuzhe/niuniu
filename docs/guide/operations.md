@@ -163,3 +163,15 @@ python -m quantlab.agent.chat_cli \
 结果存入测试工作空间的 `_research_spec_tests/`，每次包括规格哈希、实际参数、运行代码指纹、状态和数值文件指纹。完整资料不足时真实分数/Q/交易保持空，组件合成测试中的示例分数不作为市场结果。该入口尚不是新增客户端的一键规格导入面板。
 
 本轮实际轨迹和限制见 [QM50严格规格验收](../archive/testing/20260917-QM50-SCLA-v0.2-严格规格验收.md)。
+
+## QM50基础数据依赖核查（2026-09-18）
+
+绑定规格的原生会话可使用 `get_strict_pit_coverage` 只读查询既有PIT审计，并单列正式规则和回顾性参考；`qualify_research_data` 保持原请求级资格边界。工具可调用不代表请求已合格，全球存档数量也不是具体证券、日期的覆盖率。
+
+`inspect_qm50_base_rules_coverage` 接收同一spec_id、实际沪深证券（1–10只）及日期范围（1–31自然日），按归档交易日历求D/D-1/D-2，核对五类既有归档、证券身份/成员、规则时间和原始行情存在性，并保留未支持字段、未知高度和候选。该工具只读，不修复数据或创建receipt。
+
+`run_research_spec_test` 的 `kind=BASE_RULES_COVERAGE` 保存上述请求与完整coverage.parquet；状态 `AUDIT_COMPLETED_INPUTS_BLOCKED` 表示审计执行成功但真实输入仍阻断，不是完整回测成功。`kind=BASE_RULES_GUARDS` 运行25项纯组件边界案例，symbols/start/end应留空。总测试次数仍受本次宿主进程最多3次限制。
+
+发现某个历史session缺回执时，不要重新签一个旧日期回执、把当前状态回填、或把规范/回顾性参考变成正式逐日值。需要原始时点数据或另行设计前瞻采集；现有归档的确认要求没有被这些查询工具改变。检查缺口输出的data_requests是具体接受条件，不是已执行下载授权。
+
+测试入口沿用上一节 `--research-spec / --allow-spec-tests / --local-data-only`，不操作客户端。对已有结果使用get_research_spec_test读回，避免重复计算。实际记录见 [QM50原始规格验收](../archive/testing/20260917-QM50-SCLA-v0.2-严格规格验收.md) 第二阶段。
