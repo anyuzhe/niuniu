@@ -4,7 +4,7 @@
 
 ## 开工读取
 
-先检查 Git 状态、当前分支及并行任务；不得覆盖他人的未提交工作。同步远端时只做可审查的 fast-forward，遇到分歧停止，禁止强制重置或自动推送。
+先检查 Git 状态、当前分支及并行任务；不得覆盖他人的未提交工作。同步远端时只做可审查的 fast-forward，遇到分歧停止，禁止强制重置或强制推送；宿主开发任务完成后按下方约定普通推送。
 
 依次阅读 [当前状态](docs/project/status.md)、[总体架构](docs/architecture/overview.md)、[开发规范](docs/development/contributing.md)、[Agent Memory](agent_memory/README.md)，再读相关 `rules/`、`architecture/` 和角色文件。查源码从 [代码地图](docs/development/code-map.md) 开始。
 
@@ -24,4 +24,4 @@
 
 每项完成的实质改动同步追加 [开发总档案](docs/project/changelog.md)，记录测试的真实结果、限制和提交状态。遵守 [文档治理规则](agent_memory/rules/documentation.md)。
 
-形成独立本地 Git commit，除非用户明确要求暂不提交；不自动 push。不得把已完成本地修改写成已部署或已推送。
+用户于 2026-09-17 明确要求每次任务执行完成后都推送代码。宿主开发任务验收后形成独立 Git commit，并普通 push 当前分支配置的 upstream（当前 main → origin/main）；成功后核对远端 SHA。没有实质修改时不创建空提交，但应检查已有待推送提交。禁止 force push；远端分歧、权限或网络失败须如实报告，不能写成已推送。这不授权自动部署、真实交易或改变产品内 P10 的 Human Merge Gate。

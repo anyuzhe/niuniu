@@ -4,7 +4,7 @@
 
 ## 1. 开工与权限
 
-先检查 Git 工作区、当前 HEAD、分支分歧和并行修改。已有修改不覆盖；远端同步保持 fast-forward 和可审查，不 reset、不 force push、不自动发布。宿主授权的直接维护与产品内 Research/Developer 的工具权限不是一回事。
+先检查 Git 工作区、当前 HEAD、分支分歧和并行修改。已有修改不覆盖；远端同步保持 fast-forward 和可审查，不 reset、不 force push、不自动部署；完成后的普通推送遵循用户明确授权。宿主授权的直接维护与产品内 Research/Developer 的工具权限不是一回事。
 
 阅读 `agent_memory/README.md`、通用规则及本任务相关架构合同。P10 产品内开发继续通过隔离 worktree、allowed paths、lease、冻结测试、Reviewer 和 Human Merge，不借本文件扩大权限。
 
@@ -61,6 +61,6 @@ git diff --check
 
 只提交本任务明确的文件，先核对 diff、代码/资源是否意外改变及外部控制包指纹。没有真实模型/联网/部署验证就明确未验证，不把单元测试称为真实数据验收。
 
-每个完成的实质任务更新 [开发总档案](../project/changelog.md)，形成独立本地 commit，除非宿主明确要求暂不提交。commit 与 push 分开；未推送就写未推送。
+每个完成的实质任务更新 [开发总档案](../project/changelog.md)，形成独立本地 commit，除非宿主明确要求暂不提交。用户已于 2026-09-17 授权每次完成任务后推送代码：验收后 commit，再普通 push 当前分支 upstream，核对远端 SHA。禁止强推；遇到远端分歧先停止并报告，不覆盖他人提交。仅推送 Git 跟踪的代码、测试和文档，artifacts、行情、密钥不上传。推送不等于部署；未成功就明确写未推送。
 
 Agent Memory 修改后需要 review/commit，正式加载器才接受 Git-clean 记忆；不要为了文档清理关闭这个保护。

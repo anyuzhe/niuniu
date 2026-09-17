@@ -25,3 +25,7 @@
 ## 证据边界
 
 总档案用于叙述开发过程，不替代 Git、结构化 Research Evidence、Decision、Theme、Playbook、Watch、交易归档或测试日志的权威事实。
+
+## 宿主开发提交与推送约定（2026-09-17）
+
+用户明确要求每次执行完成后推送代码。宿主开发任务应在验收与文档收尾后形成独立提交，并普通推送当前分支的 upstream、核对远端 SHA；不得 force push 或覆盖并行工作。没有改动不造空提交，推送失败如实记录。本约定不扩展 Research Agent 权限，也不修改产品内 P10 Human Merge Gate、部署或真实交易权限。

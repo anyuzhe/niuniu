@@ -106,3 +106,16 @@ python -m quantlab.agent.chat_cli \
 上述开关不是“禁用所有市场联网”的通用模式，原有模型发送/明确证券实时报价规则不变。本次隔离验收另通过测试适配器关闭行情网络，并冻结最多三个候选，未触及日常工作空间。
 
 真实三候选模型试跑及限制见 [2026-09-17 后台实测](../archive/testing/20260917-自主因子后台实测.md)。单批次通过不代表已部署每日自动研究调度。
+
+## 冻结候选100股验证（2026-09-17）
+
+本轮已固定三个模型候选与100只证券，验证不调用模型、不下载、不打开客户端、不注册正式因子。证据在 `artifacts/frozen-candidate-validation-20260917-211359/`。复算使用该目录的原始 protocol、候选文件、snapshot 和 bars，不能看结果后改公式/方向/股票池：
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/validate_frozen_candidates.py verify \
+  --case-dir artifacts/frozen-candidate-validation-20260917-211359
+```
+
+`capture` 需要预先冻结的 protocol.json、selected-universe.json 与原始 frozen-candidates.json，并显式提供 --data-root；按冻结股票清单读取本地原字节，禁止替换股票。`run` 仅首次执行并保留启动标记，拒绝覆盖已有结果；`verify` 重新比对因子、标签、日度统计与结论，相同核验不覆盖首份回执。失败输入、不可检验项和反向结果不得删除后重试显著性。
+
+这是研究专用 nullable-volume 路径：保留空量/时点，屏蔽相应信号，不放宽生产数据校验。时间块检验、样本选择、Strict PIT和成本限制见[完整实测](../archive/testing/20260917-自主因子后台实测.md)。
