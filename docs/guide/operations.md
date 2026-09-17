@@ -135,3 +135,31 @@ python -m quantlab.agent.chat_cli --output ./artifacts --data-root /path/to/niun
 `describe_factor` 对 DSL.RESTRICTED 返回实际表达式白名单和限制；假设的 parameters 只存因子参数，研究 spec 的版本键是 version。局部数据检查不会填空、删行、修改原行情或签发PIT资格。客户端与MCP的研究提案API也复用这两个本地只读工具。
 
 助手自主功能的验收由正式模型选择与调用驱动；开发者不代选研究内容。2026-09-17 实际记录见 [自主助手实测](../archive/testing/20260917-自主因子后台实测.md) 第三阶段。
+
+
+## 从两份原文件监督规格测试
+
+对于用户明确指定的研究说明，先由宿主导入并固定原始MD/JSON，模型只能通过规格ID和分组读取，不能任意读盘。导入不注册策略，也不授予模型Shell权限。
+
+```bash
+python -m quantlab.agent.research_specs \
+  --output /path/to/test-workspace \
+  --markdown /path/to/source.md --dictionary /path/to/source.json --confirm
+```
+
+保存返回的 `spec_id`，然后使用正式后台助手：
+
+```bash
+python -m quantlab.agent.chat_cli \
+  --output /path/to/test-workspace --data-root /path/to/niuniu-data \
+  --research-spec <spec_id> --local-data-only --allow-spec-tests \
+  --accept-model-service --ask "读取原始全局规则和全部字段，严格检查并测试；不支持项明确报告，禁止替代。"
+```
+
+`--research-spec` 绑定会话中的规格版本，并禁止通用因子研究/旧qimo代理替代；它与GUI、通用 `--allow-granted-research` 互斥。`--allow-spec-tests` 只许可本次进程至多3次固定测试，不建立持续授权。省略该选项只读规格/已有记录。两份原件发生变化后不能沿用旧哈希执行，即使标题、model_id和版本字符串看起来相同。
+
+当前精确适配只识别已审核的QM50-SCLA v0.2两份字节版本，提供原文读取、60项一致性审计、合成组件逻辑检查和P07原始字段诊断；不是通用文本自动执行器，也不是完整60字段回测。其他规格不能自动执行。旧qimo-source-rules-v2保持原有独立用途，不能按名字相似自动映射。
+
+结果存入测试工作空间的 `_research_spec_tests/`，每次包括规格哈希、实际参数、运行代码指纹、状态和数值文件指纹。完整资料不足时真实分数/Q/交易保持空，组件合成测试中的示例分数不作为市场结果。该入口尚不是新增客户端的一键规格导入面板。
+
+本轮实际轨迹和限制见 [QM50严格规格验收](../archive/testing/20260917-QM50-SCLA-v0.2-严格规格验收.md)。
