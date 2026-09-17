@@ -197,3 +197,21 @@ python -m quantlab.agent.chat_cli \
 `replay_qm50_archived_inputs` 复算同一test_id，只需输出目录内的冻结字节，不再依赖外部来源；该计算也消耗本进程固定测试预算。原始请求股票顺序必须保留。示例样本的ST/停牌筛选用于功能诊断，不能作为历史策略候选池。
 
 完整实测和复算排序问题见 [QM50验收第三阶段](../archive/testing/20260917-QM50-SCLA-v0.2-严格规格验收.md)。客户端尚没有新增的跨工作空间导入按钮，不把后台入口冒充界面已接通。
+
+
+## TDX新增数据入库与断点采集（个人研究）
+
+新增数据与原日线/5m共享 `niuniu-data/catalog/mqc.duckdb`，但使用独立的 `tdx_*` 视图和 `lake/bronze/provider=tdx/` 来源目录，不覆盖原Baostock数据。原始响应、Parquet、采集时间、单位、请求和哈希一并保存；`catalog/tdx_ingestion.sqlite3` 管理断点队列，不是另一套行情业务数据库。
+
+本机查看状态、暂停、继续：
+
+```bash
+/bin/sh /Volumes/Lexar/niuniu-data/automation/tdx/tdx.sh status
+/bin/sh /Volumes/Lexar/niuniu-data/automation/tdx/tdx.sh stop
+/bin/sh /Volumes/Lexar/niuniu-data/automation/tdx/tdx.sh resume --personal-research-only \
+  --seconds 86400 --max-requests 200000 --max-new-gib 200
+```
+
+恢复用resume，不要重复prepare。当前全量计划含5,809个证券标识、13类数据，初始58,091个任务，后续历史页按需展开。开始时间与计划下界不代表对应历史已取得；全量尚未完成。双并发、请求间隔、单轮时间/请求/磁盘预算和30GiB余量保护均保持，错误与空数据分开。报价、盘口、题材和财务为观察时点快照，不能凭今天的接口倒推完整历史。
+
+牛牛可用 `get_tdx_data_status` / `read_tdx_data` 只读查询，模型不能启动采集或任意写库。采集库保存在数据根automation中的隔离研究运行目录，未成为主程序默认依赖；ELTDX Research-Only许可仍限制商业、生产服务、行情转售和自动交易。完整目录、表名及限制见 [TDX实测与入库记录](../archive/integrations/20260918-TDX-数据源可行性实测.md)。

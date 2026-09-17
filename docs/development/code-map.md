@@ -118,3 +118,5 @@
 get_strict_pit_coverage曾仅加入白名单而未实际注册到ChatRuntime，真实牛牛调用发现后改为显式工具。回归必须构造真实headless_chat_runtime，不能只用伪造inner证明接线完成。
 
 已归档原始输入接入：[qm50_archived_inputs.py](../../src/quantlab/agent/qm50_archived_inputs.py)，负责宿主选定来源的capture读取、原JSON/typed核对、D-1输入物化和冻结复算；对应 [test_qm50_archived_inputs.py](../../tests/test_qm50_archived_inputs.py)。不包含价格制度推算、候选选择或收益研究。
+
+TDX个人研究原始页/Parquet/原DuckDB接入：[tdx_lake.py](../../src/quantlab/data/tdx_lake.py)；显式采集/暂停/恢复：[tdx_collection_cli.py](../../src/quantlab/agent/tdx_collection_cli.py)；只读模型接线复用ResearchSpecAPI。验证：[test_tdx_lake.py](../../tests/test_tdx_lake.py)。采集依赖隔离且不加载到普通只读工具，不与QM50规则或交易授权混用。

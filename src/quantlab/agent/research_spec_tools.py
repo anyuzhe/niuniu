@@ -5,6 +5,9 @@ from quantlab.agent.research_specs import ResearchSpecStore,SUPPORTED_HASHES
 from quantlab.storage.codec import encode
 
 TOOLS=[
+    schema('get_tdx_data_status','只读查看已入本地数据库的TDX各类行情、实际行数和采集队列。SAVED页不等于全历史已完成；不联网、不启动采集，不认证PIT。',{}),
+    schema('read_tdx_data','只读查询catalog/mqc.duckdb中的tdx_*数据表，family来自get_tdx_data_status。symbol/start/end可留空；返回保存的原始字段和observed_at，不把快照日期当历史可用时点；不进行交易或取新数据。',{'family':TEXT,'symbol':TEXT,'start':TEXT,'end':TEXT,'offset':{'type':'integer','minimum':0,'maximum':1000000},'limit':{'type':'integer','minimum':1,'maximum':20}}),
+
     schema('list_qm50_archived_sources','只读列出宿主选定的来源工作空间中的已归档回溯日线capture，含packed归档；不是只搜索旧MQC目录，不联网。',{}),
     schema('list_qm50_archived_symbols','对实际capture分页列出证券清单。filter_kind=all/has_st/has_suspension只用来挑功能诊断样本，不能当历史候选池；日线实际字节须后续核验。',
         {'capture_id':TEXT,'offset':{'type':'integer','minimum':0,'maximum':20000},'limit':{'type':'integer','minimum':1,'maximum':20},'filter_kind':TEXT}),
@@ -23,7 +26,7 @@ TOOLS=[
     schema('get_research_spec_test','读取本规格已经完成的真实测试记录及状态；不重新运行。',{'spec_id':TEXT,'test_id':TEXT}),
     schema('inspect_qm50_base_rules_coverage','只读深验本地已有官方Universe、完整证券状态、逐日规则、稀疏公告和回顾性参考，再按D/D-1/D-2核对。symbols为1–10只真实沪深代码，start/end为1–31自然日；不下载/补签回执、不按当前名称回填、不产生候选。返回字段合同缺口与全局/本请求不同范围。',{'spec_id':TEXT,'symbols':{'type':'string','maxLength':200},'start':TEXT,'end':TEXT}),
 ]
-READ_NAMES={'list_research_specs','read_research_spec','audit_research_spec','get_research_spec_test','inspect_qm50_base_rules_coverage','get_strict_pit_coverage','list_qm50_archived_sources','list_qm50_archived_symbols','inspect_qm50_archived_daily'}
+READ_NAMES={'get_tdx_data_status','read_tdx_data','list_research_specs','read_research_spec','audit_research_spec','get_research_spec_test','inspect_qm50_base_rules_coverage','get_strict_pit_coverage','list_qm50_archived_sources','list_qm50_archived_symbols','inspect_qm50_archived_daily'}
 INNER_READS={'list_local_market_data','inspect_local_market_data','search_factors','describe_factor','get_strict_pit_coverage','qualify_research_data'}
 
 class ResearchSpecAPI:
@@ -60,7 +63,18 @@ class ResearchSpecAPI:
             sid=args.get('spec_id')
             if sid and self.active_spec and sid!=self.active_spec:raise ValueError('不能切换宿主绑定的规格')
             refs=[]
-            if name in ('list_qm50_archived_sources','list_qm50_archived_symbols','inspect_qm50_archived_daily'):
+            if name in ('get_tdx_data_status','read_tdx_data'):
+                from quantlab.data.tdx_lake import TdxLake
+                lake=TdxLake(self.data_root)
+                if name=='get_tdx_data_status':
+                    data=lake.status()
+                    data['plans']=[{k:v for k,v in plan.items() if k not in ('symbols','trading_days','server_handshake','calendar_extension')} for plan in data.get('plans',[])]
+                else:
+                    data=lake.read(args['family'],args['symbol'],args['start'],args['end'],args['offset'],args['limit'])
+                    for row in data['rows']:row['original_record']=json.loads(row.pop('record_json'))
+                    if len(encode(data))>24000:
+                        data={'omitted':True,'family':args['family'],'reason':'result_size_limit','hint':'减小limit后重试；完整字段始终保存在数据库。'}
+            elif name in ('list_qm50_archived_sources','list_qm50_archived_symbols','inspect_qm50_archived_daily'):
                 from quantlab.agent.qm50_archived_inputs import ArchivedDailyBridge
                 bridge=ArchivedDailyBridge(self.source_workspace)
                 if name=='list_qm50_archived_sources':data=bridge.list_sources()

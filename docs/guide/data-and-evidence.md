@@ -80,3 +80,10 @@ Git Markdown 保存规则、说明、工程经验与架构；结构化归档保�
 实验常见产物有 `experiment.json`、`observations.parquet`、`report.md`、按需的 `bars.parquet` 与成交/持仓明细；本地索引常用 DuckDB。具体文件以实验类型为准。跨环境复算需匹配配置、源数据和依赖，不能仅凭源码指纹认定所有行情已复制。
 
 原始数量、历史研究结果和当时的证据缺口保留在 [数据验收归档](../archive/README.md) 和 [开发史](../project/changelog.md)。这些数字附属于记录日期；本轮未重新审计外部数据根，不把旧数值换个标题写成最新覆盖率。
+
+
+## 7. TDX个人研究数据分区
+
+2026-09-18新增13类TDX数据的独立原始归档及Parquet，统一注册在现有 `catalog/mqc.duckdb` 的tdx_*视图中，旧Baostock日线/5m视图和文件不替换。每行带source_id、plan_id、observed_at、单位和qualification，全部供应商字段保留在record_json；同一事件的不同观察版本不能未经选择直接相加。
+
+快照类date按观察日期解释，不能冒充历史可用时间或财报修订链。EMPTY只说明某个请求当时返回空；PENDING/ERROR/尚未展开的历史流不算已完成。采集计划从旧日历最早日追溯并不证明上游保留这些历史。原始来源性质保持vendor_observation_personal_research_not_pit，不自动放入QM50官方规则或真实交易入口。入口和暂停/恢复见 [运行与运维](operations.md)。
