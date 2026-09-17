@@ -218,8 +218,8 @@
 | AR-3.3 题材引擎 | 进行中：代码已合并，待收盘后抓取板块成分做真实验证 | `e1be61e`（代码） | 聚焦 17/17；全仓 1123/0/0；真实 2026-09-16 股池行业分布 | 2026-09-17 10:19 |
 | AR-3.4 前瞻明细并入事件库 | 已完成（明细随归档逐日积累） | `2909164` | 聚焦 31/31；全仓 1126/0/0；真实 2026-09-16 明细 213 行，核对一致 | 2026-09-17 10:27 |
 | AR-4.1 AI 只读工具 | 已完成 | `074c7a1` | 聚焦 35/35；全仓 1129/0/0；真实数据 5 个工具烟测 | 2026-09-17 10:37 |
-| AR-4.2 每日收盘复盘 | 已完成 | 本提交 | 聚焦 24/24；全仓 1131/0/0；真实 2026-09-16 复盘 | 2026-09-17 10:44 |
-| AR-4.3 可验证预测与校准 | 未开始 | | | |
+| AR-4.2 每日收盘复盘 | 已完成 | `442d0f5` | 聚焦 24/24；全仓 1131/0/0；真实 2026-09-16 复盘 | 2026-09-17 10:44 |
+| AR-4.3 可验证预测与校准 | 已完成（首批机器基准待今晚收盘数据） | 本提交 | 聚焦 10/10；全仓 1133/0/0 | 2026-09-17 10:53 |
 | AR-5.1 研究计划授权 | 未开始 | | | |
 | AR-5.2 夜间研究任务 | 未开始 | | | |
 | AR-5.3 结论库与失效监控 | 未开始 | | | |
@@ -749,3 +749,44 @@
   - 测试夹具提取为 `limit_research_fixtures.build_research_workspace`，与 AI 工具测试共用。
   - `test_evidence_scheduler` 加入复盘任务。
   - Linux 隔离克隆逐模块全仓 **1131 个测试，0 failed / 0 errors / 0 skipped**。
+
+### AR-4.3 可验证预测与校准 v1（2026-09-17 10:53）
+
+- 新增 `src/quantlab/trading/limit_forecasts.py`（格式 `limit-forecast-v1`，问题目录 `limit-forecast-questions-v1`）与 CLI `quantlab.agent.limit_forecast_cli`（questions/record/list/baselines/resolve/scorecard；pyproject 登记 `niuniu-limit-forecast`）。
+- 问题目录（6 个二元问题，全部由次日情绪指标机械判定）：
+  - 非 ST 涨停家数多于前一交易日；
+  - 前一交易日最高连板（≥2 板）股至少一只继续涨停；
+  - 炸板率低于 30%；
+  - 1 进 2 晋级率不低于 25%；
+  - 昨日涨停股今日平均收益为正；
+  - 非 ST 跌停不少于 10 家。
+  - 前一日没有高度板、炸板率无定义等情况判为 `VOID_UNDEFINED`；目标日不是交易日判为 `VOID_NOT_TRADING_DAY`。二者均不计分。
+- 记录规则：
+  - 预测者身份形如 `ai:` / `host:` / `baseline:`；概率 0–1；依据不超过 2000 字；证据引用至多 20 条。
+  - 目标日必须是工作日，必须在目标日 09:15（北京时间）前记录，且不早于 7 天。
+  - 同一预测者对同一问题、同一目标日只能记录一次，不可修改（改概率报 `CONFLICT`）；同一 request_id 重试幂等。
+  - 记录带 checksum，只追加。
+- 机器基准（每天自动给出参照）：
+  - `baseline:climatology-250`：此前 250 个交易日的发生频率，拉普拉斯平滑，至少 20 个有效样本。
+  - `baseline:analog-k10`：10 个历史相似日次日的发生频率，至少 5 个有效样本；历史不足时不生成。
+  - 两者只用目标日之前最后一个交易日及更早的数据。
+- 判定与记分：
+  - `resolve` 用覆盖目标日的情绪 build 判定，按 build 保存判定记录，Brier =（概率 − 结果）²。
+  - 记分卡按预测者汇总：已判定数、覆盖天数、平均 Brier、相对同题同日气候基准的技能分（1 − Brier 之和之比）、分问题成绩、5 档校准。
+  - 少于 30 条为 `INSUFFICIENT_SAMPLES`。
+- 接入：
+  - Agent Scorecard 新增 `limit_forecast` 任务类型行（非基准预测者）与 `system_baselines.limit_forecast`；仍不产生综合分。
+  - AI 工具新增只读 `list_limit_forecast_questions`、`get_limit_forecast_scorecard`，以及唯一的写工具 `record_limit_forecast`：写入预测日志，不是交易或研究执行。对话记为 `ai:chat`，MCP 记为 `ai:mcp`；AI Team 复核员没有写工具。
+  - 系统提示与 `agent_memory/architecture/limit_research.md` 增加预测规则（第 9、10 条）与调度时间线。
+  - 收盘后调度新增：`forecast_resolution`（18:25 后，判定当天目标的预测）与 `forecast_baselines`（为下一个工作日生成机器基准）。
+- 真实数据：今天（2026-09-17）09:15 已过，不能再为今天记录任何预测。明天（09-18）的机器基准应基于今天收盘后的数据生成；这一步放在今晚收盘后的构建中执行并补记。
+- 测试：
+  - 新增 `tests/test_limit_forecasts.py` 2 项：
+    - 6 个问题的判定与 VOID 规则；
+    - 记录的幂等与不可修改；过晚、过早、周末、未知问题、概率越界、身份非法；
+    - 机器基准只用目标日前数据，历史不足时无相似日基准；
+    - 判定与 Brier、记分卡技能分、Agent Scorecard 行；
+    - AI 工具记录成功与过晚拒绝、问题目录与判定、复核员无写工具、CLI。
+  - `test_evidence_scheduler` 加入两个预测任务。
+  - Agent Memory 有改动，全仓测试同样在临时本地提交后运行。
+  - Linux 隔离克隆逐模块全仓 **1133 个测试，0 failed / 0 errors / 0 skipped**。

@@ -17,7 +17,7 @@ import os
 import socket
 import sys
 
-from quantlab.data.public_evidence import TZ, PublicEvidenceArchive, PublicEvidenceError, capture_timing
+from quantlab.data.public_evidence import TZ, PublicEvidenceArchive, PublicEvidenceError, capture_timing, next_weekday
 from quantlab.storage.codec import digest, encode
 
 SCHEDULE_VERSION = 'evidence-schedule-v1'
@@ -47,6 +47,8 @@ SCHEDULE = (
     {'task': 'limit_research', 'after': time(18, 10), 'refresh': True},
     {'task': 'event_details', 'after': time(18, 15), 'refresh': True},
     {'task': 'daily_review', 'after': time(18, 20), 'refresh': True},
+    {'task': 'forecast_resolution', 'after': time(18, 25), 'refresh': True},
+    {'task': 'forecast_baselines', 'after': time(18, 25)},
 )
 
 
@@ -112,7 +114,7 @@ def baostock_is_trading_day(day, sdk=None):
 
 class EvidenceScheduler:
     def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None, reference_fn=None, theme_library=None,
-                 research_fn=None, detail_library=None, review_library=None):
+                 research_fn=None, detail_library=None, review_library=None, forecast_journal=None):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise SchedulerError('INVALID_WORKSPACE', '工作空间不存在。')
@@ -125,6 +127,7 @@ class EvidenceScheduler:
         self.research_fn = research_fn
         self.detail_library = detail_library
         self.review_library = review_library
+        self.forecast_journal = forecast_journal
         self.root = self.output / '_market_data' / 'public_evidence' / '_scheduler'
 
     def _paths(self):
@@ -210,7 +213,18 @@ class EvidenceScheduler:
             self.review_library = DailyReviewLibrary(self.output)
         return self.review_library
 
+    def _forecasts(self):
+        if self.forecast_journal is None:
+            from quantlab.trading.limit_forecasts import LimitForecastJournal
+            self.forecast_journal = LimitForecastJournal(self.output)
+        return self.forecast_journal
+
     def _accepted(self, task, day):
+        if task == 'forecast_resolution':
+            return not self._forecasts().forecasts(day) or self._forecasts().is_resolved(day)
+        if task == 'forecast_baselines':
+            target = next_weekday(day)
+            return any(f['forecaster'].startswith('baseline:') for f in self._forecasts().forecasts(target))
         if task == 'daily_review':
             return self._reviews().is_current(day)
         if task == 'limit_research':
@@ -248,6 +262,13 @@ class EvidenceScheduler:
         return latest is None or (day - latest).days >= WEEKLY_MAX_AGE_DAYS
 
     def _run(self, task, day, calendar_days, staged=False):
+        if task == 'forecast_resolution':
+            resolution = self._forecasts().resolve(day)
+            return {'resolved': sum(i['status'] == 'RESOLVED' for i in resolution['items']), 'items': len(resolution['items']),
+                    'trading_day': resolution['trading_day']}
+        if task == 'forecast_baselines':
+            result = self._forecasts().generate_baselines(next_weekday(day))
+            return {'target_day': result['target_day'], 'written': len(result['written']), 'last_day': result['last_day']}
         if task == 'daily_review':
             review = self._reviews().build(day)
             return {'review_id': review['review_id'], 'created': review['created'], 'phase': review['machine_state']['phase']}

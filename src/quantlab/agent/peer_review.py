@@ -63,7 +63,7 @@ def normalize_spec(value):
 class ReviewReadOnlyAPI:
     def __init__(self,output,data_root=None):
         from quantlab.agent.research_skill_tools import ResearchSkillResearchAPI
-        self.inner=ResearchSkillResearchAPI(LimitResearchAPI(PlaybookResearchAPI(output,data_root)),data_root)
+        self.inner=ResearchSkillResearchAPI(LimitResearchAPI(PlaybookResearchAPI(output,data_root),allow_forecast_write=False),data_root)
         self._schemas=[schema for schema in self.inner.schemas() if schema['name'] in SAFE_TOOLS]
 
     def schemas(self):return json.loads(json.dumps(self._schemas,ensure_ascii=False))

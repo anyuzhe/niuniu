@@ -86,6 +86,20 @@ class FakeReviews:
         self.built.add(day.isoformat()); return {'review_id': 'r', 'created': True, 'machine_state': {'phase': 'ICE'}}
 
 
+class FakeForecasts:
+    def __init__(self):
+        self.records = {}; self.resolved = set()
+    def forecasts(self, day):
+        return self.records.get(day.isoformat(), [])
+    def is_resolved(self, day):
+        return day.isoformat() in self.resolved
+    def resolve(self, day):
+        self.resolved.add(day.isoformat()); return {'items': self.forecasts(day), 'trading_day': True}
+    def generate_baselines(self, target):
+        self.records.setdefault(target.isoformat(), []).append({'forecaster': 'baseline:climatology-250'})
+        return {'target_day': target.isoformat(), 'written': [1], 'last_day': 'x'}
+
+
 class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
@@ -104,10 +118,11 @@ class SchedulerTests(unittest.TestCase):
             self.research.append(day.isoformat()); return {'event_build_id': 'e', 'events': 1, 'sentiment_build_id': 's', 'created': True}
         self.details = FakeDetails(self.archive, self.research)
         self.reviews = FakeReviews(self.research)
+        self.forecasts = FakeForecasts()
         self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
                                            calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market,
                                            reference_fn=reference, theme_library=self.themes, research_fn=research,
-                                           detail_library=self.details, review_library=self.reviews)
+                                           detail_library=self.details, review_library=self.reviews, forecast_journal=self.forecasts)
     def tearDown(self):
         self.tmp.cleanup()
     def tasks(self, result):
@@ -145,7 +160,8 @@ class SchedulerTests(unittest.TestCase):
         self.now[0] = at(2026, 9, 17, 8, 0)
         morning = self.scheduler.tick()
         self.assertEqual(morning['candidates'], ['2026-09-16'])
-        self.assertEqual(self.tasks(morning), ['daily_market', 'daily_review', 'event_details', 'forward_reference', 'limit_research'])
+        self.assertEqual(self.tasks(morning), ['daily_market', 'daily_review', 'event_details', 'forecast_baselines', 'forward_reference', 'limit_research'])
+        self.assertEqual(self.forecasts.records, {'2026-09-17': [{'forecaster': 'baseline:climatology-250'}]})  # 为下一个工作日生成机器基准
         details = next(a for a in morning['actions'] if a['task'] == 'event_details')
         self.assertEqual(details['reconciliation'], 'CONSISTENT')  # 日线研究库先于明细构建，明细可核对
         self.assertEqual((self.daily, self.references), (['2026-09-16'], ['2026-09-16']))

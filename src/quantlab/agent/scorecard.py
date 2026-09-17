@@ -193,8 +193,19 @@ class AgentScorecardService:
         try:paper=PaperLifecycleAnalytics(self.output).build()
         except (OSError,ValueError,KeyError,TypeError,PlaybookError):paper={'unavailable':True}
         rows=decision_rows+peer_rows
+        try:
+            from quantlab.trading.limit_forecasts import BASELINES,LimitForecastJournal
+            forecasts=LimitForecastJournal(self.output).scorecard()
+            for item in forecasts['forecasters']:
+                if item['forecaster'] not in BASELINES:
+                    rows.append({'role_id':item['forecaster'],'task_type':'limit_forecast','sample_status':item['sample_status'],
+                        'samples':item['resolved'],'metrics':{k:item[k] for k in ('mean_brier','brier_skill_vs_climatology','matched_with_climatology','days')},
+                        'not_scored':['profitability','trading_decision_quality'],
+                        'notes':'Brier 越低越好；技能分以同题同日 250 日气候基准为参照；样本少于 30 条时仅供观察。'})
+        except (OSError,ValueError,KeyError,TypeError) as exc:
+            forecasts={'unavailable':True,'error':type(exc).__name__}
         return {'format':FORMAT,'generated_at':stamp.astimezone(timezone.utc).isoformat(),'rows':rows,
-            'system_baselines':{'playbook_prediction':self._playbook_baseline(),'paper_lifecycle':paper},
+            'system_baselines':{'playbook_prediction':self._playbook_baseline(),'paper_lifecycle':paper,'limit_forecast':forecasts},
             'meta':{**decision_meta,**peer_meta,'unreadable_peer_reviews':unreadable},
             'policy':{'composite_score':False,'automatic_model_weighting':False,'task_type_separation':True,
                 'minimum_samples_for_measured':3,'evidence_correctness_automatic_score':False,

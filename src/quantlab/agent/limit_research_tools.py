@@ -39,6 +39,12 @@ TOOLS = [
     schema('get_daily_review',
            '读取某交易日的打板情绪收盘复盘：事实层（涨跌停、连板梯队、题材、龙虎榜、数据缺口，含前一日对比）、机器状态层（情绪周期与相似日类比）和单独追加的评论层，并附简短中文摘要。trading_day 留空取最新。',
            {'trading_day': DAY}),
+    schema('list_limit_forecast_questions',
+           '读取可验证打板预测的问题目录（二元问题、判定指标、09:15 截止规则、机器基准），以及目标交易日已记录的预测和判定结果。target_day 留空只返回目录。',
+           {'target_day': DAY}),
+    schema('get_limit_forecast_scorecard',
+           '读取打板预测记分卡：各预测者（AI、宿主、机器基准）的已判定数量、平均 Brier 分数、相对 250 日气候基准的技能分、分问题成绩与校准分箱。',
+           {}),
     schema('list_event_studies',
            '只读列出预登记事件研究：family 留空列出全部研究族；给出 family 时返回该族 Holm 校正报告（检验量、样本内外取值、是否符合预登记方向、成交率与结论）。',
            {'family': NAME}),
@@ -46,7 +52,13 @@ TOOLS = [
            '读取一个预登记事件研究的冻结规格与结果：全样本/样本内/样本外统计与检验、成交模型统计、分年、分组和局限说明。',
            {'family': NAME, 'study_id': TEXT}),
 ]
+WRITE_TOOLS = [
+    schema('record_limit_forecast',
+           '记录一条可验证的概率预测（不是交易指令）。forecast_json 须含 question_id（来自 list_limit_forecast_questions）、target_day（YYYY-MM-DD，须在该日 09:15 前记录、7 天内）、probability（0–1）、rationale（≤2000 字，说明依据）与 evidence（至多 20 条工具证据引用文本）。同一问题同一目标日只能记录一次，不可修改；request_id 须为 UUID，重试幂等。',
+           {'request_id': TEXT, 'forecast_json': {'type': 'string', 'maxLength': 8000}}),
+]
 TOOL_NAMES = tuple(tool['name'] for tool in TOOLS)
+WRITE_TOOL_NAMES = tuple(tool['name'] for tool in WRITE_TOOLS)
 SENTIMENT_FIELDS = ('limit_up_count', 'limit_up_count_non_st', 'limit_down_count', 'touched_limit_up_count', 'broken_board_count',
                     'broken_rate', 'one_word_limit_up_count', 'first_board_count', 'consecutive_board_count', 'max_streak',
                     'advance_rate_1to2', 'advance_rate_2plus', 'prev_limit_up_avg_return', 'prev_limit_up_win_rate', 'big_loss_count',
@@ -80,15 +92,21 @@ def _round(value):
 class LimitResearchAPI:
     """Compose limit-research reads with an existing agent API without adding writes."""
 
-    def __init__(self, inner):
+    def __init__(self, inner, *, forecaster='ai:chat', allow_forecast_write=True, now_fn=None):
         self.inner = inner
+        self.now_fn = now_fn
         self.output = getattr(inner, 'output', None)
+        self.forecaster = forecaster
+        self.allow_forecast_write = allow_forecast_write
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
 
+    def _tools(self):
+        return TOOLS + (WRITE_TOOLS if self.allow_forecast_write else [])
+
     def schemas(self):
-        return self.inner.schemas() + json.loads(json.dumps(TOOLS, ensure_ascii=False))
+        return self.inner.schemas() + json.loads(json.dumps(self._tools(), ensure_ascii=False))
 
     @staticmethod
     def _validate(definition, arguments):
@@ -336,6 +354,34 @@ class LimitResearchAPI:
                 'commentary': review['commentary'][-5:], 'inputs': review['inputs'], 'limitations': review['limitations']}
         return _round(data), [{'kind': 'daily_review', 'trading_day': review['trading_day'], 'review_id': review['review_id']}]
 
+    def _forecast_questions(self, arguments):
+        from quantlab.trading.limit_forecasts import LimitForecastJournal, question_catalog
+        data = question_catalog()
+        day = _day(arguments['target_day'], 'target_day')
+        if day is not None:
+            journal = LimitForecastJournal(self.output)
+            data['target_day'] = day.isoformat()
+            data['forecasts'] = [{k: r[k] for k in ('forecast_id', 'forecaster', 'question_id', 'probability', 'recorded_at')} for r in journal.forecasts(day)][:60]
+            resolution = journal.resolution(day)
+            data['resolution'] = None if resolution is None else {k: resolution[k] for k in ('sentiment_build_id', 'trading_day', 'outcomes', 'resolved_at')}
+        return data, []
+
+    def _forecast_scorecard(self, arguments):
+        from quantlab.trading.limit_forecasts import LimitForecastJournal
+        return _round(LimitForecastJournal(self.output).scorecard()), []
+
+    def _record_forecast(self, arguments):
+        from quantlab.trading.limit_forecasts import LimitForecastJournal
+        try:
+            value = json.loads(arguments['forecast_json'])
+        except json.JSONDecodeError:
+            raise ValueError('forecast_json 不是合法 JSON。') from None
+        if not isinstance(value, dict) or set(value) != {'question_id', 'target_day', 'probability', 'rationale', 'evidence'}:
+            raise ValueError('forecast_json 字段必须是 question_id、target_day、probability、rationale、evidence。')
+        record = LimitForecastJournal(self.output, now_fn=self.now_fn).record(request_id=arguments['request_id'], forecaster=self.forecaster, **value)
+        return {k: record[k] for k in ('forecast_id', 'forecaster', 'question_id', 'question', 'target_day', 'probability', 'recorded_at', 'deadline', 'created')}, [
+            {'kind': 'limit_forecast', 'forecast_id': record['forecast_id'], 'target_day': record['target_day']}]
+
     def _studies(self, arguments):
         from quantlab.trading.event_study import EventStudyRegistry
         registry = EventStudyRegistry(self.output)
@@ -359,15 +405,18 @@ class LimitResearchAPI:
             {'kind': 'event_study', 'family': arguments['family'], 'study_id': arguments['study_id']}]
 
     def call(self, name, arguments):
-        definition = next((tool for tool in TOOLS if tool['name'] == name), None)
+        definition = next((tool for tool in self._tools() if tool['name'] == name), None)
         if definition is None:
             result = self.inner.call(name, arguments)
             if name == 'get_capabilities' and result.get('ok'):
                 result['data'].update(limit_research_tools_available=True, limit_research_write_tool=False, limit_research_build_tool=False,
-                                      limit_research_network_tool=False, tools=[tool['name'] for tool in self.schemas()])
+                                      limit_research_network_tool=False, limit_forecast_record_tool=self.allow_forecast_write,
+                                      tools=[tool['name'] for tool in self.schemas()])
                 result['data'].setdefault('limitations', []).append(WARNING)
             return result
-        handlers = {'get_limit_research_status': lambda a: self._status(), 'get_daily_review': self._review, 'get_market_sentiment': self._market_sentiment,
+        handlers = {'get_limit_research_status': lambda a: self._status(), 'get_daily_review': self._review,
+                    'list_limit_forecast_questions': self._forecast_questions, 'get_limit_forecast_scorecard': self._forecast_scorecard,
+                    'record_limit_forecast': self._record_forecast, 'get_market_sentiment': self._market_sentiment,
                     'find_similar_sentiment_days': self._similar, 'get_limit_ladder': self._ladder, 'query_limit_events': self._query,
                     'get_theme_facts': self._theme, 'get_billboard': self._billboard, 'list_event_studies': self._studies,
                     'get_event_study': self._study}
@@ -383,4 +432,4 @@ class LimitResearchAPI:
             return {'ok': False, 'tool': name, 'data': None, 'evidence': [], 'warnings': [], 'error': {'code': code, 'message': str(error)[:240]}}
 
 
-__all__ = ['TOOLS', 'TOOL_NAMES', 'LimitResearchAPI']
+__all__ = ['TOOLS', 'TOOL_NAMES', 'WRITE_TOOLS', 'WRITE_TOOL_NAMES', 'LimitResearchAPI']

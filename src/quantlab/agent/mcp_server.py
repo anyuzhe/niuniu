@@ -41,7 +41,7 @@ def _tool_function(api,definition):
 
 def build_mcp_api(output,data_root=None):
     output=Path(output).resolve();data_root=Path(data_root).resolve() if data_root else None
-    return ResearchSkillResearchAPI(LimitResearchAPI(MarketDataResearchAPI(output,data_root)),data_root)
+    return ResearchSkillResearchAPI(LimitResearchAPI(MarketDataResearchAPI(output,data_root),forecaster='ai:mcp'),data_root)
 
 
 def build_mcp_server(output,data_root=None):
