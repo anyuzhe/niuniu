@@ -67,8 +67,12 @@ def prepare(spec):
         'parameters', 'theory', 'theory_version', 'horizons', 'quantiles', 'seed',
         'adjustment', 'mode', 'split', 'schedule', 'grid', 'sequence_audit',
         'regime', 'regime_filter', 'context', 'processor', 'bootstrap', 'permutation', 'incremental_test', 'universe', 'replay', 'execution', 'theory_study', 'portfolio', 'execution_backend', 'market_rules', 'correlation', 'qualification'}
-    if not isinstance(spec, dict) or set(spec) - allowed:
-        raise ValueError('配置包含不支持的字段')
+    if not isinstance(spec, dict):
+        raise ValueError('配置必须是JSON对象')
+    unknown=set(spec)-allowed
+    if unknown:
+        names=', '.join(sorted(str(key) for key in unknown))[:160]
+        raise ValueError('配置包含不支持的字段：'+names+'；研究配置使用factor/version，parameters只保存因子参数；factor_id/factor_version用于假设记录，不用于研究spec。')
     symbols = spec.get('symbols')
     if not isinstance(symbols, list) or not symbols or any(
             not isinstance(s, str) or not re.fullmatch(r'(sh|sz|bj)\.\d{6}', s) for s in symbols):

@@ -48,7 +48,9 @@ def main(argv=None):
     p.add_argument('--list-sessions',action='store_true');p.add_argument('--gui',action='store_true')
     p.add_argument('--accept-model-service',action='store_true',help='明确允许向所选服务发送对话与工具摘要')
     p.add_argument('--allow-granted-research',action='store_true',help='仅接入后台共享任务队列；仍须已有有效 Research Session Grant，不创建授权')
+    p.add_argument('--local-data-only',action='store_true',help='仅本地研究资料；禁用宿主实时行情/扶摇，不禁用已许可的模型服务')
     a=p.parse_args(argv)
+    if a.local_data_only and a.gui:p.error('--local-data-only 当前只支持后台入口')
     if a.allow_granted_research and (not a.data_root or not a.ask or a.gui or a.probe or a.list_sessions):
         p.error('--allow-granted-research 仅用于带 --data-root 和 --ask 的后台对话')
     root=Path(a.output);root.mkdir(parents=True,exist_ok=True)
@@ -60,7 +62,7 @@ def main(argv=None):
         config=replace(config,**{k:getattr(a,k) for k in ('provider','model','base_url','effort','codex_path') if getattr(a,k) is not None})
         if a.probe:result=probe_model(config,allow_send=a.accept_model_service)
         else:
-            with headless_chat_runtime(root,a.data_root,allow_granted_research=a.allow_granted_research) as runtime:
+            with headless_chat_runtime(root,a.data_root,allow_granted_research=a.allow_granted_research,local_data_only=a.local_data_only) as runtime:
                 if a.list_sessions:result={'conversations':runtime.store.conversations()}
                 else:
                     if not a.ask:p.error('提供 --ask、--probe、--list-sessions 或 --gui')

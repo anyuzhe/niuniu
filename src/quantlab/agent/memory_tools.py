@@ -10,7 +10,7 @@ from quantlab.storage.codec import encode
 JSON_TEXT = {'type':'string','maxLength':65536}
 MEMORY_TOOLS = [
     schema('record_hypothesis',
-        '保存假设，不运行研究。hypothesis_json 字段必须是 title、statement、factor_id、factor_version、parameters、mechanism、falsification、supersedes（新记录为null，修订为旧记忆UUID）。先查已注册因子和已有记忆。',
+        '保存假设，不运行研究。hypothesis_json 字段必须是 title、statement、factor_id、factor_version、parameters、mechanism、falsification、supersedes（新记录为null，修订为旧记忆UUID）。parameters仅包含因子参数（如lookback），不可混入symbols/start/end/horizons；样本说明写statement/mechanism。先查已注册因子和已有记忆。',
         {'request_id':TEXT,'hypothesis_json':JSON_TEXT}),
     schema('record_finding',
         '保存证据支持的结论草稿，不认证Alpha。finding_json须含 hypothesis_id、title、statement、assessment、limitations、next_action、evidence、supersedes。assessment为supported/contradicted/inconclusive/unavailable/implementation_failure；evidence是1–8个{run_id,pointer,relation}，relation为supports/contradicts/context。数值由程序读取，禁止自填。',

@@ -119,3 +119,19 @@ PYTHONPATH=src .venv/bin/python scripts/validate_frozen_candidates.py verify \
 `capture` 需要预先冻结的 protocol.json、selected-universe.json 与原始 frozen-candidates.json，并显式提供 --data-root；按冻结股票清单读取本地原字节，禁止替换股票。`run` 仅首次执行并保留启动标记，拒绝覆盖已有结果；`verify` 重新比对因子、标签、日度统计与结论，相同核验不覆盖首份回执。失败输入、不可检验项和反向结果不得删除后重试显著性。
 
 这是研究专用 nullable-volume 路径：保留空量/时点，屏蔽相应信号，不放宽生产数据校验。时间块检验、样本选择、Strict PIT和成本限制见[完整实测](../archive/testing/20260917-自主因子后台实测.md)。
+
+## 正式助手的本地数据研究与观察
+
+后台原生入口新增 `--local-data-only`：禁用宿主实时报价及扶摇工具，不读取其凭证；这不表示模型离线，模型服务仍须 `--accept-model-service`。普通启动行为不变。例：
+
+```bash
+python -m quantlab.agent.chat_cli --output ./artifacts --data-root /path/to/niuniu-data \
+  --local-data-only --allow-granted-research --accept-model-service \
+  --ask "自行检查本地资料，在已有授权范围内研究并保存有证据的结论草稿。"
+```
+
+必须事先有有效 Grant；上述开关不建立授权。没有执行需求时去掉 `--allow-granted-research`。模型通过正式的 `list_local_market_data` / `inspect_local_market_data` 发现证券、日期、来源哈希、字段质量和截面数量，不再依赖测试脚本提供行情摘要。当前发现/检查入口覆盖原始 MQC 目录的 1d/5m、raw/qfq；遇到管理批次/更新通道/冻结标记会明确拒绝回退，应走既有批次/通道工具，不宣称所有数据格式已覆盖。
+
+`describe_factor` 对 DSL.RESTRICTED 返回实际表达式白名单和限制；假设的 parameters 只存因子参数，研究 spec 的版本键是 version。局部数据检查不会填空、删行、修改原行情或签发PIT资格。客户端与MCP的研究提案API也复用这两个本地只读工具。
+
+助手自主功能的验收由正式模型选择与调用驱动；开发者不代选研究内容。2026-09-17 实际记录见 [自主助手实测](../archive/testing/20260917-自主因子后台实测.md) 第三阶段。

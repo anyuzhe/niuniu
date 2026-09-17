@@ -49,7 +49,9 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 
 
 class ChatRuntime:
-    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None):
+    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False):
+        if type(local_data_only) is not bool: raise ValueError("local_data_only 必须为布尔值")
+        self.local_data_only=local_data_only
         self.store=ChatStore(output)
         from quantlab.agent.peer_review_tools import PeerReviewResearchAPI
         from quantlab.agent.research_session_tools import ResearchSessionGrantAPI
@@ -61,9 +63,10 @@ class ChatRuntime:
         from quantlab.trading.fuyao_market_snapshot import build_live_quote_provider
         research=ResearchSkillResearchAPI(LimitResearchAPI(PeerReviewResearchAPI(output,data_root)),data_root)
         base_api=ResearchSessionGrantAPI(research,output,data_root,queue_factory)
-        self.fuyao=fuyao_client if fuyao_client is not None else FuyaoMCPClient()
-        self.api=FuyaoResearchAPI(base_api,self.fuyao)
-        self.live_quotes=(LiveStockQuoteService(data_root,provider=build_live_quote_provider(self.fuyao))
+        self.fuyao=(FuyaoMCPClient(api_key='') if local_data_only else
+            fuyao_client if fuyao_client is not None else FuyaoMCPClient())
+        self.api=base_api if local_data_only else FuyaoResearchAPI(base_api,self.fuyao)
+        self.live_quotes=None if local_data_only else (LiveStockQuoteService(data_root,provider=build_live_quote_provider(self.fuyao))
             if live_quote_service is None else live_quote_service)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None):
         if allow_send is not True:raise ModelError('尚未确认将对话和研究摘要发送到所选模型服务')
@@ -81,6 +84,9 @@ class ChatRuntime:
         memory=AgentMemoryLoader().load('chief_researcher')
         memory_meta={k:v for k,v in memory.items() if k!='text'}
         base_system=SYSTEM+'\n\nGit-first Agent Operating Memory：\n'+memory['text']
+        base_system+='\n本地数据检查使用list_local_market_data/inspect_local_market_data；宿主已授权自主选择范围时，在真实目录/Grant内选取，不要求用户提供因子答案。研究前先记录可证伪假设，研究后检查真实证据并保存结论草稿。'
+        if self.local_data_only:
+            base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         with self.store.lease(cid):
             previous=self.store.turns(cid);messages=[];size=len(text)+len(base_system);omitted=0
             for item in reversed(previous):
@@ -148,7 +154,9 @@ class ChatRuntime:
                             '请求的 limit='+str(requested_limit)+' 超过工具上限，已按 '+str(normalized_limit)+' 执行。']}
                     if name=='get_capabilities' and result.get('ok'):
                         result['data']['model_connected']=True
-                        result['data']['limitations'][0]='当前模型可查询、保存研究记忆和生成提案；批准和执行由宿主处理。'
+                        result['data']['limitations'][0]=('模型可在已有有效Research Session Grant内提交有限研究；必须先核对授权、范围和预算，不能创建授权。'
+                            if result['data'].get('research_session_grant_submit_available') else
+                            '当前模型可查询、保存研究记忆和生成提案；批准和执行由宿主处理。')
                 result=clean(result);record('tool_result',{'name':name,'call_id':call_id,'result':result})
                 for ref in result.get('evidence',[]):
                     if ref not in evidence:evidence.append(ref)

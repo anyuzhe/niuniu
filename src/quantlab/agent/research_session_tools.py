@@ -22,7 +22,8 @@ class ResearchSessionGrantAPI:
             result=self.inner.call(name,arguments)
             if result.get('ok'):
                 result['data'].update(research_session_grant_available=True,research_session_grant_submit_available=bool(self.service),
-                    research_session_grant_host_authorization_only=True,tools=[t['name'] for t in self.schemas()])
+                    research_session_grant_host_authorization_only=True,execution_tools_available=bool(self.service),
+                    research_execution_requires_active_grant=True,tools=[t['name'] for t in self.schemas()])
                 result['data']['limitations'].append('Research Session Grant 只能由宿主创建/撤销；模型只能在有效授权范围内提交有限研究。')
             return result
         if name=='get_research_session_grant':

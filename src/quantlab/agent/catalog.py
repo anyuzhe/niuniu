@@ -44,6 +44,19 @@ def compact(value, depth=0):
     return value
 
 
+def restricted_dsl_contract():
+    """Expose the evaluator whitelist without modifying the factor implementation."""
+    from quantlab.factors.restricted_dsl import FIELDS, BINARY, UNARY, ROLLING, MAX_NODES, MAX_DEPTH, MAX_WINDOW
+    return {'fields': sorted(FIELDS), 'binary': sorted(BINARY), 'unary': sorted(UNARY),
+            'rolling': sorted(ROLLING), 'temporal': ['lag','delta','pct_change'],
+            'max_nodes': MAX_NODES, 'max_depth': MAX_DEPTH, 'max_window': MAX_WINDOW,
+            'temporal_nesting_allowed': False,
+            'node_fields': {'field': ['op','name'], 'const': ['op','value'],
+                'binary': ['op','left','right'], 'unary': ['op','arg'],
+                'temporal': ['op','arg','bars'], 'rolling': ['op','arg','window']},
+            'registration_is_host_only': True, 'arbitrary_code_allowed': False}
+
+
 class ReadOnlyResearchAPI:
     def __init__(self, output):
         self.output = Path(output).resolve()
@@ -93,7 +106,10 @@ class ReadOnlyResearchAPI:
             try: factor = self.registry.get(args['factor_id'], args['version'])
             except ValueError:
                 raise ValueError('INVALID_ARGUMENT：找不到精确因子版本；请先调用 search_factors 获取实际版本，不接受 latest 或空版本。') from None
-            return json.loads(encode({'definition': asdict(factor.definition), 'defaults': factor.parameters({})})), [
+            description = {'definition': asdict(factor.definition), 'defaults': factor.parameters({})}
+            if args['factor_id']=='DSL.RESTRICTED':
+                description['expression_contract']=restricted_dsl_contract()
+            return json.loads(encode(description)), [
                 {'kind': 'factor', 'factor_id': args['factor_id'], 'version': args['version']}]
         if name == 'list_experiments':
             result = self.catalog.list(**args)

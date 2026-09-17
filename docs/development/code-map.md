@@ -104,3 +104,5 @@
 ## 2026-09-17 增量入口：冻结候选验证
 
 [统计与分层模块](../../src/quantlab/experiments/frozen_candidate_validation.py)、[capture/run/verify 后台脚本](../../scripts/validate_frozen_candidates.py)、[边界回归](../../tests/test_frozen_candidate_validation.py)。复用原因子计算、标签、Bootstrap、符号检验与Holm；新增的是已冻结候选的样本扩展、分期/分板块统计和留证，不是新模型或实盘执行器。原JSON清单仍明确属于其生成基线。
+
+原生本地行情发现/检查工具：[local_data_tools.py](../../src/quantlab/agent/local_data_tools.py)，共同接线：[proposal_tools.py](../../src/quantlab/agent/proposal_tools.py)。工具不允许任意文件路径，不替代管理数据合同或统计研究。

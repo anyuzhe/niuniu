@@ -5,11 +5,12 @@ from quantlab.agent.catalog import ReadOnlyResearchAPI, schema, TEXT, compact
 from quantlab.agent.planning import parse_spec, ProposalError
 from quantlab.agent.proposals import ProposalService
 from quantlab.storage.codec import encode
+from quantlab.agent.local_data_tools import LocalMarketDataTools, TOOLS as LOCAL_TOOLS, NAMES as LOCAL_NAMES
 
 SPEC = {'type':'string','maxLength':65536}
 PROPOSAL_TOOLS = [
     schema('qualify_research_data','按research_only/retrospective_reference/strict_pit/official_rule_covered核对本地数据资格；只读，不创建任务。',{'spec_json':SPEC}),
-    schema('preview_experiment','校验研究配置并估算规模；严格资格请求会只读核对本地归档，不创建任务。',{'spec_json':SPEC}),
+    schema('preview_experiment','校验研究配置并估算规模；spec_json使用question/symbols/start/end/timeframe/adjustment/factor/version/parameters/mode/horizons/quantiles/replay/qualification。版本键是version，不是factor_version；parameters仅因子参数。严格资格先核对，不创建任务。',{'spec_json':SPEC}),
     schema('propose_experiment','保存待用户批准的固定提案；相同 request_id 重试幂等。不会执行研究。',{'request_id':TEXT,'spec_json':SPEC}),
     schema('get_proposal','读取真实提案及状态；批准不在模型工具集合中。',{'proposal_id':TEXT}),
 ]
@@ -19,11 +20,13 @@ class ResearchProposalAPI(ReadOnlyResearchAPI):
     def __init__(self, output, data_root, *, budget=None):
         super().__init__(output)
         self.proposals = ProposalService(output,data_root,budget=budget)
+        self.local_data = LocalMarketDataTools(data_root)
 
     def schemas(self):
-        return super().schemas()+json.loads(json.dumps(PROPOSAL_TOOLS,ensure_ascii=False))
+        return super().schemas()+json.loads(json.dumps(PROPOSAL_TOOLS+LOCAL_TOOLS,ensure_ascii=False))
 
     def call(self, name, arguments):
+        if name in LOCAL_NAMES: return self.local_data.call(name,arguments)
         if name == 'get_capabilities':
             result = super().call(name,arguments)
             if result['ok']:
@@ -31,7 +34,8 @@ class ResearchProposalAPI(ReadOnlyResearchAPI):
                     tools=[t['name'] for t in self.schemas()],host_approval_submission_available=True,
                     approval_tools_available_to_model=False,data_qualification_available=True,
                     qualification_levels=['research_only','retrospective_reference','strict_pit','official_rule_covered'],
-                    approval_time_actual_byte_freeze=True,approval_freeze_model_write=False)
+                    approval_time_actual_byte_freeze=True,approval_freeze_model_write=False,
+                    local_market_data_discovery=True,local_market_data_profile=True,local_market_data_write=False)
                 result['data']['limitations'][0]='尚未连接聊天模型；AI 只能查询和生成提案，不能自行批准或启动研究。'
             return result
         definition = next((t for t in PROPOSAL_TOOLS if t['name']==name),None)
