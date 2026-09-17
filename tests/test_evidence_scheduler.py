@@ -75,6 +75,17 @@ class FakeDetails(FakeThemes):
         return {**result, 'rows': 10, 'reconciliation': 'CONSISTENT' if day.isoformat() in self.research else 'UNCHECKED'}
 
 
+class FakeReviews:
+    def __init__(self, research):
+        self.research = research; self.built = set()
+    def is_current(self, day):
+        return day.isoformat() in self.built
+    def build(self, day):
+        if day.isoformat() not in self.research:
+            raise ValueError('RESEARCH_BUILD_MISSING')
+        self.built.add(day.isoformat()); return {'review_id': 'r', 'created': True, 'machine_state': {'phase': 'ICE'}}
+
+
 class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
@@ -92,10 +103,11 @@ class SchedulerTests(unittest.TestCase):
                 return day.isoformat() in self.research
             self.research.append(day.isoformat()); return {'event_build_id': 'e', 'events': 1, 'sentiment_build_id': 's', 'created': True}
         self.details = FakeDetails(self.archive, self.research)
+        self.reviews = FakeReviews(self.research)
         self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
                                            calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market,
                                            reference_fn=reference, theme_library=self.themes, research_fn=research,
-                                           detail_library=self.details)
+                                           detail_library=self.details, review_library=self.reviews)
     def tearDown(self):
         self.tmp.cleanup()
     def tasks(self, result):
@@ -133,7 +145,7 @@ class SchedulerTests(unittest.TestCase):
         self.now[0] = at(2026, 9, 17, 8, 0)
         morning = self.scheduler.tick()
         self.assertEqual(morning['candidates'], ['2026-09-16'])
-        self.assertEqual(self.tasks(morning), ['daily_market', 'event_details', 'forward_reference', 'limit_research'])
+        self.assertEqual(self.tasks(morning), ['daily_market', 'daily_review', 'event_details', 'forward_reference', 'limit_research'])
         details = next(a for a in morning['actions'] if a['task'] == 'event_details')
         self.assertEqual(details['reconciliation'], 'CONSISTENT')  # 日线研究库先于明细构建，明细可核对
         self.assertEqual((self.daily, self.references), (['2026-09-16'], ['2026-09-16']))

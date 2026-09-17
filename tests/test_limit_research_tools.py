@@ -1,59 +1,23 @@
-from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 import unittest
 
-from limit_research_fixtures import CAL, FakeSDK, T
-from test_eastmoney_snapshots import Http as BoardHttp, member
-from test_public_evidence import pool_body, zt_item
+from limit_research_fixtures import T, build_research_workspace
 from quantlab.agent.catalog import ReadOnlyResearchAPI
 from quantlab.agent.limit_research_tools import TOOL_NAMES, LimitResearchAPI
 from quantlab.agent.peer_review import SAFE_TOOLS
-from quantlab.data.eastmoney_sources import EastmoneyBoardMembersSource, pool_sources
-from quantlab.data.public_evidence import PublicEvidenceArchive
-from quantlab.data.retro_daily import RetroDailyStore
-from quantlab.trading.event_details import EventDetailLibrary
-from quantlab.trading.event_study import EventStudyRegistry
-from quantlab.trading.limit_events import LimitEventLibrary
-from quantlab.trading.market_sentiment import MarketSentimentLibrary
-from quantlab.trading.theme_engine import ThemeFactsLibrary
 
 TZ = ZoneInfo('Asia/Shanghai')
-
-
-class PoolHttp:
-    def __call__(self, spec):
-        if 'getTopicZTPool' in spec.url:
-            return 200, spec.url, 'application/json', pool_body([zt_item('600001', 1, 'A股', 12100, lbc=2, fbt=92500, lbt=92500, fund=8.0e7, zbc=0)])
-        return 200, spec.url, 'application/json', pool_body([])
 
 
 class LimitResearchToolTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = TemporaryDirectory(); output = cls.output = Path(cls.tmp.name)
-        clock = lambda: datetime(2026, 12, 1, tzinfo=timezone.utc)
-        store = RetroDailyStore(output, now_fn=clock, today_fn=lambda: CAL[-1] + timedelta(days=30))
-        plan = store.create_plan(CAL[0], CAL[-1], sdk=FakeSDK()); store.fetch(plan['capture_id'], sdk=FakeSDK())
-        cls.events = LimitEventLibrary(output, now_fn=clock).build([plan['capture_id']])
-        cls.sentiment = MarketSentimentLibrary(output, now_fn=clock).build([plan['capture_id']])
-        day = T(27)
-        when = datetime.combine(day, time(16, 30), TZ)
-        pools = PublicEvidenceArchive(output, sources=pool_sources(), now_fn=lambda: when, http=PoolHttp(), sleep=lambda s: None)
-        for source in ('em_limit_up_pool', 'em_broken_board_pool', 'em_limit_down_pool'):
-            pools.capture(source, day)
-        boards = PublicEvidenceArchive(output, sources=[EastmoneyBoardMembersSource('concept')], now_fn=lambda: when,
-                                       http=BoardHttp({'BK1001': [member(1)], 'BK1002': [member(2)]}), sleep=lambda s: None)
-        boards.capture('em_concept_board_members', day)
-        cls.details = EventDetailLibrary(output, now_fn=clock).build(day)
-        cls.theme = ThemeFactsLibrary(output, now_fn=clock).build(day)
-        registry = EventStudyRegistry(output, now_fn=clock)
-        study = registry.register({'family': 'tool-test', 'hypothesis': '涨停次日开盘收益为正', 'library_build_id': cls.events['build_id'],
-                                   'condition': 'is_limit_up_close', 'outcome': 't1_open_ret', 'min_events': 10})
-        registry.run('tool-test', study['study_id'])
-        cls.study_id = study['study_id']
-        cls.api = LimitResearchAPI(ReadOnlyResearchAPI(output))
+        cls.tmp = TemporaryDirectory(); cls.output = Path(cls.tmp.name)
+        ids = build_research_workspace(cls.output)
+        cls.events, cls.sentiment, cls.study_id = ids['events'], ids['sentiment'], ids['study_id']
+        cls.api = LimitResearchAPI(ReadOnlyResearchAPI(cls.output))
 
     @classmethod
     def tearDownClass(cls):

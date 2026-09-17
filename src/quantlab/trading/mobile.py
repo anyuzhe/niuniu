@@ -107,8 +107,21 @@ class MobileBriefService:
                 'blockers':health['blockers'][:20],'warnings':health['warnings'][:20]},
             'counts':{'current_states':len(current),'candidates':len(candidates),'plans':len(plans),'themes':len(themes),'risks':len(risks)},
             'policy':self._policy()}
+        result['limit_review']=self.limit_review(day)
         if symbol.strip():result['stock']=self.stock(symbol.strip())
         return result
+
+    def limit_review(self,day):
+        """Latest layered close review on or before ``day`` from the shared research store; no mobile-owned state."""
+        from .daily_review import DailyReviewError,DailyReviewLibrary,render_markdown
+        try:review=DailyReviewLibrary(self.output).latest_on_or_before(day)
+        except (DailyReviewError,OSError,ValueError,KeyError) as exc:return {'available':False,'error':type(exc).__name__}
+        if review is None:return {'available':False}
+        limit=review['facts']['limit'];state=review['machine_state']
+        return {'available':True,'trading_day':review['trading_day'],'review_id':review['review_id'],'phase':state['phase'],
+            'temperature':state['temperature'],'limit_up_count':limit['limit_up_count'],'limit_down_count':limit['limit_down_count'],
+            'broken_rate':limit['broken_rate'],'max_streak':limit['max_streak'],'markdown':render_markdown(review),
+            'qualification':'research_only'}
 
 
 __all__=['FORMAT','MobileBriefService']

@@ -36,6 +36,9 @@ TOOLS = [
     schema('get_billboard',
            '读取某交易日龙虎榜上榜股票（理由、买卖与净买入、成交占比）；symbol 非空时附该股买入/卖出前五席位（含“机构专用”）。供应商统计与解读字段不是事实。',
            {'trading_day': DAY, 'symbol': TEXT, 'limit': LIMIT}),
+    schema('get_daily_review',
+           '读取某交易日的打板情绪收盘复盘：事实层（涨跌停、连板梯队、题材、龙虎榜、数据缺口，含前一日对比）、机器状态层（情绪周期与相似日类比）和单独追加的评论层，并附简短中文摘要。trading_day 留空取最新。',
+           {'trading_day': DAY}),
     schema('list_event_studies',
            '只读列出预登记事件研究：family 留空列出全部研究族；给出 family 时返回该族 Holm 校正报告（检验量、样本内外取值、是否符合预登记方向、成交率与结论）。',
            {'family': NAME}),
@@ -317,6 +320,22 @@ class LimitResearchAPI:
         return {'trading_day': day.isoformat(), 'listed': board.height, 'rows': _round(rows), 'seats': _round(seats),
                 'note': 'em_ 开头的供应商解读与席位胜率只是统计，不是事实；龙虎榜只含上榜理由对应的前五席位。'}, refs
 
+    def _review(self, arguments):
+        from quantlab.trading.daily_review import DailyReviewLibrary, render_markdown
+        library = DailyReviewLibrary(self.output)
+        day = _day(arguments['trading_day'], 'trading_day')
+        if day is None:
+            days = library.list_days(limit=1)
+            if not days or 'error' in days[0]:
+                raise LookupError('还没有收盘复盘。')
+            day = date.fromisoformat(days[0]['trading_day'])
+        review = library.get(day)
+        facts = review['facts']
+        data = {'trading_day': review['trading_day'], 'review_id': review['review_id'], 'markdown': render_markdown(review),
+                'facts': {**facts, 'previous_day': facts.get('previous_day')}, 'machine_state': review['machine_state'],
+                'commentary': review['commentary'][-5:], 'inputs': review['inputs'], 'limitations': review['limitations']}
+        return _round(data), [{'kind': 'daily_review', 'trading_day': review['trading_day'], 'review_id': review['review_id']}]
+
     def _studies(self, arguments):
         from quantlab.trading.event_study import EventStudyRegistry
         registry = EventStudyRegistry(self.output)
@@ -348,7 +367,7 @@ class LimitResearchAPI:
                                       limit_research_network_tool=False, tools=[tool['name'] for tool in self.schemas()])
                 result['data'].setdefault('limitations', []).append(WARNING)
             return result
-        handlers = {'get_limit_research_status': lambda a: self._status(), 'get_market_sentiment': self._market_sentiment,
+        handlers = {'get_limit_research_status': lambda a: self._status(), 'get_daily_review': self._review, 'get_market_sentiment': self._market_sentiment,
                     'find_similar_sentiment_days': self._similar, 'get_limit_ladder': self._ladder, 'query_limit_events': self._query,
                     'get_theme_facts': self._theme, 'get_billboard': self._billboard, 'list_event_studies': self._studies,
                     'get_event_study': self._study}

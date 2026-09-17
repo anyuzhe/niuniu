@@ -46,6 +46,7 @@ SCHEDULE = (
     {'task': 'theme_facts', 'after': time(16, 10), 'refresh': True},
     {'task': 'limit_research', 'after': time(18, 10), 'refresh': True},
     {'task': 'event_details', 'after': time(18, 15), 'refresh': True},
+    {'task': 'daily_review', 'after': time(18, 20), 'refresh': True},
 )
 
 
@@ -111,7 +112,7 @@ def baostock_is_trading_day(day, sdk=None):
 
 class EvidenceScheduler:
     def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None, reference_fn=None, theme_library=None,
-                 research_fn=None, detail_library=None):
+                 research_fn=None, detail_library=None, review_library=None):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise SchedulerError('INVALID_WORKSPACE', '工作空间不存在。')
@@ -123,6 +124,7 @@ class EvidenceScheduler:
         self.theme_library = theme_library
         self.research_fn = research_fn
         self.detail_library = detail_library
+        self.review_library = review_library
         self.root = self.output / '_market_data' / 'public_evidence' / '_scheduler'
 
     def _paths(self):
@@ -202,7 +204,15 @@ class EvidenceScheduler:
         return {'event_build_id': built['build_id'], 'events': built['stats']['events'], 'sentiment_build_id': daily['build_id'],
                 'created': bool(built['created'] or daily['created'])}
 
+    def _reviews(self):
+        if self.review_library is None:
+            from quantlab.trading.daily_review import DailyReviewLibrary
+            self.review_library = DailyReviewLibrary(self.output)
+        return self.review_library
+
     def _accepted(self, task, day):
+        if task == 'daily_review':
+            return self._reviews().is_current(day)
         if task == 'limit_research':
             return bool(self._research('current', day))
         if task == 'event_details':
@@ -238,6 +248,9 @@ class EvidenceScheduler:
         return latest is None or (day - latest).days >= WEEKLY_MAX_AGE_DAYS
 
     def _run(self, task, day, calendar_days, staged=False):
+        if task == 'daily_review':
+            review = self._reviews().build(day)
+            return {'review_id': review['review_id'], 'created': review['created'], 'phase': review['machine_state']['phase']}
         if task == 'limit_research':
             return self._research('build', day)
         if task == 'event_details':
