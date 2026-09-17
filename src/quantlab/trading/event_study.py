@@ -8,6 +8,7 @@ adjustment across every study registered in the same family.
 """
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
@@ -22,7 +23,8 @@ import polars as pl
 from quantlab.statistics.permutation import PermutationConfig, block_sign_test, holm
 from quantlab.storage.codec import digest, encode
 
-from .limit_events import FEATURE_COLUMNS, LABEL_COLUMNS, LimitEventLibrary
+from .limit_events import FEATURE_COLUMNS, LABEL_COLUMNS, LimitEventLibrary, iter_state_batches, resolve_inputs
+from .limit_execution import EXECUTION_VERSION, TRADE_SCHEMA, ExecutionSpec, fill_summary, simulate_trades
 from .market_sentiment import METRICS, MarketSentimentLibrary
 from .sentiment_cycle import compute_cycle
 
@@ -41,10 +43,20 @@ MAX_NODES = 64
 MAX_DEPTH = 12
 PERMUTATION = PermutationConfig(resamples=999, block_days=5, alpha=0.05)
 SPEC_FIELDS = {'family', 'hypothesis', 'expected_sign', 'library_build_id', 'sentiment_build_id', 'condition', 'baseline_condition',
-               'outcome', 'start', 'end', 'split_date', 'group_by', 'min_events'}
+               'outcome', 'start', 'end', 'split_date', 'group_by', 'min_events', 'execution'}
+EXECUTION_OUTCOMES = ('net_return', 'gross_return')
+# A same-day limit-price order is placed before the close, so only facts known intraday before the fill may select it.
+PRE_ENTRY_COLUMNS = ('board', 'limit_rate', 'limit_rule_reason', 'is_st', 'listing_date', 'sessions_since_listing', 'preclose',
+                     'open', 'open_gap', 'limit_up_price', 'limit_down_price', 'touched_limit_up', 'prev_is_limit_up_close',
+                     'prev_limit_up_streak', 'prev_is_broken_board')
+PRE_ENTRY_GROUPS = ('board', 'year', 'is_st')
+SIGNAL_LIMITATION = '结果为信号标签统计，未计费用、滑点与成交可行性；可执行性须用 AR-3.2 成交模型复核。'
+EXECUTION_LIMITATION = ('结果按成交模型 {version}（{entry} 买入、{exit} 卖出、{scenario} 情景）以日线保守近似：计入 T+1、开盘/收盘涨停买不到、'
+                        '一字板排不到、跌停顺延卖出、佣金 {commission} 基点、滑点 {slippage} 基点及按日期的印花税与过户费；'
+                        '持有 {hold} 个交易日仍卖不出按最后收盘价计价。没有逐笔委托队列，排板成交只是情景假设，不代表真实可成交数量。')
 LIMITATIONS = [
     '事件与标签来自 research_only 事件库；涨跌停由研究制度表推算，不认证 strict PIT。',
-    '结果为信号标签统计，未计费用、滑点与成交可行性；可执行性须用 AR-3.2 成交模型复核。',
+    SIGNAL_LIMITATION,
     '检验把每个交易日的事件等权平均为一个观测，采用 5 日不重叠区块符号随机化（双侧，原假设为日均值关于 0 对称）；有基准条件时检验与基准的日度差值。',
     'Holm 校正覆盖同一 family 内全部已登记研究（未运行的也占名额），但不能控制登记之外的探索。',
 ]
@@ -196,20 +208,31 @@ def _read_checked(path, what):
 
 def code_fingerprint():
     folder = Path(__file__).resolve().parent
-    names = ('event_study.py', 'limit_events.py', 'limit_states.py', 'price_limit_regime.py', 'market_sentiment.py', 'sentiment_cycle.py')
+    names = ('event_study.py', 'limit_events.py', 'limit_states.py', 'price_limit_regime.py', 'market_sentiment.py', 'sentiment_cycle.py',
+             'limit_execution.py')
     files = {n: hashlib.sha256((folder / n).read_bytes()).hexdigest() for n in names}
     files['statistics/permutation.py'] = hashlib.sha256((folder.parent / 'statistics' / 'permutation.py').read_bytes()).hexdigest()
     return {'files': files, 'digest': digest(files)}
 
 
+def study_limitations(spec):
+    if not spec.get('execution'):
+        return list(LIMITATIONS)
+    e = spec['execution']
+    text = EXECUTION_LIMITATION.format(version=e['model_version'], entry=e['entry'], exit=e['exit'], scenario=e['scenario'],
+                                       commission=e['commission_bps'], slippage=e['slippage_bps'], hold=e['max_hold_sessions'])
+    return [text if item == SIGNAL_LIMITATION else item for item in LIMITATIONS]
+
+
 class EventStudyRegistry:
-    def __init__(self, output, now_fn=None, event_library=None, sentiment_library=None):
+    def __init__(self, output, now_fn=None, event_library=None, sentiment_library=None, state_batches=None):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise EventStudyError('INVALID_WORKSPACE', '工作空间不存在。')
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.event_library = event_library or LimitEventLibrary(self.output)
         self.sentiment_library = sentiment_library or MarketSentimentLibrary(self.output)
+        self.state_batches = state_batches or self._default_state_batches
         self.root = self.output / '_limit_research' / 'event_studies'
 
     def _family_dir(self, family):
@@ -227,18 +250,29 @@ class EventStudyRegistry:
                  'library_build_id': spec['library_build_id'], 'sentiment_build_id': spec.get('sentiment_build_id'),
                  'condition': spec['condition'], 'baseline_condition': spec.get('baseline_condition'), 'outcome': spec['outcome'],
                  'start': spec.get('start'), 'end': spec.get('end'), 'split_date': spec.get('split_date'),
-                 'group_by': spec.get('group_by'), 'min_events': spec.get('min_events', 30)}
+                 'group_by': spec.get('group_by'), 'min_events': spec.get('min_events', 30), 'execution': None}
+        if spec.get('execution') is not None:
+            try:
+                value['execution'] = {**asdict(ExecutionSpec.from_dict(spec['execution'])), 'model_version': EXECUTION_VERSION}
+            except ValueError as error:
+                raise EventStudyError('INVALID_SPEC', 'execution 无效：' + str(error)) from None
         self._family_dir(value['family'])
         if not isinstance(value['hypothesis'], str) or not 5 <= len(value['hypothesis'].strip()) <= 500:
             raise EventStudyError('INVALID_SPEC', 'hypothesis 必须为 5–500 字符。')
         if value['expected_sign'] not in ('positive', 'negative', 'none'):
             raise EventStudyError('INVALID_SPEC', 'expected_sign 必须为 positive/negative/none。')
-        if value['outcome'] not in NUMERIC_OUTCOMES + BOOLEAN_OUTCOMES:
-            raise EventStudyError('INVALID_SPEC', 'outcome 必须是允许的标签列。')
+        allowed_outcomes = EXECUTION_OUTCOMES if value['execution'] else NUMERIC_OUTCOMES + BOOLEAN_OUTCOMES
+        if value['outcome'] not in allowed_outcomes:
+            raise EventStudyError('INVALID_SPEC', '有成交模型时 outcome 必须为 net_return/gross_return，否则必须是允许的标签列。')
         _, used = compile_condition(value['condition'])
         base_used = compile_condition(value['baseline_condition'])[1] if value['baseline_condition'] is not None else []
         if value['group_by'] is not None and value['group_by'] not in GROUPS:
             raise EventStudyError('INVALID_SPEC', 'group_by 不支持。')
+        if value['execution'] and value['execution']['entry'] == 't0_limit_price':
+            late = sorted({c for c in used + base_used if c not in PRE_ENTRY_COLUMNS})
+            if late or (value['group_by'] is not None and value['group_by'] not in PRE_ENTRY_GROUPS):
+                raise EventStudyError('LOOKAHEAD_FOR_ENTRY', '当日涨停价买入只能用盘中买入前已知的列筛选与分组：'
+                                      + ', '.join(late or [value['group_by']]))
         needs_context = any(c.startswith('mkt_') for c in used + base_used) or value['group_by'] == 'mkt_phase'
         if needs_context and not value['sentiment_build_id']:
             raise EventStudyError('INVALID_SPEC', '条件或分组使用市场情绪列时必须指定 sentiment_build_id。')
@@ -302,6 +336,31 @@ class EventStudyRegistry:
             pl.col('date').dt.year().cast(pl.String).alias('year'))
         return events, manifest, calendar
 
+    def _default_state_batches(self, library_manifest):
+        from quantlab.data.retro_daily import RetroDailyStore
+        store = RetroDailyStore(self.output)
+        resolved = resolve_inputs(store, [item['capture_id'] for item in library_manifest['inputs']])
+        return {'last_pos': len(resolved['calendar']) - 1, 'batches': iter_state_batches(store, resolved)}
+
+    def _attach_trades(self, frames, library_manifest, execution):
+        spec = ExecutionSpec(**{k: v for k, v in execution.items() if k != 'model_version'})
+        needed = pl.concat([f.select('date', 'code') for f in frames if f is not None], how='vertical').unique()
+        source = self.state_batches(library_manifest)
+        parts = []
+        for states in source['batches']:
+            subset = needed.filter(pl.col('code').is_in(states['code'].unique().implode()))
+            if subset.height:
+                panel = states.filter(pl.col('code').is_in(subset['code'].unique().implode()))
+                try:
+                    parts.append(simulate_trades(subset, panel, spec, last_pos=source['last_pos']))
+                except ValueError as error:
+                    raise EventStudyError('CORRUPT_INPUT', '成交模拟失败：' + str(error)) from None
+        trades = pl.concat(parts, how='vertical') if parts else pl.DataFrame(schema=TRADE_SCHEMA)
+        missing = needed.join(trades.select('date', 'code'), on=['date', 'code'], how='anti')
+        if missing.height:
+            raise EventStudyError('CORRUPT_INPUT', f'{missing.height} 个事件在状态面板中找不到对应证券。')
+        return [None if f is None else f.join(trades, on=['date', 'code'], how='left') for f in frames]
+
     def run(self, family, study_id):
         record = self.get(family, study_id)
         if record['result'] is not None:
@@ -311,6 +370,8 @@ class EventStudyRegistry:
         condition, _ = compile_condition(spec['condition'])
         selected = events.filter(condition)
         baseline = events.filter(compile_condition(spec['baseline_condition'])[0]) if spec['baseline_condition'] else None
+        if spec['execution']:
+            selected, baseline = self._attach_trades([selected, baseline], manifest, spec['execution'])
         outcome = spec['outcome']
         seed = int(hashlib.sha256(study_id.encode()).hexdigest()[:8], 16)
         samples = {'all': sample_stats(selected, outcome, calendar, seed, baseline=baseline, min_events=spec['min_events'])}
@@ -335,8 +396,12 @@ class EventStudyRegistry:
         result = {'format': FORMAT + '-result', 'study_id': study_id, 'computed_at': self.now_fn().astimezone(timezone.utc).isoformat(),
                   'engine_version': ENGINE_VERSION, 'code_fingerprint': fingerprint['digest'], 'library_events_sha256': manifest['events_sha256'],
                   'primary_sample': primary, 'primary_p_value': samples[primary]['test'].get('p_value'), 'samples': samples,
+                  'execution': None if not spec['execution'] else {
+                      name: fill_summary(frame) for name, frame in (('all', selected),) + (
+                          (('in_sample', selected.filter(pl.col('date') < date.fromisoformat(spec['split_date']))),
+                           ('out_of_sample', selected.filter(pl.col('date') >= date.fromisoformat(spec['split_date'])))) if spec['split_date'] else ())},
                   'by_year': by_year, 'by_group': by_group, 'permutation': {'resamples': PERMUTATION.resamples, 'block_days': PERMUTATION.block_days},
-                  'limitations': LIMITATIONS}
+                  'limitations': study_limitations(spec)}
         path = self._family_dir(family) / study_id / 'result.json'
         temporary = path.with_name('.result.json.tmp')
         temporary.write_text(encode(_checked(result)), encoding='utf-8')
@@ -365,5 +430,6 @@ class EventStudyRegistry:
                 'studies': rows, 'note': 'Holm 以本 family 全部已登记研究为名额；未运行研究占名额但无 p 值。'}
 
 
-__all__ = ['FORMAT', 'ENGINE_VERSION', 'NUMERIC_OUTCOMES', 'BOOLEAN_OUTCOMES', 'CONDITION_COLUMNS', 'GROUPS', 'LIMITATIONS',
-           'EventStudyError', 'EventStudyRegistry', 'compile_condition', 'sample_stats']
+__all__ = ['FORMAT', 'ENGINE_VERSION', 'NUMERIC_OUTCOMES', 'BOOLEAN_OUTCOMES', 'EXECUTION_OUTCOMES', 'CONDITION_COLUMNS', 'GROUPS',
+           'LIMITATIONS', 'PRE_ENTRY_COLUMNS', 'PRE_ENTRY_GROUPS', 'EventStudyError', 'EventStudyRegistry', 'compile_condition',
+           'sample_stats', 'study_limitations']

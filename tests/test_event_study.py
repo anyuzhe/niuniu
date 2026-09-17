@@ -130,6 +130,65 @@ class RegistryTests(unittest.TestCase):
         self.assertTrue(result['by_group'])
 
 
+class ExecutionStudyTests(unittest.TestCase):
+    def test_execution_outcome_uses_conservative_fills(self):
+        days = DAYS[:60]; rows = []; events = []
+        for code_index, code in enumerate(('sh.600100', 'sz.000200')):
+            pre = 10.0
+            for i, day in enumerate(days):
+                up, down = round(pre * 1.1 + 1e-9, 2), round(pre * 0.9 + 1e-9, 2)
+                opened_at_limit = (i % 5 == 1)
+                o = up if opened_at_limit else round(pre * 1.01, 2)
+                c = round(pre * (1.02 if i % 2 else 0.99), 2)
+                h, l = max(o, c), min(o, c)
+                rows.append({'code': code, 'date': day, '_pos': i, 'tradable': True, 'open': o, 'high': h, 'low': l, 'close': c,
+                             'preclose': pre, 'limit_up_price': up, 'limit_down_price': down, 'limit_rule_status': 'NORMAL',
+                             'is_one_word_limit_up': False, 'touched_limit_up': h >= up, 'is_limit_up_close': c == up})
+                if i < 55:
+                    events.append({'date': day, 'code': code, 'board': 'MAIN', 'is_st': False, 'limit_up_streak': 1 + code_index,
+                                   'is_limit_up_close': True, 't1_open_ret': 0.0})
+                pre = c
+        states = pl.DataFrame(rows)
+        with TemporaryDirectory() as tmp:
+            registry = EventStudyRegistry(Path(tmp), now_fn=lambda: datetime(2026, 9, 17, tzinfo=timezone.utc),
+                                          event_library=FakeEvents(pl.DataFrame(events)), sentiment_library=FakeSentiment(),
+                                          state_batches=lambda manifest: {'last_pos': 59, 'batches': iter([states.filter(pl.col('code') == 'sh.600100'),
+                                                                                                    states.filter(pl.col('code') == 'sz.000200')])})
+            spec = {'family': 'exec-test', 'hypothesis': '次日开盘买入、再次日开盘卖出的净收益', 'library_build_id': '11111111-1111-1111-1111-111111111111',
+                    'condition': 'limit_up_streak >= 1', 'outcome': 'net_return', 'min_events': 10,
+                    'execution': {'entry': 't1_open', 'exit': 'next_open', 'scenario': 'conservative'}}
+            with self.assertRaises(EventStudyError):
+                registry.register({**spec, 'outcome': 't1_open_ret'})
+            with self.assertRaises(EventStudyError):
+                registry.register({**spec, 'execution': {'entry': 'magic'}})
+            study = registry.register(spec)
+            result = registry.run('exec-test', study['study_id'])['result']
+            summary = result['execution']['all']
+            self.assertEqual(summary['events'], 110)
+            self.assertEqual(summary['status_counts']['NO_FILL_OPEN_AT_LIMIT_UP'], 22)
+            self.assertEqual(result['samples']['all']['events'], summary['entered'])
+            self.assertEqual((summary['pending'], summary['fill_rate']), (0, 88 / 110))
+            self.assertEqual(study['spec']['execution']['model_version'], 'limit-execution-model-v1')
+            self.assertTrue(any('limit-execution-model-v1' in item and 't1_open' in item for item in result['limitations']))
+            self.assertFalse(any('未计费用' in item for item in result['limitations']))
+
+    def test_same_day_limit_price_entry_rejects_close_information(self):
+        with TemporaryDirectory() as tmp:
+            registry = EventStudyRegistry(Path(tmp), event_library=FakeEvents(synthetic_events()), sentiment_library=FakeSentiment(),
+                                          state_batches=lambda manifest: {'last_pos': 0, 'batches': iter([])})
+            spec = {'family': 'exec-test', 'hypothesis': '昨日涨停今日回封打板的净收益', 'library_build_id': '11111111-1111-1111-1111-111111111111',
+                    'condition': 'prev_limit_up_streak >= 1 and touched_limit_up', 'outcome': 'net_return',
+                    'execution': {'entry': 't0_limit_price', 'exit': 'next_open'}}
+            self.assertTrue(registry.register(spec)['created'])
+            for bad in ({'condition': 'limit_up_streak >= 2'}, {'condition': 'touched_limit_up and is_broken_board'},
+                        {'condition': 'touched_limit_up and mkt_limit_up_count > 50', 'sentiment_build_id': 'x'},
+                        {'baseline_condition': 'is_limit_up_close'}, {'group_by': 'streak_bucket'}):
+                with self.assertRaises(EventStudyError) as ctx:
+                    registry.register({**spec, **bad})
+                self.assertEqual(ctx.exception.code, 'LOOKAHEAD_FOR_ENTRY', bad)
+            self.assertTrue(registry.register({**spec, 'execution': {'entry': 't1_limit_price'}, 'condition': 'limit_up_streak >= 2'})['created'])
+
+
 class CliTests(unittest.TestCase):
     def test_cli_requires_arguments_and_reports_empty_family(self):
         with TemporaryDirectory() as tmp:
