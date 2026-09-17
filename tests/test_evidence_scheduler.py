@@ -127,6 +127,16 @@ class FakeConclusions:
         return {'evaluated': [{'status': 'DECAYING'}, {'status': 'MONITORING'}], 'confirmations': {'ran': ['c'], 'changed': []}}
 
 
+class FakePremarket:
+    def __init__(self):
+        self.current = True; self.targets = []
+    def is_current(self, target):
+        return self.current
+    def build(self, target):
+        self.targets.append(target.isoformat()); self.current = True
+        return {'target_day': target.isoformat(), 'brief_id': 'b', 'created': True, 'conclusions': {'monitoring': [1]}, 'risks': [1, 2]}
+
+
 class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
@@ -148,11 +158,13 @@ class SchedulerTests(unittest.TestCase):
         self.forecasts = FakeForecasts()
         self.auto = FakeAuto()
         self.conclusions = FakeConclusions()
+        self.premarket = FakePremarket()
         self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
                                            calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market,
                                            reference_fn=reference, theme_library=self.themes, research_fn=research,
                                            detail_library=self.details, review_library=self.reviews, forecast_journal=self.forecasts,
-                                           auto_research=self.auto, conclusion_library=self.conclusions)
+                                           auto_research=self.auto, conclusion_library=self.conclusions,
+                                           premarket_library=self.premarket)
     def tearDown(self):
         self.tmp.cleanup()
     def tasks(self, result):
@@ -276,6 +288,19 @@ class SchedulerTests(unittest.TestCase):
         self.now[0] = at(2026, 9, 17, 20, 5)
         self.assertIn('conclusion_monitor', self.tasks(self.scheduler.tick()))
         self.assertEqual(self.conclusions.days, ['2026-09-17', '2026-09-17'])
+
+    def test_premarket_brief_for_next_weekday_refreshes_on_new_inputs(self):
+        self.scheduler.enable(confirmed=True, authorization='ok')
+        self.premarket.current = False
+        self.now[0] = at(2026, 9, 18, 19, 35)
+        self.assertNotIn('premarket_brief', [a['task'] for a in self.scheduler.tick()['actions']])  # 19:40 前不生成
+        self.now[0] = at(2026, 9, 18, 19, 45)
+        action = next(a for a in self.scheduler.tick()['actions'] if a['task'] == 'premarket_brief')
+        self.assertEqual((action['target_day'], action['valid_conclusions'], action['risks']), ('2026-09-21', 1, 2))  # 周五收盘后为下周一生成
+        self.premarket.current = False  # 早盘前新记录的预测改变输入：09:15 前重建
+        self.now[0] = at(2026, 9, 21, 8, 30)
+        self.assertIn('premarket_brief', self.tasks(self.scheduler.tick()))
+        self.assertEqual(self.premarket.targets, ['2026-09-21', '2026-09-21'])
 
     def test_staged_member_capture_continues_next_tick_without_using_attempts(self):
         self.scheduler.enable(confirmed=True, authorization='ok')

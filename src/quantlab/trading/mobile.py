@@ -108,6 +108,7 @@ class MobileBriefService:
             'counts':{'current_states':len(current),'candidates':len(candidates),'plans':len(plans),'themes':len(themes),'risks':len(risks)},
             'policy':self._policy()}
         result['limit_review']=self.limit_review(day)
+        result['limit_premarket']=self.limit_premarket(day)
         if symbol.strip():result['stock']=self.stock(symbol.strip())
         return result
 
@@ -122,6 +123,25 @@ class MobileBriefService:
             'temperature':state['temperature'],'limit_up_count':limit['limit_up_count'],'limit_down_count':limit['limit_down_count'],
             'broken_rate':limit['broken_rate'],'max_streak':limit['max_streak'],'markdown':render_markdown(review),
             'qualification':'research_only'}
+
+    def limit_premarket(self,day):
+        """Pre-market brief for ``day`` or, after that session, for the next weekday; read-only from the shared research store."""
+        from datetime import date as _date,timedelta as _timedelta
+        from .premarket_brief import PremarketBriefError,PremarketBriefLibrary,render_markdown
+        try:
+            library=PremarketBriefLibrary(self.output);start=_date.fromisoformat(day);brief=None
+            for offset in range(0,4):
+                target=start+_timedelta(days=offset)
+                if target.weekday()>=5:continue
+                try:brief=library.get(target);break
+                except PremarketBriefError as exc:
+                    if exc.code!='NOT_FOUND':raise
+        except (PremarketBriefError,OSError,ValueError,KeyError) as exc:return {'available':False,'error':type(exc).__name__}
+        if brief is None:return {'available':False}
+        return {'available':True,'target_day':brief['target_day'],'basis_day':brief['basis_day'],'brief_id':brief['brief_id'],
+            'phase':brief['sentiment']['phase'],'valid_conclusions':len(brief['conclusions']['monitoring']),
+            'decaying_conclusions':len(brief['conclusions']['decaying']),'risks':[r['code'] for r in brief['risks']],
+            'markdown':render_markdown(brief),'qualification':'research_only'}
 
 
 __all__=['FORMAT','MobileBriefService']

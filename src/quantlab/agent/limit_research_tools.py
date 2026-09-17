@@ -61,6 +61,9 @@ TOOLS = [
     schema('list_research_conclusions',
            '只读查看研究结论库：宿主晋级到锁定样本外区间确认的规律（确认族 Holm 校正后的 p 值、确认阶段未通过的质疑项）及其前瞻滚动监控（最近 180 天与确认后全部数据的效果、成交率、净收益，HEALTHY/DECAYING 及原因），另附全部提案（含失败）的分状态统计。status 可为 MONITORING/DECAYING/NOT_CONFIRMED/PENDING_RUN/RETIRED 或留空。只有 MONITORING 状态才可称为“仍有效的已确认规律”，且仍不是交易信号。',
            {'status': NAME}),
+    schema('get_premarket_brief',
+           '读取某交易日的盘前简报（依据前一个收盘后的数据）：情绪周期与关键指标、相似日类比、连板梯队与题材、仍有效（MONITORING）的已确认规律及其观察名单、衰减中的规律、已记录的预测与记分卡、版本化风险提示与数据缺口，并附中文摘要。target_day 留空取最新一份。观察名单不是买入建议。',
+           {'target_day': DAY}),
 ]
 WRITE_TOOLS = [
     schema('record_limit_forecast',
@@ -425,6 +428,19 @@ class LimitResearchAPI:
         return _round({'conclusions': rows[:30], 'total': len(rows), 'ledger': library.ledger()}), [
             {'kind': 'research_conclusion', 'conclusion_id': row['conclusion_id']} for row in rows[:30]]
 
+    def _premarket(self, arguments):
+        from quantlab.trading.premarket_brief import PremarketBriefError, PremarketBriefLibrary, render_markdown
+        library = PremarketBriefLibrary(self.output, now_fn=self.now_fn)
+        day = _day(arguments['target_day'], 'target_day')
+        if day is None:
+            root = library.root
+            days = sorted((p.name for p in root.iterdir() if p.is_dir() and re.fullmatch(r'\d{4}-\d{2}-\d{2}', p.name)), reverse=True) if root.is_dir() else []
+            if not days:
+                raise PremarketBriefError('NOT_FOUND', '还没有盘前简报。')
+            day = date.fromisoformat(days[0])
+        brief = library.get(day)
+        return _round({**brief, 'markdown': render_markdown(brief)}), [{'kind': 'premarket_brief', 'target_day': brief['target_day'], 'brief_id': brief['brief_id']}]
+
     def _studies(self, arguments):
         from quantlab.trading.event_study import EventStudyRegistry
         registry = EventStudyRegistry(self.output)
@@ -464,7 +480,7 @@ class LimitResearchAPI:
                     'find_similar_sentiment_days': self._similar, 'get_limit_ladder': self._ladder, 'query_limit_events': self._query,
                     'get_theme_facts': self._theme, 'get_billboard': self._billboard, 'list_event_studies': self._studies,
                     'get_event_study': self._study, 'get_auto_research_status': self._auto_status, 'propose_auto_study': self._propose_auto,
-                    'list_research_conclusions': self._conclusions}
+                    'list_research_conclusions': self._conclusions, 'get_premarket_brief': self._premarket}
         try:
             self._validate(definition, arguments)
             data, refs = handlers[name](arguments)

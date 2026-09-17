@@ -492,6 +492,14 @@ class EventStudyRegistry:
         return {'spec': value, 'library_events_sha256': manifest['events_sha256'], 'code_fingerprint': code_fingerprint()['digest'],
                 'detail_builds': self._details_used, 'windows': measured}
 
+    def matching_events(self, spec, day):
+        """Events on one trading day that satisfy a spec's condition, with outcome columns removed (a pre-market observation list)."""
+        day = day.isoformat() if isinstance(day, date) else day
+        value = self.normalize_spec({**spec, 'start': day, 'end': day, 'split_date': None})
+        events, _, _ = self._frame(value)
+        selected = events.filter(compile_condition(value['condition'])[0])
+        return selected.select([c for c in selected.columns if c not in LABEL_COLUMNS]).sort('code')
+
     def family_report(self, family):
         folder = self._family_dir(family)
         rows = []
