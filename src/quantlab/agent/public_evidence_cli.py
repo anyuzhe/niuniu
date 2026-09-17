@@ -18,6 +18,8 @@ def main(argv=None):
     parser.add_argument('--capture-id', default='')
     parser.add_argument('--allow-late', action='store_true')
     parser.add_argument('--confirm-revision', action='store_true')
+    parser.add_argument('--max-seconds', type=int, default=None,
+                        help='可续抓：本次最多抓取秒数，未完成返回 IN_PROGRESS，再次运行从暂存处继续（capture-all 只用于可续抓来源）')
     args = parser.parse_args(argv)
     try:
         archive = PublicEvidenceArchive(Path(args.output))
@@ -31,7 +33,12 @@ def main(argv=None):
             results = {}
             for source_id in archive.sources:
                 try:
-                    manifest = archive.capture(source_id, day, allow_late=args.allow_late)
+                    resumable = getattr(archive.sources[source_id], 'resumable', False)
+                    manifest = archive.capture(source_id, day, allow_late=args.allow_late,
+                                               max_seconds=args.max_seconds if resumable else None)
+                    if manifest.get('state') == 'IN_PROGRESS':
+                        results[source_id] = {'ok': True, **manifest}
+                        continue
                     results[source_id] = {'ok': True, 'rows': manifest['rows'], 'created': manifest['created'],
                                           'capture_timing': manifest['capture_timing'], 'warnings': manifest['warnings']}
                 except PublicEvidenceError as error:
@@ -44,7 +51,7 @@ def main(argv=None):
             if not args.source:
                 raise ValueError(args.call + ' 需要 --source。')
             if args.call == 'capture':
-                data = archive.capture(args.source, day, allow_late=args.allow_late)
+                data = archive.capture(args.source, day, allow_late=args.allow_late, max_seconds=args.max_seconds)
             elif args.call == 'list':
                 data = {'days': archive.list_days(args.source)}
             elif args.call == 'get':

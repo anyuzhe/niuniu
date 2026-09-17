@@ -390,6 +390,7 @@ class EastmoneyBoardListSource(Source):
 class EastmoneyBoardMembersSource(Source):
     parser_version = 'em-board-members-v1'
     snapshot_only = True
+    resumable = True
     max_requests = 3000
 
     def __init__(self, family, board_limit=None):

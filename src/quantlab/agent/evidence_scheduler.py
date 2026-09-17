@@ -22,6 +22,7 @@ from quantlab.storage.codec import digest, encode
 SCHEDULE_VERSION = 'evidence-schedule-v1'
 LABEL = 'com.niuniu.evidence-archive'
 RETRY_COOLDOWN = timedelta(minutes=15)
+STAGED_TASK_SECONDS = 300
 MAX_ATTEMPTS_PER_DAY = 8
 WEEKLY_MAX_AGE_DAYS = 7
 SCHEDULE = (
@@ -180,7 +181,7 @@ class EvidenceScheduler:
                 break
         return latest is None or (day - latest).days >= WEEKLY_MAX_AGE_DAYS
 
-    def _run(self, task, day, calendar_days):
+    def _run(self, task, day, calendar_days, staged=False):
         if task == 'daily_market':
             if self.daily_market_fn is not None:
                 return self.daily_market_fn(day)
@@ -189,7 +190,9 @@ class EvidenceScheduler:
             return {'rows': manifest['rows'], 'created': manifest.get('created')}
         archive = self._archive()
         archive.calendar_days = calendar_days
-        manifest = archive.capture(task, day)
+        manifest = archive.capture(task, day, max_seconds=STAGED_TASK_SECONDS) if staged else archive.capture(task, day)
+        if manifest.get('state') == 'IN_PROGRESS':
+            return {'in_progress': True, 'fetched': manifest['fetched'], 'queued': manifest['queued']}
         return {'rows': manifest['rows'], 'created': manifest['created'], 'capture_timing': manifest['capture_timing'],
                 'warnings': manifest['warnings']}
 
@@ -238,8 +241,13 @@ class EvidenceScheduler:
                     entry['attempts'] += 1
                     entry['last_attempt_at'] = now.astimezone(timezone.utc).isoformat()
                     try:
-                        result = self._run(task, day, {key})
-                        entry.update(status='ACCEPTED', last_error=None, result=result)
+                        result = self._run(task, day, {key}, staged=bool(item.get('weekly')))
+                        if result.get('in_progress'):
+                            # Progress is kept in staging; continuing next tick is not a failed attempt.
+                            entry['attempts'] -= 1
+                            entry.update(status='IN_PROGRESS', last_attempt_at=None, last_error=None, result=result)
+                        else:
+                            entry.update(status='ACCEPTED', last_error=None, result=result)
                         actions.append({'day': key, 'task': task, 'ok': True, **result})
                     except Exception as error:
                         code = getattr(error, 'code', type(error).__name__)

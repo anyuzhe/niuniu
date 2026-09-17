@@ -22,13 +22,17 @@ def at(y, m, d, hh, mm):
 class FakeArchive:
     def __init__(self):
         self.accepted = set(); self.calls = []; self.not_ready_until = {}; self.fail = set(); self.calendar_days = None
+        self.staged_rounds = {}
         self.clock = None
     def get(self, task, day):
         if (task, day.isoformat()) not in self.accepted:
             raise PublicEvidenceError('NOT_FOUND', 'missing')
         return {'capture_id': 'x'}
-    def capture(self, task, day):
+    def capture(self, task, day, max_seconds=None):
         self.calls.append((task, day.isoformat()))
+        if max_seconds is not None and task in self.staged_rounds and self.staged_rounds[task] > 0:
+            self.staged_rounds[task] -= 1
+            return {'state': 'IN_PROGRESS', 'fetched': 100, 'queued': 50}
         if task in self.fail:
             raise PublicEvidenceError('PROVIDER_ERROR', 'boom')
         until = self.not_ready_until.get(task)
@@ -110,6 +114,23 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual((entry['attempts'], entry['status']), (8, 'GAVE_UP'))
         health = SystemHealthService(self.output, now_fn=lambda: self.now[0]).build()['components']['public_evidence']
         self.assertEqual(health['status'], 'WARN'); self.assertIn('evidence_capture_gave_up', health['warnings'])
+
+    def test_staged_member_capture_continues_next_tick_without_using_attempts(self):
+        self.scheduler.enable(confirmed=True, authorization='ok')
+        self.archive.staged_rounds = {'em_concept_board_members': 2}
+        self.now[0] = at(2026, 9, 18, 16, 5)
+        first = self.scheduler.tick()
+        progress = next(a for a in first['actions'] if a['task'] == 'em_concept_board_members')
+        self.assertTrue(progress['ok']); self.assertTrue(progress['in_progress'])
+        entry = self.scheduler.status()['recent_days']['2026-09-18']['em_concept_board_members']
+        self.assertEqual((entry['status'], entry['attempts'], entry['last_attempt_at']), ('IN_PROGRESS', 0, None))
+        self.now[0] = at(2026, 9, 18, 16, 6)  # 冷却期内也继续
+        self.scheduler.tick()
+        self.now[0] = at(2026, 9, 18, 16, 7)
+        self.scheduler.tick()
+        entry = self.scheduler.status()['recent_days']['2026-09-18']['em_concept_board_members']
+        self.assertEqual((entry['status'], entry['attempts']), ('ACCEPTED', 1))
+        self.assertEqual([c for c in self.archive.calls if c[0] == 'em_concept_board_members'], [('em_concept_board_members', '2026-09-18')] * 3)
 
     def test_lock_and_cli(self):
         self.scheduler.enable(confirmed=True, authorization='ok'); self.now[0] = at(2026, 9, 16, 15, 45)

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import parse_qs, urlparse
@@ -9,7 +9,7 @@ import unittest
 from quantlab.data.eastmoney_sources import (
     EastmoneyBoardListSource, EastmoneyBoardMembersSource, EastmoneyPopularitySource, default_sources,
 )
-from quantlab.data.public_evidence import PublicEvidenceArchive, PublicEvidenceError
+from quantlab.data.public_evidence import STAGING, PublicEvidenceArchive, PublicEvidenceError
 
 TZ = ZoneInfo('Asia/Shanghai')
 DAY = date(2026, 9, 16)
@@ -97,6 +97,101 @@ class SnapshotTests(unittest.TestCase):
             archive.capture('em_popularity_rank', date(2026, 9, 16), allow_late=True)
         self.assertEqual(ctx.exception.code, 'SNAPSHOT_SOURCE_LATE')
         self.assertEqual(len(default_sources()), 13)
+
+
+class ResumableCaptureTests(unittest.TestCase):
+    """Long member captures fetch in several calls: responses are staged, replayed and finalized once."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
+        self.clock = [datetime(2026, 9, 16, 16, 0, tzinfo=TZ)]
+        self.members = {b['f12']: [member(i) for i in range(3)] for b in BOARDS}
+        self.members['BK1001'] = [member(i) for i in range(230)]
+    def tearDown(self):
+        self.tmp.cleanup()
+    def archive(self, http, source=None, output=None):
+        def now():
+            value = self.clock[0]; self.clock[0] = value + timedelta(seconds=1); return value
+        return PublicEvidenceArchive(output or self.output, sources=[source or EastmoneyBoardMembersSource('concept')], now_fn=now,
+                                     http=http, sleep=lambda s: None)
+    def staging(self):
+        return self.output / '_market_data' / 'public_evidence' / 'em_concept_board_members' / DAY.isoformat() / STAGING
+    def run_until_done(self, http, max_seconds=60, source=None):
+        calls = 0
+        while True:
+            calls += 1
+            result = self.archive(http, source).capture('em_concept_board_members', DAY, max_seconds=max_seconds)
+            if result.get('state') != 'IN_PROGRESS':
+                return result, calls
+            self.assertTrue(self.staging().is_dir()); self.assertLess(calls, 50)
+
+    def test_staged_capture_resumes_without_refetching_and_matches_single_shot(self):
+        reference_dir = TemporaryDirectory()
+        try:
+            single = self.archive(Http(self.members), output=Path(reference_dir.name)).capture('em_concept_board_members', DAY)
+        finally:
+            reference_dir.cleanup()
+        self.clock[0] = datetime(2026, 9, 16, 16, 0, tzinfo=TZ)
+        http = Http(self.members)
+        first = self.archive(http).capture('em_concept_board_members', DAY, max_seconds=60)
+        self.assertEqual(first['state'], 'IN_PROGRESS'); self.assertEqual(first['fetched'], len(http.urls))
+        self.assertEqual(self.archive(http).list_days('em_concept_board_members'), [{'trading_day': DAY.isoformat(), 'error': 'IN_PROGRESS'}])
+        manifest, calls = self.run_until_done(http)
+        self.assertGreater(calls, 3)
+        self.assertEqual(len(http.urls), 2 + 150 + 2)  # 每个请求只抓一次
+        self.assertEqual(len(set(http.urls)), len(http.urls))
+        self.assertEqual((manifest['rows'], manifest['content_hash']), (single['rows'], single['content_hash']))
+        self.assertEqual(manifest['started_at'], first['started_at']); self.assertEqual(manifest['capture_timing'], 'SAME_DAY_AFTER_CLOSE')
+        self.assertFalse(self.staging().exists())
+        again, _ = self.run_until_done(Http(self.members), max_seconds=600)  # 显式重抓：内容相同不重复写入
+        self.assertFalse(again['created']); self.assertFalse(self.staging().exists())
+
+    def test_provider_error_keeps_progress_and_bad_staging_restarts(self):
+        class Flaky(Http):
+            failed = False
+            def __call__(self, spec):
+                if len(self.urls) == 20 and not self.failed:
+                    self.failed = True
+                    raise OSError('connection reset')
+                return super().__call__(spec)
+        http = Flaky(self.members)
+        with self.assertRaises(PublicEvidenceError) as ctx:
+            self.archive(http).capture('em_concept_board_members', DAY, max_seconds=600)
+        self.assertEqual(ctx.exception.code, 'PROVIDER_ERROR'); self.assertEqual(len(list((self.staging() / 'responses').glob('*.json'))), 20)
+        before = len(http.urls)
+        self.archive(http).capture('em_concept_board_members', DAY, max_seconds=10)
+        self.assertEqual(http.urls[before], http.urls[20])  # 从第 21 个请求继续
+        (self.staging() / 'responses' / '0003.bin').write_bytes(b'tampered')
+        restarted = Http(self.members)
+        self.archive(restarted).capture('em_concept_board_members', DAY, max_seconds=10)
+        self.assertIn('pn=1', restarted.urls[0]); self.assertNotIn('b%3A', restarted.urls[0])  # 暂存损坏：丢弃后从板块列表第一页重来
+        class NewParser(EastmoneyBoardMembersSource):
+            parser_version = 'em-board-members-v2'
+        manifest, _ = self.run_until_done(Http(self.members), max_seconds=600, source=NewParser('concept'))
+        self.assertEqual(manifest['parser_version'], 'em-board-members-v2')
+
+    def test_window_and_data_errors_discard_staging(self):
+        self.clock[0] = datetime(2026, 9, 17, 9, 14, 0, tzinfo=TZ)
+        first = self.archive(Http(self.members)).capture('em_concept_board_members', DAY, max_seconds=20)
+        self.assertEqual(first['state'], 'IN_PROGRESS')
+        self.clock[0] = datetime(2026, 9, 17, 9, 16, 0, tzinfo=TZ)
+        with self.assertRaises(PublicEvidenceError) as ctx:
+            self.archive(Http(self.members)).capture('em_concept_board_members', DAY, max_seconds=20)
+        self.assertEqual(ctx.exception.code, 'SNAPSHOT_SOURCE_LATE'); self.assertFalse(self.staging().exists())
+        self.clock[0] = datetime(2026, 9, 17, 9, 13, 0, tzinfo=TZ)  # 一次抓完但跨过 09:15：按最晚时点判定为 LATE
+        with self.assertRaises(PublicEvidenceError) as ctx:
+            self.archive(Http(self.members)).capture('em_concept_board_members', DAY, max_seconds=3600)
+        self.assertEqual(ctx.exception.code, 'SNAPSHOT_SOURCE_LATE'); self.assertFalse(self.staging().exists())
+        self.clock[0] = datetime(2026, 9, 16, 16, 0, tzinfo=TZ)
+        class Garbage(Http):
+            def __call__(self, spec):
+                status, url, kind, body = super().__call__(spec)
+                return (status, url, kind, b'not json') if 'pn=2' in spec.url and 'b%3A' not in spec.url else (status, url, kind, body)
+        with self.assertRaises(PublicEvidenceError):
+            self.archive(Garbage(self.members)).capture('em_concept_board_members', DAY, max_seconds=600)
+        self.assertFalse(self.staging().exists())
+        with self.assertRaises(PublicEvidenceError):
+            self.archive(Http(self.members)).capture('em_concept_board_members', DAY, max_seconds=0)
 
 
 if __name__ == '__main__':
