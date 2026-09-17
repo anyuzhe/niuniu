@@ -23,6 +23,7 @@ import polars as pl
 from quantlab.statistics.permutation import PermutationConfig, block_sign_test, holm
 from quantlab.storage.codec import digest, encode
 
+from .event_details import DETAIL_COLUMNS, EventDetailLibrary
 from .limit_events import FEATURE_COLUMNS, LABEL_COLUMNS, LimitEventLibrary, iter_state_batches, resolve_inputs, split_inputs
 from .limit_execution import EXECUTION_VERSION, TRADE_SCHEMA, ExecutionSpec, fill_summary, simulate_trades
 from .market_sentiment import METRICS, MarketSentimentLibrary
@@ -37,7 +38,7 @@ NUMERIC_OUTCOMES = ('t1_open_ret', 't1_high_ret', 't1_low_ret', 't1_close_ret', 
 BOOLEAN_OUTCOMES = ('t1_is_limit_up_close', 't1_touched_limit_up', 't1_is_broken_board', 't1_is_limit_down_close',
                     't1_open_at_limit_up', 't1_open_at_limit_down')
 CONTEXT_COLUMNS = tuple('mkt_' + name for name in METRICS) + ('mkt_temperature', 'mkt_phase')
-CONDITION_COLUMNS = tuple(c for c in FEATURE_COLUMNS if c not in ('date', 'code')) + CONTEXT_COLUMNS
+CONDITION_COLUMNS = tuple(c for c in FEATURE_COLUMNS if c not in ('date', 'code')) + CONTEXT_COLUMNS + DETAIL_COLUMNS
 GROUPS = ('board', 'streak_bucket', 'year', 'mkt_phase', 'is_st')
 MAX_NODES = 64
 MAX_DEPTH = 12
@@ -50,6 +51,8 @@ PRE_ENTRY_COLUMNS = ('board', 'limit_rate', 'limit_rule_reason', 'is_st', 'listi
                      'open', 'open_gap', 'limit_up_price', 'limit_down_price', 'touched_limit_up', 'prev_is_limit_up_close',
                      'prev_limit_up_streak', 'prev_is_broken_board')
 PRE_ENTRY_GROUPS = ('board', 'year', 'is_st')
+DETAIL_LIMITATION = ('条件使用了东方财富前瞻明细（em_ 列）：只有已归档且与日线涨停状态核对一致的交易日参与，样本从 2026-09-16 起逐日积累；'
+                     '封板时间、封单等为收盘后才完整可知的供应商口径。')
 SIGNAL_LIMITATION = '结果为信号标签统计，未计费用、滑点与成交可行性；可执行性须用 AR-3.2 成交模型复核。'
 EXECUTION_LIMITATION = ('结果按成交模型 {version}（{entry} 买入、{exit} 卖出、{scenario} 情景）以日线保守近似：计入 T+1、开盘/收盘涨停买不到、'
                         '一字板排不到、跌停顺延卖出、佣金 {commission} 基点、滑点 {slippage} 基点及按日期的印花税与过户费；'
@@ -209,19 +212,21 @@ def _read_checked(path, what):
 def code_fingerprint():
     folder = Path(__file__).resolve().parent
     names = ('event_study.py', 'limit_events.py', 'limit_states.py', 'price_limit_regime.py', 'market_sentiment.py', 'sentiment_cycle.py',
-             'limit_execution.py')
+             'limit_execution.py', 'event_details.py')
     files = {n: hashlib.sha256((folder / n).read_bytes()).hexdigest() for n in names}
     files['statistics/permutation.py'] = hashlib.sha256((folder.parent / 'statistics' / 'permutation.py').read_bytes()).hexdigest()
     return {'files': files, 'digest': digest(files)}
 
 
 def study_limitations(spec):
+    used = compile_condition(spec['condition'])[1] + (compile_condition(spec['baseline_condition'])[1] if spec.get('baseline_condition') else [])
+    extra = [DETAIL_LIMITATION] if any(c in DETAIL_COLUMNS for c in used) else []
     if not spec.get('execution'):
-        return list(LIMITATIONS)
+        return list(LIMITATIONS) + extra
     e = spec['execution']
     text = EXECUTION_LIMITATION.format(version=e['model_version'], entry=e['entry'], exit=e['exit'], scenario=e['scenario'],
                                        commission=e['commission_bps'], slippage=e['slippage_bps'], hold=e['max_hold_sessions'])
-    return [text if item == SIGNAL_LIMITATION else item for item in LIMITATIONS]
+    return [text if item == SIGNAL_LIMITATION else item for item in LIMITATIONS] + extra
 
 
 def _direction(expected, value):
@@ -241,7 +246,7 @@ def _conclusion(row):
 
 
 class EventStudyRegistry:
-    def __init__(self, output, now_fn=None, event_library=None, sentiment_library=None, state_batches=None):
+    def __init__(self, output, now_fn=None, event_library=None, sentiment_library=None, state_batches=None, detail_library=None):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise EventStudyError('INVALID_WORKSPACE', '工作空间不存在。')
@@ -249,6 +254,8 @@ class EventStudyRegistry:
         self.event_library = event_library or LimitEventLibrary(self.output)
         self.sentiment_library = sentiment_library or MarketSentimentLibrary(self.output)
         self.state_batches = state_batches or self._default_state_batches
+        self.detail_library = detail_library
+        self._details_used = None
         self.root = self.output / '_limit_research' / 'event_studies'
 
     def _family_dir(self, family):
@@ -341,6 +348,12 @@ class EventStudyRegistry:
             context = daily.rename({name: 'mkt_' + name for name in METRICS}).join(cycle, on='date', how='left')
             events = events.join(context, on='date', how='left')
             calendar = daily['date'].to_list()
+        used = compile_condition(spec['condition'])[1] + (compile_condition(spec['baseline_condition'])[1] if spec['baseline_condition'] else [])
+        details_used = None
+        if any(c in DETAIL_COLUMNS for c in used):
+            # Only reconciled archived days contribute vendor details; elsewhere detail columns stay null and conditions fail.
+            events, details_used = (self.detail_library or EventDetailLibrary(self.output)).attach(events, spec.get('start'), spec.get('end'))
+        self._details_used = details_used
         if spec['start']:
             events = events.filter(pl.col('date') >= date.fromisoformat(spec['start']))
         if spec['end']:
@@ -417,7 +430,7 @@ class EventStudyRegistry:
                           (('in_sample', selected.filter(pl.col('date') < date.fromisoformat(spec['split_date']))),
                            ('out_of_sample', selected.filter(pl.col('date') >= date.fromisoformat(spec['split_date'])))) if spec['split_date'] else ())},
                   'by_year': by_year, 'by_group': by_group, 'permutation': {'resamples': PERMUTATION.resamples, 'block_days': PERMUTATION.block_days},
-                  'limitations': study_limitations(spec)}
+                  'detail_builds': self._details_used, 'limitations': study_limitations(spec)}
         path = self._family_dir(family) / study_id / 'result.json'
         temporary = path.with_name('.result.json.tmp')
         temporary.write_text(encode(_checked(result)), encoding='utf-8')

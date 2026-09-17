@@ -44,6 +44,8 @@ SCHEDULE = (
     {'task': 'em_industry_board_members', 'after': time(16, 30), 'weekly': True},
     # Derived locally from the archives above; rebuilt whenever its accepted inputs change.
     {'task': 'theme_facts', 'after': time(16, 10), 'refresh': True},
+    {'task': 'limit_research', 'after': time(18, 10), 'refresh': True},
+    {'task': 'event_details', 'after': time(18, 15), 'refresh': True},
 )
 
 
@@ -108,7 +110,8 @@ def baostock_is_trading_day(day, sdk=None):
 
 
 class EvidenceScheduler:
-    def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None, reference_fn=None, theme_library=None):
+    def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None, reference_fn=None, theme_library=None,
+                 research_fn=None, detail_library=None):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise SchedulerError('INVALID_WORKSPACE', '工作空间不存在。')
@@ -118,6 +121,8 @@ class EvidenceScheduler:
         self.daily_market_fn = daily_market_fn
         self.reference_fn = reference_fn
         self.theme_library = theme_library
+        self.research_fn = research_fn
+        self.detail_library = detail_library
         self.root = self.output / '_market_data' / 'public_evidence' / '_scheduler'
 
     def _paths(self):
@@ -173,7 +178,35 @@ class EvidenceScheduler:
             self.theme_library = ThemeFactsLibrary(self.output, evidence=self._archive())
         return self.theme_library
 
+    def _details(self):
+        if self.detail_library is None:
+            from quantlab.trading.event_details import EventDetailLibrary
+            self.detail_library = EventDetailLibrary(self.output, evidence=self._archive())
+        return self.detail_library
+
+    def _research(self, action, day):
+        """Daily limit-research builds: ``current`` checks, ``build`` rebuilds event library and sentiment through ``day``."""
+        if self.research_fn is not None:
+            return self.research_fn(action, day)
+        from quantlab.data.retro_daily import RetroDailyStore
+        from quantlab.trading.limit_events import LimitEventLibrary, default_capture_ids
+        from quantlab.trading.market_sentiment import MarketSentimentLibrary
+        events, sentiment = LimitEventLibrary(self.output), MarketSentimentLibrary(self.output)
+        if action == 'current':
+            return (events.latest_covering(day, current_code=True) is not None
+                    and sentiment.latest_covering(day, current_code=True) is not None)
+        captures, retro_end = default_capture_ids(RetroDailyStore(self.output))
+        through = day.isoformat() if day > retro_end else None
+        built = events.build(captures, forward_through=through)
+        daily = sentiment.build(captures, forward_through=through)
+        return {'event_build_id': built['build_id'], 'events': built['stats']['events'], 'sentiment_build_id': daily['build_id'],
+                'created': bool(built['created'] or daily['created'])}
+
     def _accepted(self, task, day):
+        if task == 'limit_research':
+            return bool(self._research('current', day))
+        if task == 'event_details':
+            return self._details().is_current(day)
         if task == 'theme_facts':
             return self._themes().is_current(day)
         if task == 'forward_reference':
@@ -205,6 +238,12 @@ class EvidenceScheduler:
         return latest is None or (day - latest).days >= WEEKLY_MAX_AGE_DAYS
 
     def _run(self, task, day, calendar_days, staged=False):
+        if task == 'limit_research':
+            return self._research('build', day)
+        if task == 'event_details':
+            manifest = self._details().build(day)
+            return {'build_id': manifest['build_id'], 'created': manifest['created'], 'rows': manifest['rows'],
+                    'reconciliation': manifest['reconciliation']}
         if task == 'theme_facts':
             manifest = self._themes().build(day)
             return {'build_id': manifest['build_id'], 'created': manifest['created'], 'families': manifest['families'],

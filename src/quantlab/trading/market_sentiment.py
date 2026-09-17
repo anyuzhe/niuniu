@@ -300,6 +300,20 @@ class MarketSentimentLibrary:
                 rows.append({'build_id': folder.name, 'error': 'CORRUPT_ARCHIVE'})
         return rows
 
+    def latest_covering(self, day, *, current_code=False):
+        day = day.isoformat() if isinstance(day, date) else date.fromisoformat(day).isoformat()
+        digest_now = code_fingerprint()['digest'] if current_code else None
+        best = None
+        for row in self.list():
+            if 'error' in row or not row['first_date'] <= day <= row['last_date']:
+                continue
+            manifest = self.get(row['build_id'])
+            if digest_now is not None and manifest['code_fingerprint'] != digest_now:
+                continue
+            if best is None or (manifest['created_at'], manifest['build_id']) > (best['created_at'], best['build_id']):
+                best = manifest
+        return best
+
     def read(self, build_id, *, start=None, end=None):
         manifest = self.get(build_id)
         payload = (self._folder(build_id) / 'daily.parquet').read_bytes()

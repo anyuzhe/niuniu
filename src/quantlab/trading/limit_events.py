@@ -89,6 +89,15 @@ def _position_ge(calendar, day):
 BATCH_SYMBOLS = 500
 
 
+def default_capture_ids(store):
+    """The latest complete retro capture (by plan end) as the base for daily builds."""
+    plans = sorted((p for p in store.list() if 'error' not in p), key=lambda p: (p['end'], p['created_at']), reverse=True)
+    for plan in plans:
+        if store.status(plan['capture_id'])['complete']:
+            return [plan['capture_id']], date.fromisoformat(plan['end'])
+    raise LimitEventError('NO_COMPLETE_CAPTURE', '没有完整的回溯日线 capture。')
+
+
 def split_inputs(inputs):
     """Recover the build request (retro capture ids, forward_through) from manifest ``inputs``."""
     captures = [item['capture_id'] for item in inputs if 'capture_id' in item]
@@ -399,6 +408,21 @@ class LimitEventLibrary:
                 rows.append({'build_id': folder.name, 'error': 'CORRUPT_ARCHIVE'})
         return rows
 
+    def latest_covering(self, day, *, current_code=False):
+        """Most recently created valid build whose calendar includes ``day`` (optionally built by the current code)."""
+        day = day.isoformat() if isinstance(day, date) else date.fromisoformat(day).isoformat()
+        digest_now = code_fingerprint()['digest'] if current_code else None
+        best = None
+        for row in self.list():
+            if 'error' in row or not row['calendar']['first'] <= day <= row['calendar']['last']:
+                continue
+            manifest = self.get(row['build_id'])
+            if digest_now is not None and manifest['code_fingerprint'] != digest_now:
+                continue
+            if best is None or (manifest['created_at'], manifest['build_id']) > (best['created_at'], best['build_id']):
+                best = manifest
+        return best
+
     def read_events(self, build_id, *, start=None, end=None, columns=None):
         manifest = self.get(build_id)
         path = self._folder(build_id) / 'events.parquet'
@@ -458,6 +482,6 @@ class LimitEventLibrary:
                 'note': '统计为信号标签均值，未计费用与成交可行性，不代表可执行收益。'}
 
 
-__all__ = ['FORMAT', 'BUILDER_VERSION', 'BATCH_SYMBOLS', 'split_inputs', 'FEATURE_COLUMNS', 'LABEL_COLUMNS', 'LIMITATIONS', 'LimitEventError',
+__all__ = ['FORMAT', 'BUILDER_VERSION', 'BATCH_SYMBOLS', 'default_capture_ids', 'split_inputs', 'FEATURE_COLUMNS', 'LABEL_COLUMNS', 'LIMITATIONS', 'LimitEventError',
            'LimitEventLibrary', 'build_event_frame', 'build_event_frame_batched', 'code_fingerprint', 'iter_state_batches',
            'load_inputs', 'prepare_states', 'resolve_inputs']

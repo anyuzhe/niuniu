@@ -63,6 +63,18 @@ class FakeThemes:
         return {'build_id': str(len(self.builds)), 'created': created, 'families': ['concept'], 'skipped_families': {}}
 
 
+class FakeDetails(FakeThemes):
+    RELEVANT = {'em_limit_up_pool', 'em_broken_board_pool', 'em_limit_down_pool', 'em_billboard_daily', 'em_billboard_buy_seats',
+                'em_billboard_sell_seats', 'em_popularity_rank', 'em_strong_pool'}
+    def __init__(self, archive, research):
+        super().__init__(archive); self.research = research
+    def _inputs(self, day):
+        return super()._inputs(day) + (('research',) if day.isoformat() in self.research else ())
+    def build(self, day):
+        result = super().build(day)
+        return {**result, 'rows': 10, 'reconciliation': 'CONSISTENT' if day.isoformat() in self.research else 'UNCHECKED'}
+
+
 class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
@@ -74,9 +86,16 @@ class SchedulerTests(unittest.TestCase):
         def reference(day):
             self.references.append(day.isoformat()); return {'snapshot_id': 'x', 'as_of': day.isoformat(), 'created': True}
         self.themes = FakeThemes(self.archive)
+        self.research = []
+        def research(action, day):
+            if action == 'current':
+                return day.isoformat() in self.research
+            self.research.append(day.isoformat()); return {'event_build_id': 'e', 'events': 1, 'sentiment_build_id': 's', 'created': True}
+        self.details = FakeDetails(self.archive, self.research)
         self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
                                            calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market,
-                                           reference_fn=reference, theme_library=self.themes)
+                                           reference_fn=reference, theme_library=self.themes, research_fn=research,
+                                           detail_library=self.details)
     def tearDown(self):
         self.tmp.cleanup()
     def tasks(self, result):
@@ -113,7 +132,10 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(len(self.themes.builds), 1)
         self.now[0] = at(2026, 9, 17, 8, 0)
         morning = self.scheduler.tick()
-        self.assertEqual(morning['candidates'], ['2026-09-16']); self.assertEqual(self.tasks(morning), ['daily_market', 'forward_reference'])
+        self.assertEqual(morning['candidates'], ['2026-09-16'])
+        self.assertEqual(self.tasks(morning), ['daily_market', 'event_details', 'forward_reference', 'limit_research'])
+        details = next(a for a in morning['actions'] if a['task'] == 'event_details')
+        self.assertEqual(details['reconciliation'], 'CONSISTENT')  # 日线研究库先于明细构建，明细可核对
         self.assertEqual((self.daily, self.references), (['2026-09-16'], ['2026-09-16']))
         self.now[0] = at(2026, 9, 17, 9, 20)
         self.assertEqual(self.scheduler.tick()['candidates'], [])
