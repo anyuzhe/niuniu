@@ -38,6 +38,8 @@
 
 ## 4. 测试
 
+用户要求默认不直接操作真实客户端：先使用后端单元/集成测试、CLI、本地HTTP/MCP接口和独立数据副本，不启动可见窗口、不截图、不点击、不占用键鼠。界面逻辑按需在离屏环境测试，真实桌面验收须再次明确授权。测试通过不等于窗口、输入法或真实模型质量已验收。
+
 ```bash
 # 小范围核心回归
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests -p 'test_core.py' -v

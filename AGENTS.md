@@ -14,6 +14,10 @@
 
 不搬动 `src/quantlab`、两个启动脚本、`agent_memory`、`playbooks`、`research_skills` 和第三方许可证。行情根为 `/Volumes/Lexar/niuniu-data`；旧 MQC 来源及历史 artifacts 不做批量路径替换。
 
+## 默认测试方式
+
+用户于 2026-09-17 明确要求不直接操作真实客户端做测试。默认使用命令行、后端接口、隔离数据与自动化回归；不得启动可见窗口、截图、点击或占用键鼠。必须检查界面逻辑时可使用明确离屏的测试环境，但不能冒充真实桌面验收。只有用户再次明确授权，才开展真实客户端操作。
+
 ## 文档收尾
 
 当前说明写入 `docs/guide/`、`docs/architecture/` 或 `docs/project/status.md`；只保留一个当前状态入口。阶段验收放 `docs/archive/<主题>/` 并标日期。不要在根目录新增“最新版、最终版、本轮收尾”等 Markdown，不为每个小改动单独造一份说明。
