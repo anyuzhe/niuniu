@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from quantlab.data.forward_daily import ForwardReferenceArchive
 from quantlab.data.retro_daily import RetroDailyError, RetroDailyStore
 from quantlab.storage.codec import encode
 
@@ -18,9 +19,10 @@ def _shard(value):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='沪深A股回溯日线（research_only）；plan/fetch 会联网，list/status/verify 只读')
+    parser = argparse.ArgumentParser(description='沪深A股回溯日线（research_only）；plan/fetch/forward-reference 会联网，其余只读')
     parser.add_argument('--output', required=True)
-    parser.add_argument('--call', required=True, choices=('list', 'plan', 'fetch', 'status', 'verify', 'quarantine'))
+    parser.add_argument('--call', required=True, choices=('list', 'plan', 'fetch', 'status', 'verify', 'quarantine',
+                                                                   'forward-reference', 'forward-references'))
     parser.add_argument('--start', default='')
     parser.add_argument('--end', default='')
     parser.add_argument('--capture-id', default='')
@@ -33,6 +35,10 @@ def main(argv=None):
         store = RetroDailyStore(Path(args.output))
         if args.call == 'list':
             data = {'captures': store.list()}
+        elif args.call == 'forward-reference':
+            data = ForwardReferenceArchive(Path(args.output)).capture()
+        elif args.call == 'forward-references':
+            data = {'snapshots': ForwardReferenceArchive(Path(args.output)).list()}
         elif args.call == 'plan':
             if not args.start or not args.end:
                 raise ValueError('plan 需要 --start 与 --end。')
@@ -52,7 +58,7 @@ def main(argv=None):
                 data = store.quarantine_corrupt(args.capture_id, confirmed=args.confirm)
         result = {'ok': True, 'data': data}
     except (RetroDailyError, ValueError, OSError) as error:
-        code = error.code if isinstance(error, RetroDailyError) else 'INVALID_REQUEST'
+        code = getattr(error, 'code', None) or 'INVALID_REQUEST'
         result = {'ok': False, 'error': {'code': code, 'message': str(error)[:500]}}
     print(encode(result))
     return 0 if result.get('ok') else 2

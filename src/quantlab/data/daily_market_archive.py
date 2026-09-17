@@ -1,6 +1,7 @@
 """Immutable daily full-A-share Baostock snapshots for PREP automation."""
 from __future__ import annotations
 
+from contextlib import redirect_stdout
 from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
@@ -172,7 +173,7 @@ class DailyMarketArchive:
         try:
             if sdk is None:
                 import baostock as sdk
-            login=sdk.login()
+            with redirect_stdout(io.StringIO()):login=sdk.login()
             if getattr(login,'error_code',None)!='0':
                 raise DailyMarketArchiveError('PROVIDER_ERROR','Baostock 登录失败：'+str(getattr(login,'error_msg',''))[:200])
             logged=True;query=sdk.query_daily_history_k_AStock(date=day.isoformat())
@@ -193,7 +194,8 @@ class DailyMarketArchive:
             return fields,rows,getattr(sdk,'__version__','unknown')
         finally:
             try:
-                if logged:sdk.logout()
+                if logged:
+                    with redirect_stdout(io.StringIO()):sdk.logout()
             finally:socket.setdefaulttimeout(old_timeout)
 
     def _write_pointer(self,day,snapshot_id,manifest_sha):

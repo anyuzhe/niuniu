@@ -12,7 +12,7 @@ from limit_research_fixtures import CAL, FakeSDK
 from quantlab.agent.market_sentiment_cli import main as cli_main
 from quantlab.data.retro_daily import SCHEMA, RetroDailyStore
 from quantlab.trading.limit_events import prepare_states
-from quantlab.trading.market_sentiment import METRICS, MarketSentimentError, MarketSentimentLibrary, daily_metrics
+from quantlab.trading.market_sentiment import METRICS, MarketSentimentError, MarketSentimentLibrary, daily_metrics, frames_match
 
 D = [date(2026, 6, 29), date(2026, 6, 30), date(2026, 7, 1), date(2026, 7, 2)]
 REFERENCE = [(c, c, '2000-01-01', '', '1', '1') for c in ('sh.600001', 'sh.600002', 'sz.000003', 'sz.300004', 'sh.600005', 'sh.600007')]
@@ -116,6 +116,17 @@ class LibraryTests(unittest.TestCase):
             path.write_bytes(path.read_bytes() + b'x')
             with self.assertRaises(MarketSentimentError):
                 library.read(build['build_id'])
+
+
+class FrameMatchTests(unittest.TestCase):
+    def test_float_rounding_is_tolerated_but_not_real_differences(self):
+        base = pl.DataFrame({'date': [date(2026, 9, 1), date(2026, 9, 2)], 'count': [3, 4], 'amount': [226179867803.83, None], 'rate': [0.25, 0.5]})
+        self.assertTrue(frames_match(base, base.with_columns(pl.Series('amount', [226179867803.83002, None]))))
+        self.assertFalse(frames_match(base, base.with_columns(pl.Series('amount', [226179867803.93, None]))))
+        self.assertFalse(frames_match(base, base.with_columns(pl.Series('amount', [226179867803.83, 1.0]))))
+        self.assertFalse(frames_match(base, base.with_columns(pl.Series('count', [3, 5]))))
+        self.assertFalse(frames_match(base, base.with_columns(pl.Series('rate', [0.25, 0.5 + 1e-9]))))
+        self.assertFalse(frames_match(base, base.select('date', 'count', 'rate', 'amount')))
 
 
 if __name__ == '__main__':

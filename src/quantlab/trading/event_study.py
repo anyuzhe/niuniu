@@ -23,7 +23,7 @@ import polars as pl
 from quantlab.statistics.permutation import PermutationConfig, block_sign_test, holm
 from quantlab.storage.codec import digest, encode
 
-from .limit_events import FEATURE_COLUMNS, LABEL_COLUMNS, LimitEventLibrary, iter_state_batches, resolve_inputs
+from .limit_events import FEATURE_COLUMNS, LABEL_COLUMNS, LimitEventLibrary, iter_state_batches, resolve_inputs, split_inputs
 from .limit_execution import EXECUTION_VERSION, TRADE_SCHEMA, ExecutionSpec, fill_summary, simulate_trades
 from .market_sentiment import METRICS, MarketSentimentLibrary
 from .sentiment_cycle import compute_cycle
@@ -355,7 +355,7 @@ class EventStudyRegistry:
     def _default_state_batches(self, library_manifest):
         from quantlab.data.retro_daily import RetroDailyStore
         store = RetroDailyStore(self.output)
-        resolved = resolve_inputs(store, [item['capture_id'] for item in library_manifest['inputs']])
+        resolved = resolve_inputs(store, *split_inputs(library_manifest['inputs']))
         return {'last_pos': len(resolved['calendar']) - 1, 'batches': iter_state_batches(store, resolved)}
 
     def _attach_trades(self, frames, library_manifest, execution):

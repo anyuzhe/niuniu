@@ -7,10 +7,11 @@ never backfills past the next session and never trades.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 import fcntl
+import io
 import json
 import os
 import socket
@@ -38,6 +39,7 @@ SCHEDULE = (
     {'task': 'em_billboard_buy_seats', 'after': time(17, 30)},
     {'task': 'em_billboard_sell_seats', 'after': time(17, 30)},
     {'task': 'daily_market', 'after': time(18, 0)},
+    {'task': 'forward_reference', 'after': time(18, 0)},
     {'task': 'em_concept_board_members', 'after': time(16, 0), 'weekly': True},
     {'task': 'em_industry_board_members', 'after': time(16, 30), 'weekly': True},
 )
@@ -84,7 +86,8 @@ def baostock_is_trading_day(day, sdk=None):
     old = socket.getdefaulttimeout()
     socket.setdefaulttimeout(20)
     try:
-        login = sdk.login()
+        with redirect_stdout(io.StringIO()):  # the SDK prints to stdout, which would corrupt tick JSON
+            login = sdk.login()
         if getattr(login, 'error_code', None) != '0':
             raise SchedulerError('CALENDAR_UNAVAILABLE', 'Baostock 登录失败。')
         try:
@@ -96,13 +99,14 @@ def baostock_is_trading_day(day, sdk=None):
                 raise SchedulerError('CALENDAR_UNAVAILABLE', '交易日历查询结果无效。')
             return rows[0][1] == '1'
         finally:
-            sdk.logout()
+            with redirect_stdout(io.StringIO()):
+                sdk.logout()
     finally:
         socket.setdefaulttimeout(old)
 
 
 class EvidenceScheduler:
-    def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None):
+    def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None, reference_fn=None):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise SchedulerError('INVALID_WORKSPACE', '工作空间不存在。')
@@ -110,6 +114,7 @@ class EvidenceScheduler:
         self.archive = archive
         self.calendar_fn = calendar_fn or baostock_is_trading_day
         self.daily_market_fn = daily_market_fn
+        self.reference_fn = reference_fn
         self.root = self.output / '_market_data' / 'public_evidence' / '_scheduler'
 
     def _paths(self):
@@ -160,6 +165,13 @@ class EvidenceScheduler:
         return self.archive
 
     def _accepted(self, task, day):
+        if task == 'forward_reference':
+            from quantlab.data.forward_daily import ForwardDailyError, ForwardReferenceArchive
+            try:
+                ForwardReferenceArchive(self.output).latest_covering(day)
+                return True
+            except ForwardDailyError:
+                return False
         if task == 'daily_market':
             from quantlab.data.daily_market_archive import DailyMarketArchive
             return DailyMarketArchive(self.output).accepted(day) is not None
@@ -182,6 +194,12 @@ class EvidenceScheduler:
         return latest is None or (day - latest).days >= WEEKLY_MAX_AGE_DAYS
 
     def _run(self, task, day, calendar_days, staged=False):
+        if task == 'forward_reference':
+            if self.reference_fn is not None:
+                return self.reference_fn(day)
+            from quantlab.data.forward_daily import ForwardReferenceArchive
+            manifest = ForwardReferenceArchive(self.output).capture()
+            return {'snapshot_id': manifest['snapshot_id'], 'as_of': manifest['as_of'], 'created': manifest['created']}
         if task == 'daily_market':
             if self.daily_market_fn is not None:
                 return self.daily_market_fn(day)

@@ -19,14 +19,14 @@ import polars as pl
 from quantlab.data.retro_daily import RetroDailyStore
 from quantlab.storage.codec import digest, encode
 
-from .limit_events import BATCH_SYMBOLS, iter_state_batches, resolve_inputs
+from .limit_events import BATCH_SYMBOLS, iter_state_batches, resolve_inputs, split_inputs
 from .limit_states import LIMIT_STATE_VERSION
 from .price_limit_regime import REGIME_VERSION
 
 FORMAT = 'market-sentiment-daily-v1'
 BUILDER_VERSION = 'market-sentiment-builder-v1'
 BUILD = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
-SOURCES = ('price_limit_regime.py', 'limit_states.py', 'limit_events.py', 'market_sentiment.py')
+SOURCES = ('price_limit_regime.py', 'limit_states.py', 'limit_events.py', 'market_sentiment.py', '../data/forward_daily.py')
 METRICS = {
     'tradable_count': '当日可交易股票数',
     'suspended_count': '当日停牌行数（tradestatus=0）',
@@ -83,7 +83,7 @@ class MarketSentimentError(ValueError):
 
 def code_fingerprint():
     folder = Path(__file__).resolve().parent
-    parts = {name: hashlib.sha256((folder / name).read_bytes()).hexdigest() for name in SOURCES}
+    parts = {name.replace('../', ''): hashlib.sha256((folder / name).resolve().read_bytes()).hexdigest() for name in SOURCES}
     return {'files': parts, 'digest': digest(parts)}
 
 
@@ -98,7 +98,7 @@ COUNT_COLUMNS = (
     'streak_3_count', 'streak_4_count', 'streak_5plus_count', 'prev_first_board_count', '_advanced_1to2', 'prev_consecutive_count',
     '_advanced_2plus', 'prev_limit_up_count', '_prev_up_wins', 'prev_broken_count', 'big_loss_count', 'limit_up_to_down_count',
     'limit_down_to_up_count')
-SUM_COLUMNS = ('_prev_up_return_sum', '_prev_broken_return_sum', 'amount_total')
+SUM_COLUMNS = ('_prev_up_return_sum', '_prev_broken_return_sum', '_amount_cents')
 
 
 def _partial(states):
@@ -152,14 +152,15 @@ def _partial(states):
         count(y_consecutive).alias('prev_consecutive_count'),
         count(y_consecutive & up_close).alias('_advanced_2plus'),
         count(y_up).alias('prev_limit_up_count'),
-        pl.col('day_ret').filter(y_up).sum().alias('_prev_up_return_sum'),
+        pl.col('day_ret').filter(y_up).sort().sum().alias('_prev_up_return_sum'),
         count(y_up & (pl.col('day_ret') > 0)).alias('_prev_up_wins'),
         count(y_broken).alias('prev_broken_count'),
-        pl.col('day_ret').filter(y_broken).sum().alias('_prev_broken_return_sum'),
+        pl.col('day_ret').filter(y_broken).sort().sum().alias('_prev_broken_return_sum'),
         count(y_up & (pl.col('day_ret') <= -0.05)).alias('big_loss_count'),
         count(valid_col & pl.col('is_limit_up_to_down')).alias('limit_up_to_down_count'),
         count(valid_col & pl.col('is_limit_down_to_up')).alias('limit_down_to_up_count'),
-        pl.col('amount').filter(tradable).sum().alias('amount_total'),
+        # Integer cents keep the total independent of batch composition and aggregation order.
+        (pl.col('amount').filter(tradable) * 100).round(0).cast(pl.Int64).sum().alias('_amount_cents'),
     )
     medians = frame.filter(y_up).select('date', 'day_ret')
     high = frame.filter(tradable & pl.col('_y_up').fill_null(False) & (pl.col('_y_streak') >= 2)).select(
@@ -178,6 +179,7 @@ def _finalize(parts, calendar):
     def ratio(numerator, denominator):
         return pl.when(denominator > 0).then(numerator / denominator)
 
+    daily = daily.with_columns((pl.col('_amount_cents') / 100).alias('amount_total'))
     daily = daily.with_columns(
         ratio(pl.col('up_count'), pl.col('tradable_count')).alias('up_ratio'),
         ratio(pl.col('broken_board_count'), pl.col('touched_limit_up_count')).alias('broken_rate'),
@@ -195,6 +197,25 @@ def _finalize(parts, calendar):
         (~pl.col('_up_close')).all().alias('high_board_broken'))
     daily = daily.join(high, on='date', how='left')
     return daily.select(['date'] + list(METRICS))
+
+
+def frames_match(left, right, rel_tol=1e-13):
+    """Exact match for non-float columns; float columns may differ only by rounding (relative ``rel_tol``)."""
+    if left.columns != right.columns or left.schema != right.schema or left.height != right.height:
+        return False
+    for name in left.columns:
+        a, b = left[name], right[name]
+        if not a.dtype.is_float():
+            if not a.equals(b):
+                return False
+            continue
+        if not a.is_null().equals(b.is_null()):
+            return False
+        pair = pl.DataFrame({'x': a, 'y': b}).filter(pl.col('x').is_not_null())
+        limit = pl.max_horizontal(pl.col('x').abs(), pl.col('y').abs(), pl.lit(1.0)) * rel_tol
+        if pair.height and pair.select(((pl.col('x') - pl.col('y')).abs() > limit).any()).item():
+            return False
+    return True
 
 
 def daily_metrics(states, calendar):
@@ -219,17 +240,17 @@ class MarketSentimentLibrary:
             raise MarketSentimentError('INVALID_WORKSPACE', '情绪指标路径不能是符号链接。')
         return folder
 
-    def _compute(self, capture_ids):
+    def _compute(self, capture_ids, forward_through=None):
         store = RetroDailyStore(self.output)
         try:
-            resolved = resolve_inputs(store, list(capture_ids))
+            resolved = resolve_inputs(store, list(capture_ids), forward_through)
             parts = [_partial(states) for states in iter_state_batches(store, resolved, self.batch_symbols)]
         except ValueError as error:
             raise MarketSentimentError(getattr(error, 'code', 'INVALID_INPUT'), str(error)) from None
         return _finalize(parts, resolved['calendar']), resolved['calendar'], resolved['inputs']
 
-    def build(self, capture_ids):
-        daily, calendar, inputs = self._compute(capture_ids)
+    def build(self, capture_ids, forward_through=None):
+        daily, calendar, inputs = self._compute(capture_ids, forward_through)
         fingerprint = code_fingerprint()
         identity = {'builder_version': BUILDER_VERSION, 'regime_version': REGIME_VERSION,
                     'limit_state_version': LIMIT_STATE_VERSION, 'code_fingerprint': fingerprint['digest'], 'inputs': inputs}
@@ -298,12 +319,15 @@ class MarketSentimentLibrary:
         stored, _ = self.read(build_id)
         if code_fingerprint()['digest'] != manifest['code_fingerprint']:
             return {'build_id': build_id, 'verified': False, 'reason': 'CODE_CHANGED_REBUILD_REQUIRED'}
-        daily, _, inputs = self._compute([i['capture_id'] for i in manifest['inputs']])
+        try:
+            daily, _, inputs = self._compute(*split_inputs(manifest['inputs']))
+        except MarketSentimentError as error:
+            return {'build_id': build_id, 'verified': False, 'reason': 'INPUTS_UNAVAILABLE', 'error': error.code}
         if inputs != manifest['inputs']:
             return {'build_id': build_id, 'verified': False, 'reason': 'INPUTS_CHANGED'}
-        same = daily.equals(stored)
+        same = frames_match(daily, stored)
         return {'build_id': build_id, 'verified': bool(same), 'reason': 'RECOMPUTED_IDENTICAL' if same else 'RECOMPUTED_DIFFERS'}
 
 
 __all__ = ['FORMAT', 'BUILDER_VERSION', 'METRICS', 'LIMITATIONS', 'MarketSentimentError', 'MarketSentimentLibrary',
-           'code_fingerprint', 'daily_metrics']
+           'code_fingerprint', 'daily_metrics', 'frames_match']

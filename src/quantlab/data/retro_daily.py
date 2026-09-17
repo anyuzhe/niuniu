@@ -14,6 +14,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 from zoneinfo import ZoneInfo
+import contextlib
 import gzip
 import hashlib
 import io
@@ -205,7 +206,8 @@ class _Session:
             self.sdk = sdk
         self.old_timeout = socket.getdefaulttimeout()
         socket.setdefaulttimeout(30)
-        login = self.sdk.login()
+        with contextlib.redirect_stdout(io.StringIO()):  # the SDK prints to stdout, which would corrupt CLI JSON
+            login = self.sdk.login()
         if getattr(login, 'error_code', None) != '0':
             socket.setdefaulttimeout(self.old_timeout)
             raise RetroDailyError('PROVIDER_ERROR', 'Baostock 登录失败：' + str(getattr(login, 'error_msg', ''))[:200])
@@ -215,7 +217,8 @@ class _Session:
     def __exit__(self, *exc):
         try:
             if self.logged:
-                self.sdk.logout()
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.sdk.logout()
         finally:
             socket.setdefaulttimeout(self.old_timeout)
         return False

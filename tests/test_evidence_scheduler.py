@@ -52,8 +52,12 @@ class SchedulerTests(unittest.TestCase):
         self.holidays = set(); self.daily = []
         def daily_market(day):
             self.daily.append(day.isoformat()); return {'rows': 5000, 'created': True}
+        self.references = []
+        def reference(day):
+            self.references.append(day.isoformat()); return {'snapshot_id': 'x', 'as_of': day.isoformat(), 'created': True}
         self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
-                                           calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market)
+                                           calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market,
+                                           reference_fn=reference)
     def tearDown(self):
         self.tmp.cleanup()
     def tasks(self, result):
@@ -88,8 +92,8 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(self.tasks(self.scheduler.tick()), ['em_billboard_daily'])
         self.now[0] = at(2026, 9, 17, 8, 0)
         morning = self.scheduler.tick()
-        self.assertEqual(morning['candidates'], ['2026-09-16']); self.assertEqual(self.tasks(morning), ['daily_market'])
-        self.assertEqual(self.daily, ['2026-09-16'])
+        self.assertEqual(morning['candidates'], ['2026-09-16']); self.assertEqual(self.tasks(morning), ['daily_market', 'forward_reference'])
+        self.assertEqual((self.daily, self.references), (['2026-09-16'], ['2026-09-16']))
         self.now[0] = at(2026, 9, 17, 9, 20)
         self.assertEqual(self.scheduler.tick()['candidates'], [])
         status = self.scheduler.status()['recent_days']['2026-09-16']

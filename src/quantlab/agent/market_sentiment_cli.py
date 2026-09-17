@@ -14,6 +14,7 @@ def main(argv=None):
     parser.add_argument('--call', required=True, choices=('list', 'build', 'get', 'verify', 'read'))
     parser.add_argument('--capture-ids', default='')
     parser.add_argument('--build-id', default='')
+    parser.add_argument('--forward-through', default='', help='用 DailyMarket 前瞻日线把回溯数据延伸到该交易日（含）')
     parser.add_argument('--start', default='')
     parser.add_argument('--end', default='')
     args = parser.parse_args(argv)
@@ -25,7 +26,7 @@ def main(argv=None):
             captures = [value.strip() for value in args.capture_ids.split(',') if value.strip()]
             if not captures:
                 raise ValueError('build 需要 --capture-ids。')
-            data = library.build(captures)
+            data = library.build(captures, args.forward_through or None)
         else:
             if not args.build_id:
                 raise ValueError(args.call + ' 需要 --build-id。')

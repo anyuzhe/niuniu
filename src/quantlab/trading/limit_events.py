@@ -19,6 +19,7 @@ import re
 
 import polars as pl
 
+from quantlab.data.forward_daily import EXTENSION_FORMAT, ForwardDailyError, resolve_forward
 from quantlab.data.retro_daily import RetroDailyError, RetroDailyStore
 from quantlab.storage.codec import digest, encode
 
@@ -28,7 +29,7 @@ from .price_limit_regime import REGIME_VERSION
 FORMAT = 'limit-event-library-v1'
 BUILDER_VERSION = 'limit-event-builder-v1'
 BUILD = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
-SOURCES = ('price_limit_regime.py', 'limit_states.py', 'limit_events.py')
+SOURCES = ('price_limit_regime.py', 'limit_states.py', 'limit_events.py', '../data/forward_daily.py')
 FEATURE_COLUMNS = (
     'date', 'code', 'board', 'limit_rate', 'limit_rule_reason', 'is_st', 'listing_date', 'sessions_since_listing',
     'preclose', 'open', 'high', 'low', 'close', 'volume', 'amount', 'turn', 'limit_up_price', 'limit_down_price',
@@ -63,7 +64,7 @@ class LimitEventError(ValueError):
 
 def code_fingerprint():
     folder = Path(__file__).resolve().parent
-    parts = {name: hashlib.sha256((folder / name).read_bytes()).hexdigest() for name in SOURCES}
+    parts = {name.replace('../', ''): hashlib.sha256((folder / name).resolve().read_bytes()).hexdigest() for name in SOURCES}
     return {'files': parts, 'digest': digest(parts)}
 
 
@@ -88,8 +89,17 @@ def _position_ge(calendar, day):
 BATCH_SYMBOLS = 500
 
 
-def resolve_inputs(store, capture_ids):
-    """Validate complete, contiguous retro captures without loading panel data."""
+def split_inputs(inputs):
+    """Recover the build request (retro capture ids, forward_through) from manifest ``inputs``."""
+    captures = [item['capture_id'] for item in inputs if 'capture_id' in item]
+    forward = [item for item in inputs if item.get('kind') == EXTENSION_FORMAT]
+    if len(forward) > 1 or len(captures) + len(forward) != len(inputs):
+        raise LimitEventError('CORRUPT_ARCHIVE', 'manifest inputs 结构无效。')
+    return captures, (forward[0]['through'] if forward else None)
+
+
+def resolve_inputs(store, capture_ids, forward_through=None):
+    """Validate complete, contiguous retro captures (plus optional DailyMarket forward days) without loading retro data."""
     if not isinstance(capture_ids, (list, tuple)) or not capture_ids or len(set(capture_ids)) != len(capture_ids):
         raise LimitEventError('INVALID_ARGUMENT', 'capture_ids 必须为不重复的非空列表。')
     try:
@@ -111,7 +121,15 @@ def resolve_inputs(store, capture_ids):
     if any(b <= a for a, b in zip(calendar, calendar[1:])):
         raise LimitEventError('CORRUPT_INPUT', '交易日历未严格递增。')
     symbols = sorted({s for plan in plans for s in plan['symbols']})
-    return {'plans': plans, 'calendar': calendar, 'reference': reference, 'inputs': inputs, 'symbols': symbols}
+    resolved = {'plans': plans, 'calendar': calendar, 'reference': reference, 'inputs': inputs, 'symbols': symbols, 'forward': None}
+    if forward_through is not None:
+        try:
+            forward = resolve_forward(store.output, calendar, forward_through)
+        except ForwardDailyError as error:
+            raise LimitEventError(error.code, str(error)) from None
+        resolved.update(calendar=calendar + forward['days'], reference=forward['stock_basic'], inputs=inputs + [forward['evidence']],
+                        symbols=sorted(set(symbols) | set(forward['symbols'])), forward=forward)
+    return resolved
 
 
 def _read_batch(store, resolved, batch):
@@ -125,6 +143,8 @@ def _read_batch(store, resolved, batch):
             except RetroDailyError as error:
                 raise LimitEventError(error.code, str(error)) from None
             frames.append(panel)
+    if resolved.get('forward') is not None:
+        frames.append(resolved['forward']['panel'].filter(pl.col('code').is_in(list(batch))))
     panel = pl.concat(frames, how='vertical').sort('code', 'date')
     if panel.select(pl.struct('code', 'date').is_duplicated().any()).item():
         raise LimitEventError('CORRUPT_INPUT', '输入面板存在重复证券日期。')
@@ -143,9 +163,9 @@ def iter_state_batches(store, resolved, batch_symbols=BATCH_SYMBOLS):
         yield prepare_states(panel, resolved['calendar'], resolved['reference'])
 
 
-def load_inputs(store, capture_ids):
+def load_inputs(store, capture_ids, forward_through=None):
     """Load complete, contiguous retro captures in memory (small workspaces and tests)."""
-    resolved = resolve_inputs(store, capture_ids)
+    resolved = resolve_inputs(store, capture_ids, forward_through)
     panel = _read_batch(store, resolved, resolved['symbols'])
     return panel, resolved['calendar'], resolved['reference'], resolved['inputs']
 
@@ -322,10 +342,10 @@ class LimitEventLibrary:
             raise LimitEventError('INVALID_WORKSPACE', 'build 目录不能是符号链接。')
         return folder
 
-    def build(self, capture_ids):
+    def build(self, capture_ids, forward_through=None):
         self._guard()
         store = RetroDailyStore(self.output)
-        resolved = resolve_inputs(store, list(capture_ids))
+        resolved = resolve_inputs(store, list(capture_ids), forward_through)
         calendar, inputs = resolved['calendar'], resolved['inputs']
         fingerprint = code_fingerprint()
         identity = {'builder_version': BUILDER_VERSION, 'regime_version': REGIME_VERSION,
@@ -372,8 +392,9 @@ class LimitEventLibrary:
         for folder in sorted(p for p in self.root.iterdir() if p.is_dir() and BUILD.fullmatch(p.name)):
             try:
                 manifest = self.get(folder.name)
+                captures, through = split_inputs(manifest['inputs'])
                 rows.append({'build_id': folder.name, 'created_at': manifest['created_at'], 'calendar': manifest['calendar'],
-                             'events': manifest['stats']['events'], 'inputs': [i['capture_id'] for i in manifest['inputs']]})
+                             'events': manifest['stats']['events'], 'inputs': captures, 'forward_through': through})
             except (LimitEventError, ValueError):
                 rows.append({'build_id': folder.name, 'error': 'CORRUPT_ARCHIVE'})
         return rows
@@ -407,7 +428,10 @@ class LimitEventLibrary:
         if fingerprint['digest'] != manifest['code_fingerprint']:
             return {'build_id': build_id, 'verified': False, 'reason': 'CODE_CHANGED_REBUILD_REQUIRED'}
         store = RetroDailyStore(self.output)
-        resolved = resolve_inputs(store, [i['capture_id'] for i in manifest['inputs']])
+        try:
+            resolved = resolve_inputs(store, *split_inputs(manifest['inputs']))
+        except LimitEventError as error:
+            return {'build_id': build_id, 'verified': False, 'reason': 'INPUTS_UNAVAILABLE', 'error': error.code}
         if resolved['inputs'] != manifest['inputs']:
             return {'build_id': build_id, 'verified': False, 'reason': 'INPUTS_CHANGED'}
         events, stats = build_event_frame_batched(store, resolved, self.batch_symbols)
@@ -434,6 +458,6 @@ class LimitEventLibrary:
                 'note': '统计为信号标签均值，未计费用与成交可行性，不代表可执行收益。'}
 
 
-__all__ = ['FORMAT', 'BUILDER_VERSION', 'BATCH_SYMBOLS', 'FEATURE_COLUMNS', 'LABEL_COLUMNS', 'LIMITATIONS', 'LimitEventError',
+__all__ = ['FORMAT', 'BUILDER_VERSION', 'BATCH_SYMBOLS', 'split_inputs', 'FEATURE_COLUMNS', 'LABEL_COLUMNS', 'LIMITATIONS', 'LimitEventError',
            'LimitEventLibrary', 'build_event_frame', 'build_event_frame_batched', 'code_fingerprint', 'iter_state_batches',
            'load_inputs', 'prepare_states', 'resolve_inputs']
