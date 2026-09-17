@@ -123,6 +123,14 @@ class RegistryTests(unittest.TestCase):
         report = self.registry.family_report('limit-events-test')
         completed = next(r for r in report['studies'] if r['status'] == 'completed')
         self.assertEqual(report['registered'], 2); self.assertEqual(completed['p_holm'], min(1.0, 2 * completed['p_value']))
+        self.assertEqual((completed['tested_statistic'], completed['direction'], completed['conclusion']),
+                         ('mean_daily_difference', 'as_expected', 'supported'))
+        self.assertAlmostEqual(completed['tested_value'], 0.02, delta=0.006)
+        self.assertEqual(next(r for r in report['studies'] if r['status'] != 'completed')['conclusion'], 'not_run')
+        wrong = self.registry.register({**self.base, 'hypothesis': '反向预期：连板次日开盘收益更低', 'expected_sign': 'negative'})
+        self.registry.run('limit-events-test', wrong['study_id'])
+        flagged = next(r for r in self.registry.family_report('limit-events-test')['studies'] if r['study_id'] == wrong['study_id'])
+        self.assertEqual((flagged['direction'], flagged['conclusion']), ('opposite', 'significant_opposite_direction'))
         context = self.registry.register({**self.base, 'family': 'context-test', 'hypothesis': '市场涨停多时连板更强',
                                           'sentiment_build_id': '33333333-3333-3333-3333-333333333333',
                                           'condition': 'limit_up_streak >= 2 and mkt_limit_up_count >= 0', 'group_by': 'mkt_phase'})

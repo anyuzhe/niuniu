@@ -224,6 +224,22 @@ def study_limitations(spec):
     return [text if item == SIGNAL_LIMITATION else item for item in LIMITATIONS]
 
 
+def _direction(expected, value):
+    if value is None or value == 0:
+        return None
+    if expected == 'none':
+        return 'no_expectation'
+    return 'as_expected' if (value > 0) == (expected == 'positive') else 'opposite'
+
+
+def _conclusion(row):
+    if row['status'] != 'completed' or row['p_holm'] is None:
+        return 'not_run' if row['status'] != 'completed' else 'test_unavailable'
+    if not row['reject_at_0_05']:
+        return 'not_significant'
+    return {'as_expected': 'supported', 'opposite': 'significant_opposite_direction'}.get(row['direction'], 'significant_no_direction')
+
+
 class EventStudyRegistry:
     def __init__(self, output, now_fn=None, event_library=None, sentiment_library=None, state_batches=None):
         self.output = Path(output).resolve()
@@ -414,20 +430,30 @@ class EventStudyRegistry:
         if folder.exists():
             for path in sorted(p for p in folder.iterdir() if p.is_dir() and STUDY.fullmatch(p.name)):
                 record = self.get(family, path.name)
-                result = record['result']
+                spec, result = record['spec'], record['result']
+                statistic = 'mean_daily_difference' if spec['baseline_condition'] else 'daily_mean'
                 primary = result['samples'][result['primary_sample']] if result else None
-                rows.append({'study_id': path.name, 'registered_at': record['registered_at'], 'hypothesis': record['spec']['hypothesis'],
-                             'condition': record['spec']['condition'], 'outcome': record['spec']['outcome'],
-                             'status': 'completed' if result else 'registered_not_run',
+                in_sample = result['samples'].get('in_sample') if result else None
+                execution = (result.get('execution') or {}).get(result['primary_sample']) if result else None
+                rows.append({'study_id': path.name, 'registered_at': record['registered_at'], 'hypothesis': spec['hypothesis'],
+                             'condition': spec['condition'], 'baseline_condition': spec['baseline_condition'], 'outcome': spec['outcome'],
+                             'expected_sign': spec['expected_sign'], 'status': 'completed' if result else 'registered_not_run',
                              'primary_sample': result['primary_sample'] if result else None,
                              'events': primary['events'] if primary else None, 'mean': primary['mean'] if primary else None,
+                             'tested_statistic': statistic, 'tested_value': primary.get(statistic) if primary else None,
+                             'in_sample_value': in_sample.get(statistic) if in_sample else None,
+                             'in_sample_p_value': (in_sample.get('test') or {}).get('p_value') if in_sample else None,
+                             'fill_rate': execution['fill_rate'] if execution else None,
                              'p_value': result['primary_p_value'] if result else None})
         adjusted = holm([row['p_value'] for row in rows]) if rows else []
         for row, p in zip(rows, adjusted):
             row['p_holm'] = p
             row['reject_at_0_05'] = None if p is None else p <= 0.05
+            row['direction'] = _direction(row['expected_sign'], row['tested_value'])
+            row['conclusion'] = _conclusion(row)
         return {'family': family, 'registered': len(rows), 'completed': sum(r['status'] == 'completed' for r in rows),
-                'studies': rows, 'note': 'Holm 以本 family 全部已登记研究为名额；未运行研究占名额但无 p 值。'}
+                'studies': rows, 'note': 'Holm 以本 family 全部已登记研究为名额；未运行研究占名额但无 p 值。显著但方向与预登记相反的研究'
+                                         '标为 significant_opposite_direction，不能当作支持原假设方向的证据。'}
 
 
 __all__ = ['FORMAT', 'ENGINE_VERSION', 'NUMERIC_OUTCOMES', 'BOOLEAN_OUTCOMES', 'EXECUTION_OUTCOMES', 'CONDITION_COLUMNS', 'GROUPS',
