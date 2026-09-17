@@ -297,6 +297,8 @@ class EvidenceScheduler:
 
     def _run(self, task, day, calendar_days, staged=False):
         if task == 'premarket_brief':
+            if not self._reviews().is_current(day):
+                raise SchedulerError('REVIEW_NOT_READY', f'{day} 的收盘复盘尚未生成，盘前简报不能依据更早的收盘。')
             brief = self._premarket().build(next_weekday(day))
             return {'target_day': brief['target_day'], 'brief_id': brief['brief_id'], 'created': brief['created'],
                     'valid_conclusions': len(brief['conclusions']['monitoring']), 'risks': len(brief['risks'])}

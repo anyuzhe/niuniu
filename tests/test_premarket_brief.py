@@ -5,6 +5,7 @@ from uuid import uuid4
 import contextlib
 import io
 import json
+import shutil
 import unittest
 
 from limit_research_fixtures import T, build_research_workspace
@@ -83,6 +84,9 @@ class PremarketBriefTests(unittest.TestCase):
         self.assertIsNone(monitoring[intraday]['candidates']); self.assertIn('盘中', monitoring[intraday]['candidate_note'])
         self.assertEqual([c['conclusion_id'] for c in brief['conclusions']['decaying']], [decaying])
         self.assertEqual(brief['gaps'], ['billboard', 'baseline_forecasts'])
+        later = library.build(T(30))  # the newest review is still T(27): the brief says the basis is older than the previous weekday
+        self.assertEqual((later['basis_day'], later['gaps'][-1]), (T(27).isoformat(), 'review_before_previous_weekday'))
+        shutil.rmtree(self.output / '_limit_research' / 'premarket_brief' / T(30).isoformat())
         self.assertTrue({'DECAYING_CONCLUSIONS', 'DATA_GAPS'} <= {r['code'] for r in brief['risks']})
         self.assertTrue(library.is_current(T(28))); self.assertFalse(library.build(T(28))['created'])
         LimitForecastJournal(self.output, now_fn=lambda: clock[0]).record(request_id=str(uuid4()), forecaster='host:manual', question_id='limit_up_count_increase',

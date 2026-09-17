@@ -292,9 +292,17 @@ class SchedulerTests(unittest.TestCase):
     def test_premarket_brief_for_next_weekday_refreshes_on_new_inputs(self):
         self.scheduler.enable(confirmed=True, authorization='ok')
         self.premarket.current = False
+        real_build = self.reviews.build
+        def failing_build(day):
+            raise ValueError('RESEARCH_BUILD_MISSING')
+        self.reviews.build = failing_build
         self.now[0] = at(2026, 9, 18, 19, 35)
         self.assertNotIn('premarket_brief', [a['task'] for a in self.scheduler.tick()['actions']])  # 19:40 前不生成
         self.now[0] = at(2026, 9, 18, 19, 45)
+        failed = next(a for a in self.scheduler.tick()['actions'] if a['task'] == 'premarket_brief')
+        self.assertIn('REVIEW_NOT_READY', failed['error'])  # 当天复盘未生成时不依据更早的收盘出简报
+        self.reviews.build = real_build
+        self.now[0] = at(2026, 9, 18, 20, 5)
         action = next(a for a in self.scheduler.tick()['actions'] if a['task'] == 'premarket_brief')
         self.assertEqual((action['target_day'], action['valid_conclusions'], action['risks']), ('2026-09-21', 1, 2))  # 周五收盘后为下周一生成
         self.premarket.current = False  # 早盘前新记录的预测改变输入：09:15 前重建

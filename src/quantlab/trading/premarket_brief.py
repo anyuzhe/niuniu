@@ -251,6 +251,11 @@ class PremarketBriefLibrary:
             gaps.append('baseline_forecasts')
         if conclusions['stale_monitoring']:
             gaps.append('conclusion_monitoring')
+        previous_weekday = resolved['target'] - timedelta(days=1)
+        while previous_weekday.weekday() >= 5:
+            previous_weekday -= timedelta(days=1)
+        if resolved['basis'] < previous_weekday:
+            gaps.append('review_before_previous_weekday')  # a missing close review, or a holiday in between
         percentiles = self._percentiles(resolved['identity']['inputs']['market_sentiment_build_id'], resolved['basis'])
         created = self.now_fn()
         if not isinstance(created, datetime) or created.tzinfo is None:
