@@ -49,7 +49,7 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 
 
 class ChatRuntime:
-    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False):
+    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None):
         if research_spec:local_data_only=True
         self.research_spec=research_spec
         if type(local_data_only) is not bool: raise ValueError("local_data_only 必须为布尔值")
@@ -71,7 +71,7 @@ class ChatRuntime:
         self.live_quotes=None if local_data_only else (LiveStockQuoteService(data_root,provider=build_live_quote_provider(self.fuyao))
             if live_quote_service is None else live_quote_service)
         from quantlab.agent.research_spec_tools import ResearchSpecAPI
-        self.api=ResearchSpecAPI(self.api,output,data_root,active_spec=research_spec,allow_tests=allow_spec_tests)
+        self.api=ResearchSpecAPI(self.api,output,data_root,active_spec=research_spec,allow_tests=allow_spec_tests,source_workspace=spec_source_workspace)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None):
         if allow_send is not True:raise ModelError('尚未确认将对话和研究摘要发送到所选模型服务')
         if not isinstance(config,ModelConfig):raise ValueError('模型配置类型错误')
@@ -92,7 +92,7 @@ class ChatRuntime:
         if self.local_data_only:
             base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         if self.research_spec:
-            base_system+='\n宿主锁定研究规格ID='+self.research_spec+'。必须读取global和所需原始分组，严格按文件定义；禁止通用DSL/动量/旧qimo规则替代，未支持项明确标注，不做近似和权重重分配。'
+            base_system+='\n宿主锁定研究规格ID='+self.research_spec+'。必须读取global和所需原始分组，严格按文件定义；禁止通用DSL/动量/旧qimo规则替代，未支持项明确标注，不做近似和权重重分配。原始状态/前收等字段可从宿主指定工作空间的list_qm50_archived_sources及inspect_qm50_archived_daily查询，原始字段可用与历史时点认证分开；不得只查旧MQC目录就断言全部归档缺数据。'
         with self.store.lease(cid):
             previous=self.store.turns(cid);messages=[];size=len(text)+len(base_system);omitted=0
             for item in reversed(previous):

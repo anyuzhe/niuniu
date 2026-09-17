@@ -116,3 +116,5 @@
 [qm50_base_coverage.py](../../src/quantlab/agent/qm50_base_coverage.py) 复用既有正式回执验证器，分离全局完整性与请求覆盖，按真实日历建立D/D-1/D-2矩阵；[qm50_base_contract.py](../../src/quantlab/trading/qm50_base_contract.py) 是不签发资格、不接入真实候选生产的纯组件。原生规格工具接线和持久结果仍在research_spec_tools/spec_test_service中，对应 [test_qm50_base_coverage.py](../../tests/test_qm50_base_coverage.py)。
 
 get_strict_pit_coverage曾仅加入白名单而未实际注册到ChatRuntime，真实牛牛调用发现后改为显式工具。回归必须构造真实headless_chat_runtime，不能只用伪造inner证明接线完成。
+
+已归档原始输入接入：[qm50_archived_inputs.py](../../src/quantlab/agent/qm50_archived_inputs.py)，负责宿主选定来源的capture读取、原JSON/typed核对、D-1输入物化和冻结复算；对应 [test_qm50_archived_inputs.py](../../tests/test_qm50_archived_inputs.py)。不包含价格制度推算、候选选择或收益研究。

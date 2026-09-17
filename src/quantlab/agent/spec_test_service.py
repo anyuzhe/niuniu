@@ -42,6 +42,7 @@ class SpecTestService:
             rows.append(row)
         return {'spec_id':sid,'source_hashes':manifest['files'],'source_pair_consistent':manifest['consistency']['matched'],
             'exact_revision_supported':manifest['files']==SUPPORTED_HASHES,'contract_test_available':manifest['files']==SUPPORTED_HASHES,'factors':rows,'factor_count':len(rows),
+            'archived_daily_input_adapter':{'implemented':True,'source_discovery':'list_qm50_archived_sources','test_tool':'run_qm50_archived_inputs','source_qualification':'provider_retrospective_only','full_factor_implementation':False},
             'inventory':inventory,'full_backtest_status':'BLOCKED','core_score_Q':None,'trades':None,'alpha_verified':False,
             'critical_blockers':['全60项尚无完整精确适配器','竞价实际成交及250日条件历史需要核验','历史流通股本、盘前冻结题材/候选全集及逐日有效涨跌停价需要核验',
                 '1分钟/逐笔及排队位置不得由5m或日线替代','entry_notional_budget与cost_budget_bps在原规格中均未填写',
@@ -101,3 +102,28 @@ class SpecTestService:
         result['finished_at']=datetime.now(timezone.utc).isoformat()
         save_new(folder/'result.json',result)
         return result
+
+    def run_archived(self,sid,args,source_workspace):
+        manifest,_,_=self._spec(sid)
+        if not source_workspace:raise ValueError('Host must bind the archive source workspace')
+        from quantlab.agent.qm50_archived_inputs import ArchivedDailyBridge,materialize
+        if self.root.is_symlink():raise ValueError('Test root symlink')
+        test_id=str(uuid4());folder=self.root/test_id;folder.mkdir(parents=True,exist_ok=False)
+        from quantlab.experiments.runner import runtime_fingerprint
+        result={'test_id':test_id,'spec_id':sid,'kind':'ARCHIVED_DAILY_INPUTS','source_hashes':manifest['files'],
+            'requested':args,'source_workspace':str(Path(source_workspace).resolve()),'runtime':runtime_fingerprint(),
+            'started_at':datetime.now(timezone.utc).isoformat(),'full_model_backtest':False,'alpha_verified':False,'status':'RUNNING'}
+        save_new(folder/'request.json',result)
+        try:
+            detail=materialize(ArchivedDailyBridge(source_workspace),args['capture_id'],args['symbols'],args['start'],args['end'],folder)
+            result.update(status='MATERIALIZED_RETROSPECTIVE_INPUTS',detail=detail,
+                          observation_sha256=sha((folder/'observations.parquet').read_bytes()))
+        except Exception as exc:result.update(status='FAILED',error=type(exc).__name__+': '+str(exc)[:350])
+        result['finished_at']=datetime.now(timezone.utc).isoformat();save_new(folder/'result.json',result)
+        return result
+    def replay_archived(self,sid,test_id):
+        result=self.get(sid,test_id)
+        if result['kind']!='ARCHIVED_DAILY_INPUTS' or result['status']!='MATERIALIZED_RETROSPECTIVE_INPUTS':
+            raise ValueError('Only a completed archived-input test can be replayed')
+        from quantlab.agent.qm50_archived_inputs import replay
+        return {'test_id':test_id,'spec_id':sid,**replay(self.root/test_id,result['detail'])}

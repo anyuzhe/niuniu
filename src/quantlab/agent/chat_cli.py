@@ -51,7 +51,10 @@ def main(argv=None):
     p.add_argument('--local-data-only',action='store_true',help='仅本地研究资料；禁用宿主实时行情/扶摇，不禁用已许可的模型服务')
     p.add_argument('--research-spec',help='绑定宿主已导入的精确规格ID，禁止替代因子研究')
     p.add_argument('--allow-spec-tests',action='store_true',help='只许可至多3次固定规格测试/字段诊断，不建立通用研究授权')
+    p.add_argument('--spec-source-workspace',help='宿主指定另一个工作空间的只读行情归档；仅规格会话，不暴露任意路径')
     a=p.parse_args(argv)
+    if a.spec_source_workspace and not a.research_spec:p.error('--spec-source-workspace requires --research-spec')
+    if a.spec_source_workspace and (Path(a.spec_source_workspace).is_symlink() or not Path(a.spec_source_workspace).is_dir()):p.error('来源工作空间不存在或是符号链接')
     if a.allow_spec_tests and not a.research_spec:p.error('--allow-spec-tests requires --research-spec')
     if a.research_spec and (a.gui or a.allow_granted_research):p.error('绑定规格不与GUI或通用Grant执行混用')
     if a.local_data_only and a.gui:p.error('--local-data-only 当前只支持后台入口')
@@ -66,7 +69,7 @@ def main(argv=None):
         config=replace(config,**{k:getattr(a,k) for k in ('provider','model','base_url','effort','codex_path') if getattr(a,k) is not None})
         if a.probe:result=probe_model(config,allow_send=a.accept_model_service)
         else:
-            with headless_chat_runtime(root,a.data_root,allow_granted_research=a.allow_granted_research,local_data_only=a.local_data_only,research_spec=a.research_spec,allow_spec_tests=a.allow_spec_tests) as runtime:
+            with headless_chat_runtime(root,a.data_root,allow_granted_research=a.allow_granted_research,local_data_only=a.local_data_only,research_spec=a.research_spec,allow_spec_tests=a.allow_spec_tests,spec_source_workspace=a.spec_source_workspace) as runtime:
                 if a.list_sessions:result={'conversations':runtime.store.conversations()}
                 else:
                     if not a.ask:p.error('提供 --ask、--probe、--list-sessions 或 --gui')

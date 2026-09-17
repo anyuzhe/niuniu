@@ -175,3 +175,25 @@ python -m quantlab.agent.chat_cli \
 发现某个历史session缺回执时，不要重新签一个旧日期回执、把当前状态回填、或把规范/回顾性参考变成正式逐日值。需要原始时点数据或另行设计前瞻采集；现有归档的确认要求没有被这些查询工具改变。检查缺口输出的data_requests是具体接受条件，不是已执行下载授权。
 
 测试入口沿用上一节 `--research-spec / --allow-spec-tests / --local-data-only`，不操作客户端。对已有结果使用get_research_spec_test读回，避免重复计算。实际记录见 [QM50原始规格验收](../archive/testing/20260917-QM50-SCLA-v0.2-严格规格验收.md) 第二阶段。
+
+
+## 使用已有合并归档作为规格输入来源
+
+当测试输出目录与日常行情归档不在同一工作空间时，由宿主显式指定只读来源，避免模型只查旧MQC目录或误以为空测试目录就是全部资料：
+
+```bash
+python -m quantlab.agent.chat_cli \
+  --output /path/to/test-workspace --data-root /path/to/niuniu-data \
+  --research-spec <已导入的规格ID> \
+  --spec-source-workspace /path/to/production-artifacts \
+  --local-data-only --allow-spec-tests --accept-model-service \
+  --ask "先查已归档capture，选择少量真实样本，接入原始日线并冻结复算；不得推算缺失价格规则或生成交易。"
+```
+
+`--spec-source-workspace` 只用于规格会话，仅读取来源中的既有 `_market_data/retro_daily/`，包括pack形式；不迁移或修改来源，不允许模型给任意路径。省略时只看当前输出工作空间。通过实际capture_id调用 `list_qm50_archived_symbols` 和 `inspect_qm50_archived_daily`，可以发现并深验preclose/turn/isST/tradestatus等原始字段，不需要重复下载。
+
+`run_qm50_archived_inputs` 只接入1–10只证券、最多371自然日的回顾性输入；冻结原始响应与typed Parquet，保留D-1映射和缺失值，产生真实输入表。它不是完整QM50回测，不将供应商turn当作流通股本，不将preclose当作已认证参考价，也不生成价格上下限或候选。
+
+`replay_qm50_archived_inputs` 复算同一test_id，只需输出目录内的冻结字节，不再依赖外部来源；该计算也消耗本进程固定测试预算。原始请求股票顺序必须保留。示例样本的ST/停牌筛选用于功能诊断，不能作为历史策略候选池。
+
+完整实测和复算排序问题见 [QM50验收第三阶段](../archive/testing/20260917-QM50-SCLA-v0.2-严格规格验收.md)。客户端尚没有新增的跨工作空间导入按钮，不把后台入口冒充界面已接通。
