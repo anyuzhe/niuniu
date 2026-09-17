@@ -51,6 +51,8 @@ SCHEDULE = (
     {'task': 'forecast_baselines', 'after': time(18, 25)},
     # Host-authorized autonomous research: at most the plan's nightly budget of in-sample screenings; skipped without an active plan.
     {'task': 'auto_research', 'after': time(19, 0)},
+    # Pending host promotions are confirmed and confirmed rules are measured on data after their confirmation window.
+    {'task': 'conclusion_monitor', 'after': time(19, 30), 'refresh': True},
 )
 
 
@@ -116,7 +118,8 @@ def baostock_is_trading_day(day, sdk=None):
 
 class EvidenceScheduler:
     def __init__(self, output, *, now_fn=None, archive=None, calendar_fn=None, daily_market_fn=None, reference_fn=None, theme_library=None,
-                 research_fn=None, detail_library=None, review_library=None, forecast_journal=None, auto_research=None):
+                 research_fn=None, detail_library=None, review_library=None, forecast_journal=None, auto_research=None,
+                 conclusion_library=None):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise SchedulerError('INVALID_WORKSPACE', '工作空间不存在。')
@@ -131,6 +134,7 @@ class EvidenceScheduler:
         self.review_library = review_library
         self.forecast_journal = forecast_journal
         self.auto_research = auto_research
+        self.conclusion_library = conclusion_library
         self.root = self.output / '_market_data' / 'public_evidence' / '_scheduler'
 
     def _paths(self):
@@ -228,7 +232,15 @@ class EvidenceScheduler:
             self.auto_research = AutoResearch(self.output)
         return self.auto_research
 
+    def _conclusions(self):
+        if self.conclusion_library is None:
+            from quantlab.trading.research_conclusions import ConclusionLibrary
+            self.conclusion_library = ConclusionLibrary(self.output)
+        return self.conclusion_library
+
     def _accepted(self, task, day):
+        if task == 'conclusion_monitor':
+            return self._conclusions().is_current(day)
         if task == 'auto_research':
             return self._auto().active_plan() is None or self._auto().night_done(day)
         if task == 'forecast_resolution':
@@ -273,6 +285,10 @@ class EvidenceScheduler:
         return latest is None or (day - latest).days >= WEEKLY_MAX_AGE_DAYS
 
     def _run(self, task, day, calendar_days, staged=False):
+        if task == 'conclusion_monitor':
+            result = self._conclusions().evaluate(day)
+            return {'evaluated': len(result['evaluated']), 'decaying': sum(e['status'] == 'DECAYING' for e in result['evaluated']),
+                    'confirmations_run': len(result['confirmations']['ran']), 'confirmations_changed': len(result['confirmations']['changed'])}
         if task == 'auto_research':
             result = self._auto().run(night=day)
             return {'status': result['status'], 'ran': len(result['ran']), 'passed': sum(r['state'] == 'SCREENED_PASS' for r in result['ran']),

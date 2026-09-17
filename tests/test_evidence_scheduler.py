@@ -115,6 +115,18 @@ class FakeAuto:
         return {'status': 'QUEUE_EMPTY', 'night': night.isoformat(), 'ran': [{'state': 'SCREENED_PASS'}, {'state': 'SCREENED_FAIL'}], 'interrupted': 0}
 
 
+class FakeConclusions:
+    def __init__(self):
+        self.current = True; self.days = []; self.error = None
+    def is_current(self, day):
+        return self.current
+    def evaluate(self, day):
+        if self.error is not None:
+            raise self.error
+        self.days.append(day.isoformat()); self.current = True
+        return {'evaluated': [{'status': 'DECAYING'}, {'status': 'MONITORING'}], 'confirmations': {'ran': ['c'], 'changed': []}}
+
+
 class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
@@ -135,11 +147,12 @@ class SchedulerTests(unittest.TestCase):
         self.reviews = FakeReviews(self.research)
         self.forecasts = FakeForecasts()
         self.auto = FakeAuto()
+        self.conclusions = FakeConclusions()
         self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
                                            calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market,
                                            reference_fn=reference, theme_library=self.themes, research_fn=research,
                                            detail_library=self.details, review_library=self.reviews, forecast_journal=self.forecasts,
-                                           auto_research=self.auto)
+                                           auto_research=self.auto, conclusion_library=self.conclusions)
     def tearDown(self):
         self.tmp.cleanup()
     def tasks(self, result):
@@ -243,6 +256,26 @@ class SchedulerTests(unittest.TestCase):
         self.now[0] = at(2026, 9, 17, 21, 0)
         self.assertNotIn('auto_research', [a['task'] for a in self.scheduler.tick()['actions']])
         self.assertEqual(self.auto.nights, ['2026-09-17'])
+
+    def test_conclusion_monitor_refreshes_when_not_current(self):
+        self.scheduler.enable(confirmed=True, authorization='ok')
+        self.conclusions.current = False
+        self.now[0] = at(2026, 9, 17, 19, 25)
+        self.assertNotIn('conclusion_monitor', [a['task'] for a in self.scheduler.tick()['actions']])  # 19:30 前不运行
+        self.now[0] = at(2026, 9, 17, 19, 35)
+        action = next(a for a in self.scheduler.tick()['actions'] if a['task'] == 'conclusion_monitor')
+        self.assertEqual((action['evaluated'], action['decaying'], action['confirmations_run']), (2, 1, 1))
+        self.now[0] = at(2026, 9, 17, 19, 40)
+        self.assertNotIn('conclusion_monitor', [a['task'] for a in self.scheduler.tick()['actions']])
+        self.conclusions.current = False  # 事件库重建或新晋级：刷新
+        self.conclusions.error = AutoResearchError('MONITOR_ERROR', '1 项确认或监控失败')
+        self.now[0] = at(2026, 9, 17, 19, 45)
+        failed = next(a for a in self.scheduler.tick()['actions'] if a['task'] == 'conclusion_monitor')
+        self.assertIn('MONITOR_ERROR', failed['error'])
+        self.conclusions.error = None
+        self.now[0] = at(2026, 9, 17, 20, 5)
+        self.assertIn('conclusion_monitor', self.tasks(self.scheduler.tick()))
+        self.assertEqual(self.conclusions.days, ['2026-09-17', '2026-09-17'])
 
     def test_staged_member_capture_continues_next_tick_without_using_attempts(self):
         self.scheduler.enable(confirmed=True, authorization='ok')

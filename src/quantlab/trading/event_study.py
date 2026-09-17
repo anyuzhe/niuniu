@@ -286,8 +286,14 @@ class EventStudyRegistry:
                  'start': spec.get('start'), 'end': spec.get('end'), 'split_date': spec.get('split_date'),
                  'group_by': spec.get('group_by'), 'min_events': spec.get('min_events', 30), 'execution': None}
         if spec.get('execution') is not None:
+            execution = spec['execution']
+            if isinstance(execution, dict) and 'model_version' in execution:
+                # An already-normalized spec stays valid only under the execution model version it was frozen with.
+                if execution['model_version'] != EXECUTION_VERSION:
+                    raise EventStudyError('INVALID_SPEC', '成交模型版本已变化，不能沿用旧规格。')
+                execution = {k: v for k, v in execution.items() if k != 'model_version'}
             try:
-                value['execution'] = {**asdict(ExecutionSpec.from_dict(spec['execution'])), 'model_version': EXECUTION_VERSION}
+                value['execution'] = {**asdict(ExecutionSpec.from_dict(execution)), 'model_version': EXECUTION_VERSION}
             except ValueError as error:
                 raise EventStudyError('INVALID_SPEC', 'execution 无效：' + str(error)) from None
         self._family_dir(value['family'])
@@ -447,6 +453,44 @@ class EventStudyRegistry:
         temporary.write_text(encode(_checked(result)), encoding='utf-8')
         temporary.replace(path)
         return {**record, 'result': result, 'created': True}
+
+    def measure(self, spec, windows, *, seed_key):
+        """Statistics of a study spec over named date windows, computed in memory without registering or writing (monitoring).
+
+        ``windows`` maps a name to ``(start, end)`` ISO dates inside the spec's range; each window gets the same event, day-clustered
+        and execution statistics as a registered run over that range (identical when ``seed_key`` equals that run's study id).
+        """
+        value = self.normalize_spec(spec)
+        if not isinstance(windows, dict) or not windows or len(windows) > 8:
+            raise EventStudyError('INVALID_ARGUMENT', 'windows 必须是 1–8 个命名日期区间。')
+        bounds = {}
+        for name, window in windows.items():
+            try:
+                start, end = (date.fromisoformat(window[0]), date.fromisoformat(window[1]))
+            except (TypeError, ValueError, IndexError):
+                raise EventStudyError('INVALID_ARGUMENT', f'窗口 {name} 必须为 (YYYY-MM-DD, YYYY-MM-DD)。') from None
+            if start > end or (value['start'] and start < date.fromisoformat(value['start'])) or (value['end'] and end > date.fromisoformat(value['end'])):
+                raise EventStudyError('INVALID_ARGUMENT', f'窗口 {name} 必须位于研究区间内且起点不晚于终点。')
+            bounds[name] = (start, end)
+        events, manifest, calendar = self._frame(value)
+        selected = events.filter(compile_condition(value['condition'])[0])
+        baseline = events.filter(compile_condition(value['baseline_condition'])[0]) if value['baseline_condition'] else None
+        if value['execution']:
+            selected, baseline = self._attach_trades([selected, baseline], manifest, value['execution'])
+        outcome = value['outcome']
+        seed = int(hashlib.sha256(seed_key.encode()).hexdigest()[:8], 16)
+        measured = {}
+        for name, (start, end) in bounds.items():
+            inside = pl.col('date').is_between(start, end)
+            chosen = selected.filter(inside)
+            base = None if baseline is None else baseline.filter(inside)
+            measured[name] = {'start': start.isoformat(), 'end': end.isoformat(),
+                              'sample': sample_stats(chosen, outcome, [d for d in calendar if start <= d <= end], seed, baseline=base,
+                                                     min_events=value['min_events']),
+                              'execution': fill_summary(chosen) if value['execution'] else None,
+                              'by_year_tested': yearly_tested(chosen, outcome, base)}
+        return {'spec': value, 'library_events_sha256': manifest['events_sha256'], 'code_fingerprint': code_fingerprint()['digest'],
+                'detail_builds': self._details_used, 'windows': measured}
 
     def family_report(self, family):
         folder = self._family_dir(family)

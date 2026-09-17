@@ -43,6 +43,7 @@ QUEUE_LIMIT = 50
 EMBARGO_BUFFER_DAYS = 14
 STATES = ('PENDING', 'REGISTERED', 'SCREENED_PASS', 'SCREENED_FAIL', 'REJECTED', 'ERROR', 'CANCELLED')
 # A year counts toward stability with at least 5 event days and 20 events, so rare regimes (e.g. climax days) are still judged.
+CONFIRM_P = 0.05
 THRESHOLDS = {'p_value': 0.01, 'min_days': 20, 'max_year_event_share': 0.4, 'max_top5_day_event_share': 0.2, 'min_stable_years': 3,
               'min_year_days': 5, 'min_year_events': 20, 'min_expected_sign_year_share': 0.6, 'min_fill_rate': 0.5,
               'max_unresolved_share': 0.05, 'min_return_effect': 0.002, 'min_rate_effect': 0.02}
@@ -136,8 +137,16 @@ def study_test_key(spec):
                    'min_events': spec['min_events'], 'sentiment_calendar': spec['sentiment_build_id'] is not None})
 
 
-def evaluate_checklist(spec, result, *, p_value=None, p_threshold=None):
-    """Versioned skeptic checklist on a finished study; ``p_value``/``p_threshold`` replace the raw screening test (confirmation)."""
+def evaluate_checklist(spec, result, *, stage='screening', p_value=None, p_threshold=None):
+    """Versioned skeptic checklist on a finished study.
+
+    ``stage='screening'`` tests the raw in-sample p-value; ``stage='confirmation'`` requires the family-adjusted ``p_value`` (Holm),
+    defaults the threshold to 0.05 and leaves the per-year checks to screening and forward monitoring (the locked window is short).
+    ``p_value``/``p_threshold`` override the defaults in either stage.
+    """
+    if stage not in ('screening', 'confirmation'):
+        raise AutoResearchError('INVALID_ARGUMENT', 'stage 必须为 screening 或 confirmation。')
+    confirmation = stage == 'confirmation'
     from quantlab.trading.event_study import BOOLEAN_OUTCOMES, EXECUTION_OUTCOMES, NUMERIC_OUTCOMES, PRE_ENTRY_COLUMNS, compile_condition
     t = THRESHOLDS
     sample = result['samples']['all']
@@ -152,16 +161,17 @@ def evaluate_checklist(spec, result, *, p_value=None, p_threshold=None):
 
     add('sample_size', sample['events'] >= spec['min_events'] and sample['days'] >= t['min_days'],
         {'events': sample['events'], 'days': sample['days'], 'min_events': spec['min_events'], 'min_days': t['min_days']})
-    tested_p = test.get('p_value') if p_value is None else p_value
-    threshold = t['p_value'] if p_threshold is None else p_threshold
-    add('significance', tested_p is not None and tested_p <= threshold, {'p_value': tested_p, 'threshold': threshold, 'test_status': test.get('status')})
+    tested_p = p_value if confirmation or p_value is not None else test.get('p_value')
+    threshold = p_threshold if p_threshold is not None else (CONFIRM_P if confirmation else t['p_value'])
+    add('significance', tested_p is not None and tested_p <= threshold,
+        {'p_value': tested_p, 'threshold': threshold, 'adjustment': 'holm' if confirmation else 'none', 'test_status': test.get('status')})
     add('direction', value is not None and value != 0 and (value > 0) == positive,
         {'statistic': statistic, 'value': value, 'expected_sign': spec['expected_sign']})
     effect = t['min_rate_effect'] if spec['outcome'] in BOOLEAN_OUTCOMES else t['min_return_effect']
     add('economic_magnitude', value is not None and abs(value) >= effect, {'value': value, 'threshold': effect})
     year_share, day_share = sample.get('max_year_event_share'), sample.get('top5_day_event_share')
     add('year_concentration', year_share is not None and year_share <= t['max_year_event_share'],
-        {'max_year_event_share': year_share, 'threshold': t['max_year_event_share']})
+        {'max_year_event_share': year_share, 'threshold': t['max_year_event_share']}, applicable=not confirmation)
     add('day_concentration', day_share is not None and day_share <= t['max_top5_day_event_share'],
         {'top5_day_event_share': day_share, 'threshold': t['max_top5_day_event_share']})
     years = [row for row in result.get('by_year_tested') or []
@@ -169,7 +179,8 @@ def evaluate_checklist(spec, result, *, p_value=None, p_threshold=None):
     expected = [row['year'] for row in years if row['value'] != 0 and (row['value'] > 0) == positive]
     add('year_stability', len(years) >= t['min_stable_years'] and len(expected) / len(years) >= t['min_expected_sign_year_share'],
         {'years': [row['year'] for row in years], 'expected_sign_years': expected, 'min_years': t['min_stable_years'],
-         'min_share': t['min_expected_sign_year_share'], 'min_year_days': t['min_year_days'], 'min_year_events': t['min_year_events']})
+         'min_share': t['min_expected_sign_year_share'], 'min_year_days': t['min_year_days'], 'min_year_events': t['min_year_events']},
+        applicable=not confirmation)
     execution = (result.get('execution') or {}).get('all') or {}
     if spec.get('execution'):
         entered, fill_rate = execution.get('entered') or 0, execution.get('fill_rate')
@@ -188,7 +199,7 @@ def evaluate_checklist(spec, result, *, p_value=None, p_threshold=None):
         late |= {c for c in used if c not in PRE_ENTRY_COLUMNS}
     add('lookahead_guard', not late, {'violations': sorted(late)})
     applicable = [item for item in items if item['status'] != 'NOT_APPLICABLE']
-    return {'version': CHECKLIST_VERSION, 'passed': all(item['status'] == 'PASS' for item in applicable),
+    return {'version': CHECKLIST_VERSION, 'stage': stage, 'passed': all(item['status'] == 'PASS' for item in applicable),
             'failed': [item['key'] for item in items if item['status'] == 'FAIL'], 'items': items,
             'warnings': [] if spec.get('execution') else ['未经成交模型复核：即使通过也只是信号标签统计，不能称为可执行。']}
 
@@ -535,6 +546,27 @@ class AutoResearch:
         return (self.root / 'nights' / f'{night.isoformat()}.json').is_file()
 
     # ---- reads ---------------------------------------------------------------------------------------
+    def plan_record(self, plan_id):
+        """The stored authorization of a plan, current or archived (active, revoked or expired)."""
+        self._check()
+        if not isinstance(plan_id, str) or not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', plan_id):
+            raise AutoResearchError('NOT_FOUND', '研究计划不存在。')
+        for path in (self.root / 'plan' / 'active.json', self.root / 'plan' / 'history' / f'{plan_id}.json'):
+            if path.exists():
+                state = _read(path, AUTHORIZATION_FORMAT)
+                if state['plan_id'] == plan_id:
+                    return state
+        raise AutoResearchError('NOT_FOUND', '研究计划不存在。')
+
+    def item(self, item_id):
+        self._check()
+        if not isinstance(item_id, str) or not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', item_id):
+            raise AutoResearchError('NOT_FOUND', '提案不存在。')
+        path = self.root / 'queue' / f'{item_id}.json'
+        if not path.exists():
+            raise AutoResearchError('NOT_FOUND', '提案不存在。')
+        return _read(path, QUEUE_FORMAT)
+
     @staticmethod
     def summary(item):
         spec, screening = item['spec'], item['screening']
@@ -575,5 +607,5 @@ class AutoResearch:
                 'recent': recent, 'boundaries': BOUNDARIES, 'limitations': LIMITATIONS}
 
 
-__all__ = ['PLAN_FORMAT', 'AUTHORIZATION_FORMAT', 'QUEUE_FORMAT', 'CHECKLIST_VERSION', 'THRESHOLDS', 'BOUNDARIES', 'LIMITATIONS',
+__all__ = ['PLAN_FORMAT', 'AUTHORIZATION_FORMAT', 'QUEUE_FORMAT', 'CHECKLIST_VERSION', 'CONFIRM_P', 'THRESHOLDS', 'BOUNDARIES', 'LIMITATIONS',
            'PROPOSAL_FIELDS', 'STATES', 'AutoResearch', 'AutoResearchError', 'embargo_days', 'evaluate_checklist', 'study_test_key', 'week_key']

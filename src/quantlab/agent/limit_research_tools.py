@@ -58,6 +58,9 @@ TOOLS = [
     schema('get_auto_research_status',
            '只读查看宿主授权的自主研究计划：研究族前缀、样本内区间、允许的结果列与成交模型、每周/每晚预算、隔离期与锁定样本外起点、确认族与质疑清单阈值；以及本周已用预算、队列计数和最近提案的筛选状态与未通过的质疑项。没有有效计划时不能提案。',
            {}),
+    schema('list_research_conclusions',
+           '只读查看研究结论库：宿主晋级到锁定样本外区间确认的规律（确认族 Holm 校正后的 p 值、确认阶段未通过的质疑项）及其前瞻滚动监控（最近 180 天与确认后全部数据的效果、成交率、净收益，HEALTHY/DECAYING 及原因），另附全部提案（含失败）的分状态统计。status 可为 MONITORING/DECAYING/NOT_CONFIRMED/PENDING_RUN/RETIRED 或留空。只有 MONITORING 状态才可称为“仍有效的已确认规律”，且仍不是交易信号。',
+           {'status': NAME}),
 ]
 WRITE_TOOLS = [
     schema('record_limit_forecast',
@@ -414,6 +417,14 @@ class LimitResearchAPI:
         return {**AutoResearch.summary(item), 'created': item['created'], 'duplicate_of': item['duplicate_of']}, [
             {'kind': 'auto_research_item', 'item_id': item['item_id']}]
 
+    def _conclusions(self, arguments):
+        from quantlab.trading.research_conclusions import ConclusionLibrary
+        library = ConclusionLibrary(self.output, now_fn=self.now_fn)
+        status = arguments['status'].strip() or None
+        rows = library.list(status=status)
+        return _round({'conclusions': rows[:30], 'total': len(rows), 'ledger': library.ledger()}), [
+            {'kind': 'research_conclusion', 'conclusion_id': row['conclusion_id']} for row in rows[:30]]
+
     def _studies(self, arguments):
         from quantlab.trading.event_study import EventStudyRegistry
         registry = EventStudyRegistry(self.output)
@@ -452,7 +463,8 @@ class LimitResearchAPI:
                     'record_limit_forecast': self._record_forecast, 'get_market_sentiment': self._market_sentiment,
                     'find_similar_sentiment_days': self._similar, 'get_limit_ladder': self._ladder, 'query_limit_events': self._query,
                     'get_theme_facts': self._theme, 'get_billboard': self._billboard, 'list_event_studies': self._studies,
-                    'get_event_study': self._study, 'get_auto_research_status': self._auto_status, 'propose_auto_study': self._propose_auto}
+                    'get_event_study': self._study, 'get_auto_research_status': self._auto_status, 'propose_auto_study': self._propose_auto,
+                    'list_research_conclusions': self._conclusions}
         try:
             self._validate(definition, arguments)
             data, refs = handlers[name](arguments)
