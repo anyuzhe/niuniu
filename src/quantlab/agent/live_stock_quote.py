@@ -182,7 +182,7 @@ class LiveStockQuoteService:
                 attempts.append({"session": session, "error": type(error).__name__ + ": " + str(error)[:160]})
         if snapshot is None:
             return {**base, "status": "UNAVAILABLE", "attempts": attempts,
-                "message": "公开行情源未形成两源一致结果；不得据此声称当前价格。"}
+                "message": "宿主行情源未形成可用且通过校验的结果；不得据此声称当前价格。"}
         as_of = snapshot.get("as_of")
         try:
             observed = datetime.fromisoformat(str(as_of)).astimezone(TZ)
@@ -219,7 +219,7 @@ class LiveStockQuoteService:
             "consensus_issues": (snapshot.get("market_metrics") or {}).get("consensus_issues", []),
             "attempts_before_success": attempts,
             "limitations": [
-                "公开网页行情仅用于当前问答，不具交易所行情 SLA。",
+                "扶摇及公开网页交叉校验行情仅用于当前问答，不具交易所行情 SLA。",
                 "本结果未写入 MarketSnapshotStore，不能替代正式冻结行情、SecurityStatus 或 MarketRules。",
             ]}
 
