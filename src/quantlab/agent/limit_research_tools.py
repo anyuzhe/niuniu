@@ -1,4 +1,8 @@
-"""Read-only model tools over the limit-board research datasets (research_only, no builds, no network)."""
+"""Model tools over the limit-board research datasets (research_only, no builds, no network).
+
+Reads only, plus two journal writes that never execute anything: verifiable forecasts and proposals into the host-authorized
+autonomous research queue. ``allow_forecast_write=False`` (AI Team reviewers) removes both writes.
+"""
 from __future__ import annotations
 
 from datetime import date
@@ -51,11 +55,17 @@ TOOLS = [
     schema('get_event_study',
            '读取一个预登记事件研究的冻结规格与结果：全样本/样本内/样本外统计与检验、成交模型统计、分年、分组和局限说明。',
            {'family': NAME, 'study_id': TEXT}),
+    schema('get_auto_research_status',
+           '只读查看宿主授权的自主研究计划：研究族前缀、样本内区间、允许的结果列与成交模型、每周/每晚预算、隔离期与锁定样本外起点、确认族与质疑清单阈值；以及本周已用预算、队列计数和最近提案的筛选状态与未通过的质疑项。没有有效计划时不能提案。',
+           {}),
 ]
 WRITE_TOOLS = [
     schema('record_limit_forecast',
            '记录一条可验证的概率预测（不是交易指令）。forecast_json 须含 question_id（来自 list_limit_forecast_questions）、target_day（YYYY-MM-DD，须在该日 09:15 前记录、7 天内）、probability（0–1）、rationale（≤2000 字，说明依据）与 evidence（至多 20 条工具证据引用文本）。同一问题同一目标日只能记录一次，不可修改；request_id 须为 UUID，重试幂等。',
            {'request_id': TEXT, 'forecast_json': {'type': 'string', 'maxLength': 8000}}),
+    schema('propose_auto_study',
+           '在宿主授权的自主研究计划内提交一项事件研究提案：只进入队列，不直接登记或运行，也不是结论或交易指令。proposal_json 须恰好含 family（计划前缀本身或以“前缀-”开头，≤33 字符）、hypothesis（5–500 字）、expected_sign（positive/negative，必须预登记方向）、condition（白名单条件表达式）、baseline_condition（对照条件或 null；布尔结果与 t1_high_ret/t1_low_ret 必须给对照）、outcome（计划允许的结果列）、execution（计划授权的成交模型规格或 null；net_return/gross_return 必须给）、group_by（board/streak_bucket/year/mkt_phase/is_st 或 null）、use_sentiment（布尔）。夜间任务只在样本内区间运行并按质疑清单筛选；同一检验只运行一次，改族名、假设文字或方向不能重跑；失败同样消耗预算。request_id 须为 UUID，重试幂等。',
+           {'request_id': TEXT, 'proposal_json': {'type': 'string', 'maxLength': 4000}}),
 ]
 TOOL_NAMES = tuple(tool['name'] for tool in TOOLS)
 WRITE_TOOL_NAMES = tuple(tool['name'] for tool in WRITE_TOOLS)
@@ -185,7 +195,12 @@ class LimitResearchAPI:
             scheduler = {k: scheduler.get(k) for k in ('enabled', 'last_tick_at', 'last_action_at', 'schedule_version')}
         except (OSError, ValueError) as error:
             scheduler = {'error': str(error)[:120]}
-        return {'retro_daily_captures': retro, 'limit_event_builds': events, 'market_sentiment_builds': sentiment,
+        try:
+            auto = self._auto().status(limit=0)
+            auto = {'active': auto['active'], 'plan_status': (auto['plan'] or {}).get('status'), 'queue_counts': auto['queue_counts']}
+        except (OSError, ValueError) as error:
+            auto = {'error': str(error)[:120]}
+        return {'retro_daily_captures': retro, 'limit_event_builds': events, 'market_sentiment_builds': sentiment, 'auto_research': auto,
                 'theme_facts_days': ThemeFactsLibrary(self.output).list_days(limit=5), 'event_detail_days': EventDetailLibrary(self.output).list_days(limit=5),
                 'public_evidence': evidence, 'public_evidence_verified': False, 'event_study_families': families, 'evidence_scheduler': scheduler}, []
 
@@ -382,6 +397,23 @@ class LimitResearchAPI:
         return {k: record[k] for k in ('forecast_id', 'forecaster', 'question_id', 'question', 'target_day', 'probability', 'recorded_at', 'deadline', 'created')}, [
             {'kind': 'limit_forecast', 'forecast_id': record['forecast_id'], 'target_day': record['target_day']}]
 
+    def _auto(self):
+        from quantlab.trading.auto_research import AutoResearch
+        return AutoResearch(self.output, now_fn=self.now_fn)
+
+    def _auto_status(self, arguments):
+        return _round(self._auto().status()), []
+
+    def _propose_auto(self, arguments):
+        from quantlab.trading.auto_research import AutoResearch
+        try:
+            proposal = json.loads(arguments['proposal_json'])
+        except json.JSONDecodeError:
+            raise ValueError('proposal_json 不是合法 JSON。') from None
+        item = self._auto().propose(arguments['request_id'], proposal, proposer=self.forecaster)
+        return {**AutoResearch.summary(item), 'created': item['created'], 'duplicate_of': item['duplicate_of']}, [
+            {'kind': 'auto_research_item', 'item_id': item['item_id']}]
+
     def _studies(self, arguments):
         from quantlab.trading.event_study import EventStudyRegistry
         registry = EventStudyRegistry(self.output)
@@ -411,6 +443,7 @@ class LimitResearchAPI:
             if name == 'get_capabilities' and result.get('ok'):
                 result['data'].update(limit_research_tools_available=True, limit_research_write_tool=False, limit_research_build_tool=False,
                                       limit_research_network_tool=False, limit_forecast_record_tool=self.allow_forecast_write,
+                                      auto_study_proposal_tool=self.allow_forecast_write,
                                       tools=[tool['name'] for tool in self.schemas()])
                 result['data'].setdefault('limitations', []).append(WARNING)
             return result
@@ -419,7 +452,7 @@ class LimitResearchAPI:
                     'record_limit_forecast': self._record_forecast, 'get_market_sentiment': self._market_sentiment,
                     'find_similar_sentiment_days': self._similar, 'get_limit_ladder': self._ladder, 'query_limit_events': self._query,
                     'get_theme_facts': self._theme, 'get_billboard': self._billboard, 'list_event_studies': self._studies,
-                    'get_event_study': self._study}
+                    'get_event_study': self._study, 'get_auto_research_status': self._auto_status, 'propose_auto_study': self._propose_auto}
         try:
             self._validate(definition, arguments)
             data, refs = handlers[name](arguments)

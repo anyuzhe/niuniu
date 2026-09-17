@@ -11,6 +11,7 @@ from quantlab.agent.evidence_scheduler import SCHEDULE, EvidenceScheduler, Sched
 from quantlab.agent.evidence_scheduler_cli import main as cli_main
 from quantlab.agent.system_health import SystemHealthService
 from quantlab.data.public_evidence import PublicEvidenceError
+from quantlab.trading.auto_research import AutoResearchError
 
 TZ = ZoneInfo('Asia/Shanghai')
 
@@ -100,6 +101,20 @@ class FakeForecasts:
         return {'target_day': target.isoformat(), 'written': [1], 'last_day': 'x'}
 
 
+class FakeAuto:
+    def __init__(self):
+        self.active = False; self.nights = []; self.error = None
+    def active_plan(self):
+        return {'plan_id': 'p'} if self.active else None
+    def night_done(self, day):
+        return day.isoformat() in self.nights
+    def run(self, *, night):
+        if self.error is not None:
+            raise self.error
+        self.nights.append(night.isoformat())
+        return {'status': 'QUEUE_EMPTY', 'night': night.isoformat(), 'ran': [{'state': 'SCREENED_PASS'}, {'state': 'SCREENED_FAIL'}], 'interrupted': 0}
+
+
 class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name)
@@ -119,10 +134,12 @@ class SchedulerTests(unittest.TestCase):
         self.details = FakeDetails(self.archive, self.research)
         self.reviews = FakeReviews(self.research)
         self.forecasts = FakeForecasts()
+        self.auto = FakeAuto()
         self.scheduler = EvidenceScheduler(self.output, now_fn=lambda: self.now[0], archive=self.archive,
                                            calendar_fn=lambda day: day not in self.holidays, daily_market_fn=daily_market,
                                            reference_fn=reference, theme_library=self.themes, research_fn=research,
-                                           detail_library=self.details, review_library=self.reviews, forecast_journal=self.forecasts)
+                                           detail_library=self.details, review_library=self.reviews, forecast_journal=self.forecasts,
+                                           auto_research=self.auto)
     def tearDown(self):
         self.tmp.cleanup()
     def tasks(self, result):
@@ -206,6 +223,26 @@ class SchedulerTests(unittest.TestCase):
         before = len(self.themes.builds); self.scheduler.tick()
         self.assertEqual(len(self.themes.builds), before)
         self.assertEqual(self.scheduler.status()['recent_days']['2026-09-18']['theme_facts']['status'], 'ACCEPTED')
+
+    def test_auto_research_runs_once_per_night_only_with_an_active_plan(self):
+        self.scheduler.enable(confirmed=True, authorization='ok')
+        self.now[0] = at(2026, 9, 16, 19, 5)
+        self.assertNotIn('auto_research', self.tasks(self.scheduler.tick()))  # 没有有效计划：视为无事可做
+        self.assertEqual(self.scheduler.status()['recent_days']['2026-09-16']['auto_research']['status'], 'ACCEPTED')
+        self.auto.active = True
+        self.now[0] = at(2026, 9, 17, 18, 55)
+        self.assertNotIn('auto_research', [a['task'] for a in self.scheduler.tick()['actions']])  # 19:00 前不运行
+        self.auto.error = AutoResearchError('ALREADY_RUNNING', '另一个自主研究夜间任务正在运行。')
+        self.now[0] = at(2026, 9, 17, 19, 5)
+        failed = [a for a in self.scheduler.tick()['actions'] if a['task'] == 'auto_research']
+        self.assertEqual((len(failed), failed[0]['ok']), (1, False)); self.assertIn('ALREADY_RUNNING', failed[0]['error'])
+        self.auto.error = None
+        self.now[0] = at(2026, 9, 17, 19, 25)
+        action = next(a for a in self.scheduler.tick()['actions'] if a['task'] == 'auto_research')
+        self.assertEqual((action['status'], action['ran'], action['passed'], action['interrupted']), ('QUEUE_EMPTY', 2, 1, 0))
+        self.now[0] = at(2026, 9, 17, 21, 0)
+        self.assertNotIn('auto_research', [a['task'] for a in self.scheduler.tick()['actions']])
+        self.assertEqual(self.auto.nights, ['2026-09-17'])
 
     def test_staged_member_capture_continues_next_tick_without_using_attempts(self):
         self.scheduler.enable(confirmed=True, authorization='ok')

@@ -194,6 +194,17 @@ def sample_stats(frame, outcome, calendar, seed, *, baseline=None, min_events=30
     return result
 
 
+def yearly_tested(selected, outcome, baseline=None):
+    """Per-year value of the tested statistic: the daily mean, or the mean daily difference against the baseline on common days."""
+    daily = selected.filter(pl.col(outcome).is_not_null()).group_by('date').agg(
+        pl.col(outcome).cast(pl.Float64).mean().alias('value'), pl.len().alias('events'))
+    if baseline is not None:
+        base = baseline.filter(pl.col(outcome).is_not_null()).group_by('date').agg(pl.col(outcome).cast(pl.Float64).mean().alias('base'))
+        daily = daily.join(base, on='date', how='inner').with_columns((pl.col('value') - pl.col('base')).alias('value'))
+    return daily.group_by(pl.col('date').dt.year().cast(pl.String).alias('year')).agg(
+        pl.len().alias('days'), pl.col('events').sum().alias('events'), pl.col('value').mean().alias('value')).sort('year').to_dicts()
+
+
 # ---- registry & runs ----------------------------------------------------------------------------------
 def _checked(value):
     return {**value, 'checksum': digest(value)}
@@ -429,7 +440,7 @@ class EventStudyRegistry:
                       name: fill_summary(frame) for name, frame in (('all', selected),) + (
                           (('in_sample', selected.filter(pl.col('date') < date.fromisoformat(spec['split_date']))),
                            ('out_of_sample', selected.filter(pl.col('date') >= date.fromisoformat(spec['split_date'])))) if spec['split_date'] else ())},
-                  'by_year': by_year, 'by_group': by_group, 'permutation': {'resamples': PERMUTATION.resamples, 'block_days': PERMUTATION.block_days},
+                  'by_year': by_year, 'by_year_tested': yearly_tested(selected, outcome, baseline), 'by_group': by_group, 'permutation': {'resamples': PERMUTATION.resamples, 'block_days': PERMUTATION.block_days},
                   'detail_builds': self._details_used, 'limitations': study_limitations(spec)}
         path = self._family_dir(family) / study_id / 'result.json'
         temporary = path.with_name('.result.json.tmp')
@@ -471,4 +482,4 @@ class EventStudyRegistry:
 
 __all__ = ['FORMAT', 'ENGINE_VERSION', 'NUMERIC_OUTCOMES', 'BOOLEAN_OUTCOMES', 'EXECUTION_OUTCOMES', 'CONDITION_COLUMNS', 'GROUPS',
            'LIMITATIONS', 'PRE_ENTRY_COLUMNS', 'PRE_ENTRY_GROUPS', 'EventStudyError', 'EventStudyRegistry', 'compile_condition',
-           'sample_stats', 'study_limitations']
+           'sample_stats', 'study_limitations', 'yearly_tested']
