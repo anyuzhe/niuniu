@@ -13,6 +13,7 @@ import os
 from quantlab.agent.agent_memory import AgentMemoryLoader
 from quantlab.agent.model_config import ModelConfig,ModelError,ChatStopped,assistant_root
 from quantlab.agent.team_config import TeamConfigStore,REVIEWERS,role_model_config
+from quantlab.agent.limit_research_tools import TOOL_NAMES as LIMIT_RESEARCH_TOOLS, LimitResearchAPI
 from quantlab.agent.playbook_tools import PlaybookResearchAPI
 from quantlab.storage.codec import digest,encode
 
@@ -32,6 +33,7 @@ SAFE_TOOLS={
     'list_playbook_source_links','get_playbook_definition_sources','list_playbook_definitions',
     'get_playbook_definition','list_playbook_cases','get_playbook_case_bundle','list_playbook_validations',
     'get_playbook_validation','get_symbol_playbook_history',
+    *LIMIT_RESEARCH_TOOLS,
 }
 
 
@@ -61,7 +63,7 @@ def normalize_spec(value):
 class ReviewReadOnlyAPI:
     def __init__(self,output,data_root=None):
         from quantlab.agent.research_skill_tools import ResearchSkillResearchAPI
-        self.inner=ResearchSkillResearchAPI(PlaybookResearchAPI(output,data_root),data_root)
+        self.inner=ResearchSkillResearchAPI(LimitResearchAPI(PlaybookResearchAPI(output,data_root)),data_root)
         self._schemas=[schema for schema in self.inner.schemas() if schema['name'] in SAFE_TOOLS]
 
     def schemas(self):return json.loads(json.dumps(self._schemas,ensure_ascii=False))

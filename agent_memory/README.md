@@ -24,6 +24,7 @@
 - PIT Universe / 全集完整性 / PREP 股票池任务必须同时读取 `architecture/pit_universe.md`；零散 eligibility statement、当前列表或调用方布尔值不能认证完整 Universe，必须使用目标 session 截止前创建且深验通过的 exact snapshot。
 - ST/*ST/停复牌 / SecurityStatus / PREP 状态过滤任务必须读取 `architecture/security_status.md`；稀疏statement只证明明确 effective session，完整逐日状态必须绑定PIT Universe v1的SecurityStatus v2，连续变化必须有显式相邻snapshot链；两者都不能替代官方逐日MarketRules。
 - 前瞻官方抓取任务必须把 `staging capture / semantic addendum / review-only baseline` 与正式 receipt 分开：技术规范只证明字段与分发机制，HTTP Date/Last-Modified只作候选；目标日刷新和三项宿主确认完成前不得调用archive。当前没有后台调度器，09:15截止任务必须由宿主当日显式启动，错过不得补档。
+- 打板 / 市场情绪 / 题材 / 龙虎榜 / 事件研究任务必须读取 `architecture/limit_research.md`；结果列不得当作当时已知信息，东方财富股池是供应商口径，结论只认预登记研究且方向相反的显著结果不算支持，信号收益不等于成交模型下的可执行收益。
 - Watch / Tracking / Alpha 衰减监测任务必须读取 `architecture/watch_sequential.md`；序贯证据只相对冻结经验基线，不得自动停用因子、换参数或扩大交易权限。
 
 ## 固定读取顺序

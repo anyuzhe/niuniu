@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import Field
 from mcp.server import MCPServer
 from mcp import types
+from quantlab.agent.limit_research_tools import LimitResearchAPI
 from quantlab.agent.market_data_tools import MarketDataResearchAPI
 from quantlab.agent.research_skill_tools import ResearchSkillResearchAPI
 from quantlab.storage.codec import encode
@@ -40,7 +41,7 @@ def _tool_function(api,definition):
 
 def build_mcp_api(output,data_root=None):
     output=Path(output).resolve();data_root=Path(data_root).resolve() if data_root else None
-    return ResearchSkillResearchAPI(MarketDataResearchAPI(output,data_root),data_root)
+    return ResearchSkillResearchAPI(LimitResearchAPI(MarketDataResearchAPI(output,data_root)),data_root)
 
 
 def build_mcp_server(output,data_root=None):
