@@ -14,6 +14,7 @@ from quantlab.data.industry import IndustryHistory
 from quantlab.execution.corporate_actions import CashDividends, StockSplits, RightsIssues
 from quantlab.execution.diagnostics import ExecutionAudit
 from quantlab.execution.holding_tax import HoldingTax
+from quantlab.execution.fees import effective_fee_bps
 from quantlab.execution.rights_trading import RightsTrading
 
 
@@ -46,9 +47,12 @@ class ExecutionConfig:
     single_entry_attempt: bool = False
     entry_window_minutes: int | None = None
     price_mode: str = "research"
+    # Raise sell tax and transfer fee to the statutory A-share rates of each trade date (see quantlab.execution.fees).
+    statutory_fees: bool = False
 
     def __post_init__(self):
         if type(self.single_entry_attempt) is not bool:raise ValueError('single_entry_attempt must be boolean')
+        if type(self.statutory_fees) is not bool:raise ValueError('statutory_fees must be boolean')
         if self.entry_window_minutes is not None and (type(self.entry_window_minutes) is not int or self.entry_window_minutes < 1):
             raise ValueError('entry_window_minutes must be a positive integer')
         if self.price_mode not in ('research','account'):raise ValueError('price_mode must be research or account')
@@ -138,10 +142,11 @@ class OpenExecutionBacktester:
             return recovered
         def rounded(value):
             return float(Decimal(str(value)).quantize(Decimal(1).scaleb(-cfg.fee_decimals),rounding=ROUND_HALF_UP)) if cfg.fee_decimals is not None else value
-        def costs(notional, buying, rule):
+        def costs(notional, buying, rule, at):
             get=lambda k:rule[k] if rule is not None else getattr(cfg,k)
+            tax_bps,transfer_bps=effective_fee_bps({'sell_tax_bps':get('sell_tax_bps'),'transfer_bps':get('transfer_bps')},at,cfg.statutory_fees)
             return (rounded(max(get('minimum_commission'),notional*get('commission_bps')/10000)),
-                rounded(notional*get('sell_tax_bps')/10000) if not buying else 0.,rounded(notional*get('transfer_bps')/10000))
+                rounded(notional*tax_bps/10000) if not buying else 0.,rounded(notional*transfer_bps/10000))
         total_periods=bars['datetime'].n_unique()
         for period,(key,group) in enumerate(bars.sort('datetime','symbol').group_by('datetime',maintain_order=True)):
             if period % 25 == 0:
@@ -242,7 +247,8 @@ class OpenExecutionBacktester:
                             before_limit=size
                             size=min(size,max(0,math.floor(allowed/price/cfg.lot_size)*cfg.lot_size))
                             if size<before_limit:reason='actual_position_or_exposure_cap'
-                        rate=(rule['commission_bps']+rule['transfer_bps'] if rule else cfg.commission_bps+cfg.transfer_bps)/10000
+                        terms=rule if rule else {'commission_bps':cfg.commission_bps,'sell_tax_bps':cfg.sell_tax_bps,'transfer_bps':cfg.transfer_bps}
+                        rate=(terms['commission_bps']+effective_fee_bps(terms,opening,cfg.statutory_fees)[1])/10000
                         before_limit=size
                         size=min(size,max(0,math.floor(cash/(execution_price*(1+rate))/cfg.lot_size)*cfg.lot_size))
                         if size<before_limit:reason='cash_lot_or_actual_risk'
@@ -253,17 +259,17 @@ class OpenExecutionBacktester:
                             if size<before_limit:reason='actual_sector_cap'
                         before_limit=size
                         while size:
-                            total_fee=sum(costs(size*execution_price,True,rule))
+                            total_fee=sum(costs(size*execution_price,True,rule,opening))
                             after_equity=account_equity-total_fee-size*(execution_price-price)
                             if (cfg.max_actual_sector is None or sector_value+size*price<=after_equity*cfg.max_actual_sector+1e-8) and size*execution_price+total_fee<=cash+1e-8 and \
                                 (economic_quantity(symbol)+size)*price<=after_equity*cfg.max_actual_position+1e-8 and \
                                 current_value+size*price<=after_equity*cfg.max_actual_exposure+1e-8:break
                             size-=cfg.lot_size
                         if size<before_limit:reason='cash_lot_or_actual_risk'
-                    if not buying and size and cash+size*execution_price-sum(costs(size*execution_price,False,rule))<0:
+                    if not buying and size and cash+size*execution_price-sum(costs(size*execution_price,False,rule,opening))<0:
                         size=0;reason='cash_for_sell_fees'
                     if size:
-                        notional=size*execution_price;commission,tax,transfer=costs(notional,buying,rule)
+                        notional=size*execution_price;commission,tax,transfer=costs(notional,buying,rule,opening)
                         if buying:
                             cash-=notional+commission+transfer;lots[symbol].append([opening.date(),size])
                         else:

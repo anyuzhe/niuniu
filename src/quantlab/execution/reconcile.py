@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from fractions import Fraction
 import math
+from quantlab.execution.fees import effective_fee_bps
 from quantlab.execution.paper import PaperAccount
 from quantlab.storage.codec import digest
 from quantlab.execution.holding_tax_audit import TaxReconstruction
@@ -292,8 +293,9 @@ def reconcile_account(path,tolerance=1e-6):
             rule=max(candidates,key=lambda r:(datetime.fromisoformat(r['effective_at']),datetime.fromisoformat(r['available_at']))) if candidates else None
             if rule is None:errors.append({'reason':'missing_fill_fee_rule','symbol':f['symbol'],'at':f['filled_at']})
             terms=rule or state['identity']['config'];notional=f['quantity']*f['price'];precision=state['identity']['config'].get('fee_decimals')
+            tax_bps,transfer_bps=effective_fee_bps(terms,filled_at,state['identity']['config'].get('statutory_fees',False))
             expected_fees={'commission':max(terms['minimum_commission'],notional*terms['commission_bps']/10000),
-                'tax':notional*terms['sell_tax_bps']/10000 if sign<0 else 0.,'transfer_fee':notional*terms['transfer_bps']/10000}
+                'tax':notional*tax_bps/10000 if sign<0 else 0.,'transfer_fee':notional*transfer_bps/10000}
             if precision is not None:expected_fees={k:float(Decimal(str(v)).quantize(Decimal(1).scaleb(-precision),rounding=ROUND_HALF_UP)) for k,v in expected_fees.items()}
             if any(abs(f.get(k,0.)-v)>tolerance for k,v in expected_fees.items()) or (rule is not None and f.get('rule_snapshot')!=digest(rule)):
                 errors.append({'reason':'fill_fee_mismatch','symbol':f['symbol'],'at':f['filled_at'],'expected':expected_fees})

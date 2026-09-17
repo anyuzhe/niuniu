@@ -19,7 +19,7 @@ def validate_config(config):
     if config.stock_splits:raise ValueError('Use vnpy_rules for stock splits')
     if config.corporate_actions:raise ValueError('Use vnpy_rules for cash dividends')
     if config.max_actual_sector is not None or config.industry_events is not None:raise ValueError('Industry risk requires vnpy_rules')
-    if config.transfer_bps or config.fee_decimals is not None or config.max_actual_position!=1 or config.max_actual_exposure!=1:
+    if config.transfer_bps or config.statutory_fees or config.fee_decimals is not None or config.max_actual_position!=1 or config.max_actual_exposure!=1:
         raise ValueError('vnpy_open does not support enhanced cost/risk settings; use vnpy_rules')
     if config.minimum_commission!=0 or config.slippage_bps!=0 or config.limit_pct!=.1:
         raise ValueError('vnpy_open requires minimum_commission=0, slippage_bps=0, limit_pct=0.1; unsupported settings are not ignored')

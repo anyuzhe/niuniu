@@ -30,12 +30,12 @@ from .daily_orchestrator import DailyPlaybookOrchestrator
 from .playbook_store import PlaybookStore
 
 TZ = ZoneInfo('Asia/Shanghai')
-VERSION = 'qimo-auto-paper-v2'
-ACCOUNT = 'qimo-source-replica-v2'
+VERSION = 'qimo-auto-paper-v3'
+ACCOUNT = 'qimo-source-replica-v3'
 CONFIG = ExecutionConfig(initial_cash=1000000, top_n=5000, exposure=1,
     max_actual_position=1, max_actual_exposure=1, price_mode='account',
     single_entry_attempt=True, entry_window_minutes=10,
-    slippage_bps=5, fee_decimals=2)
+    slippage_bps=5, fee_decimals=2, statutory_fees=True)
 POLICY = {'version': VERSION, 'candidate_scope': 'qimo_source_v2', 'fixed_weight': None,
     'max_positions': None, 'fixed_holding_days': None, 'drawdown_entry_halt': None,
     'allocation': 'available_cash_by_relative_strength_engineering_proxy',
@@ -201,7 +201,7 @@ class QimoPaperRunner:
             reply_ids={r for ids in RULES.values() for r in ids}
             for record in store.list_sources(expert_key='qimofenshu',limit=200)['records']:
                 if any(r in record['locator'] for r in reply_ids) and record['source_id'] not in sources:sources.append(record['source_id'])
-            content={'playbook_key':'qimofenshu','name':'期末50分原话规则复刻研究·百万模拟 v2',
+            content={'playbook_key':'qimofenshu','name':'期末50分原话规则复刻研究·百万模拟 v3',
                 'version':VERSION,'state':'DRAFT','source_ids':sources,
                 'market_context':{'principle':'由盘面、题材预期与核心表现联合判断；不以固定回撤阈值停手'},
                 'eligibility':{'candidate_scope':'recent_limit_up_leaders_and_existing_holdings','fixed_streak':None,'max_positions':None},
@@ -254,7 +254,9 @@ class QimoPaperRunner:
 
     def _tick(self,now):
         control=read_checked(self.root/'control.json')
-        if control['policy']!=POLICY or control['data_root']!=str(self.data_root):raise ValueError('STRATEGY_IDENTITY_CHANGED')
+        if control['policy']!=POLICY or control['data_root']!=str(self.data_root):
+            raise ValueError('STRATEGY_IDENTITY_CHANGED: 模拟盘策略或费用口径已升级到 '+VERSION+'（'+control['policy'].get('version','?')+' 已停止），'
+                             '需宿主在 Mac 上重新授权：--enable --source-definition-id '+str(control.get('source_definition_id'))+' --confirm')
         definition=PlaybookStore(self.output).get_definition(control['definition_id'])
         if definition['definition_hash']!=control['definition_hash']:raise ValueError('DEFINITION_CHANGED')
         journal=read_checked(self.root/'journal.json');days=self.market.sessions(now)
