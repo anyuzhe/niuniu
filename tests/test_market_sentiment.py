@@ -97,6 +97,16 @@ class LibraryTests(unittest.TestCase):
             frame, _ = library.read(build['build_id'], start=CAL[20])
             self.assertEqual(frame.height, 20); self.assertEqual(frame['limit_up_count'].sum(), 2)
             self.assertEqual(library.verify(build['build_id'])['verified'], True)
+            from quantlab.trading.limit_events import load_inputs, prepare_states
+            panel, calendar, reference, _ = load_inputs(store, [plan['capture_id']])
+            direct = daily_metrics(prepare_states(panel, calendar, reference), calendar)
+            batched = MarketSentimentLibrary(output, batch_symbols=2)._compute([plan['capture_id']])[0]
+            for left, right in zip(direct.to_dicts(), batched.to_dicts()):
+                for key in left:
+                    if isinstance(left[key], float):
+                        self.assertAlmostEqual(left[key], right[key], places=12, msg=key)
+                    else:
+                        self.assertEqual(left[key], right[key], key)
             self.assertEqual(library.list()[0]['rows'], len(CAL))
             stream = io.StringIO()
             with redirect_stdout(stream):

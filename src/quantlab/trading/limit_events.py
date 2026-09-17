@@ -85,37 +85,69 @@ def _position_ge(calendar, day):
     return index if index < len(calendar) else None
 
 
-def load_inputs(store, capture_ids):
-    """Load complete, contiguous retro captures; return panel, calendar, reference and input evidence."""
+BATCH_SYMBOLS = 500
+
+
+def resolve_inputs(store, capture_ids):
+    """Validate complete, contiguous retro captures without loading panel data."""
     if not isinstance(capture_ids, (list, tuple)) or not capture_ids or len(set(capture_ids)) != len(capture_ids):
         raise LimitEventError('INVALID_ARGUMENT', 'capture_ids 必须为不重复的非空列表。')
-    plans = sorted((store.plan(cid) for cid in capture_ids), key=lambda p: p['start'])
-    for previous, current in zip(plans, plans[1:]):
-        if date.fromisoformat(previous['end']) + timedelta(days=1) != date.fromisoformat(current['start']):
-            raise LimitEventError('NON_CONTIGUOUS_INPUTS', f"capture {previous['capture_id']} 与 {current['capture_id']} 的区间不连续。")
-    frames, calendar, inputs = [], [], []
-    for plan in plans:
-        try:
-            panel, meta = store.read_panel(plan['capture_id'])
-        except RetroDailyError as error:
-            raise LimitEventError(error.code, str(error)) from None
-        frames.append(panel)
-        calendar.extend(date.fromisoformat(day) for day in store.trading_days(plan['capture_id']))
-        inputs.append({'capture_id': plan['capture_id'], 'start': plan['start'], 'end': plan['end'],
-                       'manifest_digest': meta['manifest_digest'], 'rows': meta['rows'],
-                       'stock_basic_content_hash': plan['stock_basic_content_hash'],
-                       'calendar_content_hash': plan['calendar_content_hash']})
+    try:
+        plans = sorted((store.plan(cid, with_symbols=True) for cid in capture_ids), key=lambda p: p['start'])
+        for previous, current in zip(plans, plans[1:]):
+            if date.fromisoformat(previous['end']) + timedelta(days=1) != date.fromisoformat(current['start']):
+                raise LimitEventError('NON_CONTIGUOUS_INPUTS', f"capture {previous['capture_id']} 与 {current['capture_id']} 的区间不连续。")
+        calendar, inputs = [], []
+        for plan in plans:
+            evidence = store.panel_evidence(plan['capture_id'])
+            calendar.extend(date.fromisoformat(day) for day in store.trading_days(plan['capture_id']))
+            inputs.append({'capture_id': plan['capture_id'], 'start': plan['start'], 'end': plan['end'],
+                           'manifest_digest': evidence['manifest_digest'], 'rows': evidence['rows'],
+                           'stock_basic_content_hash': plan['stock_basic_content_hash'],
+                           'calendar_content_hash': plan['calendar_content_hash']})
+        reference = store.reference(plans[-1]['capture_id'])['stock_basic']
+    except RetroDailyError as error:
+        raise LimitEventError(error.code, str(error)) from None
     if any(b <= a for a, b in zip(calendar, calendar[1:])):
         raise LimitEventError('CORRUPT_INPUT', '交易日历未严格递增。')
-    reference = store.reference(plans[-1]['capture_id'])['stock_basic']
+    symbols = sorted({s for plan in plans for s in plan['symbols']})
+    return {'plans': plans, 'calendar': calendar, 'reference': reference, 'inputs': inputs, 'symbols': symbols}
+
+
+def _read_batch(store, resolved, batch):
+    frames = []
+    for plan in resolved['plans']:
+        members = set(plan['symbols'])
+        subset = [s for s in batch if s in members]
+        if subset:
+            try:
+                panel, _ = store.read_panel(plan['capture_id'], symbols=subset)
+            except RetroDailyError as error:
+                raise LimitEventError(error.code, str(error)) from None
+            frames.append(panel)
     panel = pl.concat(frames, how='vertical').sort('code', 'date')
     if panel.select(pl.struct('code', 'date').is_duplicated().any()).item():
         raise LimitEventError('CORRUPT_INPUT', '输入面板存在重复证券日期。')
-    calendar_set = set(calendar)
-    stray = panel.filter(~pl.col('date').is_in(list(calendar_set)))
-    if stray.height:
+    if panel.filter(~pl.col('date').is_in(resolved['calendar'])).height:
         raise LimitEventError('CORRUPT_INPUT', '输入面板含日历外日期。')
-    return panel, calendar, reference, inputs
+    return panel
+
+
+def iter_state_batches(store, resolved, batch_symbols=BATCH_SYMBOLS):
+    """Yield annotated states per symbol batch; every state feature is a per-security sequence."""
+    if type(batch_symbols) is not int or batch_symbols < 1:
+        raise LimitEventError('INVALID_ARGUMENT', 'batch_symbols 必须为正整数。')
+    symbols = resolved['symbols']
+    for index in range(0, len(symbols), batch_symbols):
+        panel = _read_batch(store, resolved, symbols[index:index + batch_symbols])
+        yield prepare_states(panel, resolved['calendar'], resolved['reference'])
+
+
+def load_inputs(store, capture_ids):
+    """Load complete, contiguous retro captures in memory (small workspaces and tests)."""
+    resolved = resolve_inputs(store, capture_ids)
+    panel = _read_batch(store, resolved, resolved['symbols'])
+    return panel, resolved['calendar'], resolved['reference'], resolved['inputs']
 
 
 def _listing_columns(panel, calendar, reference):
@@ -160,8 +192,8 @@ def prepare_states(panel, calendar, reference):
     )
 
 
-def build_event_frame(panel, calendar, reference, states=None):
-    states = prepare_states(panel, calendar, reference) if states is None else states
+def _events_from_states(states):
+    """Per-security event rows (without the cross-sectional amount rank) plus additive statistics."""
     tradable = pl.col('tradable')
     compounding = states.filter(tradable).select('code', 'date', 'day_ret').with_columns(
         (1 + pl.col('day_ret')).log().alias('_log'))
@@ -169,15 +201,13 @@ def build_event_frame(panel, calendar, reference, states=None):
         (pl.col('_log').rolling_sum(window_size=5, min_samples=5).over('code').exp() - 1).alias('ret_5d'),
         (pl.col('_log').rolling_sum(window_size=20, min_samples=20).over('code').exp() - 1).alias('ret_20d'),
     ).select('code', 'date', 'ret_5d', 'ret_20d')
-    ranks = states.filter(tradable & pl.col('amount').is_not_null()).select('code', 'date', 'amount').with_columns(
-        (pl.col('amount').rank(method='average').over('date') / pl.len().over('date')).alias('amount_rank_pct')
-    ).select('code', 'date', 'amount_rank_pct')
+    amounts = states.filter(tradable & pl.col('amount').is_not_null()).select('code', 'date', 'amount')
     # A previous session whose prices breach the reconstructed limits has unreliable states
     # (usually an unmodeled regime such as delisting consolidation), so it cannot trigger events.
     previous_violation = states.filter(tradable).select('code', 'date', 'limit_price_violation').with_columns(
         pl.col('limit_price_violation').fill_null(False).shift(1).over('code').fill_null(False).alias('_prev_violation')
     ).select('code', 'date', '_prev_violation')
-    states = states.join(compounding, on=['code', 'date'], how='left').join(ranks, on=['code', 'date'], how='left')
+    states = states.join(compounding, on=['code', 'date'], how='left')
     states = states.join(previous_violation, on=['code', 'date'], how='left').sort('code', 'date')
     nxt = {}
     for step in (1, 2):
@@ -223,13 +253,29 @@ def build_event_frame(panel, calendar, reference, states=None):
     previous_trigger = (pl.col('prev_is_limit_up_close').fill_null(False) | pl.col('prev_is_broken_board').fill_null(False)) \
         & ~pl.col('_prev_violation').fill_null(False)
     trigger = pl.col('touched_limit_up').fill_null(False) | pl.col('touched_limit_down').fill_null(False) | previous_trigger
-    events = states.filter(eligible & trigger).select(list(FEATURE_COLUMNS) + list(LABEL_COLUMNS)).sort('date', 'code')
+    columns = [c for c in FEATURE_COLUMNS if c != 'amount_rank_pct'] + list(LABEL_COLUMNS)
+    events = states.filter(eligible & trigger).select(columns)
     trad = states.filter(tradable)
-    status_counts = trad.group_by('limit_rule_status', 'limit_rule_reason').len().sort('limit_rule_status', 'limit_rule_reason')
+    status_counts = trad.group_by('limit_rule_status', 'limit_rule_reason').len()
+    partial = {'panel_rows': states.height, 'tradable_rows': trad.height,
+               'rule_counts': {f"{r['limit_rule_status']}:{r['limit_rule_reason']}": r['len'] for r in status_counts.to_dicts()},
+               'violation_rows': trad.filter(pl.col('limit_price_violation').fill_null(False)).height}
+    return events, partial, amounts
+
+
+def _finalize_events(parts):
+    ranks = pl.concat([amounts for _e, _p, amounts in parts], how='vertical').with_columns(
+        (pl.col('amount').rank(method='average').over('date') / pl.len().over('date')).alias('amount_rank_pct')
+    ).select('code', 'date', 'amount_rank_pct')
+    events = pl.concat([e for e, _p, _a in parts], how='vertical').join(ranks, on=['code', 'date'], how='left')
+    events = events.select(list(FEATURE_COLUMNS) + list(LABEL_COLUMNS)).sort('date', 'code')
+    rule_counts = {}
+    for _e, partial, _a in parts:
+        for key, value in partial['rule_counts'].items():
+            rule_counts[key] = rule_counts.get(key, 0) + value
     stats = {
-        'panel_rows': states.height, 'tradable_rows': trad.height,
-        'rule_counts': {f"{r['limit_rule_status']}:{r['limit_rule_reason']}": r['len'] for r in status_counts.to_dicts()},
-        'violation_rows': trad.filter(pl.col('limit_price_violation').fill_null(False)).height,
+        'panel_rows': sum(p['panel_rows'] for _e, p, _a in parts), 'tradable_rows': sum(p['tradable_rows'] for _e, p, _a in parts),
+        'rule_counts': dict(sorted(rule_counts.items())), 'violation_rows': sum(p['violation_rows'] for _e, p, _a in parts),
         'events': events.height,
         'limit_up_close': events.filter(pl.col('is_limit_up_close')).height,
         'touched_limit_up': events.filter(pl.col('touched_limit_up')).height,
@@ -244,12 +290,23 @@ def build_event_frame(panel, calendar, reference, states=None):
     return events, stats
 
 
+def build_event_frame(panel, calendar, reference, states=None):
+    """In-memory event build for small panels; results equal the batched build."""
+    states = prepare_states(panel, calendar, reference) if states is None else states
+    return _finalize_events([_events_from_states(states)])
+
+
+def build_event_frame_batched(store, resolved, batch_symbols=BATCH_SYMBOLS):
+    return _finalize_events([_events_from_states(states) for states in iter_state_batches(store, resolved, batch_symbols)])
+
+
 class LimitEventLibrary:
-    def __init__(self, output, now_fn=None):
+    def __init__(self, output, now_fn=None, batch_symbols=BATCH_SYMBOLS):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise LimitEventError('INVALID_WORKSPACE', '工作空间不存在。')
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
+        self.batch_symbols = batch_symbols
         self.root = self.output / '_limit_research' / 'limit_events'
 
     def _guard(self):
@@ -268,7 +325,8 @@ class LimitEventLibrary:
     def build(self, capture_ids):
         self._guard()
         store = RetroDailyStore(self.output)
-        panel, calendar, reference, inputs = load_inputs(store, list(capture_ids))
+        resolved = resolve_inputs(store, list(capture_ids))
+        calendar, inputs = resolved['calendar'], resolved['inputs']
         fingerprint = code_fingerprint()
         identity = {'builder_version': BUILDER_VERSION, 'regime_version': REGIME_VERSION,
                     'limit_state_version': LIMIT_STATE_VERSION, 'code_fingerprint': fingerprint['digest'], 'inputs': inputs}
@@ -276,7 +334,7 @@ class LimitEventLibrary:
         folder = self._folder(build_id)
         if folder.exists():
             return {**self.get(build_id), 'created': False}
-        events, stats = build_event_frame(panel, calendar, reference)
+        events, stats = build_event_frame_batched(store, resolved, self.batch_symbols)
         stream = io.BytesIO()
         events.write_parquet(stream, compression='zstd')
         payload = stream.getvalue()
@@ -349,10 +407,10 @@ class LimitEventLibrary:
         if fingerprint['digest'] != manifest['code_fingerprint']:
             return {'build_id': build_id, 'verified': False, 'reason': 'CODE_CHANGED_REBUILD_REQUIRED'}
         store = RetroDailyStore(self.output)
-        panel, calendar, reference, inputs = load_inputs(store, [i['capture_id'] for i in manifest['inputs']])
-        if inputs != manifest['inputs']:
+        resolved = resolve_inputs(store, [i['capture_id'] for i in manifest['inputs']])
+        if resolved['inputs'] != manifest['inputs']:
             return {'build_id': build_id, 'verified': False, 'reason': 'INPUTS_CHANGED'}
-        events, stats = build_event_frame(panel, calendar, reference)
+        events, stats = build_event_frame_batched(store, resolved, self.batch_symbols)
         same = events.equals(stored) and stats == manifest['stats']
         return {'build_id': build_id, 'verified': bool(same), 'reason': 'RECOMPUTED_IDENTICAL' if same else 'RECOMPUTED_DIFFERS'}
 
@@ -376,5 +434,6 @@ class LimitEventLibrary:
                 'note': '统计为信号标签均值，未计费用与成交可行性，不代表可执行收益。'}
 
 
-__all__ = ['FORMAT', 'BUILDER_VERSION', 'FEATURE_COLUMNS', 'LABEL_COLUMNS', 'LIMITATIONS', 'LimitEventError',
-           'LimitEventLibrary', 'build_event_frame', 'code_fingerprint', 'load_inputs', 'prepare_states']
+__all__ = ['FORMAT', 'BUILDER_VERSION', 'BATCH_SYMBOLS', 'FEATURE_COLUMNS', 'LABEL_COLUMNS', 'LIMITATIONS', 'LimitEventError',
+           'LimitEventLibrary', 'build_event_frame', 'build_event_frame_batched', 'code_fingerprint', 'iter_state_batches',
+           'load_inputs', 'prepare_states', 'resolve_inputs']

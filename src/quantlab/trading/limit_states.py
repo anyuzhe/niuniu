@@ -43,15 +43,13 @@ def _validate(frame):
             casts.append(pl.lit(None, dtype=dtype).alias(name))
             continue
         actual = frame.schema[name]
-        if dtype == pl.Float64 and actual.is_numeric():
-            casts.append(pl.col(name).cast(pl.Float64))
-        elif dtype == pl.Int64 and (actual.is_integer() or actual == pl.Null):
-            casts.append(pl.col(name).cast(pl.Int64))
-        elif actual == dtype or (actual == pl.Null):
+        if actual == dtype:
+            continue
+        if (dtype == pl.Float64 and actual.is_numeric()) or (dtype == pl.Int64 and actual.is_integer()) or actual == pl.Null:
             casts.append(pl.col(name).cast(dtype))
         else:
             raise ValueError(f'字段 {name} 类型应为 {dtype}，实际为 {actual}。')
-    panel = frame.with_columns(casts)
+    panel = frame.with_columns(casts) if casts else frame
     if panel.select(pl.col('date').is_null().any() | pl.col('code').is_null().any() |
                     pl.col('tradable').is_null().any() | pl.col('is_st').is_null().any()).item():
         raise ValueError('date/code/tradable/is_st 不能为空。')
@@ -76,64 +74,88 @@ def _validate(frame):
     return panel
 
 
+BOARD_NAMES = (MAIN, CHINEXT, STAR, BSE, UNKNOWN)
+STATUS_NAMES = (NORMAL, NO_LIMIT, UNMODELED)
+REASON_NAMES = ('MAIN_10PCT', 'MAIN_RISK_WARNING_5PCT', 'MAIN_RISK_WARNING_10PCT', 'CHINEXT_20PCT', 'CHINEXT_RISK_WARNING_20PCT',
+                'CHINEXT_10PCT_PRE_REFORM', 'CHINEXT_RISK_WARNING_5PCT_PRE_REFORM', 'STAR_20PCT', 'STAR_RISK_WARNING_20PCT',
+                'BSE_30PCT', 'BSE_RISK_WARNING_30PCT', 'UNKNOWN_BOARD', 'BEFORE_BOARD_OPEN', 'BEFORE_LISTING', 'IPO_NO_LIMIT_WINDOW',
+                'IPO_FIRST_DAY_SPECIAL_RULE_UNMODELED', 'LISTING_WINDOW_UNRESOLVED', 'NEAR_DELISTING_UNMODELED')
+
+
+def _code(names, name):
+    return names.index(name)
+
+
+def _decode(column, names, alias):
+    return pl.col(column).replace_strict(list(range(len(names))), list(names), return_dtype=pl.String).alias(alias)
+
+
 def regime_columns(panel):
-    """Vectorized mirror of ``price_limit_regime.limit_rule`` (equivalence is unit-tested)."""
+    """Vectorized mirror of ``price_limit_regime.limit_rule`` (equivalence is unit-tested).
+
+    Branch values are small integer codes decoded to strings once at the end, because
+    string literals inside long when/then chains materialize a full column per branch.
+    """
     code, day, st = pl.col('code'), pl.col('date'), pl.col('is_st')
     prefix = code.str.slice(0, 6)
-    board = (pl.when(prefix.is_in(list(MAIN_PREFIXES))).then(pl.lit(MAIN))
-             .when(prefix.is_in(list(CHINEXT_PREFIXES))).then(pl.lit(CHINEXT))
-             .when(prefix.is_in(list(STAR_PREFIXES))).then(pl.lit(STAR))
-             .when(code.str.starts_with('bj.')).then(pl.lit(BSE))
-             .otherwise(pl.lit(UNKNOWN)))
-    frame = panel.with_columns(board.alias('board'))
-    b = pl.col('board')
+    B = lambda name: _code(BOARD_NAMES, name)
+    board = (pl.when(prefix.is_in(list(MAIN_PREFIXES))).then(B(MAIN))
+             .when(prefix.is_in(list(CHINEXT_PREFIXES))).then(B(CHINEXT))
+             .when(prefix.is_in(list(STAR_PREFIXES))).then(B(STAR))
+             .when(code.str.starts_with('bj.')).then(B(BSE))
+             .otherwise(B(UNKNOWN))).cast(pl.Int8)
+    frame = panel.with_columns(board.alias('_board'))
+    b = pl.col('_board')
     listing, since, to_delist = pl.col('listing_date'), pl.col('sessions_since_listing'), pl.col('sessions_to_delisting')
     has_listing = listing.is_not_null() | since.is_not_null()
     regime_day = pl.coalesce(listing, day)
-    no_limit = (pl.when(b == STAR).then(IPO_NO_LIMIT_SESSIONS)
-                .when(b == CHINEXT).then(pl.when(regime_day >= CHINEXT_REFORM).then(IPO_NO_LIMIT_SESSIONS).otherwise(0))
-                .when(b == MAIN).then(pl.when(regime_day >= MAIN_REGISTRATION).then(IPO_NO_LIMIT_SESSIONS).otherwise(0))
+    no_limit = (pl.when(b == B(STAR)).then(IPO_NO_LIMIT_SESSIONS)
+                .when(b == B(CHINEXT)).then(pl.when(regime_day >= CHINEXT_REFORM).then(IPO_NO_LIMIT_SESSIONS).otherwise(0))
+                .when(b == B(MAIN)).then(pl.when(regime_day >= MAIN_REGISTRATION).then(IPO_NO_LIMIT_SESSIONS).otherwise(0))
                 .otherwise(1))
-    special = ((b == CHINEXT) & (regime_day < CHINEXT_REFORM)) | ((b == MAIN) & (regime_day < MAIN_REGISTRATION))
-    before_open = ((b == STAR) & (day < STAR_OPEN)) | ((b == BSE) & (day < BSE_OPEN))
+    special = ((b == B(CHINEXT)) & (regime_day < CHINEXT_REFORM)) | ((b == B(MAIN)) & (regime_day < MAIN_REGISTRATION))
+    before_open = ((b == B(STAR)) & (day < STAR_OPEN)) | ((b == B(BSE)) & (day < BSE_OPEN))
     before_listing = listing.is_not_null() & (day < listing)
     in_ipo_window = since.is_not_null() & (since <= no_limit)
     first_day_special = since.is_not_null() & special & (since == 1)
     unresolved = (since.is_null() & listing.is_not_null() & ((day - listing).dt.total_days() <= LISTING_WINDOW_MAX_CALENDAR_DAYS)
                   & ~((day > listing) & (no_limit <= 1)))
     near_delisting = to_delist.is_not_null() & (to_delist <= NEAR_DELISTING_SESSIONS)
-    rate = (pl.when(b == MAIN).then(pl.when(st & (day < MAIN_RISK_WARNING_10PCT)).then(0.05).otherwise(0.10))
-            .when(b == CHINEXT).then(pl.when(day >= CHINEXT_REFORM).then(0.20).when(st).then(0.05).otherwise(0.10))
-            .when(b == STAR).then(0.20).otherwise(0.30))
-    normal_reason = (pl.when(b == MAIN).then(pl.when(st & (day < MAIN_RISK_WARNING_10PCT)).then(pl.lit('MAIN_RISK_WARNING_5PCT'))
-                                              .when(st).then(pl.lit('MAIN_RISK_WARNING_10PCT')).otherwise(pl.lit('MAIN_10PCT')))
-                     .when(b == CHINEXT).then(pl.when(day >= CHINEXT_REFORM).then(pl.when(st).then(pl.lit('CHINEXT_RISK_WARNING_20PCT')).otherwise(pl.lit('CHINEXT_20PCT')))
-                                                 .when(st).then(pl.lit('CHINEXT_RISK_WARNING_5PCT_PRE_REFORM')).otherwise(pl.lit('CHINEXT_10PCT_PRE_REFORM')))
-                     .when(b == STAR).then(pl.when(st).then(pl.lit('STAR_RISK_WARNING_20PCT')).otherwise(pl.lit('STAR_20PCT')))
-                     .otherwise(pl.when(st).then(pl.lit('BSE_RISK_WARNING_30PCT')).otherwise(pl.lit('BSE_30PCT'))))
-    unknown, opened = b == UNKNOWN, ~before_open
-    status = (pl.when(unknown | before_open).then(pl.lit(UNMODELED))
-              .when(has_listing & before_listing).then(pl.lit(UNMODELED))
-              .when(has_listing & in_ipo_window).then(pl.lit(NO_LIMIT))
-              .when(has_listing & (first_day_special | unresolved)).then(pl.lit(UNMODELED))
-              .when(near_delisting).then(pl.lit(UNMODELED))
-              .otherwise(pl.lit(NORMAL)))
-    reason = (pl.when(unknown).then(pl.lit('UNKNOWN_BOARD'))
-              .when(before_open).then(pl.lit('BEFORE_BOARD_OPEN'))
-              .when(has_listing & before_listing).then(pl.lit('BEFORE_LISTING'))
-              .when(has_listing & in_ipo_window).then(pl.lit('IPO_NO_LIMIT_WINDOW'))
-              .when(has_listing & first_day_special).then(pl.lit('IPO_FIRST_DAY_SPECIAL_RULE_UNMODELED'))
-              .when(has_listing & unresolved).then(pl.lit('LISTING_WINDOW_UNRESOLVED'))
-              .when(near_delisting).then(pl.lit('NEAR_DELISTING_UNMODELED'))
-              .otherwise(normal_reason))
+    R = lambda name: _code(REASON_NAMES, name)
+    rate = (pl.when(b == B(MAIN)).then(pl.when(st & (day < MAIN_RISK_WARNING_10PCT)).then(0.05).otherwise(0.10))
+            .when(b == B(CHINEXT)).then(pl.when(day >= CHINEXT_REFORM).then(0.20).when(st).then(0.05).otherwise(0.10))
+            .when(b == B(STAR)).then(0.20).otherwise(0.30))
+    normal_reason = (pl.when(b == B(MAIN)).then(pl.when(st & (day < MAIN_RISK_WARNING_10PCT)).then(R('MAIN_RISK_WARNING_5PCT'))
+                                                 .when(st).then(R('MAIN_RISK_WARNING_10PCT')).otherwise(R('MAIN_10PCT')))
+                     .when(b == B(CHINEXT)).then(pl.when(day >= CHINEXT_REFORM).then(pl.when(st).then(R('CHINEXT_RISK_WARNING_20PCT')).otherwise(R('CHINEXT_20PCT')))
+                                                    .when(st).then(R('CHINEXT_RISK_WARNING_5PCT_PRE_REFORM')).otherwise(R('CHINEXT_10PCT_PRE_REFORM')))
+                     .when(b == B(STAR)).then(pl.when(st).then(R('STAR_RISK_WARNING_20PCT')).otherwise(R('STAR_20PCT')))
+                     .otherwise(pl.when(st).then(R('BSE_RISK_WARNING_30PCT')).otherwise(R('BSE_30PCT'))))
+    unknown, opened = b == B(UNKNOWN), ~before_open
+    S = lambda name: _code(STATUS_NAMES, name)
+    status = (pl.when(unknown | before_open).then(S(UNMODELED))
+              .when(has_listing & before_listing).then(S(UNMODELED))
+              .when(has_listing & in_ipo_window).then(S(NO_LIMIT))
+              .when(has_listing & (first_day_special | unresolved)).then(S(UNMODELED))
+              .when(near_delisting).then(S(UNMODELED))
+              .otherwise(S(NORMAL))).cast(pl.Int8)
+    reason = (pl.when(unknown).then(R('UNKNOWN_BOARD'))
+              .when(before_open).then(R('BEFORE_BOARD_OPEN'))
+              .when(has_listing & before_listing).then(R('BEFORE_LISTING'))
+              .when(has_listing & in_ipo_window).then(R('IPO_NO_LIMIT_WINDOW'))
+              .when(has_listing & first_day_special).then(R('IPO_FIRST_DAY_SPECIAL_RULE_UNMODELED'))
+              .when(has_listing & unresolved).then(R('LISTING_WINDOW_UNRESOLVED'))
+              .when(near_delisting).then(R('NEAR_DELISTING_UNMODELED'))
+              .otherwise(normal_reason)).cast(pl.Int8)
     checked = (pl.when(unknown | before_open).then(False)
                .when(has_listing & (before_listing | in_ipo_window | first_day_special)).then(True)
                .when(has_listing & unresolved).then(False)
                .otherwise(has_listing & opened))
-    frame = frame.with_columns(status.alias('limit_rule_status'), reason.alias('limit_rule_reason'),
-                               checked.alias('listing_window_checked'))
-    return frame.with_columns(pl.when(pl.col('limit_rule_status') == NORMAL).then(rate).otherwise(None)
-                              .cast(pl.Float64).alias('limit_rate'))
+    frame = frame.with_columns(status.alias('_status'), reason.alias('_reason'), checked.alias('listing_window_checked'))
+    frame = frame.with_columns(pl.when(pl.col('_status') == S(NORMAL)).then(rate).otherwise(None).cast(pl.Float64).alias('limit_rate'))
+    frame = frame.with_columns(_decode('_board', BOARD_NAMES, 'board'), _decode('_status', STATUS_NAMES, 'limit_rule_status'),
+                               _decode('_reason', REASON_NAMES, 'limit_rule_reason'))
+    return frame.drop('_board', '_status', '_reason')
 
 
 def _cents(expr):

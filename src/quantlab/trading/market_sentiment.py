@@ -19,7 +19,7 @@ import polars as pl
 from quantlab.data.retro_daily import RetroDailyStore
 from quantlab.storage.codec import digest, encode
 
-from .limit_events import load_inputs, prepare_states
+from .limit_events import BATCH_SYMBOLS, iter_state_batches, resolve_inputs
 from .limit_states import LIMIT_STATE_VERSION
 from .price_limit_regime import REGIME_VERSION
 
@@ -91,8 +91,18 @@ def _cents(name):
     return (pl.col(name) * 100).round(0).cast(pl.Int64)
 
 
-def daily_metrics(states, calendar):
-    """Aggregate an annotated panel (from ``prepare_states``) into one row per trading day."""
+COUNT_COLUMNS = (
+    'tradable_count', 'suspended_count', 'unmodeled_count', 'violation_count', 'up_count', 'down_count', 'flat_count',
+    'limit_up_count', 'limit_up_count_non_st', 'limit_down_count', 'limit_down_count_non_st', 'touched_limit_up_count',
+    'broken_board_count', 'one_word_limit_up_count', 'first_board_count', 'consecutive_board_count', 'streak_2_count',
+    'streak_3_count', 'streak_4_count', 'streak_5plus_count', 'prev_first_board_count', '_advanced_1to2', 'prev_consecutive_count',
+    '_advanced_2plus', 'prev_limit_up_count', '_prev_up_wins', 'prev_broken_count', 'big_loss_count', 'limit_up_to_down_count',
+    'limit_down_to_up_count')
+SUM_COLUMNS = ('_prev_up_return_sum', '_prev_broken_return_sum', 'amount_total')
+
+
+def _partial(states):
+    """Additive per-date aggregates from one security batch plus rows needed for medians and high boards."""
     base = states.select('code', 'date', '_pos', 'tradable', 'is_st', 'close', 'preclose', 'amount', 'day_ret',
                          'limit_rule_status', 'limit_price_violation', 'is_limit_up_close', 'touched_limit_up',
                          'is_broken_board', 'is_one_word_limit_up', 'is_limit_down_close', 'is_limit_up_to_down',
@@ -115,10 +125,7 @@ def daily_metrics(states, calendar):
     def count(expr):
         return expr.fill_null(False).cast(pl.Int64).sum()
 
-    def ratio(numerator, denominator):
-        return pl.when(denominator > 0).then(numerator / denominator)
-
-    daily = frame.group_by('date').agg(
+    counts = frame.group_by('date').agg(
         count(tradable).alias('tradable_count'),
         count(~tradable).alias('suspended_count'),
         count(tradable & (pl.col('limit_rule_status') != 'NORMAL')).alias('unmodeled_count'),
@@ -145,43 +152,63 @@ def daily_metrics(states, calendar):
         count(y_consecutive).alias('prev_consecutive_count'),
         count(y_consecutive & up_close).alias('_advanced_2plus'),
         count(y_up).alias('prev_limit_up_count'),
-        pl.col('day_ret').filter(y_up).mean().alias('prev_limit_up_avg_return'),
-        pl.col('day_ret').filter(y_up).median().alias('prev_limit_up_median_return'),
+        pl.col('day_ret').filter(y_up).sum().alias('_prev_up_return_sum'),
         count(y_up & (pl.col('day_ret') > 0)).alias('_prev_up_wins'),
         count(y_broken).alias('prev_broken_count'),
-        pl.col('day_ret').filter(y_broken).mean().alias('prev_broken_avg_return'),
+        pl.col('day_ret').filter(y_broken).sum().alias('_prev_broken_return_sum'),
         count(y_up & (pl.col('day_ret') <= -0.05)).alias('big_loss_count'),
         count(valid_col & pl.col('is_limit_up_to_down')).alias('limit_up_to_down_count'),
         count(valid_col & pl.col('is_limit_down_to_up')).alias('limit_down_to_up_count'),
         pl.col('amount').filter(tradable).sum().alias('amount_total'),
     )
+    medians = frame.filter(y_up).select('date', 'day_ret')
+    high = frame.filter(tradable & pl.col('_y_up').fill_null(False) & (pl.col('_y_streak') >= 2)).select(
+        'date', '_y_streak', up_close.fill_null(False).alias('_up_close'))
+    return counts, medians, high
+
+
+def _finalize(parts, calendar):
+    counts = pl.concat([c for c, _m, _h in parts], how='vertical').group_by('date').agg(
+        *[pl.col(c).sum() for c in COUNT_COLUMNS + SUM_COLUMNS], pl.col('max_streak').max())
+    medians = pl.concat([m for _c, m, _h in parts], how='vertical').group_by('date').agg(
+        pl.col('day_ret').median().alias('prev_limit_up_median_return'))
     calendar_frame = pl.DataFrame({'date': calendar}, schema={'date': pl.Date})
-    daily = calendar_frame.join(daily, on='date', how='left').sort('date')
+    daily = calendar_frame.join(counts, on='date', how='left').join(medians, on='date', how='left').sort('date')
+
+    def ratio(numerator, denominator):
+        return pl.when(denominator > 0).then(numerator / denominator)
+
     daily = daily.with_columns(
         ratio(pl.col('up_count'), pl.col('tradable_count')).alias('up_ratio'),
         ratio(pl.col('broken_board_count'), pl.col('touched_limit_up_count')).alias('broken_rate'),
         ratio(pl.col('_advanced_1to2'), pl.col('prev_first_board_count')).alias('advance_rate_1to2'),
         ratio(pl.col('_advanced_2plus'), pl.col('prev_consecutive_count')).alias('advance_rate_2plus'),
         ratio(pl.col('_prev_up_wins'), pl.col('prev_limit_up_count')).alias('prev_limit_up_win_rate'),
+        ratio(pl.col('_prev_up_return_sum'), pl.col('prev_limit_up_count')).alias('prev_limit_up_avg_return'),
+        ratio(pl.col('_prev_broken_return_sum'), pl.col('prev_broken_count')).alias('prev_broken_avg_return'),
         (pl.col('amount_total') / pl.col('amount_total').shift(1) - 1).alias('amount_change'),
         pl.col('max_streak').shift(1).alias('high_board_height_prev'),
     )
-    # High board: yesterday's highest-streak (>=2) stocks; broken when none of the tradable ones sealed today.
-    heights = daily.select('date', pl.col('high_board_height_prev'))
-    high = frame.join(heights, on='date', how='left').filter(
-        tradable & pl.col('_y_up').fill_null(False) & (pl.col('high_board_height_prev') >= 2)
-        & (pl.col('_y_streak') == pl.col('high_board_height_prev'))
-    ).group_by('date').agg((~up_close.fill_null(False)).all().alias('high_board_broken'))
+    heights = daily.select('date', 'high_board_height_prev')
+    high = pl.concat([h for _c, _m, h in parts], how='vertical').join(heights, on='date', how='left').filter(
+        pl.col('_y_streak') == pl.col('high_board_height_prev')).group_by('date').agg(
+        (~pl.col('_up_close')).all().alias('high_board_broken'))
     daily = daily.join(high, on='date', how='left')
     return daily.select(['date'] + list(METRICS))
 
 
+def daily_metrics(states, calendar):
+    """Aggregate an annotated panel (from ``prepare_states``) into one row per trading day."""
+    return _finalize([_partial(states)], calendar)
+
+
 class MarketSentimentLibrary:
-    def __init__(self, output, now_fn=None):
+    def __init__(self, output, now_fn=None, batch_symbols=BATCH_SYMBOLS):
         self.output = Path(output).resolve()
         if not self.output.is_dir():
             raise MarketSentimentError('INVALID_WORKSPACE', '工作空间不存在。')
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
+        self.batch_symbols = batch_symbols
         self.root = self.output / '_limit_research' / 'market_sentiment'
 
     def _folder(self, build_id):
@@ -195,11 +222,11 @@ class MarketSentimentLibrary:
     def _compute(self, capture_ids):
         store = RetroDailyStore(self.output)
         try:
-            panel, calendar, reference, inputs = load_inputs(store, list(capture_ids))
+            resolved = resolve_inputs(store, list(capture_ids))
+            parts = [_partial(states) for states in iter_state_batches(store, resolved, self.batch_symbols)]
         except ValueError as error:
             raise MarketSentimentError(getattr(error, 'code', 'INVALID_INPUT'), str(error)) from None
-        states = prepare_states(panel, calendar, reference)
-        return daily_metrics(states, calendar), calendar, inputs
+        return _finalize(parts, resolved['calendar']), resolved['calendar'], resolved['inputs']
 
     def build(self, capture_ids):
         daily, calendar, inputs = self._compute(capture_ids)

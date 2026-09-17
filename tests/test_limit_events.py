@@ -91,6 +91,15 @@ class LimitEventTests(unittest.TestCase):
         self.assertNotEqual(single['build_id'], split['build_id'])
         self.assertTrue(a.equals(b)); self.assertEqual(single['stats'], split['stats'])
 
+    def test_batched_build_equals_in_memory_build(self):
+        capture = self.capture()
+        batched = LimitEventLibrary(self.output, now_fn=lambda: datetime(2026, 12, 2, tzinfo=timezone.utc), batch_symbols=2).build([capture])
+        from quantlab.trading.limit_events import build_event_frame, load_inputs
+        panel, calendar, reference, _inputs = load_inputs(self.store, [capture])
+        events, stats = build_event_frame(panel, calendar, reference)
+        stored, manifest = LimitEventLibrary(self.output).read_events(batched['build_id'])
+        self.assertTrue(stored.equals(events)); self.assertEqual(manifest['stats'], stats)
+
     def test_inputs_must_be_complete_and_contiguous(self):
         left = self.capture(end=date(2026, 8, 20)); right = self.capture(start=date(2026, 8, 24))
         with self.assertRaises(LimitEventError) as ctx:

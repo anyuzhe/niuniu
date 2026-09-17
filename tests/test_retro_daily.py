@@ -68,6 +68,9 @@ class FakeSDK:
         self.calls.append(code)
         if code in self.errors:
             return Resp(FIELDS, [], error_code='10002007', error_msg='网络接收错误')
+        if getattr(self, 'logged_out_once', None) == code:
+            self.logged_out_once = None
+            return Resp(FIELDS, [], error_code='10001001', error_msg='用户未登录')
         return Resp(FIELDS, [r for r in self.bars.get(code, []) if start_date <= r[0] <= end_date])
 
 
@@ -123,6 +126,12 @@ class RetroDailyTests(unittest.TestCase):
         self.assertTrue(status['complete']); self.assertEqual(status['rows'], 7); self.assertEqual(status['st_rows'], 1)
         self.assertEqual(status['tradable_rows'], 6); self.assertEqual((status['first_date'], status['last_date']), ('2026-09-07', '2026-09-11'))
         self.assertEqual(self.store.symbol_manifest(capture, 'sz.300004')['status'], 'EMPTY')
+
+    def test_dropped_session_is_relogged_and_retried_once(self):
+        capture = self.plan()['capture_id']; sdk = FakeSDK(); sdk.logged_out_once = 'sz.000002'
+        result = self.store.fetch(capture, sdk=sdk)
+        self.assertEqual((result['completed'], result['failed'], result['relogins']), (3, 0, 1))
+        self.assertEqual(sdk.calls.count('sz.000002'), 2)
 
     def test_shards_partition_symbols(self):
         capture = self.plan()['capture_id']; symbols = self.store.plan(capture, with_symbols=True)['symbols']

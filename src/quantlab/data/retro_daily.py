@@ -502,7 +502,7 @@ class RetroDailyStore:
         trading_days = set(self.trading_days(capture_id))
         began = clock()
         result = {'capture_id': capture_id, 'shard': shard, 'shards': shards, 'shard_symbols': len(mine),
-                  'attempted': 0, 'completed': 0, 'empty': 0, 'failed': 0, 'rows': 0, 'stopped_by': 'done',
+                  'attempted': 0, 'completed': 0, 'empty': 0, 'failed': 0, 'rows': 0, 'relogins': 0, 'stopped_by': 'done',
                   'cleaned_temporaries': cleaned}
         if not pending:
             result['remaining_in_shard'] = 0
@@ -521,6 +521,14 @@ class RetroDailyStore:
                 try:
                     query = client.query_history_k_data_plus(symbol, ','.join(FIELDS), start_date=start.isoformat(),
                                                              end_date=end.isoformat(), frequency='d', adjustflag='3')
+                    if getattr(query, 'error_code', None) != '0' and '未登录' in str(getattr(query, 'error_msg', '')):
+                        # The provider dropped the session; log in again once and retry this symbol.
+                        relogin = client.login()
+                        if getattr(relogin, 'error_code', None) != '0':
+                            raise RetroDailyError('PROVIDER_ERROR', 'Baostock 重新登录失败。')
+                        result['relogins'] += 1
+                        query = client.query_history_k_data_plus(symbol, ','.join(FIELDS), start_date=start.isoformat(),
+                                                                 end_date=end.isoformat(), frequency='d', adjustflag='3')
                     rows = _query_all(query, FIELDS, symbol)
                     records = normalize_symbol_rows(rows, symbol, start, end, trading_days)
                     manifest = self._write_symbol(capture_id, symbol, rows, records, version)
@@ -590,6 +598,22 @@ class RetroDailyStore:
                 'rows': rows, 'tradable_rows': tradable, 'st_rows': st, 'first_date': first, 'last_date': last,
                 'complete': pending == 0 and corrupt == 0, 'deep_verified': deep}
 
+    def panel_evidence(self, capture_id, *, require_complete=True):
+        """Manifest-level identity of a capture panel (same digest as ``read_panel`` for all symbols) without reading data."""
+        plan = self.plan(capture_id, with_symbols=True)
+        manifests, missing, rows = [], [], 0
+        for symbol in plan['symbols']:
+            manifest = self.symbol_manifest(capture_id, symbol, deep=False)
+            if manifest is None:
+                missing.append(symbol)
+                continue
+            manifests.append({'symbol': symbol, 'parquet_sha256': manifest['parquet_sha256'], 'rows': manifest['rows']})
+            rows += manifest['rows']
+        if missing and require_complete:
+            raise RetroDailyError('INCOMPLETE_CAPTURE', f'capture 尚有 {len(missing)} 只证券未完成抓取。')
+        return {'capture_id': capture_id, 'manifest_digest': digest(manifests), 'rows': rows, 'symbols_loaded': len(manifests),
+                'missing_symbols': missing}
+
     def read_panel(self, capture_id, *, start=None, end=None, symbols=None, require_complete=True):
         plan = self.plan(capture_id, with_symbols=True)
         wanted = plan['symbols'] if symbols is None else sorted(set(symbols))
@@ -598,29 +622,39 @@ class RetroDailyStore:
             raise RetroDailyError('INVALID_ARGUMENT', '证券不在 capture 计划内：' + ', '.join(unknown[:5]))
         start = _day(start, 'start') if start is not None else None
         end = _day(end, 'end') if end is not None else None
-        frames, manifests, missing = [], [], []
+        paths, manifests, missing, expected_rows = [], [], [], 0
         for symbol in wanted:
             manifest = self.symbol_manifest(capture_id, symbol, deep=False)
             if manifest is None:
                 missing.append(symbol)
                 continue
             path = self._symbol_dir(capture_id, symbol) / 'daily.parquet'
-            payload = path.read_bytes()
-            if _sha(payload) != manifest['parquet_sha256']:
+            if path.is_symlink() or not path.is_file():
+                raise RetroDailyError('CORRUPT_ARCHIVE', f'{symbol} daily.parquet 缺失。')
+            digest_stream = hashlib.sha256()
+            with path.open('rb') as stream:
+                for chunk in iter(lambda: stream.read(1 << 20), b''):
+                    digest_stream.update(chunk)
+            if digest_stream.hexdigest() != manifest['parquet_sha256']:
                 raise RetroDailyError('CORRUPT_ARCHIVE', f'{symbol} daily.parquet 哈希校验失败。')
             manifests.append({'symbol': symbol, 'parquet_sha256': manifest['parquet_sha256'], 'rows': manifest['rows']})
             if manifest['rows']:
-                frame = pl.read_parquet(io.BytesIO(payload))
-                if frame.height != manifest['rows'] or frame.columns != list(SCHEMA):
-                    raise RetroDailyError('CORRUPT_ARCHIVE', f'{symbol} daily.parquet 行数或字段异常。')
-                frames.append(frame)
+                paths.append(str(path))
+                expected_rows += manifest['rows']
         if missing and require_complete:
             raise RetroDailyError('INCOMPLETE_CAPTURE', f'capture 尚有 {len(missing)} 只证券未完成抓取。')
-        panel = pl.concat(frames, how='vertical') if frames else pl.DataFrame(schema=SCHEMA)
-        if start is not None:
-            panel = panel.filter(pl.col('date') >= start)
-        if end is not None:
-            panel = panel.filter(pl.col('date') <= end)
+        if paths:
+            # Scan verified files in one pass: materializing thousands of small frames fragments memory badly.
+            lazy = pl.scan_parquet(paths, schema=SCHEMA)
+            if start is not None:
+                lazy = lazy.filter(pl.col('date') >= start)
+            if end is not None:
+                lazy = lazy.filter(pl.col('date') <= end)
+            panel = lazy.collect()
+            if start is None and end is None and panel.height != expected_rows:
+                raise RetroDailyError('CORRUPT_ARCHIVE', 'daily.parquet 合计行数与 manifest 不一致。')
+        else:
+            panel = pl.DataFrame(schema=SCHEMA)
         meta = {'capture_id': capture_id, 'dataset_format': FORMAT, 'qualification': 'research_only',
                 'symbols_requested': len(wanted), 'symbols_loaded': len(manifests), 'missing_symbols': missing,
                 'manifest_digest': digest(manifests), 'rows': panel.height,
