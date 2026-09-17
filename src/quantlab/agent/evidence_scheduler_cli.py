@@ -1,18 +1,18 @@
-"""Host controls and macOS LaunchAgent for after-close public evidence capture."""
+"""Host controls and macOS LaunchAgents for after-close public evidence capture and authorized auction/intraday snapshots."""
 from __future__ import annotations
 
 import argparse
 import sys
 
-from quantlab.agent.evidence_scheduler import EvidenceScheduler, SchedulerError, install_agent
+from quantlab.agent.evidence_scheduler import EvidenceScheduler, SchedulerError, install_agent, install_intraday_agent
 from quantlab.storage.codec import encode
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='收盘后公开证据与当日全市场日线自动归档；不盘中抓取、不补历史、不交易')
+    parser = argparse.ArgumentParser(description='收盘后公开证据与当日全市场日线自动归档，以及授权时段内的竞价/盘中快照；不补历史、不交易')
     parser.add_argument('--output', required=True)
     modes = parser.add_mutually_exclusive_group(required=True)
-    for mode in ('enable', 'pause', 'tick', 'status', 'install-agent'):
+    for mode in ('enable', 'pause', 'tick', 'status', 'install-agent', 'enable-intraday', 'pause-intraday', 'tick-intraday', 'install-intraday-agent'):
         modes.add_argument('--' + mode, action='store_true')
     parser.add_argument('--confirm', action='store_true')
     parser.add_argument('--authorization', default='')
@@ -29,6 +29,16 @@ def main(argv=None):
                 return 0
         elif args.install_agent:
             result = install_agent(args.output)
+        elif args.enable_intraday:
+            result = scheduler.enable_intraday(confirmed=args.confirm, authorization=args.authorization)
+        elif args.pause_intraday:
+            result = scheduler.pause_intraday()
+        elif args.tick_intraday:
+            result = scheduler.tick_intraday()
+            if not result['actions']:
+                return 0
+        elif args.install_intraday_agent:
+            result = install_intraday_agent(args.output)
         else:
             result = scheduler.status()
         print(encode(result))

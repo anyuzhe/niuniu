@@ -7,7 +7,8 @@ import json
 import unittest
 
 from quantlab.data.eastmoney_sources import (
-    EastmoneyBoardListSource, EastmoneyBoardMembersSource, EastmoneyPopularitySource, default_sources,
+    EastmoneyAuctionSnapshotSource, EastmoneyBoardListSource, EastmoneyBoardMembersSource, EastmoneyPopularitySource, IntradayPoolSource,
+    default_sources, intraday_sources, pool_sources,
 )
 from quantlab.data.public_evidence import STAGING, PublicEvidenceArchive, PublicEvidenceError
 
@@ -96,7 +97,82 @@ class SnapshotTests(unittest.TestCase):
         with self.assertRaises(PublicEvidenceError) as ctx:
             archive.capture('em_popularity_rank', date(2026, 9, 16), allow_late=True)
         self.assertEqual(ctx.exception.code, 'SNAPSHOT_SOURCE_LATE')
-        self.assertEqual(len(default_sources()), 13)
+        self.assertEqual(len(default_sources()), 26)  # 13 after-close + 13 authorized auction/intraday snapshots
+
+
+def stock(i, matched=True):
+    code, market = (f'{600000 + i:06d}', 1) if i % 2 else (f'{i + 1:06d}', 0)
+    return {'f12': code, 'f13': market, 'f14': f'股{i}', 'f2': 10.1 if matched else '-', 'f3': 1.0 if matched else '-', 'f5': 1000 if matched else '-',
+            'f6': 1.0e6 if matched else '-', 'f15': 10.1 if matched else '-', 'f16': 10.1 if matched else '-', 'f17': 10.1 if matched else '-', 'f18': 10.0}
+
+
+class AuctionHttp:
+    def __init__(self, stocks):
+        self.stocks, self.urls = stocks, []
+    def __call__(self, spec):
+        self.urls.append(spec.url)
+        page = int(parse_qs(urlparse(spec.url).query)['pn'][0])
+        return 200, spec.url, 'application/json', clist(len(self.stocks), self.stocks[(page - 1) * 100: page * 100])
+
+
+class SessionSnapshotTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = TemporaryDirectory(); self.output = Path(self.tmp.name); self.day = date(2026, 9, 17)
+    def tearDown(self):
+        self.tmp.cleanup()
+    def archive(self, source, http, clock):
+        return PublicEvidenceArchive(self.output, sources=[source], now_fn=clock, http=http, sleep=lambda s: None)
+
+    def test_auction_snapshot_window_real_time_host_and_readiness(self):
+        stocks = [stock(i, matched=i % 25 != 0) for i in range(250)]
+        http = AuctionHttp(stocks)
+        manifest = self.archive(EastmoneyAuctionSnapshotSource(), http, lambda: datetime(2026, 9, 17, 9, 26, tzinfo=TZ)).capture('em_auction_snapshot', self.day)
+        self.assertEqual((manifest['rows'], manifest['capture_timing'], len(http.urls)), (250, 'AUCTION', 3))
+        self.assertTrue(all(url.startswith('https://push2.eastmoney.com/') for url in http.urls))  # never the delayed host
+        frame, _ = PublicEvidenceArchive(self.output, sources=[EastmoneyAuctionSnapshotSource()]).read_table('em_auction_snapshot', self.day)
+        self.assertEqual((frame['auction_matched'].sum(), frame.filter(~frame['auction_matched'])['open'].null_count()), (240, 10))
+        self.assertEqual(frame['symbol'][0], 'sh.600001')
+        for moment in (datetime(2026, 9, 17, 9, 25, 0, tzinfo=TZ), datetime(2026, 9, 17, 9, 29, 30, tzinfo=TZ), datetime(2026, 9, 17, 16, 0, tzinfo=TZ),
+                       datetime(2026, 9, 18, 9, 26, tzinfo=TZ)):
+            with self.assertRaises(PublicEvidenceError) as ctx:
+                self.archive(EastmoneyAuctionSnapshotSource(), AuctionHttp(stocks), lambda moment=moment: moment).capture('em_auction_snapshot', self.day)
+            self.assertEqual(ctx.exception.code, 'OUTSIDE_CAPTURE_WINDOW')
+        clock = [datetime(2026, 9, 17, 9, 29, 0, tzinfo=TZ)]
+        def slow():
+            clock[0] += timedelta(seconds=20); return clock[0]
+        with self.assertRaises(PublicEvidenceError) as ctx:  # pages fetched after the window closes are refused
+            self.archive(EastmoneyAuctionSnapshotSource(), AuctionHttp(stocks), slow).capture('em_auction_snapshot', date(2026, 9, 17))
+        self.assertEqual(ctx.exception.code, 'OUTSIDE_CAPTURE_WINDOW')
+        early = [stock(i, matched=i % 2 == 0) for i in range(250)]
+        with self.assertRaises(PublicEvidenceError) as ctx:
+            self.archive(EastmoneyAuctionSnapshotSource(), AuctionHttp(early), lambda: datetime(2026, 9, 17, 9, 25, 40, tzinfo=TZ)).capture('em_auction_snapshot', self.day)
+        self.assertEqual(ctx.exception.code, 'DATA_NOT_READY')
+        with self.assertRaises(PublicEvidenceError) as ctx:
+            self.archive(EastmoneyAuctionSnapshotSource(), AuctionHttp(stocks), lambda: datetime(2026, 9, 17, 9, 26, tzinfo=TZ)).capture(
+                'em_auction_snapshot', self.day, max_seconds=60)
+        self.assertEqual(ctx.exception.code, 'INVALID_ARGUMENT')
+
+    def test_intraday_pool_slots_are_separate_windowed_sources(self):
+        from test_public_evidence import pool_body, zt_item
+        sources = intraday_sources()
+        self.assertEqual(len(sources), 13)
+        slot = next(s for s in sources if s.source_id == 'em_limit_up_pool_i1000')
+        self.assertEqual((slot.window_timing, slot.capture_window[0].isoformat(), slot.capture_window[1].isoformat(), slot.snapshot_only),
+                         ('INTRADAY', '10:00:00', '10:10:00', True))
+        self.assertEqual(sorted(s.source_id for s in sources if s.source_id.endswith('_i1430')),
+                         ['em_broken_board_pool_i1430', 'em_limit_down_pool_i1430', 'em_limit_up_pool_i1430'])
+        with self.assertRaises(ValueError):
+            IntradayPoolSource(pool_sources()[0], '0930')
+        class PoolHttp:
+            def __call__(self, spec):
+                return 200, spec.url, 'application/json', pool_body([zt_item('600001', 1, '甲', 12100)])
+        manifest = self.archive(slot, PoolHttp(), lambda: datetime(2026, 9, 17, 10, 3, tzinfo=TZ)).capture('em_limit_up_pool_i1000', self.day)
+        self.assertEqual((manifest['rows'], manifest['capture_timing']), (1, 'INTRADAY'))
+        self.assertTrue((self.output / '_market_data' / 'public_evidence' / 'em_limit_up_pool_i1000' / '2026-09-17' / 'accepted.json').is_file())
+        with self.assertRaises(PublicEvidenceError) as ctx:
+            self.archive(next(s for s in sources if s.source_id == 'em_limit_down_pool_i1000'), PoolHttp(),
+                         lambda: datetime(2026, 9, 17, 10, 10, tzinfo=TZ)).capture('em_limit_down_pool_i1000', self.day)
+        self.assertEqual(ctx.exception.code, 'OUTSIDE_CAPTURE_WINDOW')
 
 
 class ResumableCaptureTests(unittest.TestCase):

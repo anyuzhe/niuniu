@@ -22,6 +22,10 @@ from quantlab.storage.codec import digest, encode
 
 SCHEDULE_VERSION = 'evidence-schedule-v1'
 LABEL = 'com.niuniu.evidence-archive'
+INTRADAY_LABEL = 'com.niuniu.evidence-intraday'
+INTRADAY_MAX_ATTEMPTS = 3
+# launchd start times (Mon–Fri): two tries inside every auction/intraday window; tick_intraday skips what is already accepted.
+INTRADAY_TRIGGERS = ((9, 26), (9, 28), (10, 1), (10, 6), (11, 1), (11, 6), (13, 31), (13, 36), (14, 31), (14, 36))
 RETRY_COOLDOWN = timedelta(minutes=15)
 STAGED_TASK_SECONDS = 300
 MAX_ATTEMPTS_PER_DAY = 8
@@ -181,6 +185,111 @@ class EvidenceScheduler:
         control = {**control, 'enabled': False, 'paused_at': self.now_fn().astimezone(timezone.utc).isoformat()}
         _write_checked(control_path, control)
         return control
+
+    # ---- authorized auction/intraday snapshots (D-1, 2026-09-17) -------------------------------------------
+    def _intraday_paths(self):
+        self._paths()
+        return self.root / 'intraday_control.json', self.root / 'intraday_state.json'
+
+    @contextmanager
+    def _intraday_lock(self):
+        self.root.mkdir(parents=True, exist_ok=True)
+        with (self.root / 'intraday.lock').open('a+b') as stream:
+            try:
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                raise SchedulerError('ALREADY_RUNNING', '另一个盘中抓取 tick 正在运行。') from None
+            try:
+                yield
+            finally:
+                fcntl.flock(stream, fcntl.LOCK_UN)
+
+    def enable_intraday(self, *, confirmed=False, authorization=''):
+        from quantlab.data.eastmoney_sources import intraday_sources
+        if confirmed is not True:
+            raise SchedulerError('CONFIRMATION_REQUIRED', '启用竞价/盘中快照需要宿主显式确认。')
+        if not isinstance(authorization, str) or not authorization.strip():
+            raise SchedulerError('INVALID_ARGUMENT', '需要记录授权依据。')
+        control_path, _ = self._intraday_paths()
+        self.root.mkdir(parents=True, exist_ok=True)
+        control = {'format': 'evidence-scheduler-intraday-control-v1', 'enabled': True, 'authorization': authorization.strip()[:500],
+                   'enabled_at': self.now_fn().astimezone(timezone.utc).isoformat(),
+                   'tasks': [{'task': s.source_id, 'window': [s.capture_window[0].strftime('%H:%M:%S'), s.capture_window[1].strftime('%H:%M:%S')]}
+                             for s in intraday_sources()],
+                   'scope': '仅在授权时段内低频抓取：09:25:30–09:29:30 集合竞价全市场快照；10:00、11:00、13:30、14:30 起 10 分钟内涨停/炸板/跌停池快照；'
+                            '与收盘后归档分开存放，不补抓、不交易。'}
+        _write_checked(control_path, control)
+        return control
+
+    def pause_intraday(self):
+        control_path, _ = self._intraday_paths()
+        control = _read_checked(control_path, None)
+        if control is None:
+            raise SchedulerError('NOT_CONFIGURED', '竞价/盘中快照尚未启用。')
+        control = {**control, 'enabled': False, 'paused_at': self.now_fn().astimezone(timezone.utc).isoformat()}
+        _write_checked(control_path, control)
+        return control
+
+    def tick_intraday(self):
+        from quantlab.data.eastmoney_sources import intraday_sources
+        control_path, state_path = self._intraday_paths()
+        control = _read_checked(control_path, None)
+        if not control or control.get('enabled') is not True:
+            return {'status': 'DISABLED', 'actions': []}
+        with self._intraday_lock():
+            now = self.now_fn()
+            local = now.astimezone(TZ)
+            day, key = local.date(), local.date().isoformat()
+            state = _read_checked(state_path, {'format': 'evidence-scheduler-intraday-state-v1', 'days': {}, 'calendar': {}})
+            due = [s for s in intraday_sources() if s.capture_window[0] <= local.time() < s.capture_window[1]]
+            actions, status = [], 'OK'
+            if day.weekday() >= 5 or not due:
+                status = 'NOTHING_DUE'
+            else:
+                if key not in state['calendar']:
+                    try:
+                        state['calendar'][key] = bool(self.calendar_fn(day))
+                    except Exception as error:
+                        actions.append({'day': key, 'task': 'calendar', 'ok': False, 'error': f'{type(error).__name__}: {str(error)[:160]}'})
+                if key not in state['calendar']:
+                    status = 'CALENDAR_UNAVAILABLE'
+                elif state['calendar'][key] is not True:
+                    status = 'NOT_TRADING_DAY'
+                else:
+                    archive = self._archive()
+                    archive.calendar_days = {key}
+                    day_state = state['days'].setdefault(key, {})
+                    for source in due:
+                        entry = day_state.setdefault(source.source_id, {'attempts': 0, 'status': 'PENDING', 'last_error': None})
+                        if entry['status'] in ('ACCEPTED', 'GAVE_UP'):
+                            continue
+                        try:
+                            archive.get(source.source_id, day)
+                            entry['status'] = 'ACCEPTED'
+                            continue
+                        except PublicEvidenceError as error:
+                            if error.code != 'NOT_FOUND':
+                                raise
+                        entry['attempts'] += 1
+                        entry['last_attempt_at'] = now.astimezone(timezone.utc).isoformat()
+                        try:
+                            manifest = archive.capture(source.source_id, day)
+                            entry.update(status='ACCEPTED', last_error=None, rows=manifest['rows'])
+                            actions.append({'day': key, 'task': source.source_id, 'ok': True, 'rows': manifest['rows'],
+                                            'capture_timing': manifest['capture_timing']})
+                        except Exception as error:
+                            code = getattr(error, 'code', type(error).__name__)
+                            entry.update(status='RETRY' if entry['attempts'] < INTRADAY_MAX_ATTEMPTS else 'GAVE_UP', last_error=f'{code}: {str(error)[:200]}')
+                            actions.append({'day': key, 'task': source.source_id, 'ok': False, 'error': entry['last_error']})
+            state['last_tick_at'] = now.astimezone(timezone.utc).isoformat()
+            if actions:
+                state['last_action_at'] = state['last_tick_at']
+            for old in sorted(state['days'])[:-10]:
+                state['days'].pop(old)
+            for old in sorted(state['calendar'])[:-20]:
+                state['calendar'].pop(old)
+            _write_checked(state_path, state)
+            return {'status': status, 'day': key, 'due': [s.source_id for s in due], 'actions': actions}
 
     def _archive(self):
         if self.archive is None:
@@ -424,7 +533,13 @@ class EvidenceScheduler:
         control = _read_checked(control_path, None)
         state = _read_checked(state_path, {'days': {}, 'calendar': {}})
         days = sorted(state.get('days', {}))[-5:]
-        return {'schedule_version': SCHEDULE_VERSION, 'enabled': bool(control and control.get('enabled')), 'control': control,
+        intraday_control_path, intraday_state_path = self._intraday_paths()
+        intraday_control = _read_checked(intraday_control_path, None)
+        intraday_state = _read_checked(intraday_state_path, {'days': {}})
+        intraday = {'enabled': bool(intraday_control and intraday_control.get('enabled')), 'control': intraday_control,
+                    'last_tick_at': intraday_state.get('last_tick_at'),
+                    'recent_days': {d: intraday_state['days'][d] for d in sorted(intraday_state.get('days', {}))[-3:]}}
+        return {'schedule_version': SCHEDULE_VERSION, 'enabled': bool(control and control.get('enabled')), 'control': control, 'intraday': intraday,
                 'last_tick_at': state.get('last_tick_at'), 'last_action_at': state.get('last_action_at'),
                 'recent_days': {d: state['days'][d] for d in days}, 'schedule': [
                     {'task': item['task'], 'after': item['after'].strftime('%H:%M'), 'weekly': bool(item.get('weekly'))} for item in SCHEDULE]}
@@ -460,4 +575,42 @@ def install_agent(output):
             'requires': 'Mac 登录、联网、外置盘挂载；休眠期间不运行，醒来后在收盘后窗口内补做。'}
 
 
-__all__ = ['SCHEDULE', 'SCHEDULE_VERSION', 'LABEL', 'EvidenceScheduler', 'SchedulerError', 'install_agent', 'previous_weekday']
+def intraday_agent_config(output):
+    """launchd job for authorized auction/intraday snapshots: calendar triggers inside each window, Monday to Friday."""
+    output = Path(output).resolve()
+    logs = EvidenceScheduler(output).root
+    return {'Label': INTRADAY_LABEL, 'ProgramArguments': [sys.executable, '-m', 'quantlab.agent.evidence_scheduler_cli', '--output', str(output),
+                                                          '--tick-intraday'],
+            'WorkingDirectory': str(Path(__file__).resolve().parents[3]), 'RunAtLoad': False, 'ProcessType': 'Background',
+            'StartCalendarInterval': [{'Weekday': weekday, 'Hour': hour, 'Minute': minute} for weekday in range(1, 6) for hour, minute in INTRADAY_TRIGGERS],
+            'StandardOutPath': str(logs / 'intraday.log'), 'StandardErrorPath': str(logs / 'intraday.error.log')}
+
+
+def install_intraday_agent(output):
+    if sys.platform != 'darwin':
+        raise SchedulerError('UNSUPPORTED_PLATFORM', '自动安装仅支持 macOS；其他平台可在时段内运行 --tick-intraday。')
+    import plistlib
+    import subprocess
+    scheduler = EvidenceScheduler(output)
+    control, _ = scheduler._intraday_paths()
+    if not control.exists():
+        raise SchedulerError('NOT_CONFIGURED', '请先 --enable-intraday --confirm。')
+    folder = Path.home() / 'Library/LaunchAgents'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / (INTRADAY_LABEL + '.plist')
+    config = intraday_agent_config(output)
+    if path.exists() and plistlib.loads(path.read_bytes()) != config:
+        raise SchedulerError('CONFLICT', '同名后台任务已有不同配置，请先检查 ' + str(path))
+    path.write_bytes(plistlib.dumps(config))
+    domain = 'gui/' + str(os.getuid())
+    loaded = subprocess.run(['launchctl', 'print', domain + '/' + INTRADAY_LABEL], capture_output=True, text=True)
+    if loaded.returncode != 0:
+        result = subprocess.run(['launchctl', 'bootstrap', domain, str(path)], capture_output=True, text=True)
+        if result.returncode:
+            raise SchedulerError('LAUNCHCTL_FAILED', 'launchctl bootstrap: ' + result.stderr.strip())
+    return {'installed': True, 'label': INTRADAY_LABEL, 'plist': str(path), 'triggers': [f'{h:02d}:{m:02d}' for h, m in INTRADAY_TRIGGERS],
+            'requires': 'Mac 登录、联网、外置盘挂载；休眠或错过时段则当天不补抓。'}
+
+
+__all__ = ['SCHEDULE', 'SCHEDULE_VERSION', 'LABEL', 'INTRADAY_LABEL', 'EvidenceScheduler', 'SchedulerError', 'install_agent', 'install_intraday_agent',
+           'intraday_agent_config', 'previous_weekday']

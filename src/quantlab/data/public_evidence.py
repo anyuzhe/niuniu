@@ -38,6 +38,8 @@ NEXT_SESSION_CUTOFF = time(9, 15)
 SOURCE_ID = re.compile(r'^[a-z][a-z0-9_]{2,40}$')
 CAPTURE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 TIMINGS = ('SAME_DAY_AFTER_CLOSE', 'BEFORE_NEXT_SESSION', 'LATE')
+# Session-phase sources (authorized 2026-09-17, D-1) declare ``capture_window`` and are timed against it instead.
+WINDOW_TIMINGS = ('AUCTION', 'INTRADAY')
 TIMING_RANK = {name: index for index, name in enumerate(TIMINGS)}
 STAGING = '.staging'
 STAGING_FORMAT = 'public-evidence-staging-v1'
@@ -89,6 +91,8 @@ class Source:
     snapshot_only = False
     resumable = False
     max_requests = MAX_REQUESTS_PER_CAPTURE
+    capture_window = None  # (start, end) local times for auction/intraday snapshots of the trading day itself
+    window_timing = None   # 'AUCTION' or 'INTRADAY' when ``capture_window`` is set
 
     def requests(self, day):
         raise NotImplementedError
@@ -116,6 +120,15 @@ def http_fetch(spec):
         if len(body) > MAX_BODY:
             raise PublicEvidenceError('BUDGET_EXCEEDED', '响应超过 10MB。')
         return response.status, response.geturl(), response.headers.get('Content-Type', ''), body
+
+
+def window_timing(source, day, moment):
+    """Timing of a session-phase capture: its declared phase inside the window on the trading day, else OUTSIDE_WINDOW."""
+    if not isinstance(moment, datetime) or moment.tzinfo is None:
+        raise PublicEvidenceError('INVALID_CLOCK', '抓取时间必须带时区。')
+    local = moment.astimezone(TZ)
+    start, end = source.capture_window
+    return source.window_timing if local.date() == day and start <= local.time() < end else 'OUTSIDE_WINDOW'
 
 
 def _day(value):
@@ -248,7 +261,14 @@ class PublicEvidenceArchive:
 
     # ---- capture -------------------------------------------------------------------------------
     @staticmethod
+    def _timing(source, day, moment):
+        return window_timing(source, day, moment) if getattr(source, 'capture_window', None) is not None else capture_timing(day, moment)
+
+    @staticmethod
     def _gate(source, timing, allow_late):
+        if timing == 'OUTSIDE_WINDOW':
+            start, end = source.capture_window
+            raise PublicEvidenceError('OUTSIDE_CAPTURE_WINDOW', f'{source.source_id} 只在交易日当天 {start:%H:%M:%S}–{end:%H:%M:%S} 授权抓取。')
         if timing == 'NOT_AFTER_CLOSE':
             raise PublicEvidenceError('NOT_AFTER_CLOSE', '只授权收盘后归档；盘中或未来日期不抓取。')
         if timing == 'LATE' and getattr(source, 'snapshot_only', False):
@@ -374,7 +394,9 @@ class PublicEvidenceArchive:
         folder = self._day_dir(source_id, day)
         staging = folder / STAGING
         try:
-            self._gate(source, capture_timing(day, started), allow_late)
+            self._gate(source, self._timing(source, day, started), allow_late)
+            if getattr(source, 'capture_window', None) is not None and max_seconds is not None:
+                raise PublicEvidenceError('INVALID_ARGUMENT', '竞价/盘中快照必须在时段内一次抓完，不能续抓。')
         except PublicEvidenceError:
             self._discard_staging(staging)
             raise
@@ -387,8 +409,11 @@ class PublicEvidenceArchive:
             if staged['state'] == 'IN_PROGRESS':
                 return staged
             responses, started = staged['responses'], staged['started_at']
-        timings = [capture_timing(day, moment) for moment in [started] + [r.fetched_at for r in responses]]
-        timing = 'NOT_AFTER_CLOSE' if 'NOT_AFTER_CLOSE' in timings else max(timings, key=TIMING_RANK.get)
+        timings = [self._timing(source, day, moment) for moment in [started] + [r.fetched_at for r in responses]]
+        if getattr(source, 'capture_window', None) is not None:
+            timing = 'OUTSIDE_WINDOW' if 'OUTSIDE_WINDOW' in timings else source.window_timing
+        else:
+            timing = 'NOT_AFTER_CLOSE' if 'NOT_AFTER_CLOSE' in timings else max(timings, key=TIMING_RANK.get)
         try:
             self._gate(source, timing, allow_late)
             parsed = source.parse(day, responses)
@@ -524,5 +549,5 @@ class PublicEvidenceArchive:
                             'days': len(self.list_days(source_id, limit=5000))} for source_id, source in sorted(self.sources.items())}
 
 
-__all__ = ['FORMAT', 'ALLOWED_HOSTS', 'TIMINGS', 'STAGING', 'PublicEvidenceError', 'RequestSpec', 'Response', 'ParsedTable', 'Source',
-           'PublicEvidenceArchive', 'capture_timing', 'http_fetch', 'next_weekday']
+__all__ = ['FORMAT', 'ALLOWED_HOSTS', 'TIMINGS', 'WINDOW_TIMINGS', 'STAGING', 'PublicEvidenceError', 'RequestSpec', 'Response', 'ParsedTable', 'Source',
+           'PublicEvidenceArchive', 'capture_timing', 'http_fetch', 'next_weekday', 'window_timing']

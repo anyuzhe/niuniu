@@ -1,7 +1,7 @@
-"""Eastmoney public webpage sources for after-close limit-board evidence (research_only)."""
+"""Eastmoney public webpage sources for limit-board evidence (research_only): after-close archives plus authorized auction/intraday snapshots."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from urllib.parse import quote
 import json
 import math
@@ -542,10 +542,98 @@ def pool_sources():
     ]
 
 
+INTRADAY_LIMITATIONS = (
+    '竞价/盘中快照是抓取时刻的状态，不是收盘结果；与收盘后归档分开存放（来源 ID 带时段），不能替代收盘口径。',
+    '只在授权时段内抓取（2026-09-17 用户授权）：集合竞价快照 09:25:30–09:29:30；盘中涨停/炸板/跌停池在 10:00、11:00、13:30、14:30 起 10 分钟内各抓一次。',
+)
+AUCTION_WINDOW = (time(9, 25, 30), time(9, 29, 30))
+INTRADAY_SLOTS = ('1000', '1100', '1330', '1430')
+SLOT_MINUTES = 10
+AUCTION_FIELDS = ('f12', 'f13', 'f14', 'f2', 'f3', 'f5', 'f6', 'f15', 'f16', 'f17', 'f18')
+MIN_AUCTION_MATCHED_SHARE = 0.8
+
+
+class EastmoneyAuctionSnapshotSource(Source):
+    """Whole-market snapshot right after the 09:25 call auction from the real-time host (never the delayed one)."""
+    source_id = 'em_auction_snapshot'
+    parser_version = 'em-auction-snapshot-v1'
+    description = '东方财富集合竞价后沪深 A 股全市场快照（竞价成交价即开盘价、成交量额；09:25:30–09:29:30）'
+    limitations = INTRADAY_LIMITATIONS + ('取自实时行情主机 push2；主机不可用时抓取失败，不改用延时主机。', '不含北交所。')
+    snapshot_only = True
+    capture_window = AUCTION_WINDOW
+    window_timing = 'AUCTION'
+    max_requests = 120
+    FS = 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23'
+    SCHEMA = {'symbol': pl.String, 'code': pl.String, 'name': pl.String, 'price': pl.Float64, 'pct_change': pl.Float64,
+              'volume': pl.Float64, 'amount': pl.Float64, 'open': pl.Float64, 'high': pl.Float64, 'low': pl.Float64,
+              'preclose': pl.Float64, 'auction_matched': pl.Boolean}
+
+    def _url(self, page):
+        return ('https://push2.eastmoney.com/api/qt/clist/get?pn=' + str(page) + f'&pz={CLIST_PAGE}&po=0&np=1&fltt=2&invt=2&fid=f12'
+                + '&fs=' + quote(self.FS, safe='') + '&fields=' + quote(','.join(AUCTION_FIELDS), safe=''))
+
+    def requests(self, day):
+        return [RequestSpec(self._url(1))]
+
+    def follow_up(self, day, responses):
+        total, _ = _clist_page(responses[0], self.source_id)
+        return [RequestSpec(self._url(page)) for page in range(len(responses) + 1, _pages(total) + 1)]
+
+    def parse(self, day, responses):
+        rows, seen, total = [], set(), None
+        for index, response in enumerate(responses, start=1):
+            if _page_of(response.request.url) != index:
+                raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 分页顺序无效。')
+            page_total, diff = _clist_page(response, self.source_id)
+            if total is not None and page_total != total:
+                raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 分页之间总数发生变化。')
+            total = page_total
+            for item in diff:
+                if not isinstance(item, dict) or set(AUCTION_FIELDS) - set(item):
+                    raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 缺少字段。')
+                symbol = _member_symbol(item['f12'], item['f13'])
+                if symbol in seen:
+                    raise PublicEvidenceError('DATA_SCHEMA', self.source_id + ' 证券重复。')
+                if not isinstance(item['f14'], str):
+                    raise PublicEvidenceError('DATA_SCHEMA', 'name 必须为字符串。')
+                seen.add(symbol)
+                values = [_nullable_number(item[key], key) for key in ('f2', 'f3', 'f5', 'f6', 'f17', 'f15', 'f16', 'f18')]
+                rows.append([symbol, item['f12'], item['f14'], *values[:4], values[4], values[5], values[6], values[7], values[4] is not None])
+        if total is None or len(rows) != total or not rows:
+            raise PublicEvidenceError('DATA_SCHEMA', f'{self.source_id} 全市场快照未取全（{len(rows)}/{total}）。')
+        matched = sum(1 for row in rows if row[-1])
+        if matched < MIN_AUCTION_MATCHED_SHARE * len(rows):
+            raise PublicEvidenceError('DATA_NOT_READY', f'{self.source_id} 竞价尚未撮合完成：{matched}/{len(rows)} 只有开盘价。')
+        rows.sort(key=lambda row: row[0])
+        return ParsedTable(rows, dict(self.SCHEMA), [])
+
+
+class IntradayPoolSource(EastmoneyPoolSource):
+    """A limit-board pool snapshot inside one intraday slot, archived under its own source id."""
+    parser_version = 'em-pool-intraday-v1'
+    snapshot_only = True
+    window_timing = 'INTRADAY'
+
+    def __init__(self, base, slot):
+        if slot not in INTRADAY_SLOTS:
+            raise ValueError('盘中时段无效：' + str(slot))
+        start = time(int(slot[:2]), int(slot[2:]))
+        end = (datetime.combine(date(2000, 1, 3), start) + timedelta(minutes=SLOT_MINUTES)).time()
+        super().__init__(f'{base.source_id}_i{slot}', base.api, base.sort, base.fields, f'{base.description}（盘中 {start:%H:%M} 快照）')
+        self.slot, self.capture_window = slot, (start, end)
+        self.limitations = POOL_LIMITATIONS + INTRADAY_LIMITATIONS
+
+
+def intraday_sources():
+    pools = {source.source_id: source for source in pool_sources()}
+    return [EastmoneyAuctionSnapshotSource()] + [IntradayPoolSource(pools[name], slot) for slot in INTRADAY_SLOTS
+                                                 for name in ('em_limit_up_pool', 'em_broken_board_pool', 'em_limit_down_pool')]
+
+
 def default_sources():
-    return pool_sources() + billboard_sources() + snapshot_sources()
+    return pool_sources() + billboard_sources() + snapshot_sources() + intraday_sources()
 
 
-__all__ = ['POOL_UT', 'EastmoneyPoolSource', 'EastmoneyDatacenterSource', 'EastmoneyBoardListSource', 'EastmoneyBoardMembersSource',
+__all__ = ['POOL_UT', 'AUCTION_WINDOW', 'INTRADAY_SLOTS', 'EastmoneyAuctionSnapshotSource', 'IntradayPoolSource', 'intraday_sources', 'EastmoneyPoolSource', 'EastmoneyDatacenterSource', 'EastmoneyBoardListSource', 'EastmoneyBoardMembersSource',
            'EastmoneyPopularitySource', 'billboard_sources', 'default_sources', 'em_symbol', 'pool_sources', 'secucode_symbol',
            'snapshot_sources']

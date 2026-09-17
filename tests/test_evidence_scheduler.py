@@ -7,7 +7,7 @@ import io
 import json
 import unittest
 
-from quantlab.agent.evidence_scheduler import SCHEDULE, EvidenceScheduler, SchedulerError
+from quantlab.agent.evidence_scheduler import INTRADAY_TRIGGERS, SCHEDULE, EvidenceScheduler, SchedulerError, intraday_agent_config
 from quantlab.agent.evidence_scheduler_cli import main as cli_main
 from quantlab.agent.system_health import SystemHealthService
 from quantlab.data.public_evidence import PublicEvidenceError
@@ -309,6 +309,35 @@ class SchedulerTests(unittest.TestCase):
         self.now[0] = at(2026, 9, 21, 8, 30)
         self.assertIn('premarket_brief', self.tasks(self.scheduler.tick()))
         self.assertEqual(self.premarket.targets, ['2026-09-21', '2026-09-21'])
+
+    def test_intraday_snapshots_require_their_own_authorization_and_windows(self):
+        self.assertEqual(self.scheduler.tick_intraday(), {'status': 'DISABLED', 'actions': []})
+        with self.assertRaises(SchedulerError):
+            self.scheduler.enable_intraday(confirmed=True)
+        control = self.scheduler.enable_intraday(confirmed=True, authorization='用户于2026-09-17在对话中授权竞价与盘中快照（D-1）')
+        self.assertEqual(len(control['tasks']), 13)
+        self.assertFalse(self.scheduler.status()['enabled'])  # the after-close switch is independent
+        self.now[0] = at(2026, 9, 17, 9, 20)
+        self.assertEqual(self.scheduler.tick_intraday()['status'], 'NOTHING_DUE')
+        self.now[0] = at(2026, 9, 17, 9, 26)
+        self.archive.fail.add('em_auction_snapshot')
+        first = self.scheduler.tick_intraday()
+        self.assertEqual((first['due'], first['actions'][0]['ok']), (['em_auction_snapshot'], False))
+        self.archive.fail.clear()
+        self.now[0] = at(2026, 9, 17, 9, 28)
+        self.assertEqual([a['task'] for a in self.scheduler.tick_intraday()['actions'] if a['ok']], ['em_auction_snapshot'])
+        self.assertEqual(self.scheduler.tick_intraday()['actions'], [])  # already accepted in this window
+        self.now[0] = at(2026, 9, 17, 10, 6)
+        slot = self.scheduler.tick_intraday()
+        self.assertEqual(sorted(a['task'] for a in slot['actions'] if a['ok']), ['em_broken_board_pool_i1000', 'em_limit_down_pool_i1000', 'em_limit_up_pool_i1000'])
+        self.holidays.add(date(2026, 10, 1)); self.now[0] = at(2026, 10, 1, 10, 1)
+        self.assertEqual(self.scheduler.tick_intraday()['status'], 'NOT_TRADING_DAY')
+        status = self.scheduler.status()['intraday']
+        self.assertTrue(status['enabled']); self.assertEqual(status['recent_days']['2026-09-17']['em_auction_snapshot']['attempts'], 2)
+        self.scheduler.pause_intraday(); self.assertEqual(self.scheduler.tick_intraday()['status'], 'DISABLED')
+        config = intraday_agent_config(self.output)
+        self.assertEqual((config['ProgramArguments'][-1], len(config['StartCalendarInterval']), config['StartCalendarInterval'][0]),
+                         ('--tick-intraday', 5 * len(INTRADAY_TRIGGERS), {'Weekday': 1, 'Hour': 9, 'Minute': 26}))
 
     def test_staged_member_capture_continues_next_tick_without_using_attempts(self):
         self.scheduler.enable(confirmed=True, authorization='ok')

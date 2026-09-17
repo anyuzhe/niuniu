@@ -32,6 +32,8 @@ def main(argv=None):
         elif args.call == 'capture-all':
             results = {}
             for source_id in archive.sources:
+                if getattr(archive.sources[source_id], 'capture_window', None) is not None:
+                    continue  # auction/intraday snapshots are captured only inside their own windows (scheduler --tick-intraday)
                 try:
                     resumable = getattr(archive.sources[source_id], 'resumable', False)
                     manifest = archive.capture(source_id, day, allow_late=args.allow_late,
