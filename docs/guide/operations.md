@@ -89,3 +89,20 @@ niuniu-premarket-brief --help
 本项目测试使用 unittest。当前 Mac 全量同进程离屏测试出现过 Qt 原生崩溃；应保留日志，并可逐测试模块在独立进程中定位，而不是修改业务规则使其通过。操作方法和本轮结果入口见 [开发规范](../development/contributing.md) 与 [文档整理记录](../development/documentation-cleanup.md)。
 
 日常维护只更新对应主题文档和开发史；复杂验收才另存 dated archive。历史产物路径、外部数据根和机器可读知识包不属于普通文档清理对象。
+
+## 7. 无界面授权研究入口（2026-09-17）
+
+已有有效 Research Session Grant 时，可显式把后台聊天连接到同一任务队列：
+
+```bash
+python -m quantlab.agent.chat_cli \
+  --output /path/to/isolated-workspace --data-root /path/to/local-data \
+  --allow-granted-research --accept-model-service \
+  --ask "核对已有授权，只执行范围内已经冻结的研究配置，并引用真实任务结果。"
+```
+
+`--allow-granted-research` 仅接线，不创建或扩大授权；没有有效 Grant 仍然拒绝执行。默认不启用此开关。任务队列按需创建并在后台对话退出时关闭；已提交研究等待完成，不把关闭对话冒充撤销授权。
+
+上述开关不是“禁用所有市场联网”的通用模式，原有模型发送/明确证券实时报价规则不变。本次隔离验收另通过测试适配器关闭行情网络，并冻结最多三个候选，未触及日常工作空间。
+
+真实三候选模型试跑及限制见 [2026-09-17 后台实测](../archive/testing/20260917-自主因子后台实测.md)。单批次通过不代表已部署每日自动研究调度。
