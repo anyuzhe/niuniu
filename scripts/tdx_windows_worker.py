@@ -1,19 +1,20 @@
 """Current-user Windows TDX supervisor. Never elevates or clears stop markers.
 
-HomePc tunnel start requires an operator after a platform denial; its local
-configuration must keep allow_tunnel_start=false. 601 has a separately admitted
-scoped tunnel. Keys are used in place, never copied or printed.
+The preferred long-run mode is offline-only: collect the assigned shard locally
+without requiring Mac connectivity, then export verified result bundles later for
+physical transfer. Continuous transfer remains available only when explicitly configured.
 """
 from __future__ import annotations
 import argparse,http.client,json,os,re,subprocess,sys,time
 from pathlib import Path,PureWindowsPath
 
 def validate_config(c):
-    fields={'machine_name','code_root','data_root','control_root','identity_file','known_hosts_file','cluster_id','shard_id','allow_tunnel_start'}
+    fields={'machine_name','code_root','data_root','control_root','identity_file','known_hosts_file','cluster_id','shard_id','allow_tunnel_start','offline_only'}
     if not isinstance(c,dict) or set(c)!=fields:raise ValueError('Configuration fields differ')
     if (c['machine_name'],c['shard_id']) not in (('homepc',1),('601',2)):raise ValueError('Machine/shard mismatch')
     if type(c['allow_tunnel_start']) is not bool:raise ValueError('Explicit tunnel-start permission required')
-    if c['machine_name']=='homepc' and c['allow_tunnel_start']:raise ValueError('HomePc requires operator-started tunnel')
+    if type(c['offline_only']) is not bool:raise ValueError('Explicit offline-only flag required')
+    if c['machine_name']=='homepc' and c['allow_tunnel_start'] and not c['offline_only']:raise ValueError('HomePc requires operator-started tunnel')
     if not re.fullmatch('[a-f0-9]{64}',c['cluster_id']):raise ValueError('Invalid cluster identity')
     for k in ('code_root','data_root','control_root','identity_file','known_hosts_file'):
         s=c[k]
@@ -35,7 +36,11 @@ def tunnel_command(c,system_root):
         '-L','127.0.0.1:18943:127.0.0.1:18943','tdx-transfer@8.136.98.55']
 
 def worker_command(c):
-    return [str(PureWindowsPath(c['code_root'])/'.venv/Scripts/python.exe'),'-u','-m','quantlab.agent.tdx_worker_service',
+    python=str(PureWindowsPath(c['code_root'])/'.venv/Scripts/python.exe')
+    if c['offline_only']:
+        return [python,'-u','-m','quantlab.agent.tdx_collection_cli','--data-root',c['data_root'],'autoresume',
+            '--personal-research-only','--seconds','86400','--max-requests','1000000','--max-new-gib','500','--workers','2']
+    return [python,'-u','-m','quantlab.agent.tdx_worker_service',
         '--data-root',c['data_root'],'--server-url','http://127.0.0.1:18943','--personal-research-only',
         '--seconds','86400','--max-requests','200000','--max-new-gib','100','--cycle-seconds','120']
 
@@ -79,6 +84,10 @@ def supervise(c):
             while True:
                 reason=stop_reason(data,control)
                 if reason:return record(reason)
+                if c['offline_only']:
+                    if worker is None:worker=spawn(worker_command(c));started+=1
+                    if worker.poll() is not None:return record('WORKER_EXIT',exit_code=worker.returncode)
+                    record('RUNNING_OFFLINE');time.sleep(5);continue
                 ready=health(c['cluster_id'])
                 if not ready and (ssh is None or ssh.poll() is not None) and time.monotonic()>=next_attempt:
                     if not c['allow_tunnel_start']:

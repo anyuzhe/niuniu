@@ -1364,3 +1364,19 @@
 - 新模式从原bootstrap逐页核验raw/Parquet/manifest生成，冻结原frontier/assignment/policy和前驱行摘要；原始文件仍在canonical和原包中。worker凭据非行情、非SAVED；canonical导入仍用实际前驱原始页复核。HomePc 4,763,945字节、601 4,606,132字节，原全包不删除。
 - 增加本地worker汇总writer-lock竞争转为BundleDeferred，保留精确outbox并等待；不改变内容冲突门槛。Mac完整TDX88项、15模块相关182项回归通过/0失败/0跳过；首次新单元测试发现临时目录/var与/private/var解析差异，统一根路径后通过。
 - 容量审计发现Lexar每个受检小文件及页目录实际各占524,288字节，即约2MiB/页；不是按文件内容字节就能规划容量。原始数据未删除、未格式化磁盘；全历史ETA必须同时报告存储限制和剩余协议错误。
+
+### 2026-09-18｜[TDX实机] Windows真实续采与HTTP回执响应修复
+
+- HomePc/601小型断点安装成功，两台各87项独立worker测试通过。实际Windows任务分别带USER_STOP/AUTO_HALT启动，均返回0子进程，未提权。
+- HomePc真实60请求/21.102秒、源端错误0，原76条ERROR逐字段不变；64页结果从原offset续采并在canonical校验MERGED，重复发送取得同一回执，无重复入库。
+- 601真实60请求/21.071秒、源端错误0，结果包已保存；初次在查询回执时超时。定位到原transfer主循环串行accept/merge，慢速合并使新HTTP请求排队；随后临时SSH达到3600秒预算退出，同一outbox仍保留，未重新采集60页。
+- HTTP主循环与单一合并线程分离，慢合并时health/receipt仍可响应，实际写入仍取canonical单写者锁；ACK仍只由成功校验合并产生。SYNC_STOP阻止启动，后台合并异常留证后退出，不伪造健康。
+- 新增3项真实loopback并发/停止/异常测试，Mac完整TDX91项、15模块相关185项回归通过。部署和601回执恢复结果另按实际记录。
+
+### 2026-09-18｜[TDX运行策略] Windows改为离线采完整分片后物理交接
+
+- 原因：用户明确不需要Windows边采边传Mac，允许完成后用移动硬盘一次性交接。两机此前未长跑的直接原因是验收后STOP/SUPERVISOR_STOP仍保留，且监督器把传输health设为worker启动前置，不是WebCodex或采集源故障。
+- 改动：监督器新增显式`offline_only`合同；该模式只启动固定worker的autoresume，不启动SSH/HTTP同步、不生成每轮网络回传，仍保留plan/policy/shard绑定、STOP/AUTO_HALT、瞬时重试、30GiB磁盘余量和单实例锁。
+- 最终交接：worker停止后复制完整数据根/导出产物到移动硬盘，Mac仍按原bundle sequence、raw/Parquet/manifest SHA、source_id、前驱分页和冲突隔离规则导入，物理运输不等于绕过验收。
+- 容量：601 D盘约1.57TiB可直接开始；HomePc现有E盘约381.76GiB，另两盘也无单盘更大空闲。历史成交随机样本33/36完整、平均2.394请求/完整股票日、约96,337逻辑字节/完整日；HomePc完整分片大概率超出现有单盘容量，保留磁盘门并在不足时AUTO_HALT，不关闭保护。
+- 验证：监督器单测及完整TDX profile 91项通过；后续Windows实机切换、启动和持续心跳另按真实回执记录。

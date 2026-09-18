@@ -93,6 +93,38 @@ class TransferTests(unittest.TestCase):
             self.assertEqual(collect_cycle(self.worker)['state'],'AUTO_HALTED')
             self.assertEqual(run_service(self.worker,canonical_root=self.f.lake.root,seconds=1)['state'],'AUTO_HALTED')
 
+    def test_slow_merge_does_not_block_http_health(self):
+        from quantlab.agent.tdx_transfer import serve_transfer
+        server=TransferServer(('127.0.0.1',0),self.f.lake,self.f.root/'concurrent-exchange')
+        entered=threading.Event();release=threading.Event();stop=threading.Event()
+        def slow_merge():entered.set();release.wait(5)
+        with patch.object(server,'merge_pending',side_effect=slow_merge):
+            thread=threading.Thread(target=serve_transfer,args=(server,server.exchange/'SYNC_STOP'),kwargs={'stop_event':stop},daemon=True);thread.start()
+            try:
+                self.assertTrue(entered.wait(3))
+                con=http.client.HTTPConnection('127.0.0.1',server.server_port,timeout=2)
+                try:
+                    con.request('GET','/health');r=con.getresponse();r.read();self.assertEqual(r.status,200)
+                    self.assertFalse(release.is_set())
+                finally:con.close()
+            finally:stop.set();release.set();thread.join(5);server.server_close()
+            self.assertFalse(thread.is_alive())
+
+    def test_sync_stop_prevents_starting_merger(self):
+        from quantlab.agent.tdx_transfer import serve_transfer
+        marker=self.server.exchange/'SYNC_STOP';marker.write_text('operator stop')
+        with patch.object(self.server,'merge_pending',side_effect=AssertionError('must not merge')):
+            serve_transfer(self.server,marker)
+
+    def test_background_merge_error_is_not_reported_healthy(self):
+        from quantlab.agent.tdx_transfer import serve_transfer
+        server=TransferServer(('127.0.0.1',0),self.f.lake,self.f.root/'failed-merge-exchange')
+        try:
+            with patch.object(server,'merge_pending',side_effect=ValueError('injected merge failure')):
+                with self.assertRaisesRegex(ValueError,'injected merge failure'):serve_transfer(server,server.exchange/'SYNC_STOP')
+            self.assertTrue((server.exchange/'merge-error.json').exists())
+        finally:server.server_close()
+
     def test_network_failure_keeps_outbox_and_source_pages(self):
         receipt=self.result()
         with patch('quantlab.agent.tdx_worker_service.send_result',side_effect=ConnectionError('tunnel down')):

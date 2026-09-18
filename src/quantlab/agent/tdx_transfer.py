@@ -260,6 +260,33 @@ class Handler(BaseHTTPRequestHandler):
         finally:partial.unlink(missing_ok=True)
 
 
+def serve_transfer(server,stop_marker,*,stop_event=None,poll_seconds=.5):
+    """Keep the HTTP control path responsive while one background merger works.
+
+    The merger still takes the canonical writer lease. It never acknowledges an
+    upload before import_results writes the verified receipt.
+    """
+    marker=Path(stop_marker);stopping=stop_event or threading.Event();failures=[]
+    if marker.exists() or stopping.is_set():return
+    def merge_loop():
+        while not stopping.is_set() and not marker.exists():
+            try:server.merge_pending()
+            except Exception as exc:
+                failures.append(exc)
+                try:write_json(server.exchange/'merge-error.json',{'error':type(exc).__name__+': '+str(exc),'observed_at':now()})
+                finally:stopping.set()
+                return
+            stopping.wait(poll_seconds)
+    merger=threading.Thread(target=merge_loop,name='tdx-canonical-merger',daemon=True)
+    merger.start()
+    try:
+        while not stopping.is_set() and not marker.exists():server.handle_request()
+    finally:
+        stopping.set();merger.join(timeout=300)
+    if merger.is_alive():raise RuntimeError('Canonical merger did not stop within bounded shutdown grace')
+    if failures:raise failures[0]
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-root',type=Path,required=True)
@@ -272,12 +299,7 @@ def main(argv=None):
     lake=TdxLake(args.data_root)
     with TransferServer(('127.0.0.1',args.port),lake,args.exchange) as server:
         print(encode({'state':'LISTENING_LOOPBACK_ONLY','port':args.port,'cluster_id':server.cluster['cluster_id']}),flush=True)
-        while not (args.exchange/'SYNC_STOP').exists():
-            server.handle_request()
-            try:server.merge_pending()
-            except Exception as exc:
-                write_json(args.exchange/'merge-error.json',{'error':type(exc).__name__+': '+str(exc),'observed_at':now()})
-                raise
+        serve_transfer(server,args.exchange/'SYNC_STOP')
     return 0
 
 

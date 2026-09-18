@@ -108,3 +108,13 @@ HomePc的新隧道启动调用仍被平台安全检查阻止，没有Job/PID；�
 仅在frontier不含尚需重放的已保存chunk时允许此模式；存在未完成页字节时仍要求原完整包。凭据只存worker队列独立表和冻结checksum清单，CHECKPOINT不进入任何正常行情视图，不被export当作新数据。缺凭据、被重签的伪凭据、错分片、重复页和断开的offset仍拒绝。真实回传的SAVED/EMPTY页继续由canonical读取其实际前驱原始页重新核验；不是以worker摘要代替主库的源字节审计。
 
 两份真实包由原910,673,920/876,800,000字节降至4,763,945/4,606,132字节；原包和主库源文件保留。接收仍使用原loopback HTTP/Range/SHA通道，不经聊天搬运行情。安装函数为`install_witness_bootstrap(destination, path, expected_transfer_sha, expected_original_bootstrap_sha)`，同一包重装不重置进度。核心新增10项保护及锁竞争等待测试；跨节点本地汇总抢占writer锁时保留outbox并等待，不把它当内容冲突。
+
+文件服务采用HTTP接收与单独合并线程，避免逐页校验/写库期间阻塞新health和receipt请求。合并线程仍只有一个且遵守canonical writer lease；文件已上传不等于MERGED。遇到网络超时保留同一outbox和sequence，再查询/发送同一包，不重新采集或重新导出替代版本。`EXCHANGE_DIR/SYNC_STOP` 请求文件服务优雅结束；错误回执绝不当确认。
+
+### Windows 长期运行改为离线采集
+
+用户于2026-09-18明确要求Windows不要边采边回传Mac。当前长期配置因此使用`offline_only=true`：计划任务只启动各自独立worker的`tdx_collection_cli autoresume`，不启动SSH、不检查Mac health、不导出每轮结果包。每个worker继续使用自己的SQLite、page lake、STOP/AUTO_HALT和30GiB磁盘保护；Mac canonical不会被Windows长跑直接写入。
+
+完成后采用物理介质一次性交接：先保持worker停止，复制完整worker数据根或在该副本上批量`export`，再在Mac按原sequence/source_id/SHA/前驱页规则逐批`import`。因此“最后一次搬盘”只改变运输方式，不降低校验门槛，也不把未确认页直接复制进canonical视图。
+
+601的D盘当前空间足以开始长期离线采集。HomePc的E盘只有约382GiB空闲，按随机历史成交日抽样（完整日均约2.39个请求、约96KiB逻辑文件）估计完整分片很可能超过当前单盘容量；它可以先安全运行，达到30GiB保留阈值会AUTO_HALT。要完成该分片，需要后续接入约1TiB级外接盘或重新分配部分工作，不能通过关闭磁盘保护来硬写满系统。
