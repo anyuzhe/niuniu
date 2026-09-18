@@ -156,6 +156,14 @@ Mac真实验收、STOP实测和动态进度见同一artifacts目录的 `mac-shar
 
 长期运行不直接把scheduler policy从0.35改写成0.25，以免改变policy_id和分片绑定；新增独立运行时request interval override，仅改变请求节流。Mac正式LaunchAgent采用0.25秒作为当前长期档位，0.20保留为已通过短测但尚未长时间观察的候选。运行时progress/result显式记录实际request_interval_seconds。
 
+### 2026-09-18 当前最终采集范围：Mac单机三逻辑shard、无K线/无trades
+
+用户进一步明确：既然K线由其他渠道提供，也不需要为K线/成交量研究服务的逐笔成交历史。HomePc与601计划任务已禁用并保留SUPERVISOR_STOP/worker STOP，实机核对无TDX进程；当前只让Mac运行。
+
+Mac保留原0/1/2三个固定shard和独立SQLite，shard1/2使用既有校验witness安装到`/Volumes/Lexar/niuniu-data/workers/worker-1/2`，并从canonical接续已经合并成功的非K线页，避免重下。当前三个LaunchAgent均在Mac运行，每片`workers=2`、运行时interval=0.75秒，聚合约3.5–4 req/s；观察窗口内网络错误0。
+
+collection-scope现排除`bars_1m`、`bars_5m`、`bars_daily`、`trades`、`opening_match`。已有SAVED/EMPTY/CHECKPOINT/ERROR全部保留，不删除；三片本轮分别将1882/1877/1813个待采trades审计标为SKIPPED_POLICY。代码在autoresume恢复后再次应用scope，防止被排除族因重启/瞬时错误恢复重新进入网络请求。实际心跳已显示excluded_families，后续只剩auction为主要历史长任务，shard0另有极少全局limit_ladder。
+
 ## 4. 真正剩余的工作按门槛处理
 
 | 门槛 | 后续应做 | 本轮没有做 |

@@ -162,6 +162,21 @@ class TdxLakeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'request_interval_seconds'):
             Runner(self.lake,self.pid,request_interval_seconds=.19)
 
+    def test_collection_scope_blocks_excluded_retry_before_network(self):
+        from quantlab.agent.tdx_collection_cli import SCOPE_FORMAT
+        from quantlab.data.tdx_lake import write_json
+        core={'format':SCOPE_FORMAT,'plan_id':self.pid,'excluded_families':['trades'],'reason':'fixture','history_complete':False}
+        write_json(self.lake.base/'collection-scope.json',{**core,'scope_id':digest(core)})
+        from quantlab.agent.tdx_collection_cli import recover_for_resume
+        job=self.job('trades');self.lake.mark(job,'ERROR',error='ConnectionClosedError: closed')
+        recover_for_resume(self.lake,self.pid,12)
+        with patch('quantlab.agent.tdx_collection_cli.Source',side_effect=AssertionError('network')):
+            result=Runner(self.lake,self.pid,workers=1,cooldown_seconds=0).run(1,1,1)
+        self.assertEqual(result['network_attempts'],0);self.assertIn('trades',result['excluded_families'])
+        with self.lake.db(readonly=True) as con:
+            row=con.execute('SELECT state,error FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()
+        self.assertEqual(row['state'],'SKIPPED_POLICY');self.assertIn('collection scope',row['error'])
+
     def test_transient_request_retries_exact_job_and_rotates_hosts(self):
         connected=[];requested=[]
         class FakeSource:

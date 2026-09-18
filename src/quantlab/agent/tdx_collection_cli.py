@@ -21,6 +21,8 @@ ACCESS_LIMIT_MARKERS=('429','rate limit','forbidden','denied')
 AUTO_HALT='AUTO_HALT.json'
 SCHEDULER_POLICY='scheduler-policy.json'
 POLICY_FORMAT='tdx-scheduler-policy-v2'
+COLLECTION_SCOPE='collection-scope.json'
+SCOPE_FORMAT='tdx-collection-scope-v1'
 
 def retryable_error(message):
     text=str(message).casefold()
@@ -65,6 +67,39 @@ def validate_scheduler_policy(value,pid):
     interval=value.get('request_interval_seconds')
     if interval is not None and (type(interval) not in (int,float) or not .1<=interval<=2):raise ValueError('Invalid scheduler request interval')
     return value
+
+def _scope_path(lake):return safe(lake.root,lake.base/COLLECTION_SCOPE)
+
+def validate_collection_scope(value,pid):
+    if not isinstance(value,dict):raise ValueError('TDX collection scope schema invalid')
+    core={k:v for k,v in value.items() if k!='scope_id'}
+    excluded=value.get('excluded_families')
+    if value.get('format')!=SCOPE_FORMAT or value.get('plan_id')!=pid or value.get('scope_id')!=digest(core):
+        raise ValueError('TDX collection scope identity/checksum mismatch')
+    if not isinstance(excluded,list) or len(excluded)!=len(set(excluded)) or any(f not in FAMILIES for f in excluded):
+        raise ValueError('TDX collection scope excluded families invalid')
+    return value
+
+def load_collection_scope(lake,pid):
+    path=_scope_path(lake)
+    if not path.exists():return {'format':SCOPE_FORMAT,'plan_id':pid,'scope_id':None,'excluded_families':[],'history_complete':False}
+    if path.is_symlink() or not path.is_file() or path.stat().st_size>1_000_000:raise ValueError('Invalid TDX collection scope file')
+    return validate_collection_scope(json.loads(path.read_text(encoding='utf-8')),pid)
+
+def apply_collection_scope(lake,pid,scope):
+    excluded=tuple(scope.get('excluded_families') or ())
+    if not excluded:return 0
+    with lake.db() as con:
+        con.execute('CREATE TABLE IF NOT EXISTS collection_scope_audit(event_id TEXT PRIMARY KEY,scope_id TEXT NOT NULL,job_id TEXT NOT NULL,before_json TEXT NOT NULL,created_at TEXT NOT NULL)')
+        marks=','.join('?' for _ in excluded)
+        rows=[dict(r) for r in con.execute("SELECT * FROM jobs WHERE plan_id=? AND state='PENDING' AND family IN ("+marks+") ORDER BY job_id",(pid,*excluded))]
+        for job in rows:
+            con.execute('INSERT OR IGNORE INTO collection_scope_audit VALUES (?,?,?,?,?)',
+                (digest([scope.get('scope_id'),job]),scope.get('scope_id') or 'default',job['job_id'],encode(job),now()))
+            con.execute("UPDATE jobs SET state='SKIPPED_POLICY',error=?,updated_at=? WHERE job_id=?",
+                ('Excluded by collection scope '+str(scope.get('scope_id')),now(),job['job_id']))
+        con.commit()
+    return len(rows)
 
 def _verify_auction_retention_evidence(directory,trading_days):
     root=Path(directory).resolve()
@@ -360,6 +395,7 @@ class Runner:
         self.local=threading.local();self.sources=[];self.source_lock=threading.Lock();self.source_generation=0;self.host_cursor=0
         self.rate_lock=threading.Lock();self.last_request=0.
         self.days=tuple(self.plan['trading_days']);self.policy=load_scheduler_policy(lake,pid)
+        self.scope=load_collection_scope(lake,pid);self.excluded_families=set(self.scope.get('excluded_families') or ())
         self.policy_id=self.policy.get('policy_id')
         from quantlab.data.tdx_sharding import load_worker_assignment,validate_worker_queue
         self.assignment=load_worker_assignment(lake,pid,self.policy_id)
@@ -452,6 +488,7 @@ class Runner:
 
     def follow(self,job,manifest,rows):
         f=job['family'];symbol=job['symbol'];day=job['day'];offset=job['offset']
+        if f in self.excluded_families:return
         if f=='trades':
             matches=[r for r in rows if r.get('event_kind')=='opening_match']
             if matches:
@@ -471,6 +508,7 @@ class Runner:
         started=time.monotonic();initial_free=shutil.disk_usage(self.lake.root).free;count=0;reason='QUEUE_DRAINED'
         transient_failures=0;recovery_cycles=0;last_transient=None
         self.lake.reconcile_publications();self.lake.recover(self.pid)
+        apply_collection_scope(self.lake,self.pid,self.scope)
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.workers) as pool:
             while True:
                 if (self.lake.base/'STOP').exists():reason='USER_STOP';break
@@ -515,6 +553,7 @@ class Runner:
                             'recovery_cycles':recovery_cycles,'transient_failures':transient_failures,'scheduler_policy_id':self.policy_id,
                             'network_attempts':self.network_attempts,'network_errors':self.network_errors,'reused_pages':self.reused_pages,
                             'request_interval_seconds':self.request_interval_seconds or self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35),
+                            'excluded_families':sorted(self.excluded_families),
                             'shard_id':self.assignment['shard_id'] if self.assignment else None,'updated_at':now(),'state':'RUNNING'}
                         write_json(self.lake.base/'progress.json',progress);print(encode(progress),flush=True)
                 if reason=='PROVIDER_ACCESS_LIMIT':break
@@ -524,7 +563,7 @@ class Runner:
                     progress={'plan_id':self.pid,'pid':os.getpid(),'processed_this_run':count,'elapsed_seconds':round(time.monotonic()-started),
                         'recovery_cycles':recovery_cycles,'cooldown_seconds':cooldown,'last_error':last_transient,'scheduler_policy_id':self.policy_id,
                         'request_interval_seconds':self.request_interval_seconds or self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35),
-                        'updated_at':now(),'state':'COOLDOWN'}
+                        'excluded_families':sorted(self.excluded_families),'updated_at':now(),'state':'COOLDOWN'}
                     write_json(self.lake.base/'progress.json',progress);print(encode(progress),flush=True)
                     self._reset_sources()
                     self.lake.recover(self.pid,retry_errors=True,max_attempts=self.max_job_attempts,error_markers=RETRYABLE_ERROR_MARKERS)
@@ -536,7 +575,8 @@ class Runner:
             'recovery_cycles':recovery_cycles,'scheduler_policy_id':self.policy_id,'finished_at':now(),'full_history_complete':False,
             'elapsed_seconds':round(time.monotonic()-started,3),'network_attempts':self.network_attempts,'network_errors':self.network_errors,
             'reused_pages':self.reused_pages,'shard_id':self.assignment['shard_id'] if self.assignment else None,
-            'request_interval_seconds':self.request_interval_seconds or self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35)}
+            'request_interval_seconds':self.request_interval_seconds or self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35),
+            'excluded_families':sorted(self.excluded_families)}
         if result['state']=='HALTED':
             write_json(self.lake.base/AUTO_HALT,{'plan_id':self.pid,'reason':reason,'last_error':last_transient,'recovery_cycles':recovery_cycles,'halted_at':result['finished_at']})
         write_json(self.lake.base/'progress.json',result);return result

@@ -124,3 +124,11 @@ HomePc的新隧道启动调用仍被平台安全检查阻止，没有Job/PID；�
 `scheduler-policy.json`中的请求间隔属于已审查policy身份的一部分，不为单纯性能调优改写。采集CLI可用`--runtime-request-interval`、worker service可用`--request-interval`临时覆盖节流，允许范围0.20–2.0秒；该值不改变policy_id/shard assignment，并写入运行progress/result便于审计。
 
 Mac当前长期LaunchAgent使用0.25秒。0.20秒虽已在100个同样本请求及300个正式队列任务上0网络错误通过，但暂不作为长期默认。
+
+### 当前实际运行：Mac单机托管三个逻辑shard
+
+后续用户取消Windows长期采集，并进一步取消K线和历史trades。HomePc/601计划任务应保持禁用及STOP；Mac本机安装worker-0/1/2三个独立数据根和SQLite，仍保留原assignment/shard身份，不合并成共享writer。三个LaunchAgent为`com.anyuzhe.niuniu.tdx-local0/1/2`，当前每片2 workers、`--runtime-request-interval 0.75`，约束总请求速率而非单进程冲到原0.25档。
+
+每个worker的`collection-scope.json`是独立于scheduler policy的可审计采集范围。当前excluded families为`bars_1m,bars_5m,bars_daily,trades,opening_match`。scope只停止未来采集：已有SAVED/EMPTY/CHECKPOINT/ERROR不删除。autoresume恢复之后必须再次应用scope，把恢复成PENDING的excluded family在网络调用前改回SKIPPED_POLICY并记录`collection_scope_audit`。因此重启或断线恢复不能偷偷重新采K线/trades。
+
+当前主要历史长任务只剩`auction`；finance/capital_changes/topics/quotes/depth等一次性数据已有既存采集结果，没有持续历史回溯队列。

@@ -1387,3 +1387,11 @@
 - 正式队列验收：0.20秒在Mac shard实际推进300个任务，74.845秒、300网络请求、0网络错误、0恢复轮；SAVED增加282、EMPTY增加18，原69条分片ERROR逐字段不变。
 - 实现：新增`runtime_request_interval`/worker-service `--request-interval`运行时覆盖，最小0.20秒；不重签scheduler policy，不改变policy_id、plan_id、shard assignment或历史边界。progress/result记录实际生效间隔。
 - 决策：长期先用0.25秒，不直接常驻0.20；0.20只作为短测已验证档，需更长连续运行观察后再升级。新增2项覆盖测试后完整TDX profile 93项通过、0失败/跳过。
+
+### 2026-09-18｜[TDX范围] 停止K线与历史逐笔成交，只保留非K线数据
+
+- 用户明确K线从其他渠道取得，同时不需要与K线/成交量研究相关的逐笔成交历史。HomePc和601计划任务禁用，SUPERVISOR_STOP及worker STOP保留，实机无TDX采集进程；Windows不再参与长期采集。
+- Mac沿用固定0/1/2三shard而不是重做计划：shard1/2由原witness bootstrap本机安装，先从canonical接续已合并成功的非K线结果；三片仍各自独立SQLite/page lake，避免共享writer。
+- 新`collection-scope.json`独立于scheduler policy，当前排除bars_1m/bars_5m/bars_daily/trades/opening_match；已有数据和历史ERROR不删除。三片分别1882/1877/1813个PENDING trades变为SKIPPED_POLICY并写审计，K线先前已分别4515/5495/5314个待采任务停用。
+- 运行时增加scope校验与恢复后重新应用：autoresume即使把可重试ERROR恢复成PENDING，也会在任何网络请求前再次跳过已排除family。专项测试覆盖“excluded retry不得触网”。
+- 三个Mac LaunchAgent使用0.75秒/片、2 workers，实际各自100请求短观察均0网络错误；trades的SAVED/EMPTY计数保持不变而auction继续增长，证明范围切换已生效。旧0.25单worker属于此前阶段，不再描述当前三进程聚合配置。
