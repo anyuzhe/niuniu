@@ -1308,3 +1308,14 @@
 - 环境：eltdx3.2.2隔离放在数据根automation/tdx/runtime-3.2.2；不改主环境默认依赖、不注册每天任务或订单服务，遵守个人研究许可边界。
 - 证据：artifacts/tdx-ingestion-20260918-015551/，原数据库备份、原文件清单、计划、页导入、测试和续采命令均保留；实际运行状态在数据根progress和队列。
 - 交付：本任务按用户约定独立提交并普通推送，最终成功与SHA以Git回执为准；推送不代表采集已全部结束。
+
+
+### 2026-09-18｜[数据可靠性] TDX断线有限重试、冷却恢复与Mac登录后自动续采
+
+- 原因：全市场采集在64,338请求后因连续ConnectionClosedError停止；用户要求断线只影响速度，不能造成最终历史断层。
+- 请求级：连接关闭/超时/502/503/504最多额外重试3次，失败即关闭旧连接并在两个已核验7709主站轮换；成功保存前绝不推进offset/日期。
+- 运行级：连续8个瞬时任务失败后冷却60/120/240/300秒，最多6轮；仅瞬时ERROR可使用更高12次队列恢复预算。协议坏包仍ERROR，普通最多3次，不用无限重试掩盖数据问题。
+- 停止门：恢复耗尽、访问限制、磁盘保护写AUTO_HALT；人工STOP和AUTO_HALT均阻止autoresume，明确resume才解除。状态API增加progress/stop/auto_halt。
+- 部署：本机用户LaunchAgent `com.anyuzhe.niuniu.tdx-autoresume` 已加载，RunAtLoad+300秒间隔；登录后恢复同一active plan，writer lease防重复实例。不是交易/商业服务。
+- 验证：新增4项恢复测试，TDX模块24项通过；原10个相关模块共118项通过。90秒真实恢复同一plan处理248请求、0恢复轮，按TIME_BUDGET正常退出；随后LaunchAgent实际进入running。
+- 边界：自动恢复不改变full_history_complete=false，不把EMPTY/ERROR/PIT资格改成成功，不绕过ELTDX个人研究许可或服务端访问限制。

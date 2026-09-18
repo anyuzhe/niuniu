@@ -140,3 +140,49 @@ class TdxLakeTests(unittest.TestCase):
             result=runtime.api.call('read_tdx_data',{'family':'bars_1m','symbol':'sz.000001','start':'','end':'','offset':0,'limit':1})
             self.assertTrue(result['ok'],result);self.assertEqual(result['data']['rows'][0]['original_record']['extra_original'],{'x':7})
             self.assertNotIn('collect_tdx_data',names)
+
+
+    def test_transient_request_retries_exact_job_and_rotates_hosts(self):
+        connected=[];requested=[]
+        class FakeSource:
+            def __init__(self,cache,host=None):connected.append(host);self.host=host
+            def close(self):pass
+            def request(self,job):
+                requested.append((job['job_id'],self.host))
+                if len(requested)<3:raise ConnectionError('7709 TCP stream closed during response wait')
+                return {'records':[{'updated_date':'2026-08-15'}]}
+        job=self.job('finance')
+        with patch('quantlab.agent.tdx_collection_cli.Source',FakeSource):
+            runner=Runner(self.lake,self.pid,workers=1,request_retries=3,retry_backoff=0)
+            actual,value,_observed,error=runner.fetch(job)
+        self.assertIsNone(error);self.assertEqual(actual['job_id'],job['job_id']);self.assertEqual(len(requested),3)
+        self.assertEqual(connected[:3],['116.205.183.150:7709','116.205.171.132:7709','116.205.183.150:7709'])
+        self.assertEqual(value['records'][0]['updated_date'],'2026-08-15')
+
+    def test_transient_burst_cools_down_recovers_same_job_and_then_succeeds(self):
+        self.job('finance');runner=Runner(self.lake,self.pid,workers=1,request_retries=0,transient_burst=1,recovery_cycles=1,cooldown_seconds=0,max_job_attempts=5)
+        calls=[]
+        def fake_fetch(job):
+            calls.append(job['job_id'])
+            if len(calls)==1:return job,None,'2026-09-18T00:00:00+00:00','ConnectionClosedError: closed'
+            return job,{'records':[{'updated_date':'2026-08-15'}]},'2026-09-18T00:00:01+00:00',None
+        runner.fetch=fake_fetch
+        result=runner.run(5,10,1)
+        self.assertEqual(result['stop_reason'],'QUEUE_DRAINED');self.assertEqual(result['recovery_cycles'],1);self.assertEqual(len(calls),2)
+        with self.lake.db(readonly=True) as con:
+            row=con.execute("SELECT state,attempts FROM jobs WHERE family='finance'").fetchone()
+        self.assertEqual((row['state'],row['attempts']),('SAVED',2));self.assertFalse((self.lake.base/'AUTO_HALT.json').exists())
+
+    def test_repeated_transient_bursts_halt_instead_of_infinite_loop(self):
+        self.job('finance');runner=Runner(self.lake,self.pid,workers=1,request_retries=0,transient_burst=1,recovery_cycles=1,cooldown_seconds=0,max_job_attempts=5)
+        runner.fetch=lambda job:(job,None,'2026-09-18T00:00:00+00:00','ConnectionClosedError: closed')
+        result=runner.run(5,10,1)
+        self.assertEqual(result['stop_reason'],'RECOVERY_EXHAUSTED');self.assertEqual(result['state'],'HALTED');self.assertEqual(result['recovery_cycles'],1)
+        halt=json.loads((self.lake.base/'AUTO_HALT.json').read_text())
+        self.assertEqual(halt['reason'],'RECOVERY_EXHAUSTED')
+
+    def test_transient_only_recovery_does_not_requeue_protocol_corruption(self):
+        job=self.job('trades');self.lake.next_jobs(self.pid);self.lake.mark(job,'ERROR',error='ProtocolError: invalid historical ticks payload')
+        self.lake.recover(self.pid,retry_errors=True,max_attempts=12,error_markers=('ConnectionClosedError',))
+        with self.lake.db(readonly=True) as con:state=con.execute('SELECT state FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0]
+        self.assertEqual(state,'ERROR')

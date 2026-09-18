@@ -214,4 +214,8 @@ python -m quantlab.agent.chat_cli \
 
 恢复用resume，不要重复prepare。当前全量计划含5,809个证券标识、13类数据，初始58,091个任务，后续历史页按需展开。开始时间与计划下界不代表对应历史已取得；全量尚未完成。双并发、请求间隔、单轮时间/请求/磁盘预算和30GiB余量保护均保持，错误与空数据分开。报价、盘口、题材和财务为观察时点快照，不能凭今天的接口倒推完整历史。
 
+2026-09-18起，本机个人研究采集增加自动恢复：同一个精确请求遇到连接关闭、超时、502/503/504等瞬时错误时，最多重试3次并轮换两个已核验7709主站；没有成功响应前不推进offset/交易日。连续8个瞬时任务仍失败时进入冷却，默认按60/120/240/300秒递增，单进程最多6轮。冷却只重排瞬时错误；`invalid historical ticks payload` 等协议/数据错误仍独立保留，最多按普通恢复预算重试，不会靠无限循环掩盖。
+
+本机已加载 `~/Library/LaunchAgents/com.anyuzhe.niuniu.tdx-autoresume.plist`：用户登录后RunAtLoad，运行退出后每5分钟有一次恢复机会，继续同一个active plan。`stop` 创建STOP标记，LaunchAgent不会绕过；多轮恢复耗尽、访问限制或磁盘保护触发时写 `AUTO_HALT.json` 并停止自动恢复，必须人工检查后用 `resume` 明确清除。`resume` 同时清STOP/AUTO_HALT并继续原断点，不重新prepare。状态工具现在会返回progress、stop_requested和auto_halt。
+
 牛牛可用 `get_tdx_data_status` / `read_tdx_data` 只读查询，模型不能启动采集或任意写库。采集库保存在数据根automation中的隔离研究运行目录，未成为主程序默认依赖；ELTDX Research-Only许可仍限制商业、生产服务、行情转售和自动交易。完整目录、表名及限制见 [TDX实测与入库记录](../archive/integrations/20260918-TDX-数据源可行性实测.md)。

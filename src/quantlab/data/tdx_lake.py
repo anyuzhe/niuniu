@@ -163,10 +163,22 @@ class TdxLake:
             rows=con.execute("SELECT * FROM jobs WHERE plan_id=? AND state='PENDING' ORDER BY priority,rowid LIMIT ?",(pid,count)).fetchall()
             for r in rows:con.execute("UPDATE jobs SET state='RUNNING',attempts=attempts+1,updated_at=? WHERE job_id=?",(now(),r['job_id']))
             con.commit();return [dict(r) for r in rows]
-    def recover(self,pid,retry_errors=False):
+    def recover(self,pid,retry_errors=False,*,max_attempts=3,error_markers=None):
+        if type(max_attempts) is not int or not 1<=max_attempts<=100:raise ValueError('Invalid recovery attempt budget')
+        if error_markers is not None and (not isinstance(error_markers,(tuple,list)) or any(not isinstance(x,str) or not x for x in error_markers)):
+            raise ValueError('Invalid recovery error markers')
         with self.db() as con:
-            states="('RUNNING','STORED','ERROR')" if retry_errors else "('RUNNING','STORED')"
-            con.execute("UPDATE jobs SET state='PENDING' WHERE plan_id=? AND state IN "+states+" AND attempts<3",(pid,));con.commit()
+            # RUNNING may be left by a dead process and STORED already has immutable bytes; neither may remain stranded.
+            con.execute("UPDATE jobs SET state='PENDING' WHERE plan_id=? AND state IN ('RUNNING','STORED')",(pid,))
+            if retry_errors:
+                if error_markers:
+                    candidates=con.execute("SELECT job_id,error FROM jobs WHERE plan_id=? AND state='ERROR' AND attempts<?",(pid,max_attempts)).fetchall()
+                    ids=[r['job_id'] for r in candidates if any(marker.casefold() in (r['error'] or '').casefold() for marker in error_markers)]
+                    if ids:
+                        con.execute("UPDATE jobs SET state='PENDING' WHERE job_id IN ("+','.join('?' for _ in ids)+")",ids)
+                else:
+                    con.execute("UPDATE jobs SET state='PENDING' WHERE plan_id=? AND state='ERROR' AND attempts<?",(pid,max_attempts))
+            con.commit()
     def mark(self,job,state,*,rows=0,chunk=None,error=None):
         with self.db() as con:
             con.execute('UPDATE jobs SET state=?,rows=?,chunk=?,error=?,updated_at=? WHERE job_id=?',
@@ -223,8 +235,14 @@ class TdxLake:
             jobs=[dict(r) for r in con.execute('SELECT plan_id,family,state,count(*) tasks,sum(rows) rows FROM jobs GROUP BY plan_id,family,state')]
             stored=[dict(r) for r in con.execute('SELECT family,count(*) pages,count(DISTINCT CASE WHEN length(symbol)>0 THEN symbol END) requested_securities,sum(rows) rows,min(day) first_requested_day,max(day) last_requested_day FROM publications GROUP BY family')]
             plans=[{'plan_id':r['plan_id'],**json.loads(r['body'])} for r in con.execute('SELECT * FROM plans ORDER BY created_at')]
+        control={'stop_requested':(self.base/'STOP').exists(),'auto_halted':(self.base/'AUTO_HALT.json').exists()}
+        for key,filename in (('progress','progress.json'),('auto_halt','AUTO_HALT.json')):
+            path=self.base/filename
+            if path.is_file() and not path.is_symlink() and path.stat().st_size<=1_000_000:
+                try:control[key]=json.loads(path.read_text())
+                except (OSError,ValueError):control[key]={'read_error':True}
         return {'configured':True,'catalog':'catalog/mqc.duckdb','tables':['tdx_'+f for f in FAMILIES],
-            'families':stored,'jobs':jobs,'plans':plans,'history_complete':False,'qualification':QUALIFICATION,
+            'families':stored,'jobs':jobs,'plans':plans,'control':control,'history_complete':False,'qualification':QUALIFICATION,
             'limitations':['Snapshot families are observation-time versions, not historical daily snapshots.','SAVED page is not a complete history; inspect pending/deferred jobs and exact requested range.','No PIT, official MarketRules, order-queue or financial restatement certification.']}
     def read(self,family,symbol='',start='',end='',offset=0,limit=20):
         if family not in FAMILIES or type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:raise ValueError('Invalid read bounds')
