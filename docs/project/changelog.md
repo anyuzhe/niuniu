@@ -1337,3 +1337,14 @@
 - 安全/平台：Mac/601现有SSH登录验证通过，HomePc既有公钥未获中继认证；未新建密钥、未改变服务端授权。Windows路径测试使用真实junction而非放宽规则；完整应用fcntl移植不属于独立采集worker的验收范围，profile明确列出未纳入的单个应用接线测试，Mac仍执行该原测试。
 - 验证：70项完整TDX专项，13模块164项相关回归均通过/0失败/0跳过。日志为resumed-tdx-tests.log和resumed-related-regression.log；真实队列另建queue-before-sharding.sqlite3与sharding-baseline.json，旧canonical保持STOP。新节点部署结果须另记，不据此声称三机上线。
 - 交付：新增运行指南并更新当前状态/架构；本阶段代码测试文档独立提交、普通push并核对SHA。具体部署和长期采集仍以各节点实际回执为准。
+
+### 2026-09-18｜[TDX部署] 三份正式断点包、Windows专项通过与Mac worker 0上线
+
+- 版本：功能代码555ca6451f3cb167323709804293779a5b96061c已普通推送并核对远端，两台Windows fast-forward且工作区无业务修改。Mac70项完整TDX/164项相关回归通过；Windows两台分别69项独立采集profile通过、0失败/0跳过，明确不包含单个完整应用原生接线测试。
+- 分片：cluster fbe957f355eb036c497981e5cb73e5be88743db715bb9c3ab2e9277092c42046，股票1951/1953/1905，frontier9424/9403/9136，checkpoint6872/6864/6629；tar字节910356480/910673920/876800000。完整SHA与绑定见cluster.json。构建前备份队列，237条现存ERROR逐字段不变。
+- Mac实采：worker根独立于canonical，原offset续采60请求/21.592秒、网络错误0；首次66页MERGED，重复导入0新增/66重复，收到精确回执后清理传输副本，原始页和错误不删。安装时6872页原始/Parquet逐值验证，非重下历史。
+- Mac持续运行：真实LaunchAgent带STOP启动返回USER_STOP且处理0请求，随后显式解除本次验收标志、启动仅shard0的120秒有限循环与本地校验汇总。旧unsharded LaunchAgent卸载、原plist留档，canonical STOP保留。进程状态须以实时文件与launchctl核对，不能据启动回执保证未来永远在线。
+- 持续循环实证：第一轮264请求/120.615秒、0网络错误；sequence 2导出288页/29,358,080字节并自动MERGED/ACK，累计两包354页、冲突0；进入第二轮。采集速率2.19请求/秒不含导出和逐页汇总耗时，尚无三机实测速率。
+- Windows阻塞：HomePc现有SSH身份Permission denied；601 Register-ScheduledTask拒绝访问，随后仅一次WebCodex detached SSH启动被平台安全检查拦截，无Job/PID产生、无替代调用。两台bootstrap均未安装、worker均未启动。Mac闲置reverse SSH已卸载并从登录目录移出，配置留档；文件服务只在loopback。
+- 证据：Mac artifacts/tdx-distributed-20260918/ 下bootstrap-build.log、mac-worker-install.log、mac-shard-live-acceptance.json/log、mac-launchagent-stop-proof.json和deployment-progress.json；Windows的portable-worker-tests.log、deployment-checkpoint.json。运行配置放独立数据/tdx-control目录，不上传市场文件、运行凭据或机器plist到Git。
+- 收尾：更新状态、指南和代码地图；文档独立提交并普通push后核对，Windows跟随文档SHA。未完成两节点传输/自启动，不宣称三机完成、3倍加速或全历史资格。

@@ -110,6 +110,18 @@ Mac Tunnel恢复后确认五个第二阶段未提交文件保留，最后CLI创�
 
 Mac完整TDX profile 70项通过，13模块相关回归164项通过。Windows路径保护新增真实junction拒绝验证，不开启开发者模式或提权；完整应用多处fcntl依赖不冒充已移植，独立worker profile显式区分那一个原生应用接线测试。节点实机结果、bootstrap与长期服务仍需各自验收，不把单机测试写成三机在线。Mac/601已有SSH认证实测可用，HomePc现有公钥认证未通过；没有创建新密钥或修改服务端授权来绕过。详见[运行与安全合同](../guide/tdx-distributed.md)，真实证据继续保存在 `artifacts/tdx-distributed-20260918/`。
 
+### 2026-09-18 TDX正式分片与节点部署结果
+
+功能提交 `555ca6451f3cb167323709804293779a5b96061c` 已推送，三台均fast-forward到同一SHA。cluster `fbe957f3…` 固定分配Mac 1,951、HomePc 1,953、601 1,905只，共5,809；三份bootstrap分别携带6,872/6,864/6,629页必要checkpoint，不是全部历史复制。
+
+Mac worker独立根 `/Volumes/Lexar/niuniu-data/workers/worker-0` 已逐页核验安装。真实60请求从原offset 800/1191/1600/2290等继续，21.592秒、0网络错误；首次汇总66页（含空响应审计和撮合子页），重复导入0新增/66重复，237条canonical原错误未变。实际LaunchAgent带STOP启动处理0请求，然后显式启用worker 0持续循环；旧全量LaunchAgent已卸载并保留原plist，canonical STOP仍在。
+
+持续运行随后实测完成第一轮264请求/120.615秒、0网络错误，自动导出并汇总288页，累计两份结果包均已ack，冲突0；下一轮出现新的RUNNING心跳。采集窗口约2.19请求/秒，导出/逐页验证/汇总另外耗时，不能把该值当含同步的总吞吐或三机聚合速度。
+
+两台Windows各69项独立worker实机测试通过，完整应用接线仍明确不在该profile。两台未安装bootstrap、未启动采集：HomePc现有SSH身份未获中继认证；601创建计划任务遭Windows拒绝访问，其SSH隧道启动另被平台安全检查拦截，未换方式执行。闲置Mac中继转发已卸载；本地文件服务仅监听127.0.0.1。当前不是三机上线，不报告三机提速或全历史完成。
+
+Mac真实验收、STOP实测和动态进度见同一artifacts目录的 `mac-shard-live-acceptance.json`、`mac-launchagent-stop-proof.json`、`deployment-progress.json`；Windows各自 `tdx-control/deployment-checkpoint.json` 保留实际阻塞层。操作入口与节点路径见[运行指南](../guide/tdx-distributed.md)。
+
 ## 4. 真正剩余的工作按门槛处理
 
 | 门槛 | 后续应做 | 本轮没有做 |

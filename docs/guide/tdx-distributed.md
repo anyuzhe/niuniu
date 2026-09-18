@@ -67,3 +67,28 @@ python scripts/test_tdx_worker.py
 portable-collector 明确打印不在该 profile 的单个原生完整应用接线测试；不是隐蔽跳过或宣称完整 Windows 客户端已移植。旧应用多个非采集模块依赖 fcntl，超出独立 worker 部署范围。Windows 路径安全测试在无 symlink 权限时创建真实 junction，验证数据根和内部路径拒绝重定向，不模拟通过或提升系统权限。
 
 状态分开报告各 worker 的新采任务/原基线、待传包、canonical 已合并页和最近报告时间。RECENT_REPORT 不自动等于进程 ONLINE；进程需本机证据。canonical 原待采任务已委派，不再作为另一组可运行队列累加。快照时间、股票数、单周期请求速度都不能代替全历史资格；history_complete 始终为 false，直到全部范围、页链和错误另行审计。
+
+## 2026-09-18 实际部署位置与限制
+
+| 节点 | 代码根 | worker数据根 | 分片证券数 | 本轮部署结果 |
+|---|---|---|---:|---|
+| Mac | `/Volumes/Lexar/niuniu` | `/Volumes/Lexar/niuniu-data/workers/worker-0` | 1951 | 已安装、真实续采/幂等汇总/STOP验收，LaunchAgent已启动 |
+| HomePc | `E:\testData\niuniu` | `E:\testData\niuniu-data`（已选定，未安装） | 1953 | 69项worker测试通过；现有SSH未获中继认证 |
+| 601 | `D:\AI\testData\niuniu` | `D:\AI\testData\niuniu-data`（已选定，未安装） | 1905 | 69项worker测试通过；计划任务权限失败，隧道工具启动被安全检查拦截 |
+
+canonical仍为 `/Volumes/Lexar/niuniu-data`。三份已生成bootstrap存于 `automation/tdx-exchange/bootstraps/fbe957f355eb036c497981e5cb73e5be88743db715bb9c3ab2e9277092c42046/`。Windows未有任何正式下载，不应把未报告状态解释成0错误或已完成。
+
+Mac新采集服务名为 `com.anyuzhe.niuniu.tdx-worker0`，使用同一代码仓库及隔离eltdx运行环境。旧 `com.anyuzhe.niuniu.tdx-autoresume` 已卸载、原plist保存在数据根 `automation/tdx-exchange/launchagents/legacy-tdx-autoresume.plist`，不可重新启用旧全量入口。新worker每次用户登录后加载，停止标志优先；没有声称未登录系统阶段也会运行。
+
+```bash
+cd /Volumes/Lexar/niuniu
+
+# 新worker的持久停止；不应再对canonical旧tdx.sh执行resume。
+.venv/bin/python -m quantlab.agent.tdx_distributed_cli --data-root /Volumes/Lexar/niuniu-data/workers/worker-0 stop
+
+# 只读查看新worker或总汇总状态。
+.venv/bin/python -m quantlab.agent.tdx_distributed_cli --data-root /Volumes/Lexar/niuniu-data/workers/worker-0 worker-status
+.venv/bin/python -m quantlab.agent.tdx_distributed_cli --data-root /Volumes/Lexar/niuniu-data status
+```
+
+Mac日志位于 `automation/tdx-exchange/logs/com.anyuzhe.niuniu.tdx-worker0.*.log`，新worker心跳在自己的 `lake/bronze/provider=tdx/progress.json` 与 `_service/state.json`。协调库的旧progress不是worker 0的实时进度。外部节点的数据通道尚未建立；闲置reverse SSH已关闭，未因安全拦截改走其他启动方式或增加服务器权限。
