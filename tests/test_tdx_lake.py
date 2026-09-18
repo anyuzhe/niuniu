@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 import duckdb
 from quantlab.data.tdx_lake import TdxLake,FAMILIES,rows_for,frame_for,digest,sha
-from quantlab.agent.tdx_collection_cli import Runner,writer_lease
+from quantlab.agent.tdx_collection_cli import (Runner,writer_lease,_latest_allowed_day,
+    apply_scheduler_policy_to_pending,load_scheduler_policy,POLICY_FORMAT)
 
 class TdxLakeTests(unittest.TestCase):
     def setUp(self):
@@ -186,3 +187,42 @@ class TdxLakeTests(unittest.TestCase):
         self.lake.recover(self.pid,retry_errors=True,max_attempts=12,error_markers=('ConnectionClosedError',))
         with self.lake.db(readonly=True) as con:state=con.execute('SELECT state FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0]
         self.assertEqual(state,'ERROR')
+
+    def test_scheduler_market_floor_never_drops_bse_older_auction(self):
+        days=['2025-07-21','2025-07-22','2025-07-23']
+        policy={'lifecycle_bounds':{
+            'sh.600000':{'listed':'1999-11-10','delisted':None},
+            'bj.920010':{'listed':'2020-07-27','delisted':None}},
+            'family_market_history_floors':{'auction':{'sh':'2025-07-22','sz':'2025-07-22'}}}
+        self.assertIsNone(_latest_allowed_day(days,'auction','sh.600000','2025-07-22',policy,strictly_before=True))
+        self.assertEqual(_latest_allowed_day(days,'auction','bj.920010','2025-07-22',policy,strictly_before=True),'2025-07-21')
+
+    def test_scheduler_lifecycle_clamps_delisted_trade_history(self):
+        days=['2025-07-21','2025-07-22','2025-07-23','2026-09-17']
+        policy={'lifecycle_bounds':{'sh.600000':{'listed':'2025-07-21','delisted':'2025-07-23'}},'family_market_history_floors':{}}
+        self.assertEqual(_latest_allowed_day(days,'trades','sh.600000','2026-09-17',policy),'2025-07-23')
+        self.assertIsNone(_latest_allowed_day(days,'trades','sh.600000','2025-07-21',policy,strictly_before=True))
+
+    def test_apply_scheduler_policy_marks_skip_and_retargets_without_deletion(self):
+        body={'trading_days':['2025-07-21','2025-07-22','2025-07-23','2026-09-17'],'max_offset':1000000,'personal_research_only':True}
+        pid=self.lake.add_plan(body)
+        old=self.lake.enqueue(pid,'trades','sh.600000','2026-09-17',0,1000)
+        policy={'policy_id':'abc','lifecycle_bounds':{'sh.600000':{'listed':'2025-07-21','delisted':'2025-07-23'}},'family_market_history_floors':{}}
+        result=apply_scheduler_policy_to_pending(self.lake,pid,policy)
+        self.assertEqual(result,{'pending_pruned':1,'pending_retargeted':1})
+        with self.lake.db(readonly=True) as con:
+            rows=[dict(r) for r in con.execute('SELECT job_id,day,state,error FROM jobs WHERE plan_id=? ORDER BY day',(pid,))]
+        self.assertEqual(len(rows),2);self.assertEqual(rows[0]['day'],'2025-07-23');self.assertEqual(rows[0]['state'],'PENDING')
+        self.assertEqual(rows[1]['job_id'],old);self.assertEqual(rows[1]['state'],'SKIPPED_POLICY');self.assertIn('policy=abc',rows[1]['error'])
+        # Reapplying is idempotent and keeps the auditable skipped row.
+        again=apply_scheduler_policy_to_pending(self.lake,pid,policy)
+        self.assertEqual(again,{'pending_pruned':1,'pending_retargeted':1})
+        with self.lake.db(readonly=True) as con:self.assertEqual(con.execute('SELECT count(*) FROM jobs WHERE plan_id=?',(pid,)).fetchone()[0],2)
+
+    def test_scheduler_policy_checksum_and_plan_binding(self):
+        core={'format':POLICY_FORMAT,'plan_id':self.pid,'lifecycle_bounds':{},'family_market_history_floors':{},'request_interval_seconds':0.2}
+        from quantlab.data.tdx_lake import write_json
+        write_json(self.lake.base/'scheduler-policy.json',{**core,'policy_id':digest(core)})
+        self.assertEqual(load_scheduler_policy(self.lake,self.pid)['request_interval_seconds'],0.2)
+        with self.assertRaisesRegex(ValueError,'identity'):
+            load_scheduler_policy(self.lake,'0'*64)

@@ -1319,3 +1319,12 @@
 - 部署：本机用户LaunchAgent `com.anyuzhe.niuniu.tdx-autoresume` 已加载，RunAtLoad+300秒间隔；登录后恢复同一active plan，writer lease防重复实例。不是交易/商业服务。
 - 验证：新增4项恢复测试，TDX模块24项通过；原10个相关模块共118项通过。90秒真实恢复同一plan处理248请求、0恢复轮，按TIME_BUDGET正常退出；随后LaunchAgent实际进入running。
 - 边界：自动恢复不改变full_history_complete=false，不把EMPTY/ERROR/PIT资格改成成功，不绕过ELTDX个人研究许可或服务端访问限制。
+
+### 2026-09-18｜[TDX调度] 接续未提交优化、预览绑定与安全应用
+
+- 保留基线82de01b上两个未提交文件，不重置、不覆盖。增加纯构建/只读预览、显式apply+snapshot_id、旧任务审计；补重复竞价锚点、反向生命周期、未验证北交floor拒绝；默认每节点0.35秒。
+- 文件锁改为POSIX flock / Windows msvcrt分支；移除全量重试协议坏包的resume路径，只恢复瞬时错误。Windows原生验收尚未执行。
+- 真实policy `7829c3c1dac7a38f8db9110070933025fcee9d04f6f1c232a221e04aa9beb4d6`：5,801生命周期已知、8未知，SH/SZ auction floor 2025-07-22，BJ无floor。理论逐日族63.42%裁剪不是下载完成率。
+- 备份97,419,264字节队列后应用：237个原PENDING竞价任务SKIPPED_POLICY，26个有效frontier；240条原ERROR逐字段保持。真实60任务续采22.79秒、0恢复轮，REQUEST_BUDGET退出后恢复STOP，不恢复旧单机长跑。
+- 验证：开工28项，完成后39项TDX专项及11模块133项相关回归通过，0失败/跳过。证据、候选policy、完整改动预览和队列备份在artifacts/tdx-distributed-20260918/。
+- 工程：WebCodex结构化新建在Lexar卷返回OS45且未写入，改用同一WebCodex的Python独占创建测试文件，未切换远程工具。代码/文档独立提交并普通推送；回执以Git SHA为准。后续继续三机分片、最小checkpoint与校验汇总。

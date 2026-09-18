@@ -86,3 +86,9 @@ Broker Shadow 保存只读脱敏账户证据与对账。RealTrade Readiness 缺�
 稳定架构在此维护；当前里程碑和剩余门槛在 [状态页](../project/status.md)；具体操作在指南；算法合同在 [规则参考](../reference/README.md) 和对应源码/测试；阶段原始证据在 [归档](../archive/README.md)。
 
 早期 2,000 多行总体规划与多轮改造方案完整保留，但不再与当前架构并列为“最新权威”。新增功能沿现有边界接线，避免复制数据状态、破坏因果口径或增加无关功能。
+
+## 9. TDX个人研究采集的调度边界
+
+既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。
+
+只调整没有已保存chunk的PENDING/SKIPPED_POLICY逐日首请求；原任务以SKIPPED_POLICY保留，改动前内容进入scheduler_policy_audit，必要时另建有效frontier。ERROR、已有页和进行中的分页不被裁剪。自动/人工续采只重新排队已识别瞬时连接错误，协议坏包不因resume变成EMPTY或被反复自动重试。
