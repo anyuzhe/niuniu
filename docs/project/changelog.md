@@ -1380,3 +1380,10 @@
 - 最终交接：worker停止后复制完整数据根/导出产物到移动硬盘，Mac仍按原bundle sequence、raw/Parquet/manifest SHA、source_id、前驱分页和冲突隔离规则导入，物理运输不等于绕过验收。
 - 容量：601 D盘约1.57TiB可直接开始；HomePc现有E盘约381.76GiB，另两盘也无单盘更大空闲。历史成交随机样本33/36完整、平均2.394请求/完整股票日、约96,337逻辑字节/完整日；HomePc完整分片大概率超出现有单盘容量，保留磁盘门并在不足时AUTO_HALT，不关闭保护。
 - 验证：监督器单测及完整TDX profile 91项通过；后续Windows实机切换、启动和持续心跳另按真实回执记录。
+
+### 2026-09-18｜[TDX性能] Mac正式节流调整到0.25秒
+
+- 基准：固定同100个真实trades请求、两并发、无写库、关闭请求级重试，0.35/0.30/0.25/0.20秒分别2.815/3.296/3.938/4.896 req/s，全部100/100成功、0错误。
+- 正式队列验收：0.20秒在Mac shard实际推进300个任务，74.845秒、300网络请求、0网络错误、0恢复轮；SAVED增加282、EMPTY增加18，原69条分片ERROR逐字段不变。
+- 实现：新增`runtime_request_interval`/worker-service `--request-interval`运行时覆盖，最小0.20秒；不重签scheduler policy，不改变policy_id、plan_id、shard assignment或历史边界。progress/result记录实际生效间隔。
+- 决策：长期先用0.25秒，不直接常驻0.20；0.20只作为短测已验证档，需更长连续运行观察后再升级。新增2项覆盖测试后完整TDX profile 93项通过、0失败/跳过。

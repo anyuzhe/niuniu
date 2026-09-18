@@ -118,3 +118,9 @@ HomePc的新隧道启动调用仍被平台安全检查阻止，没有Job/PID；�
 完成后采用物理介质一次性交接：先保持worker停止，复制完整worker数据根或在该副本上批量`export`，再在Mac按原sequence/source_id/SHA/前驱页规则逐批`import`。因此“最后一次搬盘”只改变运输方式，不降低校验门槛，也不把未确认页直接复制进canonical视图。
 
 601的D盘当前空间足以开始长期离线采集。HomePc的E盘只有约382GiB空闲，按随机历史成交日抽样（完整日均约2.39个请求、约96KiB逻辑文件）估计完整分片很可能超过当前单盘容量；它可以先安全运行，达到30GiB保留阈值会AUTO_HALT。要完成该分片，需要后续接入约1TiB级外接盘或重新分配部分工作，不能通过关闭磁盘保护来硬写满系统。
+
+### 请求速率运行时覆盖
+
+`scheduler-policy.json`中的请求间隔属于已审查policy身份的一部分，不为单纯性能调优改写。采集CLI可用`--runtime-request-interval`、worker service可用`--request-interval`临时覆盖节流，允许范围0.20–2.0秒；该值不改变policy_id/shard assignment，并写入运行progress/result便于审计。
+
+Mac当前长期LaunchAgent使用0.25秒。0.20秒虽已在100个同样本请求及300个正式队列任务上0网络错误通过，但暂不作为长期默认。

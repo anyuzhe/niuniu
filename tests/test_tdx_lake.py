@@ -154,6 +154,14 @@ class TdxLakeTests(unittest.TestCase):
             self.assertNotIn('collect_tdx_data',names)
 
 
+    def test_runtime_request_interval_override_keeps_policy_identity(self):
+        runner=Runner(self.lake,self.pid,request_interval_seconds=.25)
+        policy_id=runner.policy_id
+        self.assertEqual(runner.request_interval_seconds,.25)
+        self.assertEqual(runner.policy_id,policy_id)
+        with self.assertRaisesRegex(ValueError,'request_interval_seconds'):
+            Runner(self.lake,self.pid,request_interval_seconds=.19)
+
     def test_transient_request_retries_exact_job_and_rotates_hosts(self):
         connected=[];requested=[]
         class FakeSource:

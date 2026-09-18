@@ -150,6 +150,12 @@ Mac真实验收、STOP实测和动态进度见同一artifacts目录的 `mac-shar
 
 最终数据可等各worker停止后用移动硬盘一次性带回Mac，再走原有SHA、source_id、分页前驱、重复页与冲突fail-closed校验汇总；不通过物理拷贝绕过canonical导入规则。
 
+### 2026-09-18 Mac请求节流提速
+
+同一批100个真实历史成交请求、不写正式队列的受控基准：0.35/0.30/0.25/0.20秒分别达到2.815/3.296/3.938/4.896 req/s，四档均100/100成功、0网络错误。随后0.20秒直接运行正式Mac shard 300个任务，74.845秒完成、300网络请求、0网络错误、0恢复轮，原ERROR记录逐字段不变。
+
+长期运行不直接把scheduler policy从0.35改写成0.25，以免改变policy_id和分片绑定；新增独立运行时request interval override，仅改变请求节流。Mac正式LaunchAgent采用0.25秒作为当前长期档位，0.20保留为已通过短测但尚未长时间观察的候选。运行时progress/result显式记录实际request_interval_seconds。
+
 ## 4. 真正剩余的工作按门槛处理
 
 | 门槛 | 后续应做 | 本轮没有做 |

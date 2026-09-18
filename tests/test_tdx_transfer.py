@@ -93,6 +93,16 @@ class TransferTests(unittest.TestCase):
             self.assertEqual(collect_cycle(self.worker)['state'],'AUTO_HALTED')
             self.assertEqual(run_service(self.worker,canonical_root=self.f.lake.root,seconds=1)['state'],'AUTO_HALTED')
 
+    def test_service_runtime_interval_is_forwarded_without_policy_change(self):
+        (self.worker.base/'STOP').unlink()
+        with patch('quantlab.agent.tdx_worker_service.collection_main') as call:
+            progress={'state':'STOPPED','processed_this_run':0,'request_interval_seconds':.25}
+            write_json(self.worker.base/'progress.json',progress)
+            result=collect_cycle(self.worker,seconds=1,max_requests=1,max_new_gib=1,request_interval_seconds=.25)
+        args=call.call_args.args[0]
+        self.assertEqual(args[args.index('--runtime-request-interval')+1],'0.25')
+        self.assertEqual(result['request_interval_seconds'],.25)
+
     def test_slow_merge_does_not_block_http_health(self):
         from quantlab.agent.tdx_transfer import serve_transfer
         server=TransferServer(('127.0.0.1',0),self.f.lake,self.f.root/'concurrent-exchange')

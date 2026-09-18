@@ -63,20 +63,24 @@ def deliver_pending(lake,*,server_url=None,canonical_root=None):
     return delivered
 
 
-def collect_cycle(lake,*,seconds=120,max_requests=400,max_new_gib=10):
+def collect_cycle(lake,*,seconds=120,max_requests=400,max_new_gib=10,request_interval_seconds=None):
     worker_status(lake)  # Refuse a canonical or misbound root before any side effects.
     if (lake.base/'STOP').exists():return {'state':'USER_STOP','processed_this_run':0}
     if (lake.base/'AUTO_HALT.json').exists():return {'state':'AUTO_HALTED','processed_this_run':0}
-    collection_main(['--data-root',str(lake.root),'autoresume','--personal-research-only',
-        '--seconds',str(seconds),'--max-requests',str(max_requests),'--max-new-gib',str(max_new_gib),'--workers','2'])
+    args=['--data-root',str(lake.root),'autoresume','--personal-research-only',
+        '--seconds',str(seconds),'--max-requests',str(max_requests),'--max-new-gib',str(max_new_gib),'--workers','2']
+    if request_interval_seconds is not None:args.extend(['--runtime-request-interval',str(request_interval_seconds)])
+    collection_main(args)
     return json.loads((lake.base/'progress.json').read_text(encoding='utf-8'))
 
 
-def run_service(lake,*,server_url=None,canonical_root=None,seconds=86400,max_requests=200000,max_new_gib=100,cycle_seconds=120):
+def run_service(lake,*,server_url=None,canonical_root=None,seconds=86400,max_requests=200000,max_new_gib=100,cycle_seconds=120,request_interval_seconds=None):
     if bool(server_url)==bool(canonical_root):raise ValueError('Exactly one canonical delivery route is required')
     if server_url:endpoint(server_url)
     if not 1<=seconds<=86400 or not 1<=max_requests<=1000000 or not 1<=max_new_gib<=200 or not 1<=cycle_seconds<=600:
         raise ValueError('Service budget outside supported bounds')
+    if request_interval_seconds is not None and (type(request_interval_seconds) not in (int,float) or not .2<=request_interval_seconds<=2):
+        raise ValueError('Service request interval outside supported bounds')
     status=worker_status(lake)
     if canonical_root and Path(canonical_root).resolve()==lake.root:raise ValueError('Worker must not share canonical root')
     directory=safe(lake.root,lake.base/'_service');directory.mkdir(exist_ok=True)
@@ -101,7 +105,7 @@ def run_service(lake,*,server_url=None,canonical_root=None,seconds=86400,max_req
                     write_json(lake.base/'AUTO_HALT.json',{'reason':'SERVICE_DISK_BUDGET','halted_at':now()})
                     continue
                 remaining=max(1,int(seconds-(time.monotonic()-started)))
-                cycle=collect_cycle(lake,seconds=min(cycle_seconds,remaining),max_requests=min(2000,max_requests-processed),max_new_gib=min(10,max_new_gib))
+                cycle=collect_cycle(lake,seconds=min(cycle_seconds,remaining),max_requests=min(2000,max_requests-processed),max_new_gib=min(10,max_new_gib),request_interval_seconds=request_interval_seconds)
                 processed+=cycle.get('processed_this_run',0);cycles+=1
                 if cycle.get('state') in ('USER_STOP','AUTO_HALTED'):continue
                 receipt=export_results(lake,lake.base/'_outbox',max_pages=500,max_bytes=128*1024**2)
@@ -129,11 +133,13 @@ def main(argv=None):
     parser.add_argument('--max-requests',type=int,default=200000)
     parser.add_argument('--max-new-gib',type=int,default=100)
     parser.add_argument('--cycle-seconds',type=int,default=120)
+    parser.add_argument('--request-interval',type=float)
     parser.add_argument('--personal-research-only',action='store_true')
     args=parser.parse_args(argv)
     if not args.personal_research_only:parser.error('Explicit --personal-research-only required')
     result=run_service(TdxLake(args.data_root),server_url=args.server_url,canonical_root=args.canonical_root,
-        seconds=args.seconds,max_requests=args.max_requests,max_new_gib=args.max_new_gib,cycle_seconds=args.cycle_seconds)
+        seconds=args.seconds,max_requests=args.max_requests,max_new_gib=args.max_new_gib,cycle_seconds=args.cycle_seconds,
+        request_interval_seconds=args.request_interval)
     print(encode(result));return 0
 
 

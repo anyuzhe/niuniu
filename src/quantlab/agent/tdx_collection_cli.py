@@ -344,15 +344,18 @@ def prepare(lake,*,personal=False):
 
 class Runner:
     def __init__(self,lake,pid,workers=2,*,request_retries=3,retry_backoff=1.0,transient_burst=8,
-                 recovery_cycles=6,cooldown_seconds=60,max_job_attempts=12):
+                 recovery_cycles=6,cooldown_seconds=60,max_job_attempts=12,request_interval_seconds=None):
         for name,value,low,high in (
                 ('request_retries',request_retries,0,10),('transient_burst',transient_burst,1,100),
                 ('recovery_cycles',recovery_cycles,0,20),('cooldown_seconds',cooldown_seconds,0,300),
                 ('max_job_attempts',max_job_attempts,1,100)):
             if type(value) is not int or not low<=value<=high:raise ValueError(name+' out of supported range')
         if type(retry_backoff) not in (int,float) or not 0<=retry_backoff<=30:raise ValueError('retry_backoff out of supported range')
+        if request_interval_seconds is not None and (type(request_interval_seconds) not in (int,float) or not .2<=request_interval_seconds<=2):
+            raise ValueError('request_interval_seconds out of supported range')
         self.lake=lake;self.pid=pid;self.plan=lake.plan(pid);self.workers=workers
         self.request_retries=request_retries;self.retry_backoff=float(retry_backoff);self.transient_burst=transient_burst
+        self.request_interval_seconds=float(request_interval_seconds) if request_interval_seconds is not None else None
         self.max_recovery_cycles=recovery_cycles;self.cooldown_seconds=cooldown_seconds;self.max_job_attempts=max_job_attempts
         self.local=threading.local();self.sources=[];self.source_lock=threading.Lock();self.source_generation=0;self.host_cursor=0
         self.rate_lock=threading.Lock();self.last_request=0.
@@ -389,7 +392,7 @@ class Runner:
             with contextlib.suppress(Exception):source.close()
     def _request_slot(self):
         with self.rate_lock:
-            interval=self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35)
+            interval=self.request_interval_seconds or self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35)
             wait=interval-(time.monotonic()-self.last_request)
             if wait>0:time.sleep(wait)
             self.last_request=time.monotonic()
@@ -511,6 +514,7 @@ class Runner:
                         progress={'plan_id':self.pid,'pid':os.getpid(),'processed_this_run':count,'elapsed_seconds':round(time.monotonic()-started),
                             'recovery_cycles':recovery_cycles,'transient_failures':transient_failures,'scheduler_policy_id':self.policy_id,
                             'network_attempts':self.network_attempts,'network_errors':self.network_errors,'reused_pages':self.reused_pages,
+                            'request_interval_seconds':self.request_interval_seconds or self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35),
                             'shard_id':self.assignment['shard_id'] if self.assignment else None,'updated_at':now(),'state':'RUNNING'}
                         write_json(self.lake.base/'progress.json',progress);print(encode(progress),flush=True)
                 if reason=='PROVIDER_ACCESS_LIMIT':break
@@ -518,7 +522,9 @@ class Runner:
                     if recovery_cycles>=self.max_recovery_cycles:reason='RECOVERY_EXHAUSTED';break
                     recovery_cycles+=1;cooldown=min(300,self.cooldown_seconds*(2**(recovery_cycles-1)))
                     progress={'plan_id':self.pid,'pid':os.getpid(),'processed_this_run':count,'elapsed_seconds':round(time.monotonic()-started),
-                        'recovery_cycles':recovery_cycles,'cooldown_seconds':cooldown,'last_error':last_transient,'scheduler_policy_id':self.policy_id,'updated_at':now(),'state':'COOLDOWN'}
+                        'recovery_cycles':recovery_cycles,'cooldown_seconds':cooldown,'last_error':last_transient,'scheduler_policy_id':self.policy_id,
+                        'request_interval_seconds':self.request_interval_seconds or self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35),
+                        'updated_at':now(),'state':'COOLDOWN'}
                     write_json(self.lake.base/'progress.json',progress);print(encode(progress),flush=True)
                     self._reset_sources()
                     self.lake.recover(self.pid,retry_errors=True,max_attempts=self.max_job_attempts,error_markers=RETRYABLE_ERROR_MARKERS)
@@ -529,7 +535,8 @@ class Runner:
             'state':'HALTED' if reason in ('RECOVERY_EXHAUSTED','PROVIDER_ACCESS_LIMIT','DISK_BUDGET') else 'STOPPED',
             'recovery_cycles':recovery_cycles,'scheduler_policy_id':self.policy_id,'finished_at':now(),'full_history_complete':False,
             'elapsed_seconds':round(time.monotonic()-started,3),'network_attempts':self.network_attempts,'network_errors':self.network_errors,
-            'reused_pages':self.reused_pages,'shard_id':self.assignment['shard_id'] if self.assignment else None}
+            'reused_pages':self.reused_pages,'shard_id':self.assignment['shard_id'] if self.assignment else None,
+            'request_interval_seconds':self.request_interval_seconds or self.policy.get('request_interval_seconds') or self.plan.get('request_interval_seconds',.35)}
         if result['state']=='HALTED':
             write_json(self.lake.base/AUTO_HALT,{'plan_id':self.pid,'reason':reason,'last_error':last_transient,'recovery_cycles':recovery_cycles,'halted_at':result['finished_at']})
         write_json(self.lake.base/'progress.json',result);return result
@@ -576,11 +583,13 @@ def main(argv=None):
     p.add_argument('--request-retries',type=int,default=3);p.add_argument('--transient-burst',type=int,default=8)
     p.add_argument('--recovery-cycles',type=int,default=6);p.add_argument('--cooldown-seconds',type=int,default=60)
     p.add_argument('--max-job-attempts',type=int,default=12)
+    p.add_argument('--runtime-request-interval',type=float)
     a=p.parse_args(argv)
     if a.action in ('prepare','optimize','run','resume','autoresume') and not a.personal_research_only:p.error('Explicit --personal-research-only required')
     if not 1<=a.seconds<=86400 or not 1<=a.max_requests<=1000000 or not 1<=a.max_new_gib<=500:p.error('Budget out of supported range')
     if not 0<=a.request_retries<=10 or not 1<=a.transient_burst<=100 or not 0<=a.recovery_cycles<=20 or not 0<=a.cooldown_seconds<=300 or not 1<=a.max_job_attempts<=100:
         p.error('Recovery policy out of supported range')
+    if a.runtime_request_interval is not None and not .2<=a.runtime_request_interval<=2:p.error('Runtime request interval out of supported range')
     lake=TdxLake(a.data_root,create=a.action=='prepare')
     if a.action=='status':print(encode(lake.status()));return 0
     if a.action=='stop':(lake.base/'STOP').write_text(now());print('Stop requested; current bounded request may finish.');return 0
@@ -617,7 +626,8 @@ def main(argv=None):
                 recover_for_resume(lake,pid,a.max_job_attempts)
             elif a.action=='autoresume':recover_for_resume(lake,pid,a.max_job_attempts)
             result=Runner(lake,pid,a.workers,request_retries=a.request_retries,transient_burst=a.transient_burst,
-                recovery_cycles=a.recovery_cycles,cooldown_seconds=a.cooldown_seconds,max_job_attempts=a.max_job_attempts).run(
+                recovery_cycles=a.recovery_cycles,cooldown_seconds=a.cooldown_seconds,max_job_attempts=a.max_job_attempts,
+                request_interval_seconds=a.runtime_request_interval).run(
                     a.seconds,a.max_requests,a.max_new_gib)
         print(encode(result))
     return 0
