@@ -122,6 +122,14 @@ Mac worker独立根 `/Volumes/Lexar/niuniu-data/workers/worker-0` 已逐页核�
 
 Mac真实验收、STOP实测和动态进度见同一artifacts目录的 `mac-shard-live-acceptance.json`、`mac-launchagent-stop-proof.json`、`deployment-progress.json`；Windows各自 `tdx-control/deployment-checkpoint.json` 保留实际阻塞层。操作入口与节点路径见[运行指南](../guide/tdx-distributed.md)。
 
+### 2026-09-18 Windows传输身份和当前用户监督器增量
+
+增加独立非Shell中继账号，仅允许既有公钥访问127.0.0.1:18943的本地转发；不开放公网文件端口，原root/ollama-tunnel有效配置核对不变。601原生隧道实际取得Job并通过cluster健康核对，正在传输原bootstrap。HomePc调用仍被平台安全检查拦截，保留操作员本机启动入口；不得改走监督器自动启动被拒绝的隧道。
+
+新增当前用户Windows监督入口和8项边界测试；Mac完整TDX78项、相关172项回归通过。独立worker STOP/AUTO_HALT、监督器停止、缺bootstrap和错机器/分片均有明确保护；Windows计划任务及实际数据回传待后续回执，不能据此宣称三机全部完成。
+
+初步容量/工期测算保存于artifacts/tdx-distributed-20260918/capacity-forecast.json：仍有约1,854万trades股票日和177万auction股票日，分页数不能从PENDING数量推断；三节点吞吐仅为条件情景，当前空间不覆盖测算的全历史保留容量，完整性错误仍保留。
+
 ## 4. 真正剩余的工作按门槛处理
 
 | 门槛 | 后续应做 | 本轮没有做 |

@@ -1348,3 +1348,11 @@
 - Windows阻塞：HomePc现有SSH身份Permission denied；601 Register-ScheduledTask拒绝访问，随后仅一次WebCodex detached SSH启动被平台安全检查拦截，无Job/PID产生、无替代调用。两台bootstrap均未安装、worker均未启动。Mac闲置reverse SSH已卸载并从登录目录移出，配置留档；文件服务只在loopback。
 - 证据：Mac artifacts/tdx-distributed-20260918/ 下bootstrap-build.log、mac-worker-install.log、mac-shard-live-acceptance.json/log、mac-launchagent-stop-proof.json和deployment-progress.json；Windows的portable-worker-tests.log、deployment-checkpoint.json。运行配置放独立数据/tdx-control目录，不上传市场文件、运行凭据或机器plist到Git。
 - 收尾：更新状态、指南和代码地图；文档独立提交并普通push后核对，Windows跟随文档SHA。未完成两节点传输/自启动，不宣称三机完成、3倍加速或全历史资格。
+
+### 2026-09-18｜[TDX运维] 受限传输身份与Windows当前用户监督器
+
+- 用户要求完成两节点并测试、给出全历史工期。只用对应WebCodex，Mac既有采集不中断。
+- 服务器变更先备份、sshd -t与root/ollama-tunnel有效配置等值校验；新增独立非Shell传输身份，使用两台原有公钥，只允许127.0.0.1:18943本地转发，未添加公网行情监听或复制私钥。
+- 601原生detached启动已返回Job并核对health cluster，正在使用原bootstrap与SHA接续传输；HomePc启动仍被平台安全检查拦截，未换工具/方式代启，提供操作员本机手动入口。
+- 新Windows监督器以当前用户运行，先检查三种停止标志与bootstrap，固定分片/cluster，单实例、子进程归属、隧道重连预算和本地日志；HomePc明确禁止自动启动被拦截隧道。
+- 验证：新增8项离线边界；Mac完整TDX78项、14模块相关回归172项均通过/0失败/0跳过，文档检查通过。首轮diff检查指出两处EOF空行，清理后复核；各Windows实际启动继续按真实回执记录。不以脚本、账号或连接health代替节点上线。

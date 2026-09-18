@@ -92,3 +92,11 @@ cd /Volumes/Lexar/niuniu
 ```
 
 Mac日志位于 `automation/tdx-exchange/logs/com.anyuzhe.niuniu.tdx-worker0.*.log`，新worker心跳在自己的 `lake/bronze/provider=tdx/progress.json` 与 `_service/state.json`。协调库的旧progress不是worker 0的实时进度。外部节点的数据通道尚未建立；闲置reverse SSH已关闭，未因安全拦截改走其他启动方式或增加服务器权限。
+
+### Windows 当前用户监督入口（后续部署增量）
+
+`scripts/tdx_windows_worker.py --config LOCAL_CONFIG_JSON` 只运行独立worker；配置须绑定机器、分片、cluster和本地代码/数据/控制路径。当前用户运行，不提升Windows权限。启动前检查SUPERVISOR_STOP、worker STOP/AUTO_HALT；缺bootstrap不连接网络。监督器具有独立单实例锁，仅管理自己创建的子进程，worker仍沿原断点、预算、outbox和确认回执运行。
+
+2026-09-18后续授权下，中继增加独立tdx-transfer账号，仅公钥认证、禁止Shell/PTY/Agent转发、禁止远端及Unix socket转发，只允许到127.0.0.1:18943的本地转发。两台现有公钥原地使用，未复制私钥；旧root与ollama-tunnel的effective sshd配置逐值比较不变。601的新作用域隧道获得WebCodex Job并完成health身份检查，bootstrap仍须传完并逐页安装后才能验收。
+
+HomePc的新隧道启动调用仍被平台安全检查阻止，没有Job/PID；不得用计划任务或监督器代为启动同一被拒绝的隧道。其allow_tunnel_start固定为false，仅允许操作员本机启动已提供的Start-TDX-Transfer-Manual.cmd；原生监督器保留WAITING_FOR_OPERATOR_TUNNEL状态。准备好脚本/账号不是节点已经上线，实际启动和数据验收另记。
