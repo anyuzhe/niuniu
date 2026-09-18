@@ -433,13 +433,18 @@ class Runner:
             previous=con.execute("SELECT * FROM jobs WHERE plan_id=? AND family=? AND symbol=? AND day=? AND offset<? AND chunk IS NOT NULL AND state IN ('SAVED','CHECKPOINT') ORDER BY offset DESC LIMIT 1",(self.pid,job['family'],job['symbol'],job['day'],job['offset'])).fetchone()
         if not previous or previous['offset']+previous['rows']!=job['offset']:
             raise ValueError('MISSING_CHECKPOINT: exact preceding saved page required before advancing pagination')
-        folder=safe(self.lake.root,self.lake.root/previous['chunk'])
-        metadata=json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
-        self.lake.verify_page_at(folder,job['family'],metadata['source_id'])
-        payload=json.loads(gzip_decompress(folder/'response.json.gz'))
         from quantlab.data.tdx_lake import rows_for
         strip=lambda rr:[{k:v for k,v in r.items() if k not in ('index','absolute_index')} for r in rr]
-        if rows and digest(strip(rows_for(job['family'],payload['result'])))==digest(strip(rows)):
+        if previous['chunk'].startswith('_checkpoint_witnesses/'):
+            from quantlab.agent.tdx_checkpoint_witness import previous_witness_digest
+            preceding_digest=previous_witness_digest(self.lake,dict(previous))
+        else:
+            folder=safe(self.lake.root,self.lake.root/previous['chunk'])
+            metadata=json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
+            self.lake.verify_page_at(folder,job['family'],metadata['source_id'])
+            payload=json.loads(gzip_decompress(folder/'response.json.gz'))
+            preceding_digest=digest(strip(rows_for(job['family'],payload['result'])))
+        if rows and preceding_digest==digest(strip(rows)):
             raise ValueError('REPEATED_PAGE: provider repeated the preceding page; history incomplete')
 
     def follow(self,job,manifest,rows):

@@ -130,6 +130,12 @@ Mac真实验收、STOP实测和动态进度见同一artifacts目录的 `mac-shar
 
 初步容量/工期测算保存于artifacts/tdx-distributed-20260918/capacity-forecast.json：仍有约1,854万trades股票日和177万auction股票日，分页数不能从PENDING数量推断；三节点吞吐仅为条件情景，当前空间不覆盖测算的全历史保留容量，完整性错误仍保留。
 
+### 2026-09-18 两台Windows计划任务与小型checkpoint交付
+
+两台均以当前用户Interactive/Limited成功注册计划任务，STOP启动实测为0子进程；各77项独立worker测试通过。HomePc操作员本机启动后，传输health也已核对正确cluster。两台原始大包下载慢，现生成保留canonical全部原始页的小型前驱校验凭据包（4.76/4.61MB）；原plan/policy/shard/frontier均不变，旧完整包保留。
+
+新凭据不进入正常视图；worker重复页/断链保护与canonical实际原始前驱校验两层保留。Mac完整88项TDX、相关182项回归通过，真实节点安装和回传继续按部署回执更新。容量审计确认当前Lexar小文件每个至少512KiB、单页目录和三文件约2MiB；不解决存储布局就不能按逻辑内容大小预测全历史完成时间。
+
 ## 4. 真正剩余的工作按门槛处理
 
 | 门槛 | 后续应做 | 本轮没有做 |

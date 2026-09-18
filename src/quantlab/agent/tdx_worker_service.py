@@ -50,7 +50,11 @@ def deliver_pending(lake,*,server_url=None,canonical_root=None):
         if receipt['bundle_id']!=row['bundle_id'] or receipt['sha256']!=row['sha256']:
             raise BundleConflict('Outbox receipt differs from durable export')
         if canonical_root:
-            ack=import_results(TdxLake(canonical_root),Path(row['path']),row['sha256'])
+            try:ack=import_results(TdxLake(canonical_root),Path(row['path']),row['sha256'])
+            except ValueError as error:
+                if str(error).startswith('Another collector owns the TDX writer lease;'):
+                    raise BundleDeferred('Canonical writer is busy; retain this exact outbox bundle') from error
+                raise
             validate_ack(ack,receipt)
         else:
             ack=send_result(server_url,receipt)

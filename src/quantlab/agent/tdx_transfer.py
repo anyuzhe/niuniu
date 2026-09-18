@@ -198,8 +198,14 @@ class Handler(BaseHTTPRequestHandler):
             if path.is_file():return self.reply(200,json.loads(path.read_text(encoding='utf-8')))
             return self.reply(404,{'state':'NOT_MERGED'})
         match=re.fullmatch('/bootstrap/('+ID+')[.]tar',self.path)
-        if not match or match[1] not in self.server.bootstrap:return self.reply(404,{'error':'not_found'})
-        receipt=self.server.bootstrap[match[1]];path=Path(receipt['path'])
+        if not match:return self.reply(404,{'error':'not_found'})
+        receipt=self.server.bootstrap.get(match[1])
+        if receipt is None:
+            from quantlab.agent.tdx_checkpoint_witness import transport_variant
+            try:receipt=transport_variant(self.server.exchange,match[1],self.server.bootstrap)
+            except (ValueError,KeyError,OSError):return self.reply(409,{'error':'invalid_bootstrap_variant'})
+        if receipt is None:return self.reply(404,{'error':'not_found'})
+        path=Path(receipt['path'])
         if not path.is_file() or path.stat().st_size!=receipt['bytes']:
             return self.reply(409,{'error':'bootstrap_missing_or_changed'})
         offset=0

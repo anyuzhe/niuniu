@@ -100,3 +100,11 @@ Mac日志位于 `automation/tdx-exchange/logs/com.anyuzhe.niuniu.tdx-worker0.*.l
 2026-09-18后续授权下，中继增加独立tdx-transfer账号，仅公钥认证、禁止Shell/PTY/Agent转发、禁止远端及Unix socket转发，只允许到127.0.0.1:18943的本地转发。两台现有公钥原地使用，未复制私钥；旧root与ollama-tunnel的effective sshd配置逐值比较不变。601的新作用域隧道获得WebCodex Job并完成health身份检查，bootstrap仍须传完并逐页安装后才能验收。
 
 HomePc的新隧道启动调用仍被平台安全检查阻止，没有Job/PID；不得用计划任务或监督器代为启动同一被拒绝的隧道。其allow_tunnel_start固定为false，仅允许操作员本机启动已提供的Start-TDX-Transfer-Manual.cmd；原生监督器保留WAITING_FOR_OPERATOR_TUNNEL状态。准备好脚本/账号不是节点已经上线，实际启动和数据验收另记。
+
+### 远端分页校验凭据（保留主库原始页）
+
+慢速中继不必重复运送数千份仅用于检查前驱的原始/Parquet副本。`tdx_checkpoint_witness.py` 从原bootstrap精确SHA和逐页raw/Parquet/manifest SHA核验后，派生版本化凭据：原请求身份、行数、source_id、各原文件SHA与剔除index/absolute_index后的整页内容摘要。整个凭据包再以独立SHA固定，同时绑定原bootstrap SHA、原计划/策略/分片及全部原frontier。
+
+仅在frontier不含尚需重放的已保存chunk时允许此模式；存在未完成页字节时仍要求原完整包。凭据只存worker队列独立表和冻结checksum清单，CHECKPOINT不进入任何正常行情视图，不被export当作新数据。缺凭据、被重签的伪凭据、错分片、重复页和断开的offset仍拒绝。真实回传的SAVED/EMPTY页继续由canonical读取其实际前驱原始页重新核验；不是以worker摘要代替主库的源字节审计。
+
+两份真实包由原910,673,920/876,800,000字节降至4,763,945/4,606,132字节；原包和主库源文件保留。接收仍使用原loopback HTTP/Range/SHA通道，不经聊天搬运行情。安装函数为`install_witness_bootstrap(destination, path, expected_transfer_sha, expected_original_bootstrap_sha)`，同一包重装不重置进度。核心新增10项保护及锁竞争等待测试；跨节点本地汇总抢占writer锁时保留outbox并等待，不把它当内容冲突。

@@ -1356,3 +1356,11 @@
 - 601原生detached启动已返回Job并核对health cluster，正在使用原bootstrap与SHA接续传输；HomePc启动仍被平台安全检查拦截，未换工具/方式代启，提供操作员本机手动入口。
 - 新Windows监督器以当前用户运行，先检查三种停止标志与bootstrap，固定分片/cluster，单实例、子进程归属、隧道重连预算和本地日志；HomePc明确禁止自动启动被拦截隧道。
 - 验证：新增8项离线边界；Mac完整TDX78项、14模块相关回归172项均通过/0失败/0跳过，文档检查通过。首轮diff检查指出两处EOF空行，清理后复核；各Windows实际启动继续按真实回执记录。不以脚本、账号或连接health代替节点上线。
+
+### 2026-09-18｜[TDX传输] 前驱校验凭据降低初始化传输量
+
+- 两台Windows当前用户Interactive/Limited计划任务均已注册，真实带SUPERVISOR_STOP运行返回0且启动子进程数0；不需要管理员权限。两台77项独立worker测试通过。HomePc操作员启动的本地端口随后出现，实际health核对正确cluster；未由监督器代启被拒绝的SSH。
+- 实际中继全包吞吐约0.2–0.3 MB/s，601原下载在Job报告lost后核查发现进程仍在写.part；没有重复启动或将目录缓存0字节误判断流。保留已下载部分，改用同源、小型、SHA固定的前驱校验凭据。
+- 新模式从原bootstrap逐页核验raw/Parquet/manifest生成，冻结原frontier/assignment/policy和前驱行摘要；原始文件仍在canonical和原包中。worker凭据非行情、非SAVED；canonical导入仍用实际前驱原始页复核。HomePc 4,763,945字节、601 4,606,132字节，原全包不删除。
+- 增加本地worker汇总writer-lock竞争转为BundleDeferred，保留精确outbox并等待；不改变内容冲突门槛。Mac完整TDX88项、15模块相关182项回归通过/0失败/0跳过；首次新单元测试发现临时目录/var与/private/var解析差异，统一根路径后通过。
+- 容量审计发现Lexar每个受检小文件及页目录实际各占524,288字节，即约2MiB/页；不是按文件内容字节就能规划容量。原始数据未删除、未格式化磁盘；全历史ETA必须同时报告存储限制和剩余协议错误。
