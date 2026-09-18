@@ -92,3 +92,7 @@ Broker Shadow 保存只读脱敏账户证据与对账。RealTrade Readiness 缺�
 既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。
 
 只调整没有已保存chunk的PENDING/SKIPPED_POLICY逐日首请求；原任务以SKIPPED_POLICY保留，改动前内容进入scheduler_policy_audit，必要时另建有效frontier。ERROR、已有页和进行中的分页不被裁剪。自动/人工续采只重新排队已识别瞬时连接错误，协议坏包不因resume变成EMPTY或被反复自动重试。
+
+分布式采集沿用同一plan/policy，以完整SHA256(symbol)%N固定归属。canonical协调器与三个worker数据根隔离；最小bootstrap保留frontier和前一页校验证据，旧canonical角色不能再采全市场。未提交页在视图外，SAVED发布有持久promotion恢复。结果序列、原始/Parquet全值、分页前驱、opening_match父页、source_id冲突均在导入前核对。
+
+数据面只走既有认证SSH保护下的loopback文件服务，MCP只调度；不共写SQLite/DuckDB、不开放公网HTTP、不在中继落盘行情。worker收到精确MERGED回执后才确认传输，网络失败保留outbox。总状态区分报告新鲜度与进程在线、原基线与新采页，始终不签发全历史/PIT资格。操作和验收范围见[TDX三机采集](../guide/tdx-distributed.md)。

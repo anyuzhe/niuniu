@@ -1328,3 +1328,12 @@
 - 备份97,419,264字节队列后应用：237个原PENDING竞价任务SKIPPED_POLICY，26个有效frontier；240条原ERROR逐字段保持。真实60任务续采22.79秒、0恢复轮，REQUEST_BUDGET退出后恢复STOP，不恢复旧单机长跑。
 - 验证：开工28项，完成后39项TDX专项及11模块133项相关回归通过，0失败/跳过。证据、候选policy、完整改动预览和队列备份在artifacts/tdx-distributed-20260918/。
 - 工程：WebCodex结构化新建在Lexar卷返回OS45且未写入，改用同一WebCodex的Python独占创建测试文件，未切换远程工具。代码/文档独立提交并普通推送；回执以Git SHA为准。后续继续三机分片、最小checkpoint与校验汇总。
+
+### 2026-09-18｜[TDX分布式] Tunnel恢复后接续核心、文件数据面与回执
+
+- 接续ad15fac：保留两个已修改和三个新文件，不重置工作区；确认上次CLI未创建后独占新建。沿原数据合同实现固定分片、完整范围/策略绑定、最小checkpoint、SAVED/EMPTY与序列校验、乱序等待、冲突隔离和幂等合并。
+- 原始/Parquet逐值比对、精确前驱和opening_match父页共同验收；STORED移至正常视图外，pending_promotions恢复同一字节。Bootstrap逐页核验后只保留manifest，避免16GiB机器常驻数百万原始字典。
+- 新增loopback-only文件数据面、Range续传、.part+SHA原子接收、canonical MERGED确认及worker循环。上传成功不是合并成功；未确认包不丢，确认仅删除传输副本，原始页/错误不删除。STOP/AUTO_HALT优先，单次服务预算与30GiB保护保留。
+- 安全/平台：Mac/601现有SSH登录验证通过，HomePc既有公钥未获中继认证；未新建密钥、未改变服务端授权。Windows路径测试使用真实junction而非放宽规则；完整应用fcntl移植不属于独立采集worker的验收范围，profile明确列出未纳入的单个应用接线测试，Mac仍执行该原测试。
+- 验证：70项完整TDX专项，13模块164项相关回归均通过/0失败/0跳过。日志为resumed-tdx-tests.log和resumed-related-regression.log；真实队列另建queue-before-sharding.sqlite3与sharding-baseline.json，旧canonical保持STOP。新节点部署结果须另记，不据此声称三机上线。
+- 交付：新增运行指南并更新当前状态/架构；本阶段代码测试文档独立提交、普通push并核对SHA。具体部署和长期采集仍以各节点实际回执为准。

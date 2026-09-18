@@ -34,12 +34,17 @@ def encode(value):return json.dumps(clean(value),ensure_ascii=False,sort_keys=Tr
 def sha(data):return hashlib.sha256(data).hexdigest()
 def digest(value):return sha(encode(value).encode())
 
+def is_redirect(path):
+    """Reject both POSIX symlinks and Windows directory junctions."""
+    path=Path(path)
+    return path.is_symlink() or (hasattr(path,'is_junction') and path.is_junction())
+
 def safe(root,path):
     root=Path(root).resolve();path=Path(path)
     if not path.is_relative_to(root):raise ValueError('TDX path outside configured root')
     current=path
     while current!=root:
-        if current.is_symlink():raise ValueError('TDX symlink rejected')
+        if is_redirect(current):raise ValueError('TDX symlink/junction rejected')
         current=current.parent
     if not path.resolve().is_relative_to(root):raise ValueError('TDX escaped root')
     return path
@@ -96,7 +101,7 @@ def frame_for(family,rows,job,observed,source_id):
 class TdxLake:
     def __init__(self,data_root,*,create=False):
         supplied=Path(data_root)
-        if supplied.is_symlink() or not supplied.is_dir():raise ValueError('TDX data root must be existing, non-symlink directory')
+        if is_redirect(supplied) or not supplied.is_dir():raise ValueError('TDX data root must be existing, non-symlink/non-junction directory')
         self.root=supplied.resolve();self.base=safe(self.root,self.root/'lake/bronze/provider=tdx')
         self.catalog=safe(self.root,self.root/'catalog/mqc.duckdb')
         self.queue=safe(self.root,self.root/'catalog/tdx_ingestion.sqlite3')
@@ -197,8 +202,10 @@ class TdxLake:
             if actual and job['day'] and actual!=job['day']:raise ValueError('Wrong response trading day')
         sid=digest({'job':job['job_id'],'body':result})
         destination=safe(self.root,self.base/family/'pages'/sid)
-        if destination.exists():
-            manifest=self.verify_page(family,sid)
+        held=safe(self.root,self.base/'_stored'/family/sid)
+        existing=destination if destination.exists() else held
+        if existing.exists():
+            manifest=self.verify_page_at(existing,family,sid)
         else:
             if shutil.disk_usage(self.root).free<30*1024**3:raise ValueError('DISK_RESERVE: less than 30GiB free')
             staging=safe(self.root,self.base/'_staging'/sid);staging.parent.mkdir(exist_ok=True)
@@ -213,29 +220,81 @@ class TdxLake:
                 'raw_sha256':sha(raw),'parquet_sha256':sha((staging/'data.parquet').read_bytes()),
                 'qualification':QUALIFICATION,'complete_history':False,'empty_means':'this_exact_request_only',
                 'license':'ELTDX Research-Only; personal noncommercial research only; not for order execution/production service'}
-            (staging/'manifest.json').write_text(encode({**manifest,'checksum':digest(manifest)}))
-            destination.parent.mkdir(parents=True,exist_ok=True);staging.rename(destination)
-        with self.db() as con:
-            con.execute('INSERT OR IGNORE INTO publications VALUES (?,?,?,?,?,?,?,?)',
-                        (sid,job['plan_id'],family,job['symbol'],job['day'],manifest['rows'],str(destination.relative_to(self.root)),manifest['observed_at']))
-            con.commit()
-        self.mark(job,('SAVED' if rows else 'EMPTY') if finalize else 'STORED',rows=len(rows),chunk=str(destination.relative_to(self.root)))
+            (staging/'manifest.json').write_text(encode({**manifest,'checksum':digest(manifest)}),encoding='utf-8')
+            held.parent.mkdir(parents=True,exist_ok=True);staging.rename(held);existing=held
+        chunk=existing.relative_to(self.root).as_posix()
+        self.mark(job,'STORED',rows=len(rows),chunk=chunk)
+        if finalize:self.commit_saved_page({**job,'chunk':chunk})
         return manifest,rows
-    def verify_page(self,family,sid):
+    def verify_page_at(self,folder,family,sid):
         if family not in FAMILIES or not re.fullmatch('[a-f0-9]{64}',sid):raise ValueError('Invalid page')
-        folder=safe(self.root,self.base/family/'pages'/sid)
-        value=json.loads(safe(self.root,folder/'manifest.json').read_text());core={k:v for k,v in value.items() if k!='checksum'}
-        if digest(core)!=value['checksum'] or core['source_id']!=sid:raise ValueError('Page manifest changed')
+        folder=safe(self.root,Path(folder))
+        value=json.loads(safe(self.root,folder/'manifest.json').read_text(encoding='utf-8'));core={k:v for k,v in value.items() if k!='checksum'}
+        if digest(core)!=value['checksum'] or core['source_id']!=sid or core['family']!=family:raise ValueError('Page manifest changed')
         for filename,key in (('response.json.gz','raw_sha256'),('data.parquet','parquet_sha256')):
             if sha(safe(self.root,folder/filename).read_bytes())!=core[key]:raise ValueError('Page bytes changed: '+filename)
         return core
+    def verify_page(self,family,sid):
+        folder=safe(self.root,self.base/family/'pages'/sid)
+        if not folder.exists():
+            held=safe(self.root,self.base/'_stored'/family/sid)
+            if held.exists():folder=held
+            else:
+                with self.db(readonly=True) as con:row=con.execute('SELECT chunk FROM publications WHERE source_id=?',(sid,)).fetchone()
+                if row:folder=safe(self.root,self.root/row['chunk'])
+        return self.verify_page_at(folder,family,sid)
+    @staticmethod
+    def _promotion_schema(con):
+        con.execute('CREATE TABLE IF NOT EXISTS pending_promotions(source_id TEXT PRIMARY KEY,job_id TEXT NOT NULL,family TEXT NOT NULL,held_chunk TEXT NOT NULL,target_chunk TEXT NOT NULL,created_at TEXT NOT NULL)')
+    def _promote_page(self,row):
+        held=safe(self.root,self.root/row['held_chunk']);target=safe(self.root,self.root/row['target_chunk'])
+        if target.exists():
+            current=self.verify_page_at(target,row['family'],row['source_id'])
+            if held.exists() and held!=target:
+                previous=self.verify_page_at(held,row['family'],row['source_id'])
+                if previous!=current:raise ValueError('CONFLICT: publication target differs; refusing overwrite')
+        else:
+            self.verify_page_at(held,row['family'],row['source_id'])
+            target.parent.mkdir(parents=True,exist_ok=True);held.rename(target)
+        with self.db() as con:
+            con.execute('UPDATE publications SET chunk=? WHERE source_id=?',(row['target_chunk'],row['source_id']))
+            con.execute('UPDATE jobs SET chunk=? WHERE job_id=? AND chunk=?',(row['target_chunk'],row['job_id'],row['held_chunk']))
+            con.execute('DELETE FROM pending_promotions WHERE source_id=?',(row['source_id'],));con.commit()
+    def commit_saved_page(self,job,*,empty_audit_only=False):
+        folder=safe(self.root,self.root/job['chunk']);value=json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
+        sid=value['source_id'];manifest=self.verify_page_at(folder,job['family'],sid)
+        for key in ('plan_id','family','symbol','day','offset'):
+            if manifest[key]!=job[key]:raise ValueError('Publication request identity mismatch')
+        # Durable metadata precedes filesystem visibility. A crash can temporarily hide a valid
+        # page, but cannot expose a STORED/failed page. Reconciliation finishes exact-byte moves.
+        target=safe(self.root,(self.base/'_empty_pages'/job['family']/sid) if empty_audit_only and not manifest['rows'] else self.base/job['family']/'pages'/sid)
+        promotion={'source_id':sid,'job_id':job['job_id'],'family':job['family'],
+                   'held_chunk':folder.relative_to(self.root).as_posix(),'target_chunk':target.relative_to(self.root).as_posix(),'created_at':now()}
+        with self.db() as con:
+            con.execute('BEGIN IMMEDIATE');self._promotion_schema(con)
+            con.execute('INSERT OR IGNORE INTO publications VALUES (?,?,?,?,?,?,?,?)',
+                (sid,job['plan_id'],job['family'],job['symbol'],job['day'],manifest['rows'],promotion['held_chunk'],manifest['observed_at']))
+            con.execute('UPDATE jobs SET state=?,rows=?,chunk=?,error=NULL,updated_at=? WHERE job_id=?',
+                ('SAVED' if manifest['rows'] else 'EMPTY',manifest['rows'],promotion['held_chunk'],now(),job['job_id']))
+            con.execute('INSERT OR REPLACE INTO pending_promotions VALUES (?,?,?,?,?,?)',tuple(promotion.values()));con.commit()
+        self._promote_page(promotion)
+        return manifest
+    def reconcile_publications(self):
+        with self.db(readonly=True) as con:
+            exists=con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pending_promotions'").fetchone()
+            rows=[dict(r) for r in con.execute('SELECT * FROM pending_promotions')] if exists else []
+        for row in rows:self._promote_page(row)
+        return len(rows)
     def status(self):
         if not self.queue.exists():return {'configured':False,'families':[]}
         with self.db(readonly=True) as con:
             jobs=[dict(r) for r in con.execute('SELECT plan_id,family,state,count(*) tasks,sum(rows) rows FROM jobs GROUP BY plan_id,family,state')]
             stored=[dict(r) for r in con.execute('SELECT family,count(*) pages,count(DISTINCT CASE WHEN length(symbol)>0 THEN symbol END) requested_securities,sum(rows) rows,min(day) first_requested_day,max(day) last_requested_day FROM publications GROUP BY family')]
             plans=[{'plan_id':r['plan_id'],**json.loads(r['body'])} for r in con.execute('SELECT * FROM plans ORDER BY created_at')]
-        control={'stop_requested':(self.base/'STOP').exists(),'auto_halted':(self.base/'AUTO_HALT.json').exists()}
+        with self.db(readonly=True) as con:
+            has_promotions=con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pending_promotions'").fetchone()
+            pending_promotions=con.execute('SELECT count(*) FROM pending_promotions').fetchone()[0] if has_promotions else 0
+        control={'stop_requested':(self.base/'STOP').exists(),'auto_halted':(self.base/'AUTO_HALT.json').exists(),'pending_publication_promotions':pending_promotions}
         for key,filename in (('progress','progress.json'),('auto_halt','AUTO_HALT.json')):
             path=self.base/filename
             if path.is_file() and not path.is_symlink() and path.stat().st_size<=1_000_000:

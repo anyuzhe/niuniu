@@ -358,6 +358,10 @@ class Runner:
         self.rate_lock=threading.Lock();self.last_request=0.
         self.days=tuple(self.plan['trading_days']);self.policy=load_scheduler_policy(lake,pid)
         self.policy_id=self.policy.get('policy_id')
+        from quantlab.data.tdx_sharding import load_worker_assignment,validate_worker_queue
+        self.assignment=load_worker_assignment(lake,pid,self.policy_id)
+        validate_worker_queue(lake,self.assignment)
+        self.metrics_lock=threading.Lock();self.network_attempts=0;self.network_errors=0;self.reused_pages=0
     def _previous_history_day(self,family,symbol,day):
         return _latest_allowed_day(self.days,family,symbol,day,self.policy,strictly_before=True)
     def _next_host(self):
@@ -396,21 +400,26 @@ class Runner:
             time.sleep(min(1,max(0,end-time.monotonic())))
         return True
     def fetch(self,job):
+        from quantlab.data.tdx_sharding import require_owned_job
+        require_owned_job(self.assignment,job)
         try:
             if job.get('chunk'):
                 # Resume the exact saved bytes after a crash between publication and cursor scheduling.
                 folder=safe(self.lake.root,self.lake.root/job['chunk'])
                 manifest=json.loads((folder/'manifest.json').read_text())
-                self.lake.verify_page(job['family'],manifest['source_id'])
+                self.lake.verify_page_at(folder,job['family'],manifest['source_id'])
                 value=json.loads(gzip_decompress(folder/'response.json.gz'))
+                with self.metrics_lock:self.reused_pages+=1
                 return job,value['result'],value['observed_at'],None
         except Exception as error:return job,None,now(),type(error).__name__+': '+str(error)[:400]
         last_error=None
         for attempt in range(self.request_retries+1):
             try:
+                with self.metrics_lock:self.network_attempts+=1
                 source=self._source();self._request_slot();observed=now();value=clean(source.request(job))
                 return job,value,observed,None
             except Exception as error:
+                with self.metrics_lock:self.network_errors+=1
                 last_error=type(error).__name__+': '+str(error)[:400]
                 if access_limit_error(last_error) or not retryable_error(last_error) or attempt>=self.request_retries:
                     return job,None,now(),last_error
@@ -418,6 +427,21 @@ class Runner:
                 self._drop_local_source()
                 if self.retry_backoff:time.sleep(min(5,self.retry_backoff*(2**attempt)))
         return job,None,now(),last_error or 'Unknown transient request failure'
+    def validate_page_chain(self,job,rows):
+        if not (job['family'].startswith('bars_') or job['family']=='trades') or not job['offset']:return
+        with self.lake.db(readonly=True) as con:
+            previous=con.execute("SELECT * FROM jobs WHERE plan_id=? AND family=? AND symbol=? AND day=? AND offset<? AND chunk IS NOT NULL AND state IN ('SAVED','CHECKPOINT') ORDER BY offset DESC LIMIT 1",(self.pid,job['family'],job['symbol'],job['day'],job['offset'])).fetchone()
+        if not previous or previous['offset']+previous['rows']!=job['offset']:
+            raise ValueError('MISSING_CHECKPOINT: exact preceding saved page required before advancing pagination')
+        folder=safe(self.lake.root,self.lake.root/previous['chunk'])
+        metadata=json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
+        self.lake.verify_page_at(folder,job['family'],metadata['source_id'])
+        payload=json.loads(gzip_decompress(folder/'response.json.gz'))
+        from quantlab.data.tdx_lake import rows_for
+        strip=lambda rr:[{k:v for k,v in r.items() if k not in ('index','absolute_index')} for r in rr]
+        if rows and digest(strip(rows_for(job['family'],payload['result'])))==digest(strip(rows)):
+            raise ValueError('REPEATED_PAGE: provider repeated the preceding page; history incomplete')
+
     def follow(self,job,manifest,rows):
         f=job['family'];symbol=job['symbol'];day=job['day'];offset=job['offset']
         if f=='trades':
@@ -430,17 +454,6 @@ class Runner:
             if rows:
                 if offset+len(rows)>self.plan['max_offset']:
                     self.lake.mark(job,'PAGE_LIMIT',rows=len(rows),chunk=job.get('chunk'),error='Max offset reached; history incomplete');return
-                # Detect repeated server pages instead of looping forever.
-                if offset:
-                    with self.lake.db(readonly=True) as con:
-                        previous=con.execute('SELECT chunk FROM jobs WHERE plan_id=? AND family=? AND symbol=? AND day=? AND offset<? AND chunk IS NOT NULL ORDER BY offset DESC LIMIT 1',(self.pid,f,symbol,day,offset)).fetchone()
-                    if previous:
-                        payload=json.loads(gzip_decompress(self.lake.root/previous[0]/'response.json.gz'))
-                        from quantlab.data.tdx_lake import rows_for
-                        old=rows_for(f,payload['result'])
-                        strip=lambda rr:[{k:v for k,v in r.items() if k not in ('index','absolute_index')} for r in rr]
-                        if digest(strip(old))==digest(strip(rows)):
-                            self.lake.mark(job,'STALLED',rows=len(rows),error='Repeated provider page; incomplete history');return
                 self.lake.enqueue(self.pid,f,symbol,day,offset+len(rows),priority=100)
                 return
         if f in ('trades','auction','limit_ladder'):
@@ -449,7 +462,7 @@ class Runner:
     def run(self,seconds,max_requests,max_new_gib):
         started=time.monotonic();initial_free=shutil.disk_usage(self.lake.root).free;count=0;reason='QUEUE_DRAINED'
         transient_failures=0;recovery_cycles=0;last_transient=None
-        self.lake.recover(self.pid)
+        self.lake.reconcile_publications();self.lake.recover(self.pid)
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.workers) as pool:
             while True:
                 if (self.lake.base/'STOP').exists():reason='USER_STOP';break
@@ -471,20 +484,29 @@ class Runner:
                             transient_failures=0
                     else:
                         try:
+                            from quantlab.data.tdx_lake import rows_for
+                            self.validate_page_chain(job,rows_for(job['family'],value))
                             manifest,rows=self.lake.save_page(job,value,observed_at=observed,finalize=False)
-                            job['chunk']=str((self.lake.base/job['family']/'pages'/manifest['source_id']).relative_to(self.lake.root))
+                            with self.lake.db(readonly=True) as db:job['chunk']=db.execute('SELECT chunk FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0]
                             self.follow(job,manifest,rows)
                             with self.lake.db(readonly=True) as db:
                                 state=db.execute('SELECT state FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0]
-                            if state=='STORED':self.lake.mark(job,'SAVED' if rows else 'EMPTY',rows=len(rows),chunk=job['chunk'])
+                            if state=='STORED':self.lake.commit_saved_page(job)
                             transient_failures=0;last_transient=None
                         except Exception as exc:
-                            error=type(exc).__name__+': '+str(exc)[:400];self.lake.mark(job,'ERROR',error=error)
+                            error=type(exc).__name__+': '+str(exc)[:400]
+                            state='STALLED' if 'REPEATED_PAGE:' in error or 'MISSING_CHECKPOINT:' in error else 'ERROR'
+                            self.lake.mark(job,state,chunk=job.get('chunk'),error=error)
+                            if state=='STALLED':
+                                rejected=self.lake.base/'_rejected';rejected.mkdir(exist_ok=True)
+                                write_json(rejected/(job['job_id']+'.json'),{'job':job,'observed_at':observed,'error':error,'result':value,'history_complete':False})
                             if retryable_error(error):transient_failures+=1;last_transient=error
                             else:transient_failures=0
                     if count%50==0:
                         progress={'plan_id':self.pid,'pid':os.getpid(),'processed_this_run':count,'elapsed_seconds':round(time.monotonic()-started),
-                            'recovery_cycles':recovery_cycles,'transient_failures':transient_failures,'scheduler_policy_id':self.policy_id,'updated_at':now(),'state':'RUNNING'}
+                            'recovery_cycles':recovery_cycles,'transient_failures':transient_failures,'scheduler_policy_id':self.policy_id,
+                            'network_attempts':self.network_attempts,'network_errors':self.network_errors,'reused_pages':self.reused_pages,
+                            'shard_id':self.assignment['shard_id'] if self.assignment else None,'updated_at':now(),'state':'RUNNING'}
                         write_json(self.lake.base/'progress.json',progress);print(encode(progress),flush=True)
                 if reason=='PROVIDER_ACCESS_LIMIT':break
                 if transient_failures>=self.transient_burst:
@@ -500,7 +522,9 @@ class Runner:
         self._reset_sources()
         result={'plan_id':self.pid,'processed_this_run':count,'stop_reason':reason,
             'state':'HALTED' if reason in ('RECOVERY_EXHAUSTED','PROVIDER_ACCESS_LIMIT','DISK_BUDGET') else 'STOPPED',
-            'recovery_cycles':recovery_cycles,'scheduler_policy_id':self.policy_id,'finished_at':now(),'full_history_complete':False}
+            'recovery_cycles':recovery_cycles,'scheduler_policy_id':self.policy_id,'finished_at':now(),'full_history_complete':False,
+            'elapsed_seconds':round(time.monotonic()-started,3),'network_attempts':self.network_attempts,'network_errors':self.network_errors,
+            'reused_pages':self.reused_pages,'shard_id':self.assignment['shard_id'] if self.assignment else None}
         if result['state']=='HALTED':
             write_json(self.lake.base/AUTO_HALT,{'plan_id':self.pid,'reason':reason,'last_error':last_transient,'recovery_cycles':recovery_cycles,'halted_at':result['finished_at']})
         write_json(self.lake.base/'progress.json',result);return result
@@ -559,6 +583,10 @@ def main(argv=None):
         if (lake.base/'STOP').exists():print(encode({'state':'AUTO_DISABLED_USER_STOP'}));return 0
         halt=lake.base/AUTO_HALT
         if halt.exists():print(encode({'state':'AUTO_HALTED','detail':json.loads(halt.read_text())}));return 0
+    from quantlab.data.tdx_sharding import read_role
+    role=read_role(lake)
+    if role and role.get('role')=='coordinator' and a.action in ('prepare','run','resume','autoresume'):
+        raise ValueError('Canonical coordinator collection is disabled; run its assigned worker data root')
     with writer_lease(lake):
         if a.action=='prepare':result=prepare(lake,personal=a.personal_research_only)
         elif a.action=='optimize':

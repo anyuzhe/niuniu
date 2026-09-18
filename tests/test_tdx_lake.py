@@ -90,8 +90,19 @@ class TdxLakeTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.lake.read('bars_1m;DROP TABLE x')
         with self.assertRaises(ValueError):self.lake.read('bars_1m',"' OR 1=1")
     def test_symlink_output_rejected(self):
-        other=self.root/'other';other.mkdir();link=self.root/'link';link.symlink_to(other,target_is_directory=True)
+        other=self.root/'other';other.mkdir();link=self.root/'link'
+        try:link.symlink_to(other,target_is_directory=True)
+        except OSError as exc:
+            import os,subprocess
+            if os.name!='nt' or getattr(exc,'winerror',None)!=1314:raise
+            # A real Windows junction exercises the same redirection guard without
+            # enabling Developer Mode, elevating privileges or mocking the filesystem.
+            subprocess.run(['cmd.exe','/d','/c','mklink','/J',str(link),str(other)],check=True,capture_output=True)
+            self.assertTrue(link.is_junction())
+        self.addCleanup(lambda:link.rmdir() if hasattr(link,'is_junction') and link.is_junction() else link.unlink())
         with self.assertRaises(ValueError):TdxLake(link)
+        from quantlab.data.tdx_lake import safe
+        with self.assertRaises(ValueError):safe(self.root,link/'payload')
     def test_writer_lease_prevents_duplicate_collectors(self):
         with writer_lease(self.lake):
             with self.assertRaises(ValueError):
