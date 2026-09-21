@@ -202,6 +202,18 @@ Playbook 选择结果复盘由宿主运行 `niuniu-selection-outcomes --output a
 
 读取归档时，坏记录、符号链接、路径身份或校验不一致会在 `errors` 中披露，并标记 `incomplete=true`，不能把剩余结果当作完整样本。AI 工具及桌面复盘引用保留该提示。只读 `--get/--list/--summary` 遇不完整归档同样返回非零：有有效结果时为3、没有有效结果时为2，不把不完整读取报告为SUCCESS。`--list --full --offset 0 --limit 20` 可分页查看逐证券明细；`--get SELECTION_ID --full` 查看单次选择全部窗口。
 
+### 已有行情归档的通用只读查询
+
+普通本地聊天与标准 MCP 共用 `list_archived_daily_sources → list_archived_daily_symbols → inspect_archived_daily`。来源固定为宿主 `--output` 工作空间内的 `_market_data/retro_daily`，使用真实返回的 capture_id；模型不能传文件路径或切换根。前两步是计划/证券元信息发现，错误 capture 在 `errors/incomplete` 中披露，不认证日历完整或原始值；第三步才对指定1–10只证券、最多371自然日按既有桥校验原始响应与typed Parquet，packed与原目录使用同一字段合同。`has_st/has_suspension`过滤只便于诊断，不可据此制造历史股票池。目录最多50个capture，并在读计划之前检查候选上限；规模超限明确失败，不伪装已经扫描完整。
+
+TDX 使用 `get_tdx_data_status / read_tdx_data`，数据根来自宿主 `--data-root`，不从output或cwd猜测。未配置根、锁占用、损坏库和无效参数以结构化错误返回；显式根尚无TDX队列时状态可表示configured=false。read只查询既存catalog，`verification=catalog_rows_only / source_bytes_verified=false`，不是重新核验每页原始字节。保留`original_record、source_id、volume_unit、observed_at`和资格，未知竞价量单位不变成股，观察日不变成历史发布时间。状态中的请求日期范围不是实际数据日期覆盖。
+
+可以向普通助手问“列出当前工作空间已有的回溯日线归档，核对字段和可读取范围，不生成研究”，或“查看已存TDX数据族和单位，说明哪些仍未核验”。工具只读取，不创建数据、提案、授权或任务。返回超过64KiB时明确RESULT_TOO_LARGE，不能靠删除错误或只返回半份数据来宣称成功；缩小limit/证券/日期再查。能力查询中的read_available仅代表接线存在，不证明资料已经就绪。
+
+旧`list_qm50_archived_sources/list_qm50_archived_symbols/inspect_qm50_archived_daily`保留名称和宿主指定source_workspace，底层转同一只读实现。锁定原始规格会话仍用旧专用入口，不能借通用名称调用替代研究；固定测试仍须单独许可。首轮Reviewer的工具白名单不扩大。`preclose/turn/isST/tradestatus`保留供应商原意，不替代官方reference_price/float_shares/完整状态。
+
+本增量只接发现和读取，不把TDX或retro归档自动注册为通用策略Provider，不修改供应商标签、SQL视图或数据布局。字段/单位/时点/快照合同由数据治理方交付后，再单独实现正式消费适配；数据已读取与策略可以执行是不同状态。
+
 ## 5. 每日循环里的缩写
 
 | 名称 | 含义 |

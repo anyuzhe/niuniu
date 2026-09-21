@@ -85,7 +85,9 @@ class ChatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             r=ChatRuntime(tmp,tmp);cid=r.store.create();args={'request_id':'model-made-id','spec_json':json.dumps(SPEC)}
             p=FakeProvider([('propose_experiment',args),('propose_experiment',{**args,'request_id':'another'})])
-            result=r.send(cid,'生成提案',ModelConfig(),allow_send=True,provider=p)
+            # Exercise two full idempotency receipts with an explicit test budget;
+            # context exhaustion remains independently asserted in the test above.
+            result=r.send(cid,'生成提案',ModelConfig(max_context_chars=100000),allow_send=True,provider=p)
             self.assertTrue(all(v['ok'] for v in p.results))
             self.assertEqual(p.results[0]['data']['proposal_id'],p.results[1]['data']['proposal_id'])
             self.assertEqual(len(r.api.proposals.store.list()),1)

@@ -32,6 +32,8 @@ INNER_READS={'list_local_market_data','inspect_local_market_data','search_factor
 class ResearchSpecAPI:
     def __init__(self,inner,output,data_root=None,*,active_spec=None,allow_tests=False,source_workspace=None):
         self.source_workspace=source_workspace or output
+        from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
+        self.archive_reads=ArchivedMarketDataAPI(inner,output,data_root,source_workspace=self.source_workspace)
         if type(allow_tests) is not bool or allow_tests and not active_spec: raise ValueError('Spec tests require an explicit host-bound specification')
         self.inner=inner;self.output=output;self.data_root=data_root;self.active_spec=active_spec;self.allow_tests=allow_tests;self.test_calls=0
         self.store=ResearchSpecStore(output)
@@ -52,7 +54,10 @@ class ResearchSpecAPI:
         if own is None:
             if self.active_spec and name not in INNER_READS:
                 return self.error(name,'SPEC_SUBSTITUTION_REJECTED','绑定规格不允许调用其他研究/交易/写入工具')
-            return self.inner.call(name,args)
+            result=self.inner.call(name,args)
+            if name=='get_capabilities' and result.get('ok'):
+                result={**result,'data':{**result['data'],'tools':[t['name'] for t in self.schemas()]}}
+            return result
         try:
             props=own['parameters']['properties']
             if not isinstance(args,dict) or set(args)!=set(props):raise ValueError('规格工具参数与schema不一致')
@@ -63,23 +68,15 @@ class ResearchSpecAPI:
             sid=args.get('spec_id')
             if sid and self.active_spec and sid!=self.active_spec:raise ValueError('不能切换宿主绑定的规格')
             refs=[]
-            if name in ('get_tdx_data_status','read_tdx_data'):
-                from quantlab.data.tdx_lake import TdxLake
-                lake=TdxLake(self.data_root)
-                if name=='get_tdx_data_status':
-                    data=lake.status()
-                    data['plans']=[{k:v for k,v in plan.items() if k not in ('symbols','trading_days','server_handshake','calendar_extension')} for plan in data.get('plans',[])]
-                else:
-                    data=lake.read(args['family'],args['symbol'],args['start'],args['end'],args['offset'],args['limit'])
-                    for row in data['rows']:row['original_record']=json.loads(row.pop('record_json'))
-                    if len(encode(data))>24000:
-                        data={'omitted':True,'family':args['family'],'reason':'result_size_limit','hint':'减小limit后重试；完整字段始终保存在数据库。'}
-            elif name in ('list_qm50_archived_sources','list_qm50_archived_symbols','inspect_qm50_archived_daily'):
-                from quantlab.agent.qm50_archived_inputs import ArchivedDailyBridge
-                bridge=ArchivedDailyBridge(self.source_workspace)
-                if name=='list_qm50_archived_sources':data=bridge.list_sources()
-                elif name=='list_qm50_archived_symbols':data=bridge.inspect_symbols(args['capture_id'],args['offset'],args['limit'],args['filter_kind'])
-                else:data=bridge.inspect(args['capture_id'],args['symbols'],args['start'],args['end'])
+            archived_aliases = {
+                'get_tdx_data_status': 'get_tdx_data_status', 'read_tdx_data': 'read_tdx_data',
+                'list_qm50_archived_sources': 'list_archived_daily_sources',
+                'list_qm50_archived_symbols': 'list_archived_daily_symbols',
+                'inspect_qm50_archived_daily': 'inspect_archived_daily',
+            }
+            if name in archived_aliases:
+                result=self.archive_reads.call(archived_aliases[name],args)
+                return {**result,'tool':name}
             elif name in ('run_qm50_archived_inputs','replay_qm50_archived_inputs'):
                 if not self.allow_tests:return self.error(name,'SPEC_TEST_NOT_AUTHORIZED','宿主未许可固定测试')
                 if self.test_calls>=3:return self.error(name,'SPEC_TEST_BUDGET','本轮固定测试最多三次')

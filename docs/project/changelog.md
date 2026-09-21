@@ -1516,3 +1516,14 @@
 - 独立只读复核指出同模块small-table/silver祖先链接也可能跨根；主控追加反例复现后统一祖先和文件路径检查，并限制silver遍历规模。测试证明取消持久catalog依赖、缺fetch_ts显式、链接拒绝及正常嵌套表计数；修后验证由主控执行，未声称独立修后PASS。
 - 最终验收：test_pit_coverage 12项与test_mcp_server 3项共15项通过，0失败/错误/跳过；含7项新增，源码/测试/记忆合同/指南指纹稳定。修前失败和修后日志在artifacts/data-governance-handoff-20260921；observed-coverage.json是修复后对正式数据根的一次只读结果。测试使用合成样本，不声称数据已治理、全仓通过或策略有效。原始生产库未写入、服务未启停。
 - 提交仅本轮产品文件、测试、对应指南/记忆合同与开发史；共享status不提交。用户交接计划单独交付，不新增另一份当前状态或让数据执行者并发改产品代码。普通推送及远端SHA以实际回执为准。
+
+### 2026-09-21｜[F8] 通用归档行情只读入口与Chat/MCP接线
+
+- 基线：main本地与独立远端均为53b5e6b，只有共享status既存未提交。用户确认另一模型执行数据治理，本轮只改产品代码并在TemporaryDirectory合成样本验收；不访问正式niuniu-data/历史业务artifacts，不修改SQL视图、TDX采集、迁移、单位、策略公式、可见客户端或公共服务。
+- 新增ArchivedMarketDataAPI，复用原ArchivedDailyBridge和TdxLake；普通Chat与MCP均接list_archived_daily_sources/list_archived_daily_symbols/inspect_archived_daily及get_tdx_data_status/read_tdx_data。不建立第二个数据库或Provider；数据根和来源工作空间由宿主固定，模型参数不接受path/root/SQL。构造期不读源，source list在加载计划前限制候选，错误capture保留errors/incomplete；packed与原目录按相同原始/typed字节合同读取。
+- 读取边界：TDX仅catalog_rows_only，不重新深验原始页、不把请求日期当实际覆盖；original_record、source_id、未知单位与observed_at原样保留。读取缺根、损坏/锁库或无效参数返回结构化失败；完整返回超过64KiB明确拒绝，错误包也有预算保护，不截断数据后返回成功。工具read_available表示接线，不认证资料已存在、PIT或可直接回测。
+- 兼容：旧QM50命名的三个只读别名及TDX入口转同一实现，专用source_workspace继续有效；绑定规格仍屏蔽通用替代名称和未授权测试，首轮Reviewer白名单不扩大。修正普通ResearchSpecAPI外层能力清单漏列实际工具的问题，断言schemas与get_capabilities工具集合一致；内层失败不改成成功，原警告/证据保留。
+- 验收：新增两个测试模块21项，最终12模块140项全部通过，0失败/错误/跳过；覆盖真实ChatRuntime分发与留痕、MCP进程内及stdio子进程、packed日线、TDX原单位、旧别名/原规格约束、根路径、坏capture、分页和输出预算。最终9个相关产品/测试/共享reader文件前后指纹一致，统计见artifacts/generic-archive-access-20260921/accepted-regression.json，初始失败日志保留。
+- 测试边界：首次完整三步聊天及旧提案幂等测试因默认上下文触发TOOL_CONTEXT_BUDGET_EXHAUSTED；对HEAD原ChatRuntime和工作区分别实测，原版同样在第二次提案返回触发预算且均只生成1个提案。仅将这些功能测试显式设置100000字符测试预算，产品默认60000、权限和上下文保护未放宽；原预算拒绝测试继续通过。不是实际模型自主研究、正式数据或全仓验收。
+- 独立Pi只读审查在其记录的4产品文件版本未发现有证据的阻断问题；之后主控补外层能力清单3行修复与测试预算设置，最终测试由主控执行，不把早期报告写成独立修后PASS。worker报告、审查、失败和最终回归均在同一新artifacts目录。新文件事务create在ExFAT报errno45并确认回滚后，以独占创建落盘；一次SHA参数抄写错误拒绝整批后，重读当前文件重新提交，未覆盖并行改动。
+- 提交仅本轮4个产品文件、2个新测试、1个原测试预算设置与指南/开发史，artifacts和共享status不整文件提交。完成后普通push并独立核对远端；不表示部署，后续正式Provider适配以数据负责人交付的字段/单位/时点/快照合同为前提。

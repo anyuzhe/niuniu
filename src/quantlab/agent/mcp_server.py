@@ -71,12 +71,15 @@ class MCPResearchAPI(MarketDataResearchAPI):
 
 
 def build_mcp_api(output,data_root=None):
-    output=resolve_research_output(output);data_root=Path(data_root).resolve() if data_root else None
-    return ResearchSkillResearchAPI(LimitResearchAPI(MCPResearchAPI(output,data_root),forecaster='ai:mcp'),data_root)
+    from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
+    output=resolve_research_output(output)
+    # Keep the caller's original root spelling for the archived-data boundary.
+    api=ResearchSkillResearchAPI(LimitResearchAPI(MCPResearchAPI(output,data_root),forecaster='ai:mcp'),data_root)
+    return ArchivedMarketDataAPI(api,output,data_root)
 
 
 def build_mcp_server(output,data_root=None):
-    output=resolve_research_output(output);data_root=Path(data_root).resolve() if data_root else None
+    output=resolve_research_output(output)
     api=build_mcp_api(output,data_root)
     server=MCPServer('niuniu-research',version='0.1.0',
         description='牛牛个人量化研究工作台的标准MCP接口',

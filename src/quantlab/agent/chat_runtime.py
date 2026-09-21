@@ -74,6 +74,8 @@ class ChatRuntime:
         self.api=base_api if local_data_only else FuyaoResearchAPI(base_api,self.fuyao)
         self.live_quotes=None if local_data_only else (LiveStockQuoteService(data_root,provider=build_live_quote_provider(self.fuyao))
             if live_quote_service is None else live_quote_service)
+        from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
+        self.api=ArchivedMarketDataAPI(self.api,output,data_root)
         from quantlab.agent.research_spec_tools import ResearchSpecAPI
         self.api=ResearchSpecAPI(self.api,output,data_root,active_spec=research_spec,allow_tests=allow_spec_tests,source_workspace=spec_source_workspace)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None):
@@ -93,6 +95,8 @@ class ChatRuntime:
         memory_meta={k:v for k,v in memory.items() if k!='text'}
         base_system=SYSTEM+'\n\nGit-first Agent Operating Memory：\n'+memory['text']
         base_system+='\n本地数据检查使用list_local_market_data/inspect_local_market_data；宿主已授权自主选择范围时，在真实目录/Grant内选取，不要求用户提供因子答案。研究前先记录可证伪假设，研究后检查真实证据并保存结论草稿。'
+        if not self.research_spec:
+            base_system+='\n已有回溯日线先用list_archived_daily_sources发现宿主工作空间中的capture，再用list_archived_daily_symbols分页、inspect_archived_daily核验原始与typed字段。TDX已存资料用get_tdx_data_status/read_tdx_data读取明确family；这些是不同来源，不因MQC目录缺字段就断言整个项目没有数据。目录元信息不等于原始字节核验，原始记录可读也不等于通用策略Provider已接入；保留单位、observed_at、缺失和未核验标记。工具不下载、标准化、选择供应商版本或自动创建研究。'
         if self.local_data_only:
             base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         if self.research_spec:
