@@ -24,6 +24,7 @@ MAX_REVIEWERS=3
 SAFE_TOOLS={
     'get_capabilities','search_factors','describe_factor','list_experiments','get_experiment','get_job',
     'list_research_templates','get_research_template',
+    'get_strategy_package_contract','preview_strategy_package',
     'qualify_research_data','get_proposal','search_research_memory','get_research_memory','inspect_research_evidence',
     'get_campaign','get_tracking_preview','get_incremental_evidence','get_dsl_candidate_proposal','list_dsl_candidates',
     'get_dsl_candidate','get_alpha_factory','list_alpha_factories','get_research_agenda','list_factor_watches',

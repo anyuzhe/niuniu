@@ -258,13 +258,16 @@ def reproduce_execution(artifact, output):
     runner=ExperimentRunner(signal_data,default_registry(),universe,LocalExperimentStore(output))
     result=ExecutionStudy(runner,FrozenSource(raw_bars,manifest['data_snapshot'])).run(config,
         ExecutionConfig(**{**manifest['execution'],'price_mode':price_mode}),PortfolioConfig(**manifest['portfolio']),backend,
-        MarketRules(manifest['market_rules']) if manifest.get('market_rules') is not None else None)
+        MarketRules(manifest['market_rules']) if manifest.get('market_rules') is not None else None,
+        **({'strategy_package': manifest['strategy_package']} if 'strategy_package' in manifest else {}))
     verification={'run_id':result.run_id,'artifact_path':str(result.artifact_path),'source_run_id':record['run_id'],
         'status':'not_verified','scope':'Frozen signal/raw bars; recomputed research metrics, signals, targets, fills, rejections, execution summary and equity; rtol=1e-9, atol=1e-12. No external lake access.'}
     try:
         actual=load_record_fields(result.artifact_path/'experiment.json',fields)
         new_child=Path(output)/actual['children'][0]['run_id']
         new_source=load_record_fields(new_child/'experiment.json',{'metrics'})
+        _compare_reproduction(manifest.get('strategy_package'), actual['manifest'].get('strategy_package'),
+                              'strategy_package')
         _compare_reproduction(source['metrics'],new_source['metrics'],'research/metrics')
         for key in ('execution','fills','rejections','backend_comparison'):
             _compare_reproduction(record.get(key),actual.get(key),key)

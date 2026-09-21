@@ -68,6 +68,12 @@ Daily Scanner 消费冻结事实和规则，不是模型临时挑选喜欢的股
 
 AI Team 的第一轮独立，Chief 综合证据并保留分歧，不把多数票视作市场证明。Developer 与 Research Profile 分开：开发必须受隔离工作区、路径租约、冻结测试、Reviewer 与人工合并约束。
 
+### 版本化策略配置包
+
+`trading/strategy_package.py` 将精确信号/模板、研究范围与资格、资金/仓位、既有持有退出语义及费用封装为 `niuniu-strategy-package-v1`。纯编译展开原有默认配置并绑定源码/模板来源；`prepare` 同时核对普通spec与包声明，ExecutionStudy在运行入口再核对实际配置。包只在存在时进入执行父manifest，旧实验不增加空字段或另一套状态来源；冻结审批与复算复用已有实现。
+
+策略包是可审阅的执行研究配置，不是授权、Alpha认证或自动Paper部署。v1只接受research_only；严格资格请求拒绝而不降级，旧严格研究入口不变。包内容哈希与完整编译spec哈希分别标识配置及源码/模板解析证据，CLI提交同时核验。v1只支持 `each_completed_bar → target_weight → follow_target_reductions`，期末不强平；不支持独立止损止盈、固定持有期或任意状态机。CLI、桌面导入和模型只读编译共用此合同，正式批准仍在宿主。
+
 ## 7. Decision、意图、模拟与实盘
 
 ```text

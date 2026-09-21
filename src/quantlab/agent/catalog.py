@@ -23,6 +23,8 @@ TOOLS = [
     schema('describe_factor', '先用 search_factors 获取真实版本，再读取定义和默认参数；version 不支持 latest 或空字符串，不能猜测。', {'factor_id': TEXT, 'version': TEXT}),
     schema('list_research_templates', '只读检索实际组合研究模板，空query列出全部；模板不是成品交易策略，不创建研究。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_research_template', '读取精确版本模板的规则、组件、来源哈希与theory/theory_version提案字段；不批准、不执行，不替代QM50原始规格。', {'template_id': TEXT, 'version': TEXT}),
+    schema('get_strategy_package_contract', '只读查看统一策略包v1必填字段与实际支持的持有退出合同；不给出资金或交易参数建议。', {}),
+    schema('preview_strategy_package', '纯配置校验：编译用户明确提供的完整策略包JSON，返回完整绑定spec和哈希；不读取行情、不保存提案、不批准或执行。不得用模板代替缺失资金/费用/持有规则。', {'package_json': {'type': 'string', 'maxLength': 65536}}),
     schema('list_experiments', '检索当前目录实际实验，包含失败记录。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_experiment', '读取指定实验的统计摘要和实际证据引用。', {'run_id': TEXT}),
     schema('get_job', '读取现有任务状态，不提交或取消任务。', {'job_id': TEXT}),
@@ -92,6 +94,7 @@ class ReadOnlyResearchAPI:
             return {'version': '1.0', 'access': 'read_only', 'tools': [t['name'] for t in TOOLS],
                     'model_connected': False, 'execution_tools_available': False,
                     'research_template_catalog_available': True, 'template_execution_authorized': False,
+                    'strategy_package_preview_available': True, 'strategy_package_execution_authorized': False,
                     'limitations': ['只读研究接口，不是已经接入大模型的对话助手。',
                         '历史行业/每日市值、严格 PIT 与官方历史涨跌停规则仍有资料缺口。',
                         '实验成功状态不代表统计有效、真实可成交或未来盈利。',
@@ -138,6 +141,25 @@ class ReadOnlyResearchAPI:
                         '不能同时覆盖factor/version/parameters/grid；需要改规则时应另建明确版本。',
                         'Research Session Grant v1不允许theory/context/execution；读取模板不扩大授权。',
                         '模板是研究假设，不包含完整仓位、持有退出与成交合同，不构成盈利证明。']}, components
+        if name == 'get_strategy_package_contract':
+            from quantlab.trading.strategy_package import (FORMAT, LIFECYCLE, LIMITATIONS, QUALIFICATIONS,
+                _SPEC_REQUIRED, _EXECUTION_REQUIRED, _PORTFOLIO_REQUIRED)
+            return {'format': FORMAT, 'required': ['format', 'strategy_key', 'name', 'version', 'lifecycle', 'spec'],
+                    'lifecycle': dict(LIFECYCLE), 'supported_qualifications': list(QUALIFICATIONS),
+                    'spec_required': sorted(_SPEC_REQUIRED),
+                    'execution_required': sorted(_EXECUTION_REQUIRED), 'portfolio_required': sorted(_PORTFOLIO_REQUIRED),
+                    'signal_alternatives': [['factor', 'version', 'parameters'], ['theory', 'theory_version']],
+                    'version_policy': '非空固定版本标签，例如1.0.0或draft-1；不接受latest。',
+                    'execution_authorized': False, 'data_checked': False,
+                    'limitations': list(LIMITATIONS)}, []
+        if name == 'preview_strategy_package':
+            from quantlab.agent.planning import parse_spec
+            from quantlab.trading.strategy_package import compile_strategy
+            try:
+                result = compile_strategy(parse_spec(args['package_json']))
+            except (ValueError, TypeError, KeyError, RecursionError) as error:
+                raise ValueError('INVALID_ARGUMENT：' + str(error)[:240]) from error
+            return {**result, 'data_checked': False, 'proposal_created': False}, []
         if name == 'list_experiments':
             result = self.catalog.list(**args)
             for row in result['runs']:
@@ -173,8 +195,10 @@ class ReadOnlyResearchAPI:
         try:
             self.validate(name, arguments)
             data, evidence = self._read(name, arguments)
-            result = {'ok': True, 'tool': name, 'data': compact(data),
+            result = {'ok': True, 'tool': name, 'data': data if name == 'preview_strategy_package' else compact(data),
                       'evidence': evidence, 'warnings': [], 'error': None}
+            if name == 'preview_strategy_package' and len(encode(result)) > 24000:
+                raise ValueError('RESULT_TOO_LARGE：完整策略包超过模型工具输出预算；请使用宿主CLI预览导出，不可提交截断的spec。')
             if len(encode(result)) > 24000:
                 result['data'] = {'omitted': True, 'reason': 'result_size_limit'}
                 result['warnings'].append('超过摘要预算；请缩小查询或在工作台打开证据。')

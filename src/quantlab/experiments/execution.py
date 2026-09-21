@@ -23,7 +23,7 @@ class ExecutionStudy:
     def __init__(self,runner,execution_data=None):
         self.runner=runner
         self.execution_data=execution_data
-    def run(self,config,execution_config,portfolio_config=None,backend="open",market_rules=None):
+    def run(self,config,execution_config,portfolio_config=None,backend="open",market_rules=None,*,strategy_package=None):
         execution_config.validate_price_inputs(market_rules)
         if backend not in ("open","vnpy_open","vnpy_rules"):raise ValueError("Unknown execution backend")
         if backend=="vnpy_open" and market_rules is not None:raise ValueError("Use vnpy_rules for dated market rules")
@@ -31,8 +31,12 @@ class ExecutionStudy:
             from quantlab.adapters.vnpy import validate_config
             validate_config(execution_config)
         portfolio_config=portfolio_config or PortfolioConfig()
+        if strategy_package is not None:
+            from quantlab.trading.strategy_package import validate_runtime_strategy_source
+            strategy_package=validate_runtime_strategy_source(strategy_package,config,execution_config,portfolio_config,backend,market_rules)
         run_id=str(uuid4())
         manifest={'config':asdict(config),'execution':asdict(execution_config),'portfolio':asdict(portfolio_config),'backend':backend,'market_rules':market_rules.records if market_rules else None,'runtime':runtime_fingerprint()}
+        if strategy_package is not None:manifest['strategy_package']=strategy_package
         record={'run_id':run_id,'created_at':datetime.now(timezone.utc).isoformat(),'kind':'execution',
             'manifest':manifest,'children':[]}
         try:
@@ -40,6 +44,8 @@ class ExecutionStudy:
             record['children']=[{'run_id':child.run_id,'artifact_path':str(child.artifact_path),'name':'研究信号来源'}]
             source=load_record(child.artifact_path/'experiment.json')
             signal_snapshot=source['manifest']['data_snapshot']
+            if strategy_package is not None and signal_snapshot['adjustment'] != strategy_package['package']['spec']['adjustment']:
+                raise ValueError('实际信号价格口径与 strategy_package 声明不一致')
             execution_snapshot=signal_snapshot
             bars=pl.read_parquet(child.artifact_path/'bars.parquet')
             signal_bars=bars

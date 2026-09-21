@@ -53,22 +53,33 @@ class Submission:
     market_rules: list | None = None
     correlation: dict | None = None
     qualification: str = 'research_only'
+    strategy_package: dict | None = None
 
     def preview(self):
-        return json.loads(encode(asdict(self)))
+        value = json.loads(encode(asdict(self)))
+        if self.strategy_package is None:
+            value.pop('strategy_package')
+        return value
 
 
 def prepare(spec):
     """Validate before enqueueing, using the existing factor/config contracts."""
-    if isinstance(spec,dict) and spec.get("mode")=="campaign":
+    if not isinstance(spec, dict):
+        raise ValueError('配置必须是JSON对象')
+    strategy_package = None
+    if 'strategy_package' in spec:
+        if spec.get('mode') != 'execution':
+            raise ValueError('strategy_package 仅允许用于 execution 模式')
+        from quantlab.trading.strategy_package import validate_strategy_envelope_spec
+        strategy_package = validate_strategy_envelope_spec(spec)
+        spec = {key:value for key,value in spec.items() if key != 'strategy_package'}
+    if spec.get("mode")=="campaign":
         from quantlab.agent.campaign_plan import prepare_campaign,CampaignSubmission
         return CampaignSubmission(prepare_campaign(spec)["spec"])
     allowed = {'question', 'symbols', 'timeframe', 'start', 'end', 'factor', 'version',
         'parameters', 'theory', 'theory_version', 'horizons', 'quantiles', 'seed',
         'adjustment', 'mode', 'split', 'schedule', 'grid', 'sequence_audit',
         'regime', 'regime_filter', 'context', 'processor', 'bootstrap', 'permutation', 'incremental_test', 'universe', 'replay', 'execution', 'theory_study', 'portfolio', 'execution_backend', 'market_rules', 'correlation', 'qualification'}
-    if not isinstance(spec, dict):
-        raise ValueError('配置必须是JSON对象')
     unknown=set(spec)-allowed
     if unknown:
         names=', '.join(sorted(str(key) for key in unknown))[:160]
@@ -182,7 +193,11 @@ def prepare(spec):
         if type(correlation['min_symbols']) is not int or correlation['min_symbols']<3 or type(correlation['min_periods']) is not int or correlation['min_periods']<1:raise ValueError('相关研究至少 3 证券、1 个时间点')
         complete_link_groups([],[],correlation['cluster_threshold'])
     elif 'correlation' in spec:raise ValueError('correlation 配置需要相关性研究模式')
-    return Submission(config, mode, adjustment, split, schedule, grid, universe, execution, study, portfolio, backend, market_rules, correlation, qualification)
+    submission = Submission(config, mode, adjustment, split, schedule, grid, universe, execution, study, portfolio, backend, market_rules, correlation, qualification, strategy_package)
+    if strategy_package is not None:
+        from quantlab.trading.strategy_package import validate_prepared_strategy_envelope
+        validate_prepared_strategy_envelope(strategy_package, submission, registry)
+    return submission
 
 
 def execute(submission, data_root, artifact_root, *, campaign_job_id=None):
@@ -209,7 +224,7 @@ def execute(submission, data_root, artifact_root, *, campaign_job_id=None):
         if submission.execution.price_mode=='account' and submission.adjustment!='raw':
             from quantlab.data.provider import local_data_provider
             execution_data=local_data_provider(data_root,'raw')
-        return ExecutionStudy(runner,execution_data).run(config, submission.execution, submission.portfolio, submission.execution_backend, MarketRules(submission.market_rules) if submission.market_rules is not None else None)
+        return ExecutionStudy(runner,execution_data).run(config, submission.execution, submission.portfolio, submission.execution_backend, MarketRules(submission.market_rules) if submission.market_rules is not None else None, strategy_package=submission.strategy_package)
     if submission.mode == 'sweep':
         return SweepRunner(runner).run(config, submission.grid, split=submission.split, schedule=submission.schedule)
     if submission.mode == 'holdout':

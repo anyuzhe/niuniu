@@ -1,0 +1,56 @@
+{
+  "format": "niuniu-strategy-package-v1",
+  "strategy_key": "example.momentum",
+  "name": "策略包语法示例：参数仅演示，不是推荐",
+  "version": "1.0.0",
+  "lifecycle": {
+    "rebalance": "each_completed_bar",
+    "holding": "target_weight",
+    "exit": "follow_target_reductions",
+    "end_of_sample": "mark_to_market_without_forced_exit"
+  },
+  "spec": {
+    "question": "只用于理解策略包配置；需另行选择实际研究范围与参数",
+    "symbols": [
+      "sh.600000",
+      "sz.000001",
+      "sh.600519"
+    ],
+    "timeframe": "1d",
+    "start": "2025-01-01",
+    "end": "2025-01-10",
+    "adjustment": "qfq",
+    "qualification": "research_only",
+    "replay": true,
+    "mode": "execution",
+    "factor": "BASE.MOMENTUM",
+    "version": "1.0.0",
+    "parameters": {
+      "lookback": 2
+    },
+    "horizons": [
+      1
+    ],
+    "execution": {
+      "initial_cash": 10000,
+      "top_n": 2,
+      "threshold": 0,
+      "exposure": 0.5,
+      "lot_size": 100,
+      "t_plus_one": true,
+      "price_mode": "research",
+      "commission_bps": 3,
+      "minimum_commission": 5,
+      "sell_tax_bps": 5,
+      "transfer_bps": 0.1,
+      "slippage_bps": 2,
+      "statutory_fees": false
+    },
+    "portfolio": {
+      "weighting": "equal",
+      "max_position": 0.3,
+      "max_exposure": 0.5,
+      "max_turnover": null
+    }
+  }
+}

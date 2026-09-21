@@ -101,7 +101,39 @@ quantlab run \
 
 模板详情返回 `submission_fields={theory, theory_version}`，用于原有 `preview_experiment/propose_experiment`。证券、日期、周期、模式等仍需按实际宿主范围固定；固定模板不能同时覆盖 `factor/version/parameters/grid`。读取模板不会启动研究，Research Session Grant v1 仍拒绝 theory/context/execution；宿主锁定 QM50 原始规格时也不会开放通用模板作为替代。
 
-策略统一封装按以下顺序继续，而不是把模板自动登记成成品策略：先固定信号版本与输入范围，再显式给出资金、持仓/退出、费用和成交配置，最后通过既有审批、ExecutionStudy/Paper 与复盘链验证。当前完成的是目录发现和通用链路的合成验收；没有替用户指定交易参数、增加已验证策略或部署常驻执行。
+策略统一封装的 v1 已接入下述版本化策略包：固定信号、范围、资金、目标持仓/退出、费用和成交合同，经原 Proposal/JobQueue/ExecutionStudy 审批执行。它不是将16个模板自动登记为成品策略，也没有替用户指定实际交易参数、验证Alpha或部署常驻执行。
+
+### 完整策略配置包 v1
+
+本版明确只接受 `qualification=research_only`；尚未把严格资格回执封装进策略包，所以请求 `strict_pit / official_rule_covered / retrospective_reference` 会直接拒绝，不会静默降级。原有严格研究入口保持不变，不能用包哈希代替资格证据。
+
+[语法示例](../../examples/strategy_package.example.json) 只演示结构，代码、日期和金额不是推荐参数，也不能据此假定本地行情齐全。包有 `format / strategy_key / name / version / lifecycle / spec` 六个字段；策略版本为非空固定版本标签（例如1.0.0或draft-1，不接受latest），信号必须明确选择 `factor + version + parameters` 或 `theory + theory_version`，两者不可混用。`spec` 须显式固定研究范围、价格/资格口径、`mode=execution`、`replay=true`、资金/成交及仓位配置。
+
+v1 使用原引擎的固定生命周期：每根完结 K 线按信号和约束重算目标权重；目标减少或归零驱动减仓/退出，实际成交仍受T+1、换手、停牌、价格限制和费用影响；样本末仅按市值计价，不强制平仓。它不支持独立止损止盈、固定持有期或任意自定义状态机。目标上限不是保证实际持仓永远不超限；缺逐日交易规则时也不能声称已验证真实交易可达性。
+
+先在本机预览，不读行情、不生成任务：
+
+```bash
+.venv/bin/python -B -m quantlab.agent.strategy_package_cli preview \
+  --package examples/strategy_package.example.json
+```
+
+`preview --export-spec /path/to/new-spec.json` 可导出完整绑定配置，目标已存在时拒绝覆盖。输出 `package` 为规范化配置，`package_hash` 为该配置指纹；`spec.strategy_package` 另固定实际解析配置及信号源码/模板来源。`compiled_spec_hash` 额外绑定完整展开spec、信号源码与模板解析证据，CLI保存提案时必须同时核对两个指纹。哈希不是批准；同名同版本的配置修改会改变配置哈希，编辑后应重新编译原包，不能只改展开spec的一侧。
+
+桌面可在“AI研究助手 → 打开人工提案审批”面板点击“导入完整策略包（不执行）”，核对草稿，再保存待批准提案。导入会取消旧提案选择/勾选，不自动保存或批准；批准继续使用原数据资格、预算、实际输入冻结和任务队列。也可使用宿主CLI保存待批准提案：
+
+```bash
+.venv/bin/python -B -m quantlab.agent.strategy_package_cli propose \
+  --package /path/to/your-strategy.json \
+  --expected-package-hash <preview返回的package_hash> \
+  --expected-compiled-spec-hash <preview返回的compiled_spec_hash> \
+  --output /path/to/workspace --data-root /path/to/data \
+  --request-id <本次请求的规范UUID>
+```
+
+同一请求重试须复用UUID；保存后仍在原审批面板批准，CLI没有批准或执行命令。安装更新后等价短命令为 `niuniu-strategy-package`。归档及 `reproduce_artifact` 都保留策略包身份，复算只用原冻结输入，不回读变化后的数据根。
+
+助手/MCP可用 `get_strategy_package_contract` 读取真实字段合同，再用 `preview_strategy_package(package_json)` 纯配置校验。模型工具只返回完整可用的spec；超出输出预算会明确拒绝并提示宿主CLI，不交付被截断的可执行配置。策略包不扩大Session Grant，QM50绑定会话仍禁止通用包替代原始规格。v1不创建独立策略数据库，也不自动连接Daily Scanner、Paper常驻账户或真实券商。
 
 ## 4. AI 问答与正式研究
 
