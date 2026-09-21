@@ -13,7 +13,7 @@ from quantlab.agent.strategy_package_cli import _read_package
 from quantlab.app import default_registry
 from quantlab.storage.codec import encode
 from quantlab.theory.templates import templates
-from quantlab.trading.strategy_package import FORMAT, LIFECYCLE, compile_strategy
+from quantlab.trading.strategy_package import FORMAT, LIFECYCLE, compile_strategy, strategy_content_hash
 from .business_view import BusinessDetails
 from .widgets import button, label, row
 
@@ -104,6 +104,8 @@ class StrategyWorkspaceDialog(QDialog):
         for c in (self.t_plus_one,self.statutory_fees): c.toggled.connect(self.invalidate)
         self.revision_note = label('当前草稿未从历史归档载入。', 'muted', True)
         layout.addWidget(self.revision_note)
+        self.revision_verify_button = button('核验已保存的改版来源（只读）', self.verify_revision_source)
+        self.revision_verify_button.setEnabled(False); layout.addWidget(self.revision_verify_button)
         self.preview = BusinessDetails({}); layout.addWidget(self.preview)
         self.tabs.addTab(page,'配置编辑')
 
@@ -243,6 +245,8 @@ class StrategyWorkspaceDialog(QDialog):
                 self.apply_package(value['compiled']['package'],
                     expected_compiled_hash=value['compiled']['compiled_spec_hash'])
                 self.revision_origin = deepcopy(value)
+                self._base['revision_source'] = deepcopy(value['revision_source'])
+                self.revision_verify_button.setEnabled(True)
                 self.origin_details.setPlainText(encode({'historical_source': value['source'],
                     'historical_package': value['historical_package'],
                     'current_compiled_spec_hash_on_load': value['compiled']['compiled_spec_hash'],
@@ -251,7 +255,7 @@ class StrategyWorkspaceDialog(QDialog):
                 identity = value['source']['package_identity']
                 self.revision_note.setText('来自历史实验 ' + value['source']['run_id'] + ' · '
                     + identity['strategy_key'] + ' @ ' + identity['version']
-                    + '；仅本次编辑保留来源说明，新草稿不继承历史批准。'
+                    + '；来源引用将随策略包保存，不继承历史批准。'
                     + (' 当前编译指纹不同，请明确新版本。' if not value['current_matches_history'] else ' 请重新预览。'))
                 self.tabs.setCurrentIndex(0)
                 self.status.setText('历史配置副本已载入，未保存、未批准、未执行；历史证据见版本差异页。')
@@ -261,12 +265,45 @@ class StrategyWorkspaceDialog(QDialog):
             expected_package_hash=record['package_hash']), loaded)
 
     def _check_revision_identity(self, compiled):
+        reference = compiled['package'].get('revision_source')
+        if reference is not None:
+            current = compiled['package']
+            if (current['strategy_key'] == reference['parent_strategy_key'] and current['version'] == reference['parent_version']
+                    and strategy_content_hash(compiled['spec']['strategy_package']) != reference['parent_content_hash']):
+                raise ValueError('历史策略配置或信号已变化，请明确新的策略版本或策略标识')
+            return
         if self.revision_origin is None: return
         source = self.revision_origin['source']['package_identity']
         current = compiled['package']
         if (current['strategy_key'] == source['strategy_key'] and current['version'] == source['version']
                 and compiled['compiled_spec_hash'] != source['compiled_spec_hash']):
             raise ValueError('历史策略的配置或信号实现已变化；请填写新的策略版本，或明确使用新的策略标识。')
+
+    def _show_saved_revision(self):
+        source = self._base.get('revision_source')
+        self.revision_verify_button.setEnabled(source is not None)
+        if source is None:
+            self.revision_note.setText('当前草稿未记录历史改版来源。')
+            self.origin_details.setPlainText('{}')
+            return
+        self.revision_note.setText('已保存改版来源 ' + source['parent_run_id'] + ' · '
+            + source['parent_strategy_key'] + ' @ ' + source['parent_version']
+            + '；本次尚未核验父归档，引用不等于批准。')
+        self.origin_details.setPlainText(encode({'revision_source': source, 'verification': 'not_checked'}))
+
+    def verify_revision_source(self):
+        if self.busy or self._base.get('revision_source') is None: return
+        from quantlab.trading.strategy_run_catalog import verify_strategy_revision_source
+        source = deepcopy(self._base['revision_source'])
+        self.origin_details.setPlainText(encode({'revision_source': source, 'verification': 'not_checked'}))
+        self.revision_note.setText('正在核验已保存改版来源；此前核验不作当前状态证明。')
+        def loaded(value):
+            if self._base.get('revision_source') != source:
+                self.status.setText('改版来源已变化，忽略旧核验结果。'); return
+            self.origin_details.setPlainText(encode(value))
+            self.revision_note.setText('本次读取时父归档与保存的来源指纹一致；仍需重新批准本次研究。')
+            self.status.setText('改版来源核验完成，未读取正式数据或创建任务。')
+        self._archive_read(lambda: verify_strategy_revision_source(self.output, source), loaded)
 
     def invalidate(self, *_):
         if self._loading: return
@@ -316,9 +353,11 @@ class StrategyWorkspaceDialog(QDialog):
             if baseline:
                 self.baseline = deepcopy(normalized)
                 self.revision_origin = None
-                self.revision_note.setText('当前草稿未从历史归档载入。')
-                self.origin_details.setPlainText('{}')
+                self._show_saved_revision()
                 self.baseline_label.setText(normalized['name']+' @ '+normalized['version']+' · '+compiled['package_hash'])
+            elif self.revision_origin is None or normalized.get('revision_source') != self.revision_origin.get('revision_source'):
+                self.revision_origin = None
+                self._show_saved_revision()
         finally: self._loading = False
         self.invalidate(); self.status.setText('已载入可编辑副本；原文件、历史提案和结果均未修改。')
 

@@ -185,8 +185,12 @@ class StrategyRunPickerTests(unittest.TestCase):
     def test_independent_import_clears_revision_origin_but_tree_edit_preserves_it(self):
         self.select_revision_source(); self.load_revision()
         changed = self.dialog.collect_package(); changed['spec']['portfolio']['max_position'] = 0.5
+        with self.assertRaisesRegex(ValueError, '版本'):
+            self.dialog.apply_package(changed, baseline=False)
+        self.assertIsNotNone(self.dialog.revision_origin)
+        changed['version'] = 'tree-revision-2'
         self.dialog.apply_package(changed, baseline=False)
-        self.assertIsNotNone(self.dialog.revision_origin); self.assertFalse(self.dialog.validate_preview())
+        self.assertIsNotNone(self.dialog.revision_origin); self.assertTrue(self.dialog.validate_preview())
         self.dialog.apply_package(package())
         self.assertIsNone(self.dialog.revision_origin)
         self.assertEqual(self.dialog.origin_details.toPlainText(), '{}')
@@ -215,5 +219,51 @@ class StrategyRunPickerTests(unittest.TestCase):
             self.assertNotEqual(parent.selected['proposal_id'], old_id)
             self.assertFalse(parent.confirm.isChecked()); self.assertFalse((self.root / '_jobs').exists())
         finally: parent.close(); sip.delete(parent)
+
+    def test_saved_revision_reopens_with_source_and_without_automatic_verification(self):
+        run = self.select_revision_source(); self.load_revision()
+        self.dialog.identity['version'].setText('saved-revision-2')
+        self.dialog.portfolio['max_position'].setText('0.5')
+        self.assertTrue(self.dialog.validate_preview(), self.dialog.status.text())
+        target = self.root / 'saved-revision.json'; self.dialog.save_package(target)
+        saved = json.loads(target.read_text()); source = saved['revision_source']
+        self.assertEqual(source['parent_run_id'], run.run_id)
+        self.dialog.close(); sip.delete(self.dialog)
+        self.dialog = StrategyWorkspaceDialog(self.host, self.host)
+        with patch('quantlab.trading.strategy_run_catalog.get_strategy_run', side_effect=AssertionError('no implicit source reads')):
+            self.dialog.apply_package(saved)
+            self.assertTrue(self.dialog.validate_preview(), self.dialog.status.text())
+        self.assertIsNone(self.dialog.revision_origin)
+        self.assertEqual(self.dialog.compiled['package']['revision_source'], source)
+        self.assertIn('尚未核验', self.dialog.revision_note.text())
+        self.assertTrue(self.dialog.revision_verify_button.isEnabled())
+        self.dialog.verify_revision_source()
+        self.assertEqual(json.loads(self.dialog.origin_details.toPlainText())['status'], 'verified')
+        self.assertFalse((self.root / '_jobs').exists())
+
+    def test_recheck_broken_parent_clears_prior_verified_display_and_preserves_draft(self):
+        run = self.select_revision_source(); self.load_revision()
+        self.dialog.verify_revision_source()
+        self.assertEqual(json.loads(self.dialog.origin_details.toPlainText())['status'], 'verified')
+        before = self.dialog.collect_package()
+        (run.artifact_path / 'bars.parquet').write_bytes(b'broken')
+        self.dialog.verify_revision_source()
+        self.assertEqual(self.dialog.collect_package(), before)
+        self.assertNotIn('verified', json.loads(self.dialog.origin_details.toPlainText()).values())
+        self.assertIn('失败', self.dialog.status.text()); self.assertFalse(self.dialog.busy)
+        self.assertFalse((self.root / '_jobs').exists())
+
+    def test_reopened_revision_cannot_reuse_parent_version_after_parameter_change(self):
+        self.select_revision_source(); self.load_revision()
+        self.assertTrue(self.dialog.validate_preview())
+        target = self.root / 'unchanged-copy.json'; self.dialog.save_package(target)
+        self.dialog.apply_package(json.loads(target.read_text()))
+        self.assertIsNone(self.dialog.revision_origin)
+        self.dialog.portfolio['max_position'].setText('0.5')
+        self.assertFalse(self.dialog.validate_preview())
+        self.assertIn('版本', self.dialog.status.text())
+        self.assertFalse(self.dialog.use_button.isEnabled())
+        self.dialog.identity['version'].setText('explicit-new-version')
+        self.assertTrue(self.dialog.validate_preview(), self.dialog.status.text())
 
 if __name__=='__main__':unittest.main()

@@ -51,8 +51,19 @@ def main(argv=None) -> int:
     reading = commands.add_parser('get-run', help='只读核验指定策略归档；不执行或重做回测。')
     reading.add_argument('--output', type=Path, required=True)
     reading.add_argument('--run-id', required=True)
+    lineage = commands.add_parser('verify-revision-source', help='只核验策略包中的直接父来源；不编译、批准或执行新策略。')
+    lineage.add_argument('--package', type=Path, required=True)
+    lineage.add_argument('--output', type=Path, required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == 'verify-revision-source':
+            from quantlab.trading.strategy_run_catalog import verify_strategy_revision_source
+            package = _read_package(args.package)
+            if 'revision_source' not in package:
+                raise ValueError('此包没有保存 revision_source，不推断或自动补造父来源。')
+            result = verify_strategy_revision_source(args.output, package['revision_source'])
+            print(encode({'ok': True, 'data': result}))
+            return 0
         if args.command in ('list-runs', 'get-run'):
             from quantlab.trading.strategy_run_catalog import list_strategy_runs, get_strategy_run
             result = (list_strategy_runs(args.output, args.query, args.offset, args.limit)

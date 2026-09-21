@@ -27,8 +27,27 @@ class ProposalService:
         except (ValueError,TypeError,KeyError,OSError) as error:
             raise ProposalError('DATA_QUALIFICATION_FAILED','数据资格检查未完成：'+str(error)[:240]) from error
 
+    def _revision_sources(self, spec):
+        """Verify immediate parents in this workspace; a reference is not approval."""
+        nodes = spec.get('nodes', []) if spec.get('mode') == 'campaign' else [{'node_id': '', 'spec': spec}]
+        verified = []
+        for node in nodes:
+            source = (node['spec'].get('strategy_package') or {}).get('package', {}).get('revision_source')
+            if source is None:
+                continue
+            from quantlab.trading.strategy_run_catalog import verify_strategy_revision_source
+            try:
+                receipt = verify_strategy_revision_source(self.output, source)
+            except (ValueError, TypeError, KeyError, OSError) as error:
+                raise ProposalError('REVISION_SOURCE_INVALID', '改版父来源缺失、损坏或已变化；未批准：' + str(error)[:200]) from error
+            verified.append({'node_id': node['node_id'], **receipt})
+        return verified
+
     def preview(self, spec):
         value = preview_experiment(spec,self.budget)
+        revision_sources = self._revision_sources(value['spec'])
+        if revision_sources:
+            value['strategy_revision_sources'] = revision_sources
         qualification=self.qualify(value['spec'])
         if not qualification['qualified']:
             raise ProposalError('DATA_QUALIFICATION_BLOCKED','请求的数据资格级别未满足：'+', '.join(qualification.get('blockers',[])[:12]))
@@ -43,6 +62,10 @@ class ProposalService:
     def get(self, proposal_id):
         record=self.store.get(proposal_id);folder=self.output/'_approval_input_freezes'/proposal_id
         if folder.is_dir():
+            if record['status'] not in ('approved', 'submitted'):
+                return {**record, 'unapproved_input_freeze': {
+                    'status': 'not_approved', 'execution_authorized': False,
+                    'message': '存在未批准的冻结候选，不是有效批准回执；改版提案须拒绝旧提案后新建。'}}
             from quantlab.storage.approval_inputs import ApprovalInputFreezeStore
             freeze=ApprovalInputFreezeStore(self.output,self.data_root)
             receipt={'format':'niuniu-approval-input-freeze-receipt-v1','freeze_id':proposal_id,
@@ -68,11 +91,16 @@ class ProposalService:
                 from quantlab.storage.approval_inputs import ApprovalInputFreezeStore
                 freeze_store=ApprovalInputFreezeStore(self.output,self.data_root)
             if record['status'] == 'pending':
+                if record['plan'].get('strategy_revision_sources') and freeze_store.path(proposal_id).exists():
+                    raise ProposalError('UNAPPROVED_FREEZE_REQUIRES_NEW_PROPOSAL',
+                        '先前改版批准未完成，遗留输入冻结不能复用；请拒绝此待批准提案并重新生成。')
                 self._current(record)
                 created = datetime.fromisoformat(record['created_at'])
                 if datetime.now(timezone.utc)-created > timedelta(hours=24):
                     raise ProposalError('STALE_PROPOSAL','提案已超过 24 小时，请重新生成。')
                 freeze_receipt=freeze_store.capture(proposal_id,record['plan']['spec'],record['plan']['qualification'])
+                if self._revision_sources(record['plan']['spec']) != record['plan'].get('strategy_revision_sources', []):
+                    raise ProposalError('REVISION_SOURCE_INVALID', '输入冻结期间改版来源已变化；批准未生效。')
                 connection.execute("UPDATE proposals SET status='approved',approved_at=? WHERE id=?", (now(),proposal_id))
                 self.store.event(connection,proposal_id,'approval_inputs_frozen')
                 self.store.event(connection,proposal_id,'approved_by_user')

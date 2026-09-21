@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import asdict
+from uuid import UUID
 import json
 import math
 
@@ -16,6 +17,11 @@ from quantlab.storage.codec import digest, encode
 
 FORMAT = "niuniu-strategy-package-v1"
 ENVELOPE_FORMAT = "niuniu-strategy-package-envelope-v1"
+REVISION_SOURCE_FORMAT = "niuniu-strategy-revision-source-v1"
+_REVISION_SOURCE_FIELDS = {
+    "format", "parent_run_id", "parent_strategy_key", "parent_version",
+    "parent_package_hash", "parent_compiled_spec_hash", "parent_content_hash", "parent_evidence_hash",
+}
 QUALIFICATIONS = ("research_only",)
 LIFECYCLE = {
     "rebalance": "each_completed_bar",
@@ -83,6 +89,34 @@ def _validate_identity(package):
         raise ValueError("version 必须是 1–64 位精确版本，不能使用 latest")
 
 
+def validate_revision_source(value):
+    """Validate a bounded historical reference; never authenticate it or grant execution."""
+    value = _json_value(value)
+    if type(value) is not dict or set(value) != _REVISION_SOURCE_FIELDS or value.get('format') != REVISION_SOURCE_FORMAT:
+        raise ValueError('revision_source 字段或 format 无效')
+    try:
+        run_id = value['parent_run_id']
+        if type(run_id) is not str or str(UUID(run_id)) != run_id:
+            raise ValueError()
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError('revision_source parent_run_id 必须是规范 UUID') from None
+    _validate_identity({'strategy_key': value['parent_strategy_key'], 'name': 'parent',
+                        'version': value['parent_version']})
+    for key in ('parent_package_hash', 'parent_compiled_spec_hash', 'parent_content_hash', 'parent_evidence_hash'):
+        text = value[key]
+        if type(text) is not str or len(text) != 64 or any(c not in '0123456789abcdef' for c in text):
+            raise ValueError('revision_source ' + key + ' 必须是完整 SHA256')
+    return value
+
+
+def strategy_content_hash(envelope):
+    """Compiled identity excluding only the immediate-parent reference, not signal code."""
+    value = deepcopy(envelope)
+    value['package'].pop('revision_source', None)
+    value['package_hash'] = digest(value['package'])
+    return digest({**deepcopy(value['package']['spec']), 'strategy_package': value})
+
+
 def _validate_explicit_spec(spec):
     if type(spec) is not dict:
         raise ValueError("策略包 spec 必须是 JSON 对象")
@@ -120,8 +154,10 @@ def _validate_explicit_spec(spec):
 
 def _validate_package(package):
     package = _json_value(package)
-    if set(package) != _PACKAGE_FIELDS:
-        raise ValueError("策略包外层字段必须严格等于 format/strategy_key/name/version/lifecycle/spec")
+    if type(package) is not dict or not _PACKAGE_FIELDS <= set(package) or set(package) - _PACKAGE_FIELDS - {'revision_source'}:
+        raise ValueError("策略包外层字段必须含 format/strategy_key/name/version/lifecycle/spec；仅可选 revision_source")
+    if 'revision_source' in package:
+        package['revision_source'] = validate_revision_source(package['revision_source'])
     if package["format"] != FORMAT:
         raise ValueError("不支持的策略包 format")
     _validate_identity(package)
@@ -219,6 +255,11 @@ def validate_prepared_strategy_envelope(envelope, submission, registry):
         raise ValueError("strategy_package resolved_config 与实际解析配置不一致")
     if not _same(envelope["signal"], _signal(submission.config, registry)):
         raise ValueError("strategy_package 信号版本、参数、code_hash 或模板来源不一致")
+    source = package.get('revision_source')
+    if (source is not None and package['strategy_key'] == source['parent_strategy_key']
+            and package['version'] == source['parent_version']
+            and strategy_content_hash(envelope) != source['parent_content_hash']):
+        raise ValueError('历史策略配置或信号已变化，请明确新的策略版本或策略标识')
 
 
 def validate_runtime_strategy_source(envelope, config, execution_config, portfolio_config, backend, market_rules):
@@ -267,6 +308,8 @@ def compile_strategy(package) -> dict:
         "lifecycle": deepcopy(LIFECYCLE),
         "spec": normalized_spec,
     }
+    if 'revision_source' in package:
+        normalized_package['revision_source'] = deepcopy(package['revision_source'])
     # Parse the expanded defaults again so the envelope records exactly what the
     # ordinary spec delivered to ProposalService/JobQueue will resolve to.
     normalized_submission = prepare(normalized_spec)
@@ -274,7 +317,7 @@ def compile_strategy(package) -> dict:
     envelope = _envelope(normalized_package, normalized_submission, registry)
     compiled_spec = {**deepcopy(normalized_spec), "strategy_package": envelope}
     prepare(parse_spec(encode(compiled_spec)))
-    return {
+    result = {
         "package": normalized_package,
         "package_hash": envelope["package_hash"],
         "compiled_spec_hash": digest(compiled_spec),
@@ -282,6 +325,10 @@ def compile_strategy(package) -> dict:
         "limitations": list(LIMITATIONS),
         "execution_authorized": False,
     }
+    if 'revision_source' in normalized_package:
+        result['revision_source_verification'] = 'not_checked'
+        result['limitations'].append('revision_source 仅是固定的直接父引用；纯编译不认证父来源，提案与批准前必须核验实际归档。')
+    return result
 
 
 __all__ = ["FORMAT", "LIFECYCLE", "compile_strategy"]

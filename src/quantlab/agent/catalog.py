@@ -156,8 +156,12 @@ class ReadOnlyResearchAPI:
                         '模板是研究假设，不包含完整仓位、持有退出与成交合同，不构成盈利证明。']}, components
         if name == 'get_strategy_package_contract':
             from quantlab.trading.strategy_package import (FORMAT, LIFECYCLE, LIMITATIONS, QUALIFICATIONS,
-                _SPEC_REQUIRED, _EXECUTION_REQUIRED, _PORTFOLIO_REQUIRED)
+                _SPEC_REQUIRED, _EXECUTION_REQUIRED, _PORTFOLIO_REQUIRED, REVISION_SOURCE_FORMAT, _REVISION_SOURCE_FIELDS)
             return {'format': FORMAT, 'required': ['format', 'strategy_key', 'name', 'version', 'lifecycle', 'spec'],
+                    'optional': ['revision_source'],
+                    'revision_source_contract': {'format': REVISION_SOURCE_FORMAT, 'fields': sorted(_REVISION_SOURCE_FIELDS),
+                        'authority': 'historical_reference_only', 'verification': 'not_checked_by_compile',
+                        'policy': '来源必须来自实际父实验；宿主提案和批准前重新核验。不继承批准、预算或交易权限。'},
                     'lifecycle': dict(LIFECYCLE), 'supported_qualifications': list(QUALIFICATIONS),
                     'spec_required': sorted(_SPEC_REQUIRED),
                     'execution_required': sorted(_EXECUTION_REQUIRED), 'portfolio_required': sorted(_PORTFOLIO_REQUIRED),

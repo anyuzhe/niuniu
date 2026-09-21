@@ -12,7 +12,12 @@ from quantlab.storage.artifact_integrity import file_hash
 from quantlab.storage.codec import digest
 from quantlab.storage.experiments import load_record_fields
 from quantlab.trading.strategy_comparison import compare_strategy_runs
-from quantlab.trading.strategy_package import validate_strategy_envelope_spec
+from quantlab.trading.strategy_package import (
+    REVISION_SOURCE_FORMAT,
+    strategy_content_hash,
+    validate_revision_source,
+    validate_strategy_envelope_spec,
+)
 
 
 _MAX_CANDIDATES = 100_000
@@ -226,7 +231,11 @@ def get_strategy_run(output, run_id) -> dict:
             raise ValueError
         envelope = record["manifest"]["strategy_package"]
         package = envelope["package"]
-        if envelope["package_hash"] != left["package"]["package_hash"] or digest(package) != envelope["package_hash"]:
+        checked = validate_strategy_envelope_spec({
+            **deepcopy(package["spec"]), "strategy_package": deepcopy(envelope),
+        })
+        if (checked["package_hash"] != left["package"]["package_hash"]
+                or strategy_content_hash(checked) != strategy_content_hash(envelope)):
             raise ValueError
     except Exception as error:
         raise ValueError("Execution evidence changed after archive verification") from error
@@ -234,9 +243,10 @@ def get_strategy_run(output, run_id) -> dict:
     boundary = "仅核对历史归档内部一致性；未重新编译策略、回测或读取源 data_root。"
     if boundary not in warnings:
         warnings.append(boundary)
-    return {
+    result = {
         "run_id": identifier,
         "package_identity": left["package"],
+        "content_hash": strategy_content_hash(checked),
         "package": package,
         "execution_metrics": left["execution_metrics"],
         "evidence_fingerprint": left["evidence_fingerprint"],
@@ -244,6 +254,26 @@ def get_strategy_run(output, run_id) -> dict:
         "scope": "DESCRIPTIVE_ONLY",
         "warnings": warnings,
     }
+    revision_source = package.get("revision_source")
+    if revision_source is not None:
+        result["revision_source"] = validate_revision_source(revision_source)
+        result["revision_source_verification"] = "not_checked"
+    return result
+
+
+def make_strategy_revision_source(detail):
+    """Build a direct-parent source declaration from an already verified run detail."""
+    identity = detail["package_identity"]
+    return validate_revision_source({
+        "format": REVISION_SOURCE_FORMAT,
+        "parent_run_id": detail["run_id"],
+        "parent_strategy_key": identity["strategy_key"],
+        "parent_version": identity["version"],
+        "parent_package_hash": identity["package_hash"],
+        "parent_compiled_spec_hash": identity["compiled_spec_hash"],
+        "parent_content_hash": detail["content_hash"],
+        "parent_evidence_hash": digest(detail["evidence_fingerprint"]),
+    })
 
 
 def prepare_strategy_revision(output, run_id, *, expected_package_hash):
@@ -259,19 +289,23 @@ def prepare_strategy_revision(output, run_id, *, expected_package_hash):
     if detail['package_identity']['package_hash'] != expected_package_hash:
         raise ValueError('所选归档配置已变化，请重新查找并核验；原草稿保留。')
     from quantlab.trading.strategy_package import compile_strategy
-    compiled = compile_strategy(deepcopy(detail['package']))
+    historical_package = deepcopy(detail['package'])
+    historical_package.pop('revision_source', None)
+    compiled = compile_strategy(historical_package)
     source = {
         'run_id': detail['run_id'],
         'package_identity': deepcopy(detail['package_identity']),
+        'content_hash': detail['content_hash'],
         'evidence_fingerprint': deepcopy(detail['evidence_fingerprint']),
         'verification': detail['verification'],
     }
-    matches = compiled['compiled_spec_hash'] == source['package_identity']['compiled_spec_hash']
+    matches = strategy_content_hash(compiled['spec']['strategy_package']) == detail['content_hash']
     warnings = ['历史归档已核验；当前编译只是新草稿解释，不是复算、批准或旧结果可重现的证明。']
     if not matches:
-        warnings.append('当前编译与历史指纹不同；原配置/信号解析已变化，同一策略须指定新版本。')
+        warnings.append('当前编译与历史内容指纹不同；配置/信号解析已变化，同一策略须指定新版本。')
     return {
         'source': source,
+        'revision_source': make_strategy_revision_source(detail),
         'historical_package': deepcopy(detail['package']),
         'compiled': compiled,
         'current_matches_history': matches,
@@ -280,4 +314,22 @@ def prepare_strategy_revision(output, run_id, *, expected_package_hash):
     }
 
 
-__all__ = ["list_strategy_runs", "get_strategy_run", "prepare_strategy_revision"]
+def verify_strategy_revision_source(output, source):
+    """Verify a direct historical parent declaration without expanding ancestors."""
+    checked = validate_revision_source(source)
+    detail = get_strategy_run(output, checked["parent_run_id"])
+    expected = make_strategy_revision_source(detail)
+    if checked != expected:
+        raise ValueError("revision_source no longer matches the parent archive")
+    return {
+        "status": "verified",
+        "source": checked,
+        "scope": "historical_reference_only",
+        "execution_authorized": False,
+    }
+
+
+__all__ = [
+    "list_strategy_runs", "get_strategy_run", "make_strategy_revision_source",
+    "prepare_strategy_revision", "verify_strategy_revision_source",
+]
