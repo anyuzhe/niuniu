@@ -132,3 +132,41 @@ Mac当前长期LaunchAgent使用0.25秒。0.20秒虽已在100个同样本请求�
 每个worker的`collection-scope.json`是独立于scheduler policy的可审计采集范围。当前excluded families为`bars_1m,bars_5m,bars_daily,trades,opening_match`。scope只停止未来采集：已有SAVED/EMPTY/CHECKPOINT/ERROR不删除。autoresume恢复之后必须再次应用scope，把恢复成PENDING的excluded family在网络调用前改回SKIPPED_POLICY并记录`collection_scope_audit`。因此重启或断线恢复不能偷偷重新采K线/trades。
 
 当前主要历史长任务只剩`auction`；finance/capital_changes/topics/quotes/depth等一次性数据已有既存采集结果，没有持续历史回溯队列。
+
+### 大文件归档与本地归并
+
+Lexar 为 ExFAT，实测每个小文件至少占用约 512 KiB；旧的一页三文件目录通常占约 2 MiB，不能按 JSON/Parquet 的逻辑字节估算容量。停止采集后可执行 `compact-storage`：它先逐页核对 manifest、原始 gzip 和 Parquet 的 SHA256，把三份**原字节**写入 `catalog/tdx_page_archive.sqlite3`，同时把可查询记录物化到 DuckDB 的 `tdx_<family>_compacted` 大表。只有归档字节复核和 DuckDB `source_id` 行数都一致，才删除该页的小文件目录；中断后按相同 source_id 幂等恢复，部分删除目录也必须通过归档与行数双检才能清理。
+
+因此不是“只留计算后的数据库结果”：原始供应商响应、原派生 Parquet 和原 manifest 仍逐字节保留在大文件归档库中，DuckDB 负责查询；避免保留数十万组三文件副本。分布式导出、分页前驱核验和重复页冲突检查均可从归档库读取同一原字节。
+
+```bash
+python -m quantlab.agent.tdx_distributed_cli --data-root DATA_ROOT \
+  --personal-research-only compact-storage --batch-pages 1000
+```
+
+命令要求 `STOP` 已存在并取得唯一 writer lease。迁移前应备份队列库；运行中的 `storage-compaction.json` 不是历史完整性证明。worker 本地发送历史缺失时，只允许用同一 cluster 中 canonical 已持久化的 `distributed_imports` 恢复已确认 sequence，不能人工跳号：
+
+```bash
+python -m quantlab.agent.tdx_distributed_cli --data-root WORKER_ROOT \
+  --personal-research-only sync-export-history --canonical-root CANONICAL_ROOT
+```
+
+同一台 Mac 上的多个已停止 worker 应继续经过原 `export → import → MERGED → ack` 校验链批量归并，不能直接拼数据库：
+
+```bash
+python -m quantlab.agent.tdx_distributed_cli --data-root CANONICAL_ROOT \
+  --personal-research-only merge-local-workers \
+  --worker-root WORKER_0 --worker-root WORKER_1 --worker-root WORKER_2
+```
+
+worker 原始页只有在结果包获得匹配的 `MERGED` 回执、canonical 完成大文件归档并核对全部 source_id 后才可清理。先运行下面的 `--dry-run`：它取得各库 writer lease，逐一核对 worker 的发布/检查点、对应的 canonical 归档和导出包 MERGED 身份，并遍历待清理目录核对每个现存文件的 SHA256；遇到未登记目录、额外文件或未发布页即拒绝，且不写退休标记或删除文件。预检通过后，去掉 `--dry-run` 执行同样的完整预检，再仅删除已核对页内的三个指定文件及其空目录；worker 队列库、错误记录和带 source_id digest 的退休回执保留：
+
+```bash
+python -m quantlab.agent.tdx_distributed_cli --data-root CANONICAL_ROOT \
+  --personal-research-only retire-local-workers \
+  --worker-root WORKER_0 --worker-root WORKER_1 --worker-root WORKER_2 --dry-run
+```
+
+预检输出 `VERIFIED_READY` 后，使用相同命令去掉 `--dry-run` 执行。worker-1/2 的 `_checkpoint_witnesses/<source_id>` 是保存在队列库内的虚拟断点凭据，不是磁盘页目录，退休时保留；worker-0 的实体 `_checkpoints/<family>/<source_id>` 才进入实体页预检和清理。不得用整个目录的递归删除代替逐页删除。
+
+未归并页、冲突页、错误记录和 canonical 尚未覆盖的分页前驱不得提前删除。

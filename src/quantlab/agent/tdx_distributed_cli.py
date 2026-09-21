@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from quantlab.data.tdx_lake import TdxLake, encode, write_json
+from quantlab.data.tdx_lake import FAMILIES, TdxLake, encode, write_json
 from quantlab.agent.tdx_distributed import (
     create_bootstraps, install_bootstrap, export_results, import_results,
     worker_status, aggregate_status, BundleDeferred,
@@ -30,6 +30,18 @@ def main(argv=None):
     commands.add_parser('status')
     commands.add_parser('worker-status')
     commands.add_parser('stop')
+    compact = commands.add_parser('compact-storage')
+    compact.add_argument('--family', action='append', dest='families')
+    compact.add_argument('--batch-pages', type=int, default=1000)
+    compact.add_argument('--max-pages', type=int)
+    sync = commands.add_parser('sync-export-history')
+    sync.add_argument('--canonical-root', required=True, type=Path)
+    merge = commands.add_parser('merge-local-workers')
+    merge.add_argument('--worker-root', required=True, action='append', type=Path)
+    merge.add_argument('--batch-pages', type=int, default=1000)
+    retire = commands.add_parser('retire-local-workers')
+    retire.add_argument('--worker-root', required=True, action='append', type=Path)
+    retire.add_argument('--dry-run', action='store_true')
     args = parser.parse_args(argv)
     if args.action not in ('status', 'worker-status', 'stop') and not args.personal_research_only:
         parser.error('Explicit --personal-research-only is required')
@@ -58,6 +70,19 @@ def main(argv=None):
             from quantlab.data.tdx_lake import now
             (lake.base/'STOP').write_text(now(), encoding='utf-8')
             result = {'stop_requested': True, 'history_complete': False}
+        elif args.action == 'compact-storage':
+            from quantlab.agent.tdx_storage import compact_storage
+            result = compact_storage(lake, families=tuple(args.families) if args.families else FAMILIES,
+                                     batch_pages=args.batch_pages, max_pages=args.max_pages)
+        elif args.action == 'sync-export-history':
+            from quantlab.agent.tdx_storage import synchronize_export_history
+            result = synchronize_export_history(lake, TdxLake(args.canonical_root))
+        elif args.action == 'merge-local-workers':
+            from quantlab.agent.tdx_storage import merge_local_workers
+            result = merge_local_workers(lake, tuple(TdxLake(root) for root in args.worker_root), batch_pages=args.batch_pages)
+        elif args.action == 'retire-local-workers':
+            from quantlab.agent.tdx_storage import retire_local_worker_pages
+            result = retire_local_worker_pages(lake, tuple(TdxLake(root) for root in args.worker_root), dry_run=args.dry_run)
     print(encode(result))
     return 0
 

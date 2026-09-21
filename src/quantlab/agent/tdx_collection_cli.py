@@ -444,10 +444,11 @@ class Runner:
         try:
             if job.get('chunk'):
                 # Resume the exact saved bytes after a crash between publication and cursor scheduling.
-                folder=safe(self.lake.root,self.lake.root/job['chunk'])
-                manifest=json.loads((folder/'manifest.json').read_text())
-                self.lake.verify_page_at(folder,job['family'],manifest['source_id'])
-                value=json.loads(gzip_decompress(folder/'response.json.gz'))
+                from pathlib import PurePosixPath
+                import gzip
+                sid=PurePosixPath(job['chunk'].replace('\\','/')).name
+                source=self.lake.page_source(job['family'],sid,job['chunk']);source.verify()
+                value=json.loads(gzip.decompress(source.read_bytes('response.json.gz')))
                 with self.metrics_lock:self.reused_pages+=1
                 return job,value['result'],value['observed_at'],None
         except Exception as error:return job,None,now(),type(error).__name__+': '+str(error)[:400]
@@ -478,10 +479,11 @@ class Runner:
             from quantlab.agent.tdx_checkpoint_witness import previous_witness_digest
             preceding_digest=previous_witness_digest(self.lake,dict(previous))
         else:
-            folder=safe(self.lake.root,self.lake.root/previous['chunk'])
-            metadata=json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
-            self.lake.verify_page_at(folder,job['family'],metadata['source_id'])
-            payload=json.loads(gzip_decompress(folder/'response.json.gz'))
+            from pathlib import PurePosixPath
+            import gzip
+            sid=PurePosixPath(previous['chunk'].replace('\\','/')).name
+            source=self.lake.page_source(job['family'],sid,previous['chunk']);source.verify()
+            payload=json.loads(gzip.decompress(source.read_bytes('response.json.gz')))
             preceding_digest=digest(strip(rows_for(job['family'],payload['result'])))
         if rows and preceding_digest==digest(strip(rows)):
             raise ValueError('REPEATED_PAGE: provider repeated the preceding page; history incomplete')

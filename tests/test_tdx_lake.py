@@ -7,6 +7,7 @@ import duckdb
 from quantlab.data.tdx_lake import TdxLake,FAMILIES,rows_for,frame_for,digest,sha
 from quantlab.agent.tdx_collection_cli import (Runner,writer_lease,_latest_allowed_day,
     apply_scheduler_policy_to_pending,load_scheduler_policy,POLICY_FORMAT)
+from quantlab.agent.tdx_storage import compact_storage
 
 class TdxLakeTests(unittest.TestCase):
     def setUp(self):
@@ -35,6 +36,39 @@ class TdxLakeTests(unittest.TestCase):
         self.assertEqual(json.loads(data['record_json'])['extra_original'],{'x':7})
         self.assertEqual(data['date'],date(2026,9,17))
         self.assertEqual(self.lake.verify_page('bars_1m',m['source_id'])['rows'],1)
+    def test_verified_compaction_preserves_exact_bytes_and_query_rows(self):
+        job=self.job();manifest,_=self.lake.save_page(job,self.bar(),observed_at='2026-09-18T00:00:00+00:00')
+        source=self.lake.page_source('bars_1m',manifest['source_id'])
+        originals={name:source.read_bytes(name) for name in ('response.json.gz','data.parquet','manifest.json')}
+        (self.lake.base/'STOP').write_text('maintenance')
+        result=compact_storage(self.lake,families=('bars_1m',),batch_pages=10)
+        self.assertEqual(result['compacted_pages'],1)
+        self.assertFalse((self.lake.base/'bars_1m/pages'/manifest['source_id']).exists())
+        archived=self.lake.page_source('bars_1m',manifest['source_id'])
+        self.assertIsNone(archived.folder)
+        self.assertEqual({name:archived.read_bytes(name) for name in originals},originals)
+        self.assertEqual(self.lake.read('bars_1m','sz.000001')['rows'][0]['volume'],1000)
+        self.assertEqual(self.lake.verify_page('bars_1m',manifest['source_id'])['rows'],1)
+        with self.lake.db(readonly=True) as con:published=dict(con.execute('SELECT * FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone())
+        with patch('quantlab.agent.tdx_collection_cli.Source',side_effect=AssertionError('must reuse archived bytes')):
+            _,payload,_,error=Runner(self.lake,self.pid).fetch(published)
+        self.assertIsNone(error);self.assertEqual(payload,self.bar())
+        self.assertEqual(compact_storage(self.lake,families=('bars_1m',),batch_pages=10)['compacted_pages'],0)
+    def test_compaction_retry_preserves_unverified_residual_files(self):
+        manifest,_=self.lake.save_page(self.job(),self.bar())
+        (self.lake.base/'STOP').write_text('maintenance')
+        compact_storage(self.lake,families=('bars_1m',),batch_pages=10)
+        folder=self.lake.base/'bars_1m/pages'/manifest['source_id']
+        folder.mkdir()
+        (folder/'unexpected.txt').write_text('unique')
+        with self.assertRaisesRegex(ValueError,'Unexpected file'):
+            compact_storage(self.lake,families=('bars_1m',),batch_pages=10)
+        self.assertTrue((folder/'unexpected.txt').exists())
+        (folder/'unexpected.txt').unlink()
+        (folder/'response.json.gz').write_bytes(b'changed')
+        with self.assertRaisesRegex(ValueError,'differs from archive'):
+            compact_storage(self.lake,families=('bars_1m',),batch_pages=10)
+        self.assertEqual((folder/'response.json.gz').read_bytes(),b'changed')
     def test_empty_distinct_from_none_or_error(self):
         job=self.job();m,_=self.lake.save_page(job,{'exchange':'sz','code':'000001','bars':[]})
         self.assertEqual(m['rows'],0)

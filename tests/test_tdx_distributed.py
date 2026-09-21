@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import shutil
 import tarfile
 import tempfile
 from types import SimpleNamespace
@@ -21,6 +22,7 @@ from quantlab.agent.tdx_distributed import (
     aggregate_status, worker_status, unpack_bundle, write_bundle, file_sha,
     BundleConflict, BundleDeferred,
 )
+from quantlab.agent.tdx_storage import compact_storage, merge_local_workers, retire_local_worker_pages, synchronize_export_history
 
 
 class DistributedTests(unittest.TestCase):
@@ -209,6 +211,124 @@ class DistributedTests(unittest.TestCase):
         with unpack_bundle(Path(receipt['path']), receipt['sha256'], self.root/'inspect') as (_, body):
             self.assertEqual(len(body['pages']), 1)
             self.assertEqual(body['pages'][0]['state'], 'SAVED')
+
+    def test_export_reads_exact_page_from_large_file_archive(self):
+        worker = self.worker(1)
+        self.produce(worker)
+        compact_storage(worker, families=('bars_1m',), batch_pages=10)
+        receipt = self.exported(worker)
+        merged = import_results(self.lake, Path(receipt['path']), receipt['sha256'])
+        self.assertEqual(merged['imported_pages'], 1)
+
+    def test_missing_worker_sequence_history_restores_only_from_canonical_ledger(self):
+        worker = self.worker(1)
+        self.produce(worker)
+        receipt = self.exported(worker)
+        import_results(self.lake, Path(receipt['path']), receipt['sha256'])
+        with worker.db() as con:
+            con.execute('DROP TABLE distributed_result_bundles');con.commit()
+        result=synchronize_export_history(worker,self.lake)
+        self.assertEqual(result['installed_sequences'],1)
+        self.assertEqual(result['next_sequence'],2)
+
+    def test_local_merge_uses_normal_verified_bundle_and_ack_path(self):
+        worker=self.worker(1)
+        self.produce(worker)
+        result=merge_local_workers(self.lake,(worker,),batch_pages=10)
+        self.assertEqual(result['workers'][0]['imported_pages'],1)
+        self.assertEqual(result['workers'][0]['new_bundles'],1)
+        with worker.db(readonly=True) as con:
+            self.assertEqual(con.execute('SELECT count(*) FROM distributed_result_bundles WHERE acked=1').fetchone()[0],1)
+        compact_storage(self.lake,batch_pages=20)
+        ready=retire_local_worker_pages(self.lake,(worker,),dry_run=True)
+        self.assertEqual(ready['state'],'VERIFIED_READY')
+        self.assertTrue(next(worker.base.glob('bars_1m/pages/*/manifest.json')).exists())
+        self.assertFalse((worker.base/'retired-to-canonical.json').exists())
+        retired=retire_local_worker_pages(self.lake,(worker,))
+        self.assertEqual(retired['workers'][0]['publications'],1)
+        self.assertEqual(json.loads((worker.base/'retired-to-canonical.json').read_text())['state'],'RETIRED')
+
+    def test_retirement_refuses_unrecorded_page_before_deleting_known_pages(self):
+        worker=self.worker(1)
+        self.produce(worker)
+        merge_local_workers(self.lake,(worker,),batch_pages=10)
+        compact_storage(self.lake,batch_pages=20)
+        known=next(worker.base.glob('bars_1m/pages/*/manifest.json'))
+        orphan=worker.base/'_stored'/'bars_1m'/('f'*64)
+        orphan.mkdir(parents=True)
+        (orphan/'unique.txt').write_text('not published')
+        with self.assertRaisesRegex(ValueError,'Unrecorded worker page'):
+            retire_local_worker_pages(self.lake,(worker,))
+        self.assertTrue(known.exists())
+        self.assertTrue((orphan/'unique.txt').exists())
+        self.assertFalse((worker.base/'retired-to-canonical.json').exists())
+
+    def test_retirement_refuses_unpublished_stored_page(self):
+        worker=self.worker(1)
+        self.produce(worker)
+        merge_local_workers(self.lake,(worker,),batch_pages=10)
+        compact_storage(self.lake,batch_pages=20)
+        symbol=self.fleet()['assignments'][1]['symbols'][1]
+        job=self.job(worker,symbol=symbol,offset=2)
+        worker.save_page(job,self.bars(symbol,25),finalize=False)
+        stored=next(worker.base.glob('_stored/bars_1m/*/manifest.json'))
+        with self.assertRaisesRegex(ValueError,'Unpublished worker job'):
+            retire_local_worker_pages(self.lake,(worker,))
+        self.assertTrue(stored.exists())
+        self.assertFalse((worker.base/'retired-to-canonical.json').exists())
+
+    def test_retirement_refuses_extra_or_changed_worker_file(self):
+        worker=self.worker(1)
+        self.produce(worker)
+        merge_local_workers(self.lake,(worker,),batch_pages=10)
+        compact_storage(self.lake,batch_pages=20)
+        folder=next(worker.base.glob('bars_1m/pages/*'))
+        extra=folder/'unique.txt'
+        extra.write_text('not part of page')
+        with self.assertRaisesRegex(ValueError,'Unexpected file in worker page'):
+            retire_local_worker_pages(self.lake,(worker,))
+        extra.unlink()
+        raw=folder/'response.json.gz'
+        raw.write_bytes(raw.read_bytes()+b'changed')
+        with self.assertRaisesRegex(ValueError,'Worker page differs from canonical archive'):
+            retire_local_worker_pages(self.lake,(worker,))
+        self.assertTrue(raw.exists())
+        self.assertFalse((worker.base/'retired-to-canonical.json').exists())
+
+    def test_retirement_keeps_virtual_checkpoint_witnesses_in_queue(self):
+        worker=self.worker(1)
+        self.produce(worker)
+        merge_local_workers(self.lake,(worker,),batch_pages=10)
+        compact_storage(self.lake,batch_pages=20)
+        with worker.db() as con:
+            checkpoints=[dict(row) for row in con.execute("SELECT job_id,chunk FROM jobs WHERE state='CHECKPOINT'")]
+            con.execute('CREATE TABLE checkpoint_witnesses(job_id TEXT PRIMARY KEY,source_id TEXT NOT NULL,body TEXT NOT NULL)')
+            for row in checkpoints:
+                source_id=Path(row['chunk']).name
+                con.execute('INSERT INTO checkpoint_witnesses VALUES (?,?,?)',(row['job_id'],source_id,'{}'))
+                con.execute('UPDATE jobs SET chunk=? WHERE job_id=?',('_checkpoint_witnesses/'+source_id,row['job_id']))
+            con.commit()
+        for row in checkpoints:shutil.rmtree(worker.root/row['chunk'])
+        ready=retire_local_worker_pages(self.lake,(worker,),dry_run=True)
+        self.assertEqual(ready['state'],'VERIFIED_READY')
+        self.assertEqual(ready['workers'][0]['checkpoints'],len(checkpoints))
+        self.assertEqual(ready['workers'][0]['physical_page_directories'],1)
+
+    def test_retirement_preflights_every_worker_before_deleting_first(self):
+        first=self.worker(1)
+        second=self.worker(2)
+        self.produce(first)
+        self.produce(second)
+        merge_local_workers(self.lake,(first,second),batch_pages=10)
+        compact_storage(self.lake,batch_pages=20)
+        first_page=next(first.base.glob('bars_1m/pages/*/manifest.json'))
+        orphan=second.base/'_stored'/'bars_1m'/('f'*64)
+        orphan.mkdir(parents=True)
+        (orphan/'unique.txt').write_text('keep')
+        with self.assertRaisesRegex(ValueError,'Unrecorded worker page'):
+            retire_local_worker_pages(self.lake,(first,second))
+        self.assertTrue(first_page.exists())
+        self.assertFalse((first.base/'retired-to-canonical.json').exists())
 
     def test_verified_merge_is_idempotent_and_preserves_baseline_bytes(self):
         worker = self.worker(1)

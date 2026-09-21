@@ -6,8 +6,8 @@ Empty, failed, partial and unfinished jobs are distinct; no PIT or execution upg
 from __future__ import annotations
 from contextlib import contextmanager
 from datetime import date,datetime,timezone
-from pathlib import Path
-import dataclasses,gzip,hashlib,json,math,os,re,shutil,sqlite3
+from pathlib import Path,PurePosixPath
+import dataclasses,gzip,hashlib,io,json,math,os,re,shutil,sqlite3
 from uuid import uuid4
 import duckdb
 import polars as pl
@@ -19,6 +19,8 @@ READ_COLUMNS={'date':pl.Date,'code':pl.String,'event_time':pl.String,'observed_a
     'record_json':pl.String,'source_id':pl.String,'record_index':pl.Int64,'plan_id':pl.String,
     'qualification':pl.String}
 QUALIFICATION='vendor_observation_personal_research_not_pit'
+PAGE_FILES=('response.json.gz','data.parquet','manifest.json')
+ARCHIVE_COLUMNS={'response.json.gz':'raw_bytes','data.parquet':'parquet_bytes','manifest.json':'manifest_bytes'}
 
 def now():return datetime.now(timezone.utc).isoformat()
 def clean(value):
@@ -98,6 +100,46 @@ def frame_for(family,rows,job,observed,source_id):
             'record_index':index,'plan_id':job['plan_id'],'qualification':QUALIFICATION})
     return pl.DataFrame(flat,schema=READ_COLUMNS) if flat else pl.DataFrame(schema=READ_COLUMNS)
 
+class TdxPageSource:
+    """Exact page bytes from a live directory or the large-file archive."""
+    def __init__(self,lake,family,source_id,folder=None):
+        self.lake=lake;self.family=family;self.source_id=source_id;self.folder=folder
+    def read_bytes(self,filename):
+        if filename not in PAGE_FILES:raise ValueError('Unknown TDX page member')
+        if self.folder is not None:return safe(self.lake.root,self.folder/filename).read_bytes()
+        column=ARCHIVE_COLUMNS[filename]
+        with self.lake.archive_db(readonly=True) as con:
+            row=con.execute('SELECT '+column+' FROM page_archive WHERE source_id=? AND family=?',(self.source_id,self.family)).fetchone()
+        if row is None:raise ValueError('Archived TDX page not found')
+        return bytes(row[0])
+    def size(self,filename):
+        if self.folder is not None:return safe(self.lake.root,self.folder/filename).stat().st_size
+        column=ARCHIVE_COLUMNS[filename]
+        with self.lake.archive_db(readonly=True) as con:
+            row=con.execute('SELECT length('+column+') FROM page_archive WHERE source_id=? AND family=?',(self.source_id,self.family)).fetchone()
+        if row is None:raise ValueError('Archived TDX page not found')
+        return row[0]
+    @contextmanager
+    def open(self,filename):
+        if self.folder is not None:
+            with safe(self.lake.root,self.folder/filename).open('rb') as stream:yield stream
+        else:
+            stream=io.BytesIO(self.read_bytes(filename))
+            try:yield stream
+            finally:stream.close()
+    def sha256(self,filename):
+        h=hashlib.sha256()
+        with self.open(filename) as stream:
+            for block in iter(lambda:stream.read(1024*1024),b''):h.update(block)
+        return h.hexdigest()
+    def verify(self):
+        value=json.loads(self.read_bytes('manifest.json'));core={k:v for k,v in value.items() if k!='checksum'}
+        if digest(core)!=value['checksum'] or core['source_id']!=self.source_id or core['family']!=self.family:
+            raise ValueError('Page manifest changed')
+        for filename,key in (('response.json.gz','raw_sha256'),('data.parquet','parquet_sha256')):
+            if self.sha256(filename)!=core[key]:raise ValueError('Page bytes changed: '+filename)
+        return core
+
 class TdxLake:
     def __init__(self,data_root,*,create=False):
         supplied=Path(data_root)
@@ -105,6 +147,7 @@ class TdxLake:
         self.root=supplied.resolve();self.base=safe(self.root,self.root/'lake/bronze/provider=tdx')
         self.catalog=safe(self.root,self.root/'catalog/mqc.duckdb')
         self.queue=safe(self.root,self.root/'catalog/tdx_ingestion.sqlite3')
+        self.archive=safe(self.root,self.root/'catalog/tdx_page_archive.sqlite3')
         if create:self.initialize()
     @contextmanager
     def db(self,*,readonly=False):
@@ -112,6 +155,40 @@ class TdxLake:
         con.row_factory=sqlite3.Row
         try:yield con
         finally:con.close()
+    @contextmanager
+    def archive_db(self,*,readonly=False):
+        if readonly and not self.archive.exists():raise ValueError('TDX page archive is not initialized')
+        con=sqlite3.connect(('file:'+str(self.archive)+'?mode=ro') if readonly else str(self.archive),uri=readonly,timeout=30)
+        con.row_factory=sqlite3.Row
+        try:yield con
+        finally:con.close()
+    def initialize_archive(self):
+        self.archive.parent.mkdir(parents=True,exist_ok=True)
+        with self.archive_db() as con:
+            con.execute('PRAGMA journal_mode=WAL');con.execute('PRAGMA busy_timeout=30000')
+            con.execute("""CREATE TABLE IF NOT EXISTS page_archive(
+              source_id TEXT PRIMARY KEY,family TEXT NOT NULL,raw_bytes BLOB NOT NULL,
+              parquet_bytes BLOB NOT NULL,manifest_bytes BLOB NOT NULL,raw_sha256 TEXT NOT NULL,
+              parquet_sha256 TEXT NOT NULL,manifest_sha256 TEXT NOT NULL,rows INTEGER NOT NULL,
+              archived_at TEXT NOT NULL)""")
+            con.execute('CREATE INDEX IF NOT EXISTS page_archive_family ON page_archive(family,source_id)');con.commit()
+    def initialize_compacted_catalog(self,*,create_views=True):
+        with duckdb.connect(str(self.catalog)) as con:
+            con.execute('BEGIN TRANSACTION')
+            for family in FAMILIES:
+                pattern=str(self.base/family/'**/*.parquet').replace("'","''")
+                name='tdx_'+family
+                compacted=name+'_compacted'
+                schemafile=str(self.base/family/'schema.parquet').replace("'","''")
+                con.execute('CREATE TABLE IF NOT EXISTS '+compacted+" AS SELECT * FROM read_parquet('"+schemafile+"',hive_partitioning=false) LIMIT 0")
+                con.execute('CREATE UNIQUE INDEX IF NOT EXISTS '+compacted+'_identity ON '+compacted+'(source_id,record_index)')
+                if not create_views:continue
+                existing=con.execute('SELECT view_name,sql FROM duckdb_views() WHERE view_name=?',[name]).fetchall()
+                if existing and 'provider=tdx' not in existing[0][1]:raise ValueError('Existing unrelated TDX view name; refusing overwrite')
+                projection="* REPLACE ((timezone('Asia/Shanghai',observed_at::TIMESTAMPTZ))::DATE AS date)" if family in ('securities','quotes','depth','finance','topics') else '*'
+                unioned="(SELECT * FROM "+compacted+" UNION ALL SELECT live.* FROM read_parquet('"+pattern+"',union_by_name=true,hive_partitioning=false) live WHERE NOT EXISTS (SELECT 1 FROM "+compacted+" saved WHERE saved.source_id=live.source_id))"
+                con.execute('CREATE OR REPLACE VIEW '+name+' AS SELECT '+projection+' FROM '+unioned)
+            con.execute('COMMIT')
     def initialize(self):
         self.base.mkdir(parents=True,exist_ok=True);self.queue.parent.mkdir(parents=True,exist_ok=True)
         with self.db() as con:
@@ -131,17 +208,24 @@ class TdxLake:
             folder=safe(self.root,self.base/family);folder.mkdir(exist_ok=True)
             schemafile=folder/'schema.parquet'
             if not schemafile.exists():pl.DataFrame(schema=READ_COLUMNS).write_parquet(schemafile)
+        self.initialize_archive()
         # Add only namespaced views. Never replace old daily/5m tables or views.
-        with duckdb.connect(str(self.catalog)) as con:
-            con.execute('BEGIN TRANSACTION')
-            for family in FAMILIES:
-                pattern=str(self.base/family/'**/*.parquet').replace("'","''")
-                name='tdx_'+family
-                existing=con.execute('SELECT view_name,sql FROM duckdb_views() WHERE view_name=?',[name]).fetchall()
-                if existing and 'provider=tdx' not in existing[0][1]:raise ValueError('Existing unrelated TDX view name; refusing overwrite')
-                projection="* REPLACE ((timezone('Asia/Shanghai',observed_at::TIMESTAMPTZ))::DATE AS date)" if family in ('securities','quotes','depth','finance','topics') else '*'
-                con.execute('CREATE OR REPLACE VIEW '+name+" AS SELECT "+projection+" FROM read_parquet('"+pattern+"',union_by_name=true,hive_partitioning=false)")
-            con.execute('COMMIT')
+        self.initialize_compacted_catalog()
+    def page_source(self,family,sid,chunk=None):
+        if family not in FAMILIES or not re.fullmatch('[a-f0-9]{64}',sid):raise ValueError('Invalid page')
+        candidates=[]
+        if chunk:
+            text=chunk.replace('\\','/')
+            relative=PurePosixPath(text)
+            if relative.is_absolute() or not relative.parts or any(part in ('','.','..') for part in relative.parts):raise ValueError('Unsafe TDX chunk path')
+            candidates.append(safe(self.root,self.root.joinpath(*relative.parts)))
+        candidates.extend((safe(self.root,self.base/family/'pages'/sid),safe(self.root,self.base/'_empty_pages'/family/sid),safe(self.root,self.base/'_stored'/family/sid)))
+        for folder in candidates:
+            if folder.is_dir() and all((folder/filename).is_file() for filename in PAGE_FILES):return TdxPageSource(self,family,sid,folder)
+        if self.archive.exists():
+            with self.archive_db(readonly=True) as con:row=con.execute('SELECT 1 FROM page_archive WHERE source_id=? AND family=?',(sid,family)).fetchone()
+            if row:return TdxPageSource(self,family,sid)
+        raise ValueError('TDX page bytes not found')
     def add_plan(self,body):
         pid=digest(body)
         with self.db() as con:
@@ -235,14 +319,8 @@ class TdxLake:
             if sha(safe(self.root,folder/filename).read_bytes())!=core[key]:raise ValueError('Page bytes changed: '+filename)
         return core
     def verify_page(self,family,sid):
-        folder=safe(self.root,self.base/family/'pages'/sid)
-        if not folder.exists():
-            held=safe(self.root,self.base/'_stored'/family/sid)
-            if held.exists():folder=held
-            else:
-                with self.db(readonly=True) as con:row=con.execute('SELECT chunk FROM publications WHERE source_id=?',(sid,)).fetchone()
-                if row:folder=safe(self.root,self.root/row['chunk'])
-        return self.verify_page_at(folder,family,sid)
+        with self.db(readonly=True) as con:row=con.execute('SELECT chunk FROM publications WHERE source_id=?',(sid,)).fetchone()
+        return self.page_source(family,sid,row['chunk'] if row else None).verify()
     @staticmethod
     def _promotion_schema(con):
         con.execute('CREATE TABLE IF NOT EXISTS pending_promotions(source_id TEXT PRIMARY KEY,job_id TEXT NOT NULL,family TEXT NOT NULL,held_chunk TEXT NOT NULL,target_chunk TEXT NOT NULL,created_at TEXT NOT NULL)')

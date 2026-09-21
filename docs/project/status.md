@@ -202,6 +202,12 @@ v1明确只支持research_only，不以新包声明Strict PIT或官方规则已�
 
 新增5个测试模块25项；复核修复后受影响后端62项、其余入口43项及Qt离屏2项共18模块107项通过，0失败/错误/跳过，源码指纹一致；16模板配置全部通过编译与原提案预检。完整测试统计保留于本轮artifacts；不以工程通过替代真实模型、历史数据资格、策略盈利或实盘验收。
 
+### 2026-09-21 TDX主数据湖归并与大文件归档
+
+三份本机worker的已发布页已按原结果包/MERGED回执链归并到Mac主数据湖，采集继续保持STOP。主库共有319,961条publication、62,915,859行；`catalog/tdx_page_archive.sqlite3`也有319,961页，按source_id逐条核对family/rows为0缺失、0错配、0额外。`storage-compaction.json`于16:06记录`COMPLETE`，13类`tdx_*`标准查询视图逐类行数与publication求和一致。供应商原始响应和派生Parquet原字节保留在大文件归档库；并不表示全市场全历史完整或Strict PIT合格。
+
+worker页副本的清理与主库可查询是两件事。2026-09-21 19:29前，三份worker均完成完整预检和逐页清理，macbook/homepc/601各自的`retired-to-canonical.json`均为`RETIRED`，进程正常退出；合计涉及241,671条已发布页副本和20,365个checkpoint记录。worker-1/2的虚拟checkpoint witness、各worker队列库及错误记录仍保留。清理后重新只读核对主库：319,961 publication = 319,961 archive页，0缺失/错配；13类`tdx_*`查询共62,915,859行，逐类与publication记录一致。Lexar卷占用从清理前约838 GiB降至约353 GiB，约释放485 GiB；这一容量变化还包含同期其他磁盘活动，不能全部当作精确的本任务回收量。主库已可查询，但仍不表示全市场全历史完整或Strict PIT合格。
+
 ## 4. 真正剩余的工作按门槛处理
 
 | 门槛 | 后续应做 | 本轮没有做 |

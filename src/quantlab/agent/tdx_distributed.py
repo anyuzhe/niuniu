@@ -116,18 +116,17 @@ def validate_job(job: dict, assignment: dict, plan: dict) -> dict:
     return {k: job[k] for k in JOB_COLUMNS}
 
 
-def page_descriptor(lake: TdxLake, job: dict, state: str) -> tuple[dict, Path]:
-    folder = local_path(lake.root, portable_chunk(job['chunk']))
-    metadata = json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
-    sid = metadata['source_id']
-    manifest = lake.verify_page_at(folder, job['family'], sid)
+def page_descriptor(lake: TdxLake, job: dict, state: str) -> tuple[dict, object]:
+    sid = PurePosixPath(portable_chunk(job['chunk'])).name
+    source = lake.page_source(job['family'], sid, portable_chunk(job['chunk']))
+    manifest = source.verify()
     for key in ('plan_id', 'family', 'symbol', 'day', 'offset'):
         if manifest[key] != job[key]:
             raise ValueError('Checkpoint request identity mismatch')
     descriptor = {'source_id': sid, 'family': job['family'], 'job_id': job['job_id'],
         'state': state, 'rows': manifest['rows'], 'raw_sha256': manifest['raw_sha256'],
-        'parquet_sha256': manifest['parquet_sha256'], 'manifest_sha256': file_sha(folder/'manifest.json')}
-    return descriptor, folder
+        'parquet_sha256': manifest['parquet_sha256'], 'manifest_sha256': source.sha256('manifest.json')}
+    return descriptor, source
 
 
 def verify_bundle_page(folder: Path, item: dict, assignment: dict, plan: dict) -> tuple[dict, dict, list]:
@@ -184,14 +183,28 @@ def verify_bundle_page(folder: Path, item: dict, assignment: dict, plan: dict) -
     return manifest, raw, rows
 
 
-def write_bundle(directory: Path, body: dict, sources: dict[str, Path]) -> dict:
+def _source_size(source, filename):
+    return source.size(filename) if hasattr(source,'size') else (source/filename).stat().st_size
+
+
+@contextmanager
+def _source_open(source, filename):
+    if hasattr(source,'open') and not isinstance(source,Path):
+        with source.open(filename) as stream:yield stream
+    else:
+        path=source/filename
+        if path.is_symlink():raise ValueError('Unsafe source page')
+        with path.open('rb') as stream:yield stream
+
+
+def write_bundle(directory: Path, body: dict, sources: dict) -> dict:
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     value = sealed(body, 'bundle_id')
     target = directory/(value['bundle_id']+'.tar')
     temporary = directory/('.'+str(uuid4())+'.part')
     metadata = encode(value).encode('utf-8')
-    require_disk(directory, len(metadata) + sum((sources[p['source_id']]/f).stat().st_size for p in value['pages'] for f in PAGE_FILES))
+    require_disk(directory, len(metadata) + sum(_source_size(sources[p['source_id']],f) for p in value['pages'] for f in PAGE_FILES))
     if len(metadata) > MAX_METADATA_BYTES:
         raise ValueError('Bundle metadata too large')
     try:
@@ -201,12 +214,12 @@ def write_bundle(directory: Path, body: dict, sources: dict[str, Path]) -> dict:
             for item in value['pages']:
                 source = sources[item['source_id']]
                 for filename in PAGE_FILES:
-                    path = source/filename
-                    if path.is_symlink() or path.stat().st_size > MAX_PAGE_BYTES:
+                    size = _source_size(source,filename)
+                    if size > MAX_PAGE_BYTES:
                         raise ValueError('Unsafe/oversized source page')
                     info = tarfile.TarInfo('pages/'+item['source_id']+'/'+filename)
-                    info.size = path.stat().st_size; info.mode = 0o600
-                    with path.open('rb') as stream:
+                    info.size = size; info.mode = 0o600
+                    with _source_open(source,filename) as stream:
                         archive.addfile(info, stream)
         if temporary.stat().st_size > MAX_BUNDLE_BYTES:
             raise ValueError('Bundle exceeds transfer budget')
@@ -476,13 +489,13 @@ def export_results(lake: TdxLake, output: Path, *, max_pages=1000, max_bytes=256
         for candidate in candidates:
             job = validate_job(candidate, assignment, plan)
             item, folder = page_descriptor(lake, job, job['state'])
-            size = sum((folder/f).stat().st_size for f in PAGE_FILES)
+            size = sum(folder.size(f) for f in PAGE_FILES)
             if pages and total+size > max_bytes:
                 break
             total += size; pages[item['source_id']] = item; sources[item['source_id']] = folder; jobs.append(job)
         dependencies = []
         for item in list(pages.values()):
-            manifest = json.loads((sources[item['source_id']]/'manifest.json').read_text(encoding='utf-8'))
+            manifest = json.loads(sources[item['source_id']].read_bytes('manifest.json'))
             origin = manifest.get('origin', '')
             if item['family'] == 'opening_match':
                 if not origin.startswith('exact_rows_from_trade_page:'):
@@ -526,10 +539,10 @@ def _verify_import_chains(lake, jobs, page_for_job, verified):
         for row in previous:
             row=dict(row)
             if row['job_id'] in candidates:continue
-            folder=local_path(lake.root,portable_chunk(row['chunk']))
-            metadata=json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
-            lake.verify_page_at(folder,row['family'],metadata['source_id'])
-            with gzip.open(folder/'response.json.gz','rb') as stream:raw=json.loads(stream.read(MAX_PAGE_BYTES+1))
+            sid=PurePosixPath(portable_chunk(row['chunk'])).name
+            source=lake.page_source(row['family'],sid,portable_chunk(row['chunk']))
+            metadata=source.verify()
+            with source.open('response.json.gz') as compressed, gzip.GzipFile(fileobj=compressed) as stream:raw=json.loads(stream.read(MAX_PAGE_BYTES+1))
             candidates[row['job_id']]=(row,rows_for(row['family'],raw['result']))
         if len(candidates)!=1:
             raise ValueError('Incoming pagination lacks one exact preceding saved page')
@@ -616,12 +629,12 @@ def import_results(lake: TdxLake, bundle_path: Path, expected_sha: str) -> dict:
                             old = con.execute('SELECT * FROM publications WHERE source_id=?', (sid,)).fetchone()
                             old_job = con.execute('SELECT * FROM jobs WHERE job_id=?', (job['job_id'],)).fetchone()
                         if old:
-                            folder = local_path(lake.root, portable_chunk(old['chunk']))
-                            current = lake.verify_page_at(folder, item['family'], sid)
+                            source = lake.page_source(item['family'], sid, portable_chunk(old['chunk']))
+                            current = source.verify()
                             for key in ('raw_sha256', 'parquet_sha256', 'observed_at'):
                                 if current[key] != manifest[key]:
                                     raise BundleConflict('Same source_id has different verified bytes: '+sid)
-                            if file_sha(folder/'manifest.json') != item['manifest_sha256']:
+                            if source.sha256('manifest.json') != item['manifest_sha256']:
                                 raise BundleConflict('Same source_id has a different manifest: '+sid)
                             existing[sid] = True
                         else:
