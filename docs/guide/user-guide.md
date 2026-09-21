@@ -212,7 +212,35 @@ TDX 使用 `get_tdx_data_status / read_tdx_data`，数据根来自宿主 `--data
 
 旧`list_qm50_archived_sources/list_qm50_archived_symbols/inspect_qm50_archived_daily`保留名称和宿主指定source_workspace，底层转同一只读实现。锁定原始规格会话仍用旧专用入口，不能借通用名称调用替代研究；固定测试仍须单独许可。首轮Reviewer的工具白名单不扩大。`preclose/turn/isST/tradestatus`保留供应商原意，不替代官方reference_price/float_shares/完整状态。
 
-本增量只接发现和读取，不把TDX或retro归档自动注册为通用策略Provider，不修改供应商标签、SQL视图或数据布局。字段/单位/时点/快照合同由数据治理方交付后，再单独实现正式消费适配；数据已读取与策略可以执行是不同状态。
+上述通用读取不把TDX或retro归档自动注册为通用策略Provider，不修改供应商标签、SQL视图或数据布局。TDX消费仍待字段/单位/时点/版本合同明确；retro日线可由宿主按下节显式生成有限研究输入。数据已读取、数据包已创建、研究已批准和研究执行成功是不同状态。
+
+### 显式建立归档日线研究输入（不自动研究）
+
+对已有 `list_archived_daily_sources` 返回的精确capture，宿主可使用 `python -m quantlab.agent.archived_daily_dataset_cli`。所有命令从项目根目录执行，下面参数只示意输入位置，不代选证券或日期：
+
+```bash
+# 只读预检；不会创建新目录或启动研究
+.venv/bin/python -B -m quantlab.agent.archived_daily_dataset_cli preview \
+  --source-workspace /path/to/source-workspace --capture-id CAPTURE_UUID \
+  --symbols sh.XXXXXX sz.XXXXXX --start YYYY-MM-DD --end YYYY-MM-DD
+
+# 用刚才返回的完整preview_hash确认；destination必须全新且父目录已存在
+.venv/bin/python -B -m quantlab.agent.archived_daily_dataset_cli export \
+  --source-workspace /path/to/source-workspace --capture-id CAPTURE_UUID \
+  --symbols sh.XXXXXX sz.XXXXXX --start YYYY-MM-DD --end YYYY-MM-DD \
+  --destination /path/to/new-input --expected-preview-hash FULL_PREVIEW_SHA256 --confirm-create
+
+# 脱离原capture后仍可核验；读取不修改包
+.venv/bin/python -B -m quantlab.agent.archived_daily_dataset_cli inspect --data-root /path/to/new-input
+```
+
+预检成功不保存或批准研究。导出前重新核对同一预览指纹，来源变了必须重新预检；已有目标（含空目录）拒绝覆盖。数据包只用于明确有限范围的 `research_only`、raw、1d输入，不能请求qfq或分钟；源日历内缺行、停牌或必需值异常不会被自动删除或补齐。当前上限1–10只证券、371自然日；不是全市场固定股票池，也不是自动日增量通道。
+
+在支持no-replace目录重命名的文件系统使用整目录发布；Lexar/exFAT等不支持时先独占创建新目录，写入明确无效的 `publication_state=INCOMPLETE` 清单，再移入全部文件，最后原子发布有效清单。中断可能留下未完成目标，读器必须拒绝，后续导出不得覆盖或复用；原来源保持完整。主控可检查后另选新目标，不自动删除残留。目录fsync不受支持时为有限的文件系统耐久性，不声称断电后必然完整，重开仍须深验。
+
+在新建研究会话/宿主配置中把 `--data-root` 显式选为新包目录，并在研究spec或策略包中设置 `adjustment=raw`，即可复用原人工提案、批准、JobQueue和复算路径。普通助手/MCP通过只读 `get_archived_daily_dataset` 查询当前宿主选中的包及其范围，不传路径、不创建包、不切根；旧MQC发现会明确拒绝把这种受管目录当成散文件。现有会话的旧数据根、Grant和批准不会被导出命令修改。
+
+每次Provider读取会核验包内字节及原始/typed/规范行情一致性；15:00时间是研究对齐假设，不是历史当时可得证明。有效供应商ST行保留供研究，不变成已确认交易资格；未知状态不填正常。输入包没有独立交易权限，原始QM50规格会话和首轮Reviewer白名单不扩张。正式数据根、TDX采集和治理流程不因本功能自动改变。
 
 ## 5. 每日循环里的缩写
 

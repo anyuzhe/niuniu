@@ -54,7 +54,7 @@ class LocalMarketDataTools:
         if self.root is None:
             raise ValueError('LOCAL_DATA_NOT_CONFIGURED')
         # Do not treat a managed/frozen marker as permission to bypass its contract.
-        for marker in ('baostock-series.json', 'baostock-dataset.json', 'manifest.json'):
+        for marker in ('baostock-series.json', 'baostock-dataset.json', 'manifest.json', 'archived-daily-dataset.json'):
             if self._safe(self.root/marker).exists():
                 raise ValueError('MANAGED_DISCOVERY_UNSUPPORTED：当前入口是受管理/冻结数据，须使用对应批次/通道工具；禁止回退MQC发现')
         suffix = 'daily' if timeframe == '1d' else 'min5'

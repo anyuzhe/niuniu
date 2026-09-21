@@ -97,6 +97,8 @@ class ChatRuntime:
         base_system+='\n本地数据检查使用list_local_market_data/inspect_local_market_data；宿主已授权自主选择范围时，在真实目录/Grant内选取，不要求用户提供因子答案。研究前先记录可证伪假设，研究后检查真实证据并保存结论草稿。'
         if not self.research_spec:
             base_system+='\n已有回溯日线先用list_archived_daily_sources发现宿主工作空间中的capture，再用list_archived_daily_symbols分页、inspect_archived_daily核验原始与typed字段。TDX已存资料用get_tdx_data_status/read_tdx_data读取明确family；这些是不同来源，不因MQC目录缺字段就断言整个项目没有数据。目录元信息不等于原始字节核验，原始记录可读也不等于通用策略Provider已接入；保留单位、observed_at、缺失和未核验标记。工具不下载、标准化、选择供应商版本或自动创建研究。'
+        if not self.research_spec:
+            base_system+='\n宿主显式选择archived-daily-dataset.json输入根时，用get_archived_daily_dataset核验固定范围与来源；仅raw日线、research_only。不要当作MQC目录或请求qfq，不自动导出、切换数据根、扩大Grant或用此包替代QM50原始规格。'
         if self.local_data_only:
             base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         if self.research_spec:

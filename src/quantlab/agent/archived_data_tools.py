@@ -27,6 +27,7 @@ TOOLS = [
             'limit': {'type': 'integer', 'minimum': 1, 'maximum': 20}, 'filter_kind': TEXT}),
     schema('inspect_archived_daily', '读取并核验指定capture中1-10只证券、最多371自然日日线；保留供应商原字段，不推导涨跌停价、流通股本或PIT。',
            {'capture_id': TEXT, 'symbols': TEXT, 'start': TEXT, 'end': TEXT}),
+    schema('get_archived_daily_dataset', '只读核验宿主data_root中已显式生成的归档日线研究输入包；返回固定证券、范围、源证据和限制。只支持raw日线，不创建输入包、不批准、不执行；不能代替原始QM50规格。', {}),
     schema('get_tdx_data_status', '只读查看已配置TDX湖状态；剔除大体计划字段。不联网、不采集，能力不代表数据存在。', {}),
     schema('read_tdx_data', '只读查询TDX catalog中的tdx_*数据；返回original_record、单位、observed_at和source_id，不标准化、不PIT升级。',
            {'family': TEXT, 'symbol': TEXT, 'start': TEXT, 'end': TEXT,
@@ -237,6 +238,14 @@ class ArchivedMarketDataAPI:
                 else:
                     data = bridge.inspect(args['capture_id'], args['symbols'], args['start'], args['end'])
                     evidence = _daily_evidence(data)
+            elif name == 'get_archived_daily_dataset':
+                if self.data_root is None:
+                    raise ValueError('Archived daily dataset root not configured')
+                from quantlab.data.archived_daily_dataset import inspect_archived_daily_dataset
+                data = {key: value for key, value in inspect_archived_daily_dataset(self.data_root).items()
+                        if key != 'path'}  # The host binds the root; model output need not expose it.
+                evidence = [{'kind': 'archived_daily_dataset', 'dataset_id': data['dataset_id'],
+                             'qualification': 'research_only', 'historical_available_at_verified': False}]
             elif name == 'get_tdx_data_status':
                 data = _tdx_status(self.data_root)
                 evidence = [{'kind': 'tdx_root_config', 'configured': bool(data.get('configured'))}]

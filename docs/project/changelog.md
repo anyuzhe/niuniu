@@ -1527,3 +1527,14 @@
 - 测试边界：首次完整三步聊天及旧提案幂等测试因默认上下文触发TOOL_CONTEXT_BUDGET_EXHAUSTED；对HEAD原ChatRuntime和工作区分别实测，原版同样在第二次提案返回触发预算且均只生成1个提案。仅将这些功能测试显式设置100000字符测试预算，产品默认60000、权限和上下文保护未放宽；原预算拒绝测试继续通过。不是实际模型自主研究、正式数据或全仓验收。
 - 独立Pi只读审查在其记录的4产品文件版本未发现有证据的阻断问题；之后主控补外层能力清单3行修复与测试预算设置，最终测试由主控执行，不把早期报告写成独立修后PASS。worker报告、审查、失败和最终回归均在同一新artifacts目录。新文件事务create在ExFAT报errno45并确认回滚后，以独占创建落盘；一次SHA参数抄写错误拒绝整批后，重读当前文件重新提交，未覆盖并行改动。
 - 提交仅本轮4个产品文件、2个新测试、1个原测试预算设置与指南/开发史，artifacts和共享status不整文件提交。完成后普通push并独立核对远端；不表示部署，后续正式Provider适配以数据负责人交付的字段/单位/时点/快照合同为前提。
+
+### 2026-09-21｜[F9] 已归档日线的显式有限研究输入
+
+- 基线：main本地与独立远端fa57e72，既存共享status保留。用户要求继续代码线，另一模型负责G0–G6数据治理；本轮不访问正式niuniu-data、旧MQC、历史业务_market_data或真实模型，不启停采集/服务，不改TDX单位或原始QM50合同。
+- 新增archived_daily_dataset编译器/只读Provider和宿主CLI（preview/export/inspect）。复用已有ArchivedDailyBridge真实raw/typed校验，仅接受明确1–10个沪深代码、最多371自然日、raw日线、research_only。完整覆盖请求所用capture日历；缺日、停牌或必需值异常拒绝，不填值、不删样本、不推断qfq/分钟或官方可交易资格。15:00 available_at明确为研究对齐时钟，historical_available_at_verified固定false。
+- 输入包保留精确原始响应、typed日线、plan/basic/calendar与规范bars。预览哈希固定请求和来源语义，确认导出前重新核验。Provider每次完整核验固定文件树、内容/身份/原始与派生语义，修改bars再重签manifest不能冒充原版本；允许包范围内子请求，不读原数据根或网络、不建立永久数据库。源可离线，快照身份沿原批准冻结、JobQueue、ExecutionStudy与数值复算保留。
+- 接线：local_data_provider明确识别archived-daily-dataset.json，混合marker/坏包/qfq/分钟拒绝而不fallback；旧路由保留。普通MQC发现对新管理包明确拒绝，助手/MCP新增只读get_archived_daily_dataset，宿主指定根且返回不暴露物理路径；模型无export、批准、切根或新增执行权，原规格/Reviewer白名单不扩大。
+- 主控跨层测试实际复现祖先symlink根绕过检查，独立Pi静态复核也提出同点；修复读取/源预检祖先检查后回归通过。独立报告仅对应它记录的先前SHA，修后验收由主控完成，不称独立修后PASS。
+- Lexar隔离样本实际复现RENAME_EXCL errno45不受支持；不放宽为覆盖rename，改为独占新目录、INCOMPLETE清单、最后原子发布有效marker。中断留不完整目标供宿主检查，不能作为有效包或覆盖重试；竞争失败不删除其他导出锁，原归档不变。文件系统不支持目录fsync时不声称断电耐久性；没有清理任何正式数据。
+- 最终验收：两个新模块27项（后端15+跨层12），最终13模块136项全部通过、0失败/错误/跳过，8个产品/测试文件前后SHA一致。Lexar同卷2个选定场景复跑通过且临时目录清理；不将重复运行累计成新测试。测试含真实CLI子进程、Chat/MCP接线、原人工批准冻结后源/输入下线、原ExecutionStudy复算；只证明合成功能，不证明正式数据已交付、策略有效或真实自主研究。
+- 证据在artifacts/archived-dataset-20260921：accepted-regression.json、lexar-compatibility.json、lifecycle-before.log、lexar-compatibility-before.log与独立报告。完成后仅本轮代码/测试/指南/开发史独立提交普通推送，核对远端；共享status不整份夹带，正式数据包未生成，公共服务未重启。

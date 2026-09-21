@@ -4,7 +4,17 @@ from quantlab.data.mqc import MQCParquetProvider
 
 
 def local_data_provider(root, adjustment='raw'):
-    root = Path(root).resolve()
+    supplied = Path(root)
+    root = supplied.resolve()
+    archived = root/'archived-daily-dataset.json'
+    if archived.is_symlink() or archived.exists():
+        # An explicit host-created dataset is never guessed from raw archive folders.
+        for name in ('manifest.json', 'baostock-series.json', 'baostock-dataset.json'):
+            marker = root/name
+            if marker.is_symlink() or marker.exists():
+                raise ValueError('Conflicting managed dataset markers; select one explicit input root')
+        from quantlab.data.archived_daily_dataset import ArchivedDailyDatasetProvider
+        return ArchivedDailyDatasetProvider(supplied, adjustment)
     from quantlab.storage.approval_inputs import is_approval_freeze_root,ApprovalFrozenDataProvider
     if is_approval_freeze_root(root):
         return ApprovalFrozenDataProvider(root,adjustment)

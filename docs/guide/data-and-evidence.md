@@ -16,7 +16,7 @@
 
 ## 2. 本地行情适配
 
-[local_data_provider](../../src/quantlab/data/provider.py) 按明确标记选择 approval freeze、Baostock series、Baostock dataset，最后才使用 MQC Parquet 适配器。损坏的显式标记是错误，不能静默回退成另一数据来源。
+[local_data_provider](../../src/quantlab/data/provider.py) 可识别宿主明确建立的 `archived-daily-dataset.json` 输入包；该标记不得与 approval freeze、Baostock series 或 dataset 标记混用。没有新标记时保留原 approval freeze → Baostock series → Baostock dataset → MQC 路由。新标记损坏或口径不符必须报错，不扫描原 capture 并自动注册、不改供应商标签、不静默回退。
 
 原 MQC 布局示意：
 
@@ -36,6 +36,14 @@ Coverage 的日线库存从宿主根内实际文件名单读取，返回 `invent
 
 
 AR 回溯日线还有独立的 pack 合并与读取实现，见 [retro_daily.py](../../src/quantlab/data/retro_daily.py)。历史小文件到 pack 的迁移已记录在 AR 验收中；本轮只整理文档，不重复执行合并或删除数据。前瞻日增量见 [forward_daily.py](../../src/quantlab/data/forward_daily.py)。
+
+### 已归档日线的有限研究输入包
+
+[archived_daily_dataset.py](../../src/quantlab/data/archived_daily_dataset.py) 复用现有 retro 原始/typed 校验，支持宿主先预检，再确认创建全新独立目录。不是直接让助手写数据治理库，也不是审批冻结。原 capture 不改变；包保存原始字节、固定日历、规范行情及源证据，Provider 每次读取重新核对文件与原始/typed/派生语义，原源下线后仍可读取。
+
+v1仅提供1–10个明确沪深代码、最多371自然日内的raw日线；每个请求证券必须逐日覆盖所选capture日历的全部交易session。缺日、停牌行和必需数值无效时拒绝，不填值、不删行、不自动挑替代样本；保留有效ST供应商行不等于确认可交易。日线15:00 Asia/Shanghai的 `available_at` 仅为显式研究对齐时钟，`historical_available_at_verified=false`。原始前收、换手和状态保留供应商字段语义；不提供qfq、分钟合成、官方股池/规则或PIT升级。
+
+把新包目录显式设为研究宿主 `--data-root` 并选择raw后，沿原Proposal/JobQueue/策略包执行和输入冻结路径使用；创建数据包不批准研究，不继承任何旧Grant，跨根授权仍由宿主另行处理。操作见[使用指南](user-guide.md)。
 
 ## 3. 研究价格和账户价格
 
