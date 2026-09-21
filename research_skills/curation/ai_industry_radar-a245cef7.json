@@ -1,0 +1,321 @@
+{
+  "format": "niuniu-research-skill-git-curation-plan-v1",
+  "skill_key": "ai_industry_radar",
+  "control_snapshot": "44571065b69c38f223efedeb404835c25d62a0e7d9b1fa8f8f25fe7d9737e48b",
+  "archive_snapshot": "b0535b7c333d7541636ed524b125b266f1e8050eec29ad74c0b69610427bf11b",
+  "version": "upstream-a245cef7-r1",
+  "status": "DRAFT",
+  "strategy_source_kind": "PUBLIC_METHOD",
+  "title": "AI产业雷达视频方法回顾性策展包（热度拥挤 / 产业上游确认 / 影子对照）",
+  "summary": "从宿主授权下载并固定到a245cef7的ai_industry_radar_pyqt中选择视频二精校逐字稿、原始ASR转写、校勘说明、README、系统复刻说明、手写产业链配置与许可证。逐字稿是二次转写，博主身份、视频发布时间与原始音视频字节均未取得；视频中的样本、胜率与收益均为博主自述，全部证据仅为回顾性研究参考。",
+  "keywords": [
+    "热度拥挤",
+    "拥挤度报警",
+    "题材年龄",
+    "产业上游",
+    "确认时刻",
+    "产业传导链",
+    "影子组合",
+    "120日低位",
+    "视频逐字稿"
+  ],
+  "resources": [
+    {
+      "resource_id": "upstream-license",
+      "upstream_path": "LICENSE",
+      "target_path": "references/upstream/LICENSE.txt",
+      "role": "DOCUMENTATION",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "bytes": 35149,
+      "locator": "https://github.com/anyuzhe/ai_industry_radar_pyqt/blob/a245cef7f2fd83fb9b9076a23b58f089e538db81/LICENSE"
+    },
+    {
+      "resource_id": "statement-video2",
+      "upstream_path": "docs/transcripts/02_视频二_精校逐字稿.md",
+      "target_path": "references/upstream/transcripts/video2-calibrated.md",
+      "role": "PRIMARY_STATEMENT",
+      "sha256": "dd8abfe84487ce7599c041e1adf374aadd3ca4049973a9bdb2b3ed92560ee85a",
+      "bytes": 11316,
+      "locator": "https://github.com/anyuzhe/ai_industry_radar_pyqt/blob/a245cef7f2fd83fb9b9076a23b58f089e538db81/docs/transcripts/02_%E8%A7%86%E9%A2%91%E4%BA%8C_%E7%B2%BE%E6%A0%A1%E9%80%90%E5%AD%97%E7%A8%BF.md"
+    },
+    {
+      "resource_id": "raw-asr-video2",
+      "upstream_path": "docs/transcripts/原始转写_视频二.txt",
+      "target_path": "references/upstream/transcripts/video2-raw-asr.txt",
+      "role": "DOCUMENTATION",
+      "sha256": "befb13c6359b617f5b8286da480899680eb121e1b481bb0047e19dd62b7b0e47",
+      "bytes": 10678,
+      "locator": "https://github.com/anyuzhe/ai_industry_radar_pyqt/blob/a245cef7f2fd83fb9b9076a23b58f089e538db81/docs/transcripts/%E5%8E%9F%E5%A7%8B%E8%BD%AC%E5%86%99_%E8%A7%86%E9%A2%91%E4%BA%8C.txt"
+    },
+    {
+      "resource_id": "transcript-calibration",
+      "upstream_path": "docs/transcripts/00_校勘说明与高置信度错词表.md",
+      "target_path": "references/upstream/transcripts/calibration-notes.md",
+      "role": "DOCUMENTATION",
+      "sha256": "4c3356ddcfa740d578dc58703f3e2a8ed2f2074246d0507eb74b23775db237b1",
+      "bytes": 2955,
+      "locator": "https://github.com/anyuzhe/ai_industry_radar_pyqt/blob/a245cef7f2fd83fb9b9076a23b58f089e538db81/docs/transcripts/00_%E6%A0%A1%E5%8B%98%E8%AF%B4%E6%98%8E%E4%B8%8E%E9%AB%98%E7%BD%AE%E4%BF%A1%E5%BA%A6%E9%94%99%E8%AF%8D%E8%A1%A8.md"
+    },
+    {
+      "resource_id": "radar-readme",
+      "upstream_path": "README.md",
+      "target_path": "references/upstream/README.md",
+      "role": "DOCUMENTATION",
+      "sha256": "a19e25ee6a23d8d644a79bd3e7b9c923e40379c95e154380949efc9ea4bab550",
+      "bytes": 54670,
+      "locator": "https://github.com/anyuzhe/ai_industry_radar_pyqt/blob/a245cef7f2fd83fb9b9076a23b58f089e538db81/README.md"
+    },
+    {
+      "resource_id": "radar-design-evolution",
+      "upstream_path": "docs/design/01_系统复刻与演进说明.md",
+      "target_path": "references/upstream/design/replication-evolution.md",
+      "role": "DOCUMENTATION",
+      "sha256": "1b00311697573101fc49d9da7968f36500421b6c78f304fd7aa17d3cc86263bd",
+      "bytes": 6417,
+      "locator": "https://github.com/anyuzhe/ai_industry_radar_pyqt/blob/a245cef7f2fd83fb9b9076a23b58f089e538db81/docs/design/01_%E7%B3%BB%E7%BB%9F%E5%A4%8D%E5%88%BB%E4%B8%8E%E6%BC%94%E8%BF%9B%E8%AF%B4%E6%98%8E.md"
+    },
+    {
+      "resource_id": "radar-chain-map-example",
+      "upstream_path": "config/industry_chain.yaml",
+      "target_path": "references/upstream/config/industry_chain.yaml",
+      "role": "DOCUMENTATION",
+      "sha256": "dfb6c85b5913ec108b19bdfc700055c22802c72070cab9a47c335364f9ca4ff7",
+      "bytes": 1962,
+      "locator": "https://github.com/anyuzhe/ai_industry_radar_pyqt/blob/a245cef7f2fd83fb9b9076a23b58f089e538db81/config/industry_chain.yaml"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "heat-alarm-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "第一，热搜漏斗降级了，从“选股器”降级成“拥挤度报警器”。现在热搜的作用不是告诉我买什么，而是告诉我哪里人太多，别去。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "theme-age-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "每个主题还要记录一个“年龄”：这个题材是今天才冒头，还是已经热了十几天？目前看，热度到第四天再挤进去，大概率就是接盘。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "info-chain-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "还是从信息链来看：机构调研，是注意力进场；龙虎榜，是钱开始进场；公司的公告标题，可能是故事进场；上了热搜，就可能是散户进场。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "prep-then-exit-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "池子里已经有持仓标的，就等热点发酵；等热点真正起来时，我反而考虑出货。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "heat-as-risk-inference",
+      "kind": "METHOD_INFERENCE",
+      "text": "来源把热度从正向选股输入改为拥挤与风险信号：热度越高越应回避、降权或考虑兑现，而不是加分；题材热度持续天数被当作拥挤程度的代理。该推演只说明来源主张的方向，是否成立须由牛牛预注册检验。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "confidence-inverse-fact",
+      "kind": "FACT_TO_VERIFY",
+      "text": "博主自述：按AI自信度分三档，最自信、最推荐深度研究的一档胜率仅17%，观察池一档27%，不推送深研的一档40%；并把原因归于热搜、热榜和社交声量等输入。样本量、胜率定义与基准口径未披露。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "limit-up-chase-fact",
+      "kind": "FACT_TO_VERIFY",
+      "text": "博主自述：涨停次日买入207个样本，5日跑输大盘1.5个百分点，连板票收盘后统计跑输4.6个百分点；跟龙虎榜/机构席位买入995条，10日跑输0.74个百分点；游资席位1043条，跑输0.86个百分点。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "good-news-fact",
+      "kind": "FACT_TO_VERIFY",
+      "text": "博主自述：1395条正面公告次日开盘买入，10日后跑赢沪深300的比例只有37.1%；催化强度评分三分以上的“大利好”比两分的普通利好更差。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "upstream-move-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "这半个月最大的变化，是从信息链末端搬到了上游。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "gate-confirmation-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "第一道闸门：确认时刻在 7 到 150 天之后。例如中标、招标、开标、产能爬坡，都写进系统日历。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "gate-not-hot-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "第二道闸门：主题还没有过热，没人挤，市场还没热起来。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "gate-low-price-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "第三道闸门：价格处在过去 120 天的低位区，得足够便宜。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "chain-example-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "举个例子：晶圆厂在扩产，设备商的合同在交付，再往上一层，是做超高洁净管阀、气体子系统、零部件和耗材的公司。订单可能会先体现在中报的合同负债里。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "confirmation-check-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "我的确认时刻就设在九月底，到日历上的日期，再去验证合同负债有没有增加，哪些公司的合同负债真的涨了。验证到了，我就继续关注。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "falsify-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "当然，报表是滞后的，还要结合过程中不断出现的信息持续验证。如果证伪，就把这件事划掉。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "transmission-time-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "因为产业传导需要时间：扩产传导到订单，订单再到报表，报表再到股价。这个链条有几个月的时间，我们总有机会找到比较好的买点。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "upstream-timing-inference",
+      "kind": "METHOD_INFERENCE",
+      "text": "来源的候选形成方式是事件驱动的中线布局：在已知确认时刻之前、主题未过热且价格处于低位时进入研究，沿传导链等待兑现，到确认日用报表数据核验，证伪即剔除；时间尺度是月与季度，不是日内。三道闸门是否各自有效、是否需要合取，来源没有给出证据。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "research-low-price-counter-fact",
+      "kind": "FACT_TO_VERIFY",
+      "text": "博主自述：20家以上机构密集调研的样本3400多个，20日超额1.07%；但调研叠加股价低位反而跑输1.86个百分点，叠加高位超额2.16%。这一自述与“120日低位”闸门方向相反，需分开检验。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "shadow-portfolio-quote",
+      "kind": "DIRECT_QUOTE",
+      "text": "另外，没有入选的票会进入“影子组合”，作为对照组继续盯着。万一错杀了好票，这些数据就会告诉我，要不要自我学习、调整入选逻辑。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "shadow-control-inference",
+      "kind": "METHOD_INFERENCE",
+      "text": "来源把未入选标的与入选标的放在同一口径下持续记账，用对照组的后续表现检查入选逻辑是否错杀或过度保守；这是选择诊断，不是收益来源，也不应自动改变入选规则。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    },
+    {
+      "claim_id": "watch-replay-fact",
+      "kind": "FACT_TO_VERIFY",
+      "text": "博主自述：回放19次“观望”决策，零次错过15%以上的大涨，8次躲过下跌，最深一次后来跌到-12.6%；未买入标的期末中位数上涨2.4%，相对大盘强4个多点。样本极小且为同期回放，不能视为选择逻辑有效的证明。",
+      "resource_ids": [
+        "statement-video2"
+      ]
+    }
+  ],
+  "alignments": [],
+  "hypotheses": [
+    {
+      "hypothesis_key": "heat-crowding-inverse",
+      "title": "热度即拥挤度报警（反向）候选维度",
+      "status": "DRAFT",
+      "claim_ids": [
+        "heat-alarm-quote",
+        "theme-age-quote",
+        "info-chain-quote",
+        "prep-then-exit-quote",
+        "heat-as-risk-inference",
+        "confidence-inverse-fact",
+        "limit-up-chase-fact",
+        "good-news-fact"
+      ],
+      "feature_candidates": [
+        "个股人气排名及其变化",
+        "题材热度年龄（首次上榜后的持续交易日）",
+        "近期涨停家数与连板高度",
+        "市场温度与情绪阶段"
+      ],
+      "required_data": [
+        "足够长的前瞻采集热榜/人气排名快照（牛牛已有东方财富人气排名明细，历史长度受采集起点限制）",
+        "PIT题材成分（当前成分回看历史存在前视偏差）",
+        "牛牛自行预注册的方向、窗口、分组与成本口径"
+      ],
+      "target_horizon": "SWING",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "upstream-confirmation-window",
+      "title": "产业上游传导与未来确认时刻候选维度",
+      "status": "DRAFT",
+      "claim_ids": [
+        "upstream-move-quote",
+        "gate-confirmation-quote",
+        "gate-not-hot-quote",
+        "gate-low-price-quote",
+        "chain-example-quote",
+        "confirmation-check-quote",
+        "falsify-quote",
+        "transmission-time-quote",
+        "upstream-timing-inference",
+        "research-low-price-counter-fact"
+      ],
+      "feature_candidates": [
+        "距已知确认事件的交易日数（来源口径7～150天）",
+        "产业链节点位置（需求源、设备、上游零部件与耗材、财务确认）",
+        "120日价格区间位置",
+        "确认日合同负债或预收款变化"
+      ],
+      "required_data": [
+        "PIT确认事件日历（事件公告时间与预定日期分离）",
+        "PIT产业链映射（节点与成分的生效时间）",
+        "首次公告与修订分离的定期报告财务数据",
+        "每日真实行情与交易日历"
+      ],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    }
+  ]
+}

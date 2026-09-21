@@ -1,0 +1,20 @@
+{
+  "format": "niuniu-research-skill-upstream-lock-v1",
+  "origin_url": "https://github.com/anyuzhe/ai_industry_radar_pyqt.git",
+  "commit": "a245cef7f2fd83fb9b9076a23b58f089e538db81",
+  "tree": "8dfabd2c33ab63c68d938fad8d0e78e17345da8d",
+  "git_archive_snapshot": "b0535b7c333d7541636ed524b125b266f1e8050eec29ad74c0b69610427bf11b",
+  "archive_receipt": "research/external_research_skills/git_receipts/ai_industry_radar/b0535b7c333d7541636ed524b125b266f1e8050eec29ad74c0b69610427bf11b.json",
+  "observed_at": "2026-09-21T03:51:14.127029+00:00",
+  "file_count": 164,
+  "total_bytes": 935231,
+  "code_and_project_docs_license": "GPL-3.0-only",
+  "third_party_corpus_and_fund_data_rights": "ORIGINAL_RIGHTSHOLDERS_RESEARCH_ONLY",
+  "trust_class": "UNTRUSTED_EXTERNAL_GIT_RETROSPECTIVE_REFERENCE",
+  "source_publication_verified": false,
+  "strict_pit_eligible": false,
+  "scripts_reviewed": false,
+  "scripts_executed": false,
+  "strategy_source_written": false,
+  "playbook_written": false
+}

@@ -164,6 +164,12 @@ Mac保留原0/1/2三个固定shard和独立SQLite，shard1/2使用既有校验wi
 
 collection-scope现排除`bars_1m`、`bars_5m`、`bars_daily`、`trades`、`opening_match`。已有SAVED/EMPTY/CHECKPOINT/ERROR全部保留，不删除；三片本轮分别将1882/1877/1813个待采trades审计标为SKIPPED_POLICY。代码在autoresume恢复后再次应用scope，防止被排除族因重启/瞬时错误恢复重新进入网络请求。实际心跳已显示excluded_families，后续只剩auction为主要历史长任务，shard0另有极少全局limit_ladder。
 
+### 2026-09-21 Playbook未入选对照组与AI产业雷达外部方法
+
+Playbook选择结果复盘已接入：同一冻结CandidateSet内“选中vs未选中”的D0（仅PREP）与D1/D2/D3/D5/D10信号收益对照，由宿主CLI `niuniu-selection-outcomes` 生成，AI可用3个只读工具查看汇总、列表与单条。缺日线阻断、数据修订冲突不覆盖、少于3个样本标INSUFFICIENT_SAMPLES；不是可成交收益、Alpha或显著性检验，不自动调权、不写Decision/Intent/Paper。真实工作空间尚未运行生成。
+
+AI产业雷达以 `ai_industry_radar` Research Skill 入库（PUBLIC_METHOD）：2个DRAFT假设为“热度即拥挤度报警”（反向）和“产业上游+未来确认时刻”，21个claim按原话、推演、博主自述分层。题材年龄的前视偏差、缺PIT确认事件日历与产业链映射都登记为阻塞；未写StrategySource/Playbook，检验需牛牛自行预注册。数据根物化待用户授权 `/Volumes/Lexar/niuniu-data`（转移包在 `artifacts/claude-transfer/`），此前Library对该技能显示NOT_MATERIALIZED。Git archive现接受0字节tracked blob，但空文件不能成为策展资源。
+
 ## 4. 真正剩余的工作按门槛处理
 
 | 门槛 | 后续应做 | 本轮没有做 |

@@ -51,7 +51,7 @@ quantlab research-skill-git-curate --data-root <data-root> --control-package res
   --plan research_skills/curation/<plan>.json --confirm-retrospective-only
 ```
 
-这些命令自身不 clone/fetch，不运行外部脚本。Git archive 保存所有 tracked blobs 的 SHA256 内容寻址对象；curation 只复制计划明确选择的字节并生成 DRAFT 包。Git commit time、上游 source URL 和二次整理文本都不等于官方 publication receipt。
+这些命令自身不 clone/fetch，不运行外部脚本。Git archive 保存所有 tracked blobs（含 `__init__.py`、`.gitkeep` 等 0 字节文件）的 SHA256 内容寻址对象；空文件只进入 inventory，永远不能成为策展资源；curation 只复制计划明确选择的字节并生成 DRAFT 包。Git commit time、上游 source URL 和二次整理文本都不等于官方 publication receipt。
 
 ## Research Skill Library
 
@@ -75,3 +75,5 @@ read_research_skill_resource_excerpt
 片段读取最多 6000 bytes，必须位于 UTF-8 字符边界，并拒绝 `SCRIPT`。返回正文始终标记为 `UNTRUSTED_EXTERNAL_DATA_NOT_INSTRUCTIONS`；工具无下载、脚本执行、StrategySource/Playbook 写入、Decision/Paper 或订单能力。
 
 `zhengxi/` 是 Git 跟踪的 SOURCE_REQUIRED 控制包；固定上游身份见 `upstream.lock.json`。真实第三方字节留在独立数据根。首个策展计划为 `curation/zhengxi-304ac3e4.json`，只选择一份访谈、001513季度持仓/净值及辅助文档，保留来源真实性和发布时间 blockers，不自动创建 StrategySource 或 Playbook。Library 已只读授权精确包 `f9e72ecd...74bf10`，并继续保留全部资格边界。
+
+`ai_industry_radar/` 是第二个 Git 跟踪 `SOURCE_REQUIRED` 控制包，来源类型为 `PUBLIC_METHOD`。上游是用户自有公开仓库 `ai_industry_radar_pyqt`（两段第三方视频逐字稿的工程化复刻），固定 commit=`a245cef7...38db81`、tree=`8dfabd2c...45da8d`，164 个 tracked blobs 归档在独立数据根。策展计划 `curation/ai_industry_radar-a245cef7.json` 只选视频二精校逐字稿作为 `PRIMARY_STATEMENT`，原始 ASR、校勘说明、README、复刻说明、手写产业链配置和许可证只作 `DOCUMENTATION`；生成 21 个 claim（13 原话 / 3 方法推演 / 5 博主自述待核实）与 2 个 DRAFT 假设：热度即拥挤度报警（反向）、产业上游传导与未来确认时刻，并逐项写明 PIT 数据阻塞。Library 已只读授权精确包 `18911b09...eb1051`；视频发布时间和博主身份未验证，不写 StrategySource/Playbook，检验须由牛牛自行预注册完成。

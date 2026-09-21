@@ -82,6 +82,7 @@
 | `niuniu-playbook-paper-plan` | [quantlab.agent.playbook_paper_plan_cli:main](../../src/quantlab/agent/playbook_paper_plan_cli.py) |
 | `niuniu-paper-fill-intent` | [quantlab.agent.paper_fill_intent_cli:main](../../src/quantlab/agent/paper_fill_intent_cli.py) |
 | `niuniu-paper-review` | [quantlab.agent.paper_review_cli:main](../../src/quantlab/agent/paper_review_cli.py) |
+| `niuniu-selection-outcomes` | [quantlab.agent.selection_outcomes_cli:main](../../src/quantlab/agent/selection_outcomes_cli.py) |
 | `niuniu-paper-lifecycle` | [quantlab.agent.paper_lifecycle_cli:main](../../src/quantlab/agent/paper_lifecycle_cli.py) |
 | `niuniu-agent-scorecard` | [quantlab.agent.scorecard_cli:main](../../src/quantlab/agent/scorecard_cli.py) |
 | `niuniu-dev-studio` | [quantlab.agent.dev_studio_cli:main](../../src/quantlab/agent/dev_studio_cli.py) |

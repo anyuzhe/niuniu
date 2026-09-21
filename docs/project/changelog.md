@@ -1395,3 +1395,16 @@
 - 新`collection-scope.json`独立于scheduler policy，当前排除bars_1m/bars_5m/bars_daily/trades/opening_match；已有数据和历史ERROR不删除。三片分别1882/1877/1813个PENDING trades变为SKIPPED_POLICY并写审计，K线先前已分别4515/5495/5314个待采任务停用。
 - 运行时增加scope校验与恢复后重新应用：autoresume即使把可重试ERROR恢复成PENDING，也会在任何网络请求前再次跳过已排除family。专项测试覆盖“excluded retry不得触网”。
 - 三个Mac LaunchAgent使用0.75秒/片、2 workers，实际各自100请求短观察均0网络错误；trades的SAVED/EMPTY计数保持不变而auction继续增长，证明范围切换已生效。旧0.25单worker属于此前阶段，不再描述当前三进程聚合配置。
+
+### 2026-09-21｜[Playbook选择复盘 / 外部方法接入] 未入选对照组与AI产业雷达Research Skill
+
+- 背景：用户要求把 AI 产业雷达（ai_industry_radar_pyqt）中三项可借鉴做法落到牛牛：未入选候选的影子对照组、产业上游+未来确认时刻、热度即拥挤度报警。第1项作为宿主工程能力实现；第2、3项只做外部方法入库和数据阻塞登记，检验必须由牛牛自行预注册完成，宿主没有代跑研究或代选因子。
+- 选择结果复盘：新增 `trading/selection_outcomes.py`、CLI `niuniu-selection-outcomes` 和3个AI只读工具（`get_selection_outcome_summary / list_selection_outcome_reviews / get_selection_outcome_review`）。同一冻结CandidateSet内选中与未选中证券按D0（仅PREP）及D1/D2/D3/D5/D10计算close/preclose链式信号收益；停牌按因子1并单独计数，缺日线为DATA_MISSING，交易日历未覆盖为NOT_YET_OBSERVED，已冻结结果遇数据修订报REVIEW_CONFLICT而不覆盖。汇总按Playbook版本/kind/frame/窗口分组，给出样本数、NO_TRADE数、价差均值/中位数和正价差占比；少于3个样本标INSUFFICIENT_SAMPLES，不做显著性检验。
+- 权限：结果只写 `_trading/selection_outcomes/`，不自动调权、不写Decision/Intent/Paper；新工具不进入Peer Review首轮SAFE_TOOLS，避免评审被结果锚定。研究聊天可用 `playbook_selection` 引用读取选择记录与复盘摘要。
+- Research Skill：新增 `research_skills/ai_industry_radar/`（PUBLIC_METHOD / SOURCE_REQUIRED，control `44571065...37e48b`）和策展计划 `curation/ai_industry_radar-a245cef7.json`。按本轮要求从用户自有公开仓库 `https://github.com/anyuzhe/ai_industry_radar_pyqt.git` HTTPS clone，固定commit `a245cef7f2fd83fb9b9076a23b58f089e538db81`、tree `8dfabd2c33ab63c68d938fad8d0e78e17345da8d`，archive `b0535b7c...7bf11b`（164文件/935,231 bytes）。策展包 `18911b09...eb1051` 含视频二精校逐字稿1份statement、21个claim（13原话/3推演/5博主自述待核实）与2个DRAFT假设，Library只读授权该精确包。
+- 阻塞如实登记：题材“热度年龄”只能用当前成分回看历史，存在前视偏差；牛牛没有PIT确认事件日历和PIT产业链映射；逐字稿不是原始音视频字节，发布时间与博主身份未验证，博主样本/胜率只作FACT_TO_VERIFY。未回填历史、未升级证据等级、未写StrategySource/Playbook。
+- 归档器修正：Git archive原先把0字节tracked blob当预算错误，含 `__init__.py`、`.gitkeep` 的仓库无法归档。现允许0字节对象进入inventory，16MB上限不变；package资源仍须1字节以上，空文件不能成为策展证据。新增回归在旧代码上失败、新代码通过。
+- 数据根：archive与curation先在隔离数据根生成，并完成list/get/search/excerpt端到端读取。写入 `/Volumes/Lexar/niuniu-data` 需要用户授权该目录，本次请求未得到响应；176个文件已打包为 `artifacts/claude-transfer/ai_industry_radar-data-root.tar.gz` 并附SHA256清单。解包前Library对该技能返回NOT_MATERIALIZED，郑希包不受影响。
+- 验证：新增11项测试（选择复盘8、控制包/registry钉值2、0字节blob归档1）。云端容器Python 3.11按文件逐个运行全仓235个测试文件、1339项，并与e0d9050基线逐文件对照：除 `test_desktop.py` 3项因 `desktop/replay.py` 使用3.12 f-string语法无法在3.11导入（基线相同）外全部通过；15个桌面测试文件在断言全部通过后于Qt offscreen退出阶段段错误，基线同样出现且随机翻转。文档检查PASS，`git diff --check` 无问题。未在Mac真实桌面启动窗口或点击验证。
+- Git：本条与代码、测试和文档同一提交；SHA以该提交Git历史为准。
+- 后续：是否对热度反向假设做个股级预注册事件研究由牛牛自行决定；确认事件日历与产业链映射需要新的PIT数据接入，另行授权。选择结果复盘需宿主运行 `--auto-all` 或后续显式接入调度后才会产生样本。

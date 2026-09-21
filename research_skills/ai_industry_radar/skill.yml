@@ -1,0 +1,151 @@
+{
+  "format": "niuniu-research-skill-v1",
+  "skill_key": "ai_industry_radar",
+  "title": "AI产业雷达方法 Research Skill 控制包",
+  "version": "control-1",
+  "status": "SOURCE_REQUIRED",
+  "strategy_source_kind": "PUBLIC_METHOD",
+  "summary": "固定用户自有 ai_industry_radar_pyqt 仓库（第三方视频逐字稿的工程化复刻）的安全接入协议、上游Git archive身份和两个候选研究维度：热度即拥挤度报警（反向假设）、产业上游传导与未来确认时刻；第三方逐字稿只留在独立数据根，控制包本身不携带来源证据。",
+  "keywords": [
+    "热度拥挤",
+    "拥挤度报警",
+    "题材年龄",
+    "产业上游",
+    "确认时刻",
+    "产业传导链",
+    "影子组合",
+    "120日低位"
+  ],
+  "resources": [
+    {
+      "resource_id": "behavior-contract",
+      "path": "SKILL.md",
+      "role": "BEHAVIOR_CONTRACT",
+      "sha256": "62bc256e9a84e7e6c00bb7a434e1c6ae2bab818365acc010b2e12d7c1b805478",
+      "bytes": 2466,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "method-scaffold",
+      "path": "method.md",
+      "role": "METHOD",
+      "sha256": "5d11b5ef37917752a0b1e35f49a92130be31b2a2ecd0601e887fb762ea535528",
+      "bytes": 3066,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "scorecard-contract",
+      "path": "scorecard.md",
+      "role": "SCORECARD",
+      "sha256": "8dd4d84e4250eb23fa20205966e3c195b3ccf2565a6886fc0884b5d4e7722b95",
+      "bytes": 926,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "references-policy",
+      "path": "references/README.md",
+      "role": "DOCUMENTATION",
+      "sha256": "7d7220b683777b6f53c3ab5ae21b7fb720dadc2eb0a3d32bd9db30277c7e2627",
+      "bytes": 988,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "script-policy",
+      "path": "scripts/README.md",
+      "role": "SCRIPT_POLICY",
+      "sha256": "afaee906830993e4d3f26af1aaf13a841165ffbc3f5af405006596704195e03f",
+      "bytes": 581,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    },
+    {
+      "resource_id": "upstream-lock",
+      "path": "upstream.lock.json",
+      "role": "DOCUMENTATION",
+      "sha256": "32f04aafc1c645b9c197fee6890eb79dd57746475f5eec2edb5ba4107de3abcf",
+      "bytes": 990,
+      "locator": "",
+      "published_at": null,
+      "available_at": null,
+      "timing_class": "NOT_APPLICABLE"
+    }
+  ],
+  "claims": [],
+  "alignments": [],
+  "hypotheses": [
+    {
+      "hypothesis_key": "heat-crowding-inverse",
+      "title": "热度即拥挤度报警（反向）候选维度",
+      "status": "DRAFT",
+      "claim_ids": [],
+      "feature_candidates": [
+        "个股人气排名及其变化",
+        "题材热度年龄（首次上榜后的持续交易日）",
+        "近期涨停家数与连板高度",
+        "市场温度与情绪阶段"
+      ],
+      "required_data": [
+        "足够长的前瞻采集热榜/人气排名快照（牛牛已有东方财富人气排名明细，历史长度受采集起点限制）",
+        "PIT题材成分（当前成分回看历史存在前视偏差）",
+        "牛牛自行预注册的方向、窗口、分组与成本口径"
+      ],
+      "target_horizon": "SWING",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    },
+    {
+      "hypothesis_key": "upstream-confirmation-window",
+      "title": "产业上游传导与未来确认时刻候选维度",
+      "status": "DRAFT",
+      "claim_ids": [],
+      "feature_candidates": [
+        "距已知确认事件的交易日数（来源口径7～150天）",
+        "产业链节点位置（需求源、设备、上游零部件与耗材、财务确认）",
+        "120日价格区间位置",
+        "确认日合同负债或预收款变化"
+      ],
+      "required_data": [
+        "PIT确认事件日历（事件公告时间与预定日期分离）",
+        "PIT产业链映射（节点与成分的生效时间）",
+        "首次公告与修订分离的定期报告财务数据",
+        "每日真实行情与交易日历"
+      ],
+      "target_horizon": "MEDIUM_TERM",
+      "playbook_key": "",
+      "score_semantics": "RESEARCH_HYPOTHESIS_NOT_ALPHA"
+    }
+  ],
+  "policy": {
+    "network_default": "DENY",
+    "model_write_allowed": false,
+    "direct_trade_eligible": false,
+    "daily_scanner_eligible": false,
+    "quarterly_data_intraday_eligible": false,
+    "strict_pit_eligible": false,
+    "alpha_claimed": false,
+    "institutional_data_role": "THEME_DOSSIER_AUXILIARY_ONLY",
+    "score_semantics": "SOURCE_STYLE_SIMILARITY_ONLY",
+    "intended_pipeline": [
+      "RESEARCH_SKILL",
+      "STRATEGY_SOURCE",
+      "PLAYBOOK_DRAFT",
+      "QUANT_VALIDATION",
+      "DAILY_DECISION",
+      "OUTCOME_REVIEW"
+    ]
+  }
+}

@@ -234,7 +234,7 @@ class ResearchChatDialog(QDialog):
             elif ref['kind'] in ('research_skill','research_skill_item','research_skill_resource'):
                 self.open_research_skill_reference(ref)
             elif ref['kind'] in ('strategy_source','playbook_definition','playbook_case','playbook_validation',
-                    'playbook_source_link','expert_source'):
+                    'playbook_source_link','expert_source','playbook_selection'):
                 self.open_playbook_reference(ref)
             elif ref['kind']=='live_stock_quote':
                 self.details.setPlainText(json.dumps(ref,ensure_ascii=False,indent=2))
@@ -246,7 +246,7 @@ class ResearchChatDialog(QDialog):
         kind=ref['kind']
         identifiers={'strategy_source':'strategy_source_id','playbook_definition':'definition_id',
             'playbook_case':'case_id','playbook_validation':'validation_id',
-            'playbook_source_link':'link_id','expert_source':'source_id'}
+            'playbook_source_link':'link_id','expert_source':'source_id','playbook_selection':'selection_id'}
         identifier=ref[identifiers[kind]]
         def read():
             store=PlaybookStore(self.output)
@@ -255,6 +255,12 @@ class ResearchChatDialog(QDialog):
             if kind=='playbook_case':return store.case_bundle(identifier)
             if kind=='playbook_validation':return store.get_validation(identifier)
             if kind=='playbook_source_link':return store.get_source_link(identifier)
+            if kind=='playbook_selection':
+                from quantlab.trading.selection_outcomes import SelectionOutcomeService
+                outcomes=SelectionOutcomeService(self.output)
+                reviews=outcomes.get(identifier)
+                return {'selection':store.get_selection(identifier),
+                    'outcome_reviews':[outcomes.compact(row) for row in reviews['records']]}
             return store.get_source(identifier)
         self.set_busy(True);self.status.setText('正在核对 Trading Knowledge / Playbook 引用…')
         def done(result,error):

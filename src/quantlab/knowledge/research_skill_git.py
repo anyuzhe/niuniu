@@ -181,8 +181,10 @@ def _tree_rows(repository, commit):
             byte_count = int(size)
         except ValueError:
             _fail('GIT_TREE_INVALID', 'Git blob size 无效：' + path)
-        if byte_count <= 0 or byte_count > MAX_FILE_BYTES:
-            _fail('BUDGET_EXCEEDED', 'Git blob 为空或超过 16MB：' + path)
+        # 0-byte tracked blobs (``__init__.py``, ``.gitkeep``) are legitimate inventory items;
+        # they can never become curated evidence because package resources must be 1..8MB.
+        if byte_count < 0 or byte_count > MAX_FILE_BYTES:
+            _fail('BUDGET_EXCEEDED', 'Git blob 大小无效或超过 16MB：' + path)
         rows.append({'path': relative.as_posix(), 'mode': mode, 'git_blob': _oid(blob, 'git blob'),
             'bytes': byte_count})
         if len(rows) > MAX_FILES:
@@ -289,7 +291,7 @@ def _verify_receipt(root, path):
             paths.add(relative)
             _oid(item['git_blob'], 'git blob')
             _hash(item['sha256'], 'file sha256')
-            if type(item['bytes']) is not int or not 0 < item['bytes'] <= MAX_FILE_BYTES:
+            if type(item['bytes']) is not int or not 0 <= item['bytes'] <= MAX_FILE_BYTES:
                 raise ValueError('archive bytes invalid')
             _object_payload(root, item)
             total += item['bytes']

@@ -129,6 +129,37 @@ class ResearchSkillTests(unittest.TestCase):
         self.assertIn('primary_statement_missing', audit['blockers'])
         self.assertFalse(audit['boundaries']['quarterly_data_intraday_eligible'])
 
+    def test_ai_industry_radar_control_package_is_valid_but_source_required(self):
+        package = Path(__file__).resolve().parents[1] / 'research_skills/ai_industry_radar'
+        audit = audit_research_skill(package)
+        self.assertEqual(audit['status'], 'SOURCE_REQUIRED')
+        self.assertEqual(audit['strategy_source_kind'], 'PUBLIC_METHOD')
+        self.assertEqual(audit['package_snapshot'],
+            '44571065b69c38f223efedeb404835c25d62a0e7d9b1fa8f8f25fe7d9737e48b')
+        self.assertEqual(audit['counts']['resources'], 6)
+        self.assertEqual(audit['counts']['primary_statements'], 0)
+        self.assertEqual(audit['counts']['scripts'], 0)
+        self.assertEqual([item['hypothesis_key'] for item in audit['hypothesis_candidates']],
+            ['heat-crowding-inverse', 'upstream-confirmation-window'])
+        self.assertFalse(audit['readiness']['say_do_applicable'])
+        self.assertFalse(audit['readiness']['playbook_draft_candidate_ready'])
+        self.assertEqual(audit['strategy_source_preview']['completeness'], 'PENDING')
+
+    def test_library_registry_pins_match_control_packages_and_plans(self):
+        root = Path(__file__).resolve().parents[1] / 'research_skills'
+        registry = json.loads((root / 'library.json').read_text(encoding='utf-8'))
+        self.assertTrue(registry['skills'])
+        for entry in registry['skills']:
+            with self.subTest(skill=entry['skill_key']):
+                control = audit_research_skill(root / entry['skill_key'])
+                self.assertEqual(control['package_snapshot'], entry['control_snapshot'])
+                plan = json.loads((root / entry['curation_plan']).read_text(encoding='utf-8'))
+                self.assertEqual(
+                    (plan['skill_key'], plan['control_snapshot'], plan['archive_snapshot']),
+                    (entry['skill_key'], entry['control_snapshot'], entry['archive_snapshot']))
+                lock = json.loads((root / entry['skill_key'] / 'upstream.lock.json').read_text(encoding='utf-8'))
+                self.assertEqual(lock['git_archive_snapshot'], entry['archive_snapshot'])
+
 
 if __name__ == '__main__':
     unittest.main()

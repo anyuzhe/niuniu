@@ -8,6 +8,14 @@
       "package_snapshot": "f9e72ecd207af9850fe86ee71b0bc6133d5101c2a1b70ec200094221d574bf10",
       "curation_plan": "curation/zhengxi-304ac3e4.json",
       "authorization": "HOST_APPROVED_READ_ONLY"
+    },
+    {
+      "skill_key": "ai_industry_radar",
+      "control_snapshot": "44571065b69c38f223efedeb404835c25d62a0e7d9b1fa8f8f25fe7d9737e48b",
+      "archive_snapshot": "b0535b7c333d7541636ed524b125b266f1e8050eec29ad74c0b69610427bf11b",
+      "package_snapshot": "18911b09592392c5d6c34a2860e5854f45a78913e6da28005a76473632eb1051",
+      "curation_plan": "curation/ai_industry_radar-a245cef7.json",
+      "authorization": "HOST_APPROVED_READ_ONLY"
     }
   ]
 }

@@ -176,6 +176,33 @@ class ResearchSkillGitTests(unittest.TestCase):
         self.assertEqual(audit['verified_receipts'], 0)
         self.assertEqual(audit['invalid_receipts'], 1)
 
+    def test_empty_tracked_blobs_are_archived_but_never_curated(self):
+        for relative in ('pkg/__init__.py', 'logs/.gitkeep'):
+            path = self.repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'')
+        self._run('add', '.')
+        self._run('commit', '-qm', 'empty markers')
+        self.commit = self._output('rev-parse', 'HEAD')
+        self.tree = self._output('rev-parse', 'HEAD^{tree}')
+        archived = self._archive()
+        receipt = read_checked(Path(archived['path']))
+        empty = [item for item in receipt['files'] if item['bytes'] == 0]
+        self.assertEqual({item['path'] for item in empty}, {'pkg/__init__.py', 'logs/.gitkeep'})
+        self.assertEqual({item['sha256'] for item in empty}, {sha256(b'').hexdigest()})
+        audit = audit_git_research_skill_archives(self.data_root, 'manager-skill')
+        self.assertEqual((audit['verified_receipts'], audit['invalid_receipts']), (1, 0))
+        plan = json.loads(self.plan.read_text())
+        plan['resources'].append(self._plan_resource('empty-marker', 'pkg/__init__.py',
+            'references/upstream/empty.py', 'DOCUMENTATION'))
+        self.plan.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding='utf-8')
+        with self.assertRaises(ResearchSkillError) as empty_resource:
+            materialize_git_research_skill(self.data_root, self.control, self.plan,
+                confirm_retrospective_only=True)
+        self.assertEqual(empty_resource.exception.code, 'BUDGET_EXCEEDED')
+        packages = self.data_root / 'research/external_research_skills/packages/manager-skill'
+        self.assertEqual(list(packages.iterdir()), [])
+
     def test_curated_package_is_partial_and_quote_must_exist_verbatim(self):
         self._archive()
         with self.assertRaises(ResearchSkillError) as missing_confirmation:

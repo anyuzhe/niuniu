@@ -7,6 +7,7 @@ from quantlab.storage.codec import encode
 from quantlab.trading.playbook_store import PlaybookError, PlaybookStore
 from quantlab.trading.market_snapshot import MarketSnapshotError,MarketSnapshotStore
 from quantlab.agent.scorecard import AgentScorecardError,AgentScorecardService
+from quantlab.trading.selection_outcomes import LIMITATIONS as SELECTION_OUTCOME_LIMITATIONS,SelectionOutcomeError,SelectionOutcomeService
 
 TOOLS = [
     schema('get_playbook_overview','只读查看Playbook Lab对象数量和正式审计完成度。',{}),
@@ -26,7 +27,20 @@ TOOLS = [
     schema('list_market_snapshots','只读查询已冻结MarketSnapshot；不会联网刷新行情。',{'trading_day':TEXT,'frame':TEXT,'symbol':TEXT,'offset':OFFSET,'limit':LIMIT}),
     schema('get_market_snapshot','读取一个不可变MarketSnapshot及其捕获/PIT状态。',{'snapshot_id':TEXT}),
     schema('get_agent_scorecard','只读查看按任务类型分离的Agent Scorecard；不产生模型总分，也不自动调权。',{}),
+    schema('get_selection_outcome_summary','只读查看Playbook选择结果对照：同一冻结候选集内“选中−未选中”信号收益差，按玩法版本/kind/Frame/窗口分开；描述性观察，不是Alpha或可成交收益，不自动调权。空字符串表示不筛选。',{'definition_id':TEXT,'kind':TEXT,'frame':TEXT}),
+    schema('list_selection_outcome_reviews','列出已冻结的逐次选择结果复盘（不含逐证券明细）；可用于找出“未选中却跑赢”的样本再人工/研究核对。',{'definition_id':TEXT,'kind':TEXT,'frame':TEXT,'offset':OFFSET,'limit':LIMIT}),
+    schema('get_selection_outcome_review','读取一次选择全部已冻结窗口的分组统计、差值与两侧极端样本；宿主CLI可导出逐证券明细。',{'selection_id':TEXT}),
 ]
+
+SELECTION_OUTCOME_TOOLS=('get_selection_outcome_summary','list_selection_outcome_reviews','get_selection_outcome_review')
+
+
+def _selection_outcome_view(row):
+    view={k:v for k,v in SelectionOutcomeService.compact(row).items() if k not in ('limitations','policy','daily_market_snapshots')}
+    view['daily_market_snapshot_ids']=[item['snapshot_id'] for item in row.get('daily_market_snapshots',[])]
+    for key in ('unselected_above_selected_mean','selected_below_unselected_mean'):
+        view[key]=view.get(key,[])[:10]
+    return view
 
 
 class PlaybookResearchAPI(ThemeResearchAPI):
@@ -54,6 +68,8 @@ class PlaybookResearchAPI(ThemeResearchAPI):
                     market_snapshot_available=True,market_snapshot_write_model=False,
                     agent_scorecard_available=True,agent_scorecard_write_model=False,
                     agent_scorecard_composite_score=False,
+                    selection_outcome_available=True,selection_outcome_write_model=False,
+                    selection_outcome_auto_reweighting=False,
                     tools=[tool['name'] for tool in self.schemas()])
             return result
         try:
@@ -108,6 +124,26 @@ class PlaybookResearchAPI(ThemeResearchAPI):
                 refs=[{'kind':'market_snapshot','snapshot_id':data['snapshot_id']}]
             elif name=='get_agent_scorecard':
                 data=AgentScorecardService(self.output).build()
+            elif name in SELECTION_OUTCOME_TOOLS:
+                outcomes=SelectionOutcomeService(self.output)
+                if name=='get_selection_outcome_summary':
+                    data=outcomes.summary(arguments['definition_id'],arguments['kind'],arguments['frame'])
+                    data.pop('limitations',None)
+                elif name=='list_selection_outcome_reviews':
+                    listed=outcomes.list(arguments['definition_id'],arguments['kind'],arguments['frame'],
+                        offset=arguments['offset'],limit=arguments['limit'])
+                    data={'total':listed['total'],'records':[_selection_outcome_view(row) for row in listed['records']]}
+                    refs=[{'kind':'playbook_selection','selection_id':row['selection_id']} for row in listed['records']]
+                else:
+                    got=outcomes.get(arguments['selection_id'])
+                    data={'selection_id':got['selection_id'],'records':[_selection_outcome_view(row) for row in got['records']]}
+                    refs=[{'kind':'playbook_selection','selection_id':got['selection_id']}]
+                reply={'ok':True,'tool':name,'data':compact(data),'evidence':refs,
+                    'warnings':['选中/未选中信号收益对照只是选择诊断：不是可成交收益或Alpha；未选中跑赢不等于当时应当选中；不自动调权，不写Decision/Intent/Paper。',
+                        *SELECTION_OUTCOME_LIMITATIONS[:3]],'error':None}
+                if len(encode(reply))>24000:
+                    reply['data']={'omitted':True,'reason':'result_size_limit'}
+                return json.loads(encode(reply))
             else:
                 data={'symbol':arguments['symbol'],'records':store.symbol_history(arguments['symbol'])}
                 refs=[{'kind':'playbook_case','case_id':row['case_id']} for row in data['records']]
@@ -116,7 +152,7 @@ class PlaybookResearchAPI(ThemeResearchAPI):
             if len(encode(reply))>24000:
                 reply['data']={'omitted':True,'reason':'result_size_limit'}
             return json.loads(encode(reply))
-        except (PlaybookError,MarketSnapshotError,AgentScorecardError,OSError,ValueError,TypeError,KeyError) as error:
+        except (PlaybookError,MarketSnapshotError,AgentScorecardError,SelectionOutcomeError,OSError,ValueError,TypeError,KeyError) as error:
             return {'ok':False,'tool':name,'data':None,'evidence':[],'warnings':[],
                 'error':{'code':'PLAYBOOK_READ_FAILED','message':str(error)[:300]}}
 

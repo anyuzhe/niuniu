@@ -87,6 +87,8 @@ quantlab run \
 
 外部经验先作为来源或 DRAFT 假设。Research Skill Library 只读检索不等于已把外部规则写入 Playbook；显示原文不代表该方法已验证。
 
+Playbook 选择结果复盘由宿主运行 `niuniu-selection-outcomes --output artifacts --auto-all` 生成（重新安装本项目前可用 `python -m quantlab.agent.selection_outcomes_cli`）。它比较同一冻结候选集内选中与未选中证券的后续信号收益，用来发现错杀或过度保守；不是可成交收益或 Alpha，不会自动修改 Playbook 或权重。AI 助手只能读取已生成的结果。
+
 ## 5. 每日循环里的缩写
 
 | 名称 | 含义 |
