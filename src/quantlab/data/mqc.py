@@ -3,7 +3,7 @@
 import hashlib
 import io
 import re
-from datetime import time
+from datetime import time, date
 from pathlib import Path
 
 import polars as pl
@@ -18,11 +18,12 @@ TZ = "Asia/Shanghai"
 
 
 class MQCParquetProvider:
-    def __init__(self, root: Path, adjustment: str = "raw"):
+    def __init__(self, root: Path, adjustment: str = "raw", *, retro_tail=None):
         if adjustment not in {"raw", "qfq"}:
             raise ValueError("adjustment must be raw or qfq")
         self.root = Path(root).resolve()
         self.adjustment = adjustment
+        self.retro_tail = retro_tail
 
     def load(self, request: DataRequest) -> DataBatch:
         if request.timeframe in (Timeframe.MIN15,Timeframe.MIN30,Timeframe.MIN60):
@@ -86,6 +87,19 @@ class MQCParquetProvider:
                 (pl.col("factor") if "factor" in frame.columns else pl.lit(1.0)).alias("adj_factor"),
             )
             frames.append(frame)
+        if self.retro_tail is not None and request.timeframe == Timeframe.DAILY and self.adjustment == "raw" and frames:
+            # Extend the recent raw-daily tail beyond Baostock coverage from a verified retro pack.
+            # Kept raw-only (no qfq fabrication); snapshot identity absorbs the retro source so the
+            # approval-time freeze and reproduction capture exactly what the runner used.
+            base = pl.concat(frames)
+            covered = base.group_by("symbol").agg(pl.col("datetime").dt.date().max().alias("md"))
+            tail, tail_files = self.retro_tail.tail_bars(request)
+            if tail.height:
+                tail = tail.join(covered, on="symbol", how="left")
+                tail = tail.filter(pl.col("date") > pl.col("md").fill_null(pl.lit(date(1970, 1, 1)))).drop("md", "date")
+                if tail.height:
+                    frames.append(tail)
+                    files.extend(tail_files)
         bars = pl.concat(frames).sort("symbol", "datetime")
         validate_bars(bars)
         snapshot_id = digest({"files": files, "request": request, "adjustment": self.adjustment})
