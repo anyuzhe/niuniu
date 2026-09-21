@@ -132,15 +132,19 @@ class PlaybookResearchAPI(ThemeResearchAPI):
                 elif name=='list_selection_outcome_reviews':
                     listed=outcomes.list(arguments['definition_id'],arguments['kind'],arguments['frame'],
                         offset=arguments['offset'],limit=arguments['limit'])
-                    data={'total':listed['total'],'records':[_selection_outcome_view(row) for row in listed['records']]}
+                    data={'total':listed['total'],'records':[_selection_outcome_view(row) for row in listed['records']],
+                        'errors':listed['errors'],'incomplete':listed['incomplete']}
                     refs=[{'kind':'playbook_selection','selection_id':row['selection_id']} for row in listed['records']]
                 else:
                     got=outcomes.get(arguments['selection_id'])
-                    data={'selection_id':got['selection_id'],'records':[_selection_outcome_view(row) for row in got['records']]}
+                    data={'selection_id':got['selection_id'],'records':[_selection_outcome_view(row) for row in got['records']],
+                        'errors':got['errors'],'incomplete':got['incomplete']}
                     refs=[{'kind':'playbook_selection','selection_id':got['selection_id']}]
+                archive_warnings=(['选择结果复盘归档不完整：data.errors 中的坏记录未进入当前列表/汇总，不能把剩余统计当作完整样本。']
+                    if data.get('incomplete') else [])
                 reply={'ok':True,'tool':name,'data':compact(data),'evidence':refs,
                     'warnings':['选中/未选中信号收益对照只是选择诊断：不是可成交收益或Alpha；未选中跑赢不等于当时应当选中；不自动调权，不写Decision/Intent/Paper。',
-                        *SELECTION_OUTCOME_LIMITATIONS[:3]],'error':None}
+                        *archive_warnings,*SELECTION_OUTCOME_LIMITATIONS[:3]],'error':None}
                 if len(encode(reply))>24000:
                     reply['data']={'omitted':True,'reason':'result_size_limit'}
                 return json.loads(encode(reply))

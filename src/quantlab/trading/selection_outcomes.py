@@ -16,10 +16,15 @@ changes a frozen result raises ``REVIEW_CONFLICT`` instead of rewriting history.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from statistics import median
+from uuid import uuid4
+import errno
+import fcntl
 import math
+import os
 
 from quantlab.data.daily_market_archive import DailyMarketArchive, DailyMarketArchiveError
 from quantlab.data.forward_daily import ForwardDailyError, ForwardReferenceArchive
@@ -100,6 +105,30 @@ class SelectionOutcomeService:
         for path in (self.output / '_trading', self.root):
             if path.is_symlink():
                 raise SelectionOutcomeError('INVALID_WORKSPACE', '选择结果复盘目录不能是符号链接。')
+            if path.exists() and not path.is_dir():
+                raise SelectionOutcomeError('INVALID_WORKSPACE', '选择结果复盘路径必须是目录。')
+
+    def _refresh_inputs(self):
+        """A build is a new observation boundary; do not retain missing days, revisions, or calendar snapshots."""
+        self._frames.clear()
+        self._calendar = None
+
+    @contextmanager
+    def _freeze_lock(self):
+        """POSIX process lock for immutable review publication (this service is intentionally POSIX-only)."""
+        self._guard()
+        self.root.mkdir(parents=True, exist_ok=True)
+        if self.root.is_symlink():
+            raise SelectionOutcomeError('INVALID_WORKSPACE', '选择结果复盘目录不能是符号链接。')
+        path = self.root / '.freeze.lock'
+        if path.is_symlink():
+            raise SelectionOutcomeError('INVALID_WORKSPACE', '选择结果复盘锁不能是符号链接。')
+        with path.open('a+b') as stream:
+            fcntl.flock(stream, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(stream, fcntl.LOCK_UN)
 
     def _selection_bundle(self, selection_id):
         try:
@@ -235,29 +264,183 @@ class SelectionOutcomeService:
             raise SelectionOutcomeError('INVALID_WORKSPACE', '选择结果复盘目录不能是符号链接。')
         return folder
 
+    @staticmethod
+    def _review_core(value):
+        return {key: item for key, item in value.items() if key not in ('review_hash', 'created_at')}
+
+    @classmethod
+    def _material_core(cls, value):
+        # Reference snapshots are append-only observations. Their identity is not material when the actual
+        # window sessions and accepted DailyMarket snapshots are unchanged.
+        return {key: item for key, item in cls._review_core(value).items()
+                if key != 'calendar_reference_snapshot_id'}
+
+    @staticmethod
+    def _finite(value):
+        return type(value) in (int, float) and math.isfinite(value)
+
+    def _validate_review(self, value, path, bundle=None):
+        if not isinstance(value, dict):
+            raise ValueError('复盘记录必须是对象。')
+        required = {
+            'format', 'selection_id', 'selection_kind', 'candidate_set_id', 'case_id', 'definition_id',
+            'playbook_key', 'playbook_version', 'frame', 'trading_day', 'selection_as_of',
+            'candidate_completeness', 'candidate_pit_status', 'candidate_count', 'window', 'window_label',
+            'reference', 'sessions', 'daily_market_snapshots', 'calendar_reference_snapshot_id',
+            'data_cutoff_at', 'symbols', 'groups', 'spread_selected_minus_unselected',
+            'unselected_above_selected_mean', 'selected_below_unselected_mean', 'semantics', 'qualification',
+            'future_data_used', 'policy', 'limitations', 'review_hash', 'created_at',
+        }
+        missing = sorted(required - set(value))
+        if missing:
+            raise ValueError('复盘记录缺少字段：' + ', '.join(missing[:10]))
+        if value['format'] != FORMAT:
+            raise ValueError('复盘记录 format 无效。')
+        core = self._review_core(value)
+        if not isinstance(value['review_hash'], str) or value['review_hash'] != digest(core):
+            raise ValueError('复盘记录 review_hash 校验失败。')
+        try:
+            created = datetime.fromisoformat(value['created_at'])
+            trading_day = date.fromisoformat(value['trading_day'])
+        except (TypeError, ValueError):
+            raise ValueError('复盘记录日期字段无效。') from None
+        if created.tzinfo is None:
+            raise ValueError('复盘记录 created_at 必须带时区。')
+        window = value['window']
+        if type(window) is not int or not 0 <= window <= MAX_WINDOW or value['window_label'] != _label(window):
+            raise ValueError('复盘记录窗口身份无效。')
+        if path.parent.name != value['selection_id'] or path.name != value['window_label'] + '.json':
+            raise ValueError('复盘记录路径与 selection/window 身份不一致。')
+        if not isinstance(value['sessions'], list) or len(value['sessions']) != (1 if window == 0 else window):
+            raise ValueError('复盘记录 sessions 形状无效。')
+        try:
+            sessions = [date.fromisoformat(item) for item in value['sessions']]
+        except (TypeError, ValueError):
+            raise ValueError('复盘记录 sessions 日期无效。') from None
+        if sessions != sorted(set(sessions)) or (window == 0 and sessions != [trading_day]) \
+                or (window > 0 and any(day <= trading_day for day in sessions)):
+            raise ValueError('复盘记录 sessions 与窗口不一致。')
+        snapshots = value['daily_market_snapshots']
+        if not isinstance(snapshots, list) or len(snapshots) != len(sessions):
+            raise ValueError('复盘记录 DailyMarket 快照形状无效。')
+        for day, snapshot in zip(value['sessions'], snapshots):
+            if not isinstance(snapshot, dict) or snapshot.get('date') != day \
+                    or not all(isinstance(snapshot.get(key), str) and snapshot[key]
+                               for key in ('snapshot_id', 'content_hash', 'fetched_at')):
+                raise ValueError('复盘记录 DailyMarket 快照身份无效。')
+        symbols = value['symbols']
+        if type(value['candidate_count']) is not int or value['candidate_count'] < 0 \
+                or not isinstance(symbols, list) or len(symbols) != value['candidate_count']:
+            raise ValueError('复盘记录证券数量无效。')
+        seen = set()
+        for row in symbols:
+            if not isinstance(row, dict) or set(row) != {'symbol', 'group', 'status', 'return', 'suspended_sessions'} \
+                    or not isinstance(row['symbol'], str) or not row['symbol'] or row['symbol'] in seen \
+                    or row['group'] not in GROUPS or row['status'] not in ('MEASURED', 'NO_DAILY_ROW', 'NO_PRICE') \
+                    or type(row['suspended_sessions']) is not int or row['suspended_sessions'] < 0 \
+                    or (row['return'] is not None and not self._finite(row['return'])):
+                raise ValueError('复盘记录逐证券结果形状无效。')
+            seen.add(row['symbol'])
+        groups = value['groups']
+        if not isinstance(groups, dict) or set(groups) != {*GROUPS, 'CANDIDATE_POOL'}:
+            raise ValueError('复盘记录分组字段无效。')
+        for group in (*GROUPS, 'CANDIDATE_POOL'):
+            returns = [row['return'] for row in symbols if group == 'CANDIDATE_POOL' or row['group'] == group]
+            if groups[group] != _stats(returns):
+                raise ValueError('复盘记录分组统计与逐证券结果不一致。')
+        selected_mean = groups['SELECTED']['mean']
+        unselected_mean = groups['UNSELECTED']['mean']
+        expected_spread = (selected_mean - unselected_mean
+                           if selected_mean is not None and unselected_mean is not None else None)
+        if value['spread_selected_minus_unselected'] != expected_spread:
+            raise ValueError('复盘记录收益差与分组统计不一致。')
+        if value['semantics'] != SEMANTICS or value['qualification'] != 'research_only' \
+                or value['future_data_used'] is not False or value['policy'] != POLICY \
+                or not isinstance(value['limitations'], list):
+            raise ValueError('复盘记录研究语义或策略边界无效。')
+        if bundle is not None:
+            selection, candidates, case = bundle
+            identities = {
+                'selection_id': selection['selection_id'], 'selection_kind': selection['kind'],
+                'candidate_set_id': candidates['candidate_set_id'], 'case_id': case['case_id'],
+                'definition_id': candidates['definition_id'], 'playbook_key': case['playbook_key'],
+                'playbook_version': case['playbook_version'], 'frame': candidates['frame'],
+                'trading_day': candidates['trading_day'], 'selection_as_of': selection['as_of'],
+                'candidate_completeness': candidates['completeness'], 'candidate_pit_status': candidates['pit_status'],
+                'candidate_count': candidates['candidate_count'],
+            }
+            if any(value.get(key) != expected for key, expected in identities.items()):
+                raise ValueError('复盘记录与冻结 Selection/CandidateSet/Case 身份不一致。')
+            if seen != set(candidates['candidate_symbols']):
+                raise ValueError('复盘记录证券集合与冻结 CandidateSet 不一致。')
+            selected = set(selection['selected_symbols'])
+            if any((row['symbol'] in selected) != (row['group'] == 'SELECTED') for row in symbols):
+                raise ValueError('复盘记录选中分组与冻结 Selection 不一致。')
+        return value
+
+    def _read_review(self, path, bundle=None):
+        if path.is_symlink() or not path.is_file():
+            raise SelectionOutcomeError('CORRUPT_REVIEW', '复盘记录不能是符号链接且必须是普通文件。')
+        try:
+            value = read_checked(path)
+            return self._validate_review(value, path, bundle)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise SelectionOutcomeError('CORRUPT_REVIEW', str(error)) from None
+
+    @staticmethod
+    def _publish_once(path, value):
+        """Publish complete bytes while the caller holds _freeze_lock, including on exFAT.
+
+        Hard links add kernel-level no-replace protection where supported. On filesystems without
+        links, all service writers still serialize through the lock and recheck before atomic rename;
+        unrelated programs writing these internal records do not participate in that lock contract.
+        """
+        temporary = path.with_name('.publish-' + str(uuid4()) + '.pending')
+        try:
+            write_checked(temporary, value)
+            try:
+                os.link(temporary, path)
+            except OSError as error:
+                if error.errno not in {errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS}:
+                    raise
+                if path.exists() or path.is_symlink():
+                    raise FileExistsError(errno.EEXIST, 'Review already exists', str(path)) from None
+                os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
     def _freeze(self, folder, core):
         review_hash = digest(core)
         path = folder / (core['window_label'] + '.json')
-        if path.exists():
+        bundle = self._selection_bundle(core['selection_id'])
+        with self._freeze_lock():
+            folder.mkdir(parents=True, exist_ok=True)
+            if folder.is_symlink() or path.is_symlink():
+                raise SelectionOutcomeError('INVALID_WORKSPACE', '选择结果复盘记录路径不能是符号链接。')
+            if path.exists():
+                old = self._read_review(path, bundle)
+                if digest(self._material_core(old)) != digest(self._material_core(core)):
+                    raise SelectionOutcomeError('REVIEW_CONFLICT', '后来数据改变了已冻结的选择结果复盘，需人工核对交易日历或 DailyMarket 修订。')
+                return old, False
+            stamp = self.now_fn()
+            if not isinstance(stamp, datetime) or stamp.tzinfo is None:
+                raise SelectionOutcomeError('INVALID_CLOCK', '时钟必须带时区。')
+            value = {**core, 'review_hash': review_hash, 'created_at': stamp.astimezone(timezone.utc).isoformat()}
             try:
-                old = read_checked(path)
-            except (OSError, ValueError) as error:
-                raise SelectionOutcomeError('CORRUPT_REVIEW', str(error)) from None
-            if old.get('review_hash') != review_hash:
-                raise SelectionOutcomeError('REVIEW_CONFLICT', '后来数据改变了已冻结的选择结果复盘，需人工核对 DailyMarket 修订。')
-            return old, False
-        stamp = self.now_fn()
-        if not isinstance(stamp, datetime) or stamp.tzinfo is None:
-            raise SelectionOutcomeError('INVALID_CLOCK', '时钟必须带时区。')
-        value = {**core, 'review_hash': review_hash, 'created_at': stamp.astimezone(timezone.utc).isoformat()}
-        folder.mkdir(parents=True, exist_ok=True)
-        write_checked(path, value)
-        return value, True
+                self._publish_once(path, value)
+            except FileExistsError:
+                # A non-cooperating writer appeared despite the service lock. Never replace it; validate and compare.
+                old = self._read_review(path, bundle)
+                if digest(self._material_core(old)) == digest(self._material_core(core)):
+                    return old, False
+                raise SelectionOutcomeError('REVIEW_CONFLICT', '并发请求提交了不同的选择结果复盘；原冻结记录未覆盖。') from None
+            return value, True
 
     # ---- public API -------------------------------------------------------------------------------------------------
     def build(self, selection_id, windows=None):
         """Freeze every window of one selection that is computable now; report the rest as pending."""
         self._guard()
+        self._refresh_inputs()
         windows = _windows(windows)
         selection, candidates, case = self._selection_bundle(selection_id)
         folder = self._folder(selection_id)
@@ -302,34 +485,62 @@ class SelectionOutcomeService:
                 break
         created, frozen, errors, pending = 0, 0, [], 0
         for row in selections:
-            try:
-                result = self.build(row['selection_id'], windows)
-            except (SelectionOutcomeError, OSError, ValueError, KeyError, TypeError) as error:
-                errors.append({'selection_id': row['selection_id'], 'code': getattr(error, 'code', type(error).__name__),
-                               'message': str(error)[:300]})
-                continue
-            created += result['created']
-            frozen += len(result['records'])
-            pending += len(result['pending'])
-        return {'selections_checked': len(selections), 'windows_frozen': frozen, 'windows_created': created,
-                'windows_pending': pending, 'errors': errors, 'strategy_intent_mutated': False, 'weights_mutated': False}
+            for window in windows:
+                try:
+                    result = self.build(row['selection_id'], [window])
+                except (SelectionOutcomeError, OSError, ValueError, KeyError, TypeError) as error:
+                    errors.append({'selection_id': row['selection_id'], 'window': _label(window),
+                                   'code': getattr(error, 'code', type(error).__name__), 'message': str(error)[:300]})
+                    continue
+                created += result['created']
+                frozen += len(result['records'])
+                pending += len(result['pending'])
+        attempted = len(selections) * len(windows)
+        failed = len(errors)
+        status = 'SUCCESS' if not errors else ('FAILED' if failed == attempted else 'PARTIAL_FAILURE')
+        return {'status': status, 'selections_checked': len(selections), 'windows_attempted': attempted,
+                'windows_frozen': frozen, 'windows_created': created, 'windows_pending': pending,
+                'windows_failed': failed, 'errors': errors, 'strategy_intent_mutated': False,
+                'weights_mutated': False}
 
-    def _records(self):
+    def _archive_error(self, path, message):
+        try:
+            relative = path.relative_to(self.root).as_posix()
+        except ValueError:
+            relative = path.name
+        return {'code': 'CORRUPT_REVIEW', 'path': relative, 'message': str(message)[:300]}
+
+    def _records(self, selection_id=None):
+        """Return every valid record plus every archive error; invalid records never enter aggregates."""
         self._guard()
         if not self.root.exists():
-            return []
-        rows = []
-        for folder in sorted(p for p in self.root.iterdir() if p.is_dir() and not p.is_symlink()):
-            for path in sorted(folder.glob('D*.json')):
-                if path.is_symlink():
+            return [], []
+        rows, errors = [], []
+        if selection_id is not None:
+            folders = [self.root / selection_id]
+        else:
+            folders = sorted(path for path in self.root.iterdir() if path.name != '.freeze.lock')
+        for folder in folders:
+            if not folder.exists() and not folder.is_symlink():
+                continue
+            if folder.is_symlink() or not folder.is_dir():
+                errors.append(self._archive_error(folder, '选择结果复盘 selection 路径必须是普通目录，不能是符号链接。'))
+                continue
+            try:
+                bundle = self._selection_bundle(folder.name)
+            except SelectionOutcomeError as error:
+                errors.append(self._archive_error(folder, 'selection 路径身份无效：' + str(error)))
+                continue
+            for path in sorted(folder.iterdir()):
+                if path.name.startswith('.publish-') and path.name.endswith('.pending'):
+                    continue
+                if path.suffix != '.json':
                     continue
                 try:
-                    value = read_checked(path)
-                except (OSError, ValueError):
-                    continue
-                if value.get('format') == FORMAT:
-                    rows.append(value)
-        return rows
+                    rows.append(self._read_review(path, bundle))
+                except SelectionOutcomeError as error:
+                    errors.append(self._archive_error(path, str(error)))
+        return rows, errors
 
     @staticmethod
     def _matches(row, definition_id, kind, frame):
@@ -342,27 +553,27 @@ class SelectionOutcomeService:
         return {key: value for key, value in row.items() if key != 'symbols'}
 
     def get(self, selection_id):
-        folder = self._folder(selection_id)
-        rows = []
-        if folder.exists():
-            for path in sorted(folder.glob('D*.json')):
-                try:
-                    rows.append(read_checked(path))
-                except (OSError, ValueError) as error:
-                    raise SelectionOutcomeError('CORRUPT_REVIEW', str(error)) from None
-        return {'selection_id': selection_id, 'records': sorted(rows, key=lambda row: row['window'])}
+        self._folder(selection_id)
+        rows, errors = self._records(selection_id)
+        return {'selection_id': selection_id, 'records': sorted(rows, key=lambda row: row['window']),
+                'errors': errors, 'incomplete': bool(errors)}
 
-    def list(self, definition_id='', kind='', frame='', offset=0, limit=200):
-        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 1000:
-            raise SelectionOutcomeError('INVALID_ARGUMENT', 'offset/limit 无效。')
-        rows = [self.compact(row) for row in self._records() if self._matches(row, definition_id, kind, frame)]
+    def list(self, definition_id='', kind='', frame='', offset=0, limit=200, full=False):
+        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 1000 \
+                or type(full) is not bool:
+            raise SelectionOutcomeError('INVALID_ARGUMENT', 'offset/limit/full 无效。')
+        records, errors = self._records()
+        rows = [row if full else self.compact(row) for row in records
+                if self._matches(row, definition_id, kind, frame)]
         rows.sort(key=lambda row: (row['trading_day'], row['selection_id'], row['window']), reverse=True)
-        return {'total': len(rows), 'records': rows[offset:offset + limit]}
+        return {'total': len(rows), 'records': rows[offset:offset + limit], 'errors': errors,
+                'incomplete': bool(errors)}
 
     def summary(self, definition_id='', kind='', frame=''):
         """Descriptive spread of selected vs unselected per playbook version, kind, frame and window."""
+        records, errors = self._records()
         groups = {}
-        for row in self._records():
+        for row in records:
             if not self._matches(row, definition_id, kind, frame):
                 continue
             key = (row['playbook_key'], row['playbook_version'], row['selection_kind'], row['frame'], row['window'])
@@ -389,7 +600,7 @@ class SelectionOutcomeService:
             })
         return {'format': FORMAT + '-summary', 'rows': result, 'semantics': SEMANTICS, 'policy': dict(POLICY),
                 'note': '描述性观察：未做显著性检验；不同 kind/frame/window 不合并；不是 Alpha、可成交收益或调权依据。',
-                'limitations': list(LIMITATIONS)}
+                'limitations': list(LIMITATIONS), 'errors': errors, 'incomplete': bool(errors)}
 
 
 __all__ = ['DEFAULT_WINDOWS', 'FORMAT', 'LIMITATIONS', 'SEMANTICS', 'SelectionOutcomeError', 'SelectionOutcomeService']

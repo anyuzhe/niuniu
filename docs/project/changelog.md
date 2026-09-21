@@ -1415,3 +1415,16 @@
 - 核验：176个文件逐一SHA256与隔离数据根一致；`research-skill-git-audit` 对 ai_industry_radar 与 zhengxi 均为1/1 verified、0 invalid；Library在真实数据根上两项技能均为VERIFIED，get/search/excerpt可读。核验在牛牛Cowork虚拟机中用Python 3.10兼容垫片运行、从已提交的 `research_skills/` 副本读取，未对真实仓库执行Git-clean检查。
 - 事故与修正：经桌面应用文件写入通道写入的1个PNG对象（上游 `docs/examples/演示K线图.png`）被附加了C2PA元数据，大小由83,519变为89,289字节。SHA256核对当场发现后，已从本地副本按原字节就地重写，复核通过。今后向数据根传输图片等二进制对象后必须逐个核对SHA256，不能只看写入回执。
 - Git：本条为文档补记，单独提交在前一提交之后。
+
+### 2026-09-21｜[功能测试与修复] 选择复盘跨日、异常、并发和桌面引用
+
+- 用户明确数据正在另行治理，本轮只测试并修复功能。所有业务样本为TemporaryDirectory合成夹具；没有访问/治理正式niuniu-data、修改TDX模块、运行采集、签发正式研究授权、调用业务模型或启停公共服务。原有数据治理工作区改动不包含在本次提交。
+- 选择复盘：保留v1哈希算法与已有归档；重复生成时只排除全局calendar_reference_snapshot_id比较，实际窗口交易日/accepted日线及其他内容仍须完全一致。正常延长日历不重写旧记录，可继续生成新成熟窗口；每次build清理输入缓存，补日和真实修订可见。
+- 完整性：get/list/summary统一核对checksum、review_hash、format、路径与selection/window身份、实际候选证券集合和分组统计。坏记录不进入数值汇总，但errors/incomplete必须披露并贯穿CLI、AI及桌面，不能悄悄缩小负样本。
+- 并发：正式服务写入由POSIX进程锁保护并在锁内重检。支持时使用硬链接不覆盖发布；Lexar实测不支持硬链接(errno45)，改为同一锁内重检后原子rename，兼容该卷。此合同保护合作的服务调用，不宣称防止任意外部程序绕过锁篡写。
+- CLI：auto-all逐窗口收集结果，部分成功后报错不丢计数；SUCCESS/PARTIAL_FAILURE/FAILED分别退出0/3/2，正常等待不算失败。只读get/list/summary遇不完整归档也返回非零。修正list --full并增加offset分页。
+- 桌面：复盘引用列表补selection_id；真实引用打开保留errors/incomplete，并显示不完整提示。新增离屏测试先在旧代码复现空编号，再验证正常打开、不改写归档和坏记录提示；不启动可见窗口。
+- 功能盘点：当前default_registry为441个因子/组件，16个组合模板逐个resolve成功。旧qimo-source-rules-v2/QimoPaperRunner是专门的规则代理流程，通用ExecutionStudy、理论组合研究和AR事件研究不只服务期末50分；严格QM50原始合同不是旧代理的同义词。未查看用户运行库中自建Playbook。
+- 验证：18个原功能模块106项逐模块通过；首个总进程480秒超时停在headless模块，随后headless独立6项通过。最终新旧选择复盘15项、无硬链接2项、Playbook工具3项、headless6项共26项通过且4个产品文件测试前后SHA一致；文件系统/桌面4项也在Lexar卷临时目录通过。去重合计22模块131项，新增11项，不把重跑累计成更多测试。
+- 限制：一次早期组合回归180秒超时；最终26项中60秒faulthandler输出定位到外置卷依赖导入，随后正常结束为OK(69.492秒)，不是测试失败。Pi实施任务有中断，独立Reviewer任务未产出结论；最终修改由主控逐处复核并补回归，不声称独立Reviewer PASS。不运行全仓重负载、真实桌面、付费模型或盈利验证。日志/结果保存在本轮新目录artifacts/functional-validation-20260921。
+- Git：只将本轮4个产品文件、3个测试文件与3份现有说明形成独立提交；不包含TDX、行情或artifacts。普通推送及远端SHA核对以本轮实际回执为准，失败不得视为已推送。

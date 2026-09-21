@@ -122,7 +122,7 @@ class ResearchChatDialog(QDialog):
                     self.references[key]=ref
                     identifier=next((ref[k] for k in ('run_id','proposal_id','factor_id','job_id',
                         'memory_id','watch_id','snapshot_id','item_id','resource_id','skill_key','symbol',
-                        'strategy_source_id','definition_id','case_id','validation_id','link_id','source_id')
+                        'strategy_source_id','definition_id','case_id','validation_id','link_id','source_id','selection_id')
                         if ref.get(k)), '')
                     entry=QListWidgetItem(ref['kind']+' · '+str(identifier))
                     entry.setData(Qt.ItemDataRole.UserRole,ref);self.evidence.addItem(entry)
@@ -260,7 +260,8 @@ class ResearchChatDialog(QDialog):
                 outcomes=SelectionOutcomeService(self.output)
                 reviews=outcomes.get(identifier)
                 return {'selection':store.get_selection(identifier),
-                    'outcome_reviews':[outcomes.compact(row) for row in reviews['records']]}
+                    'outcome_reviews':[outcomes.compact(row) for row in reviews['records']],
+                    'incomplete':reviews.get('incomplete',False),'errors':reviews.get('errors',[])}
             return store.get_source(identifier)
         self.set_busy(True);self.status.setText('正在核对 Trading Knowledge / Playbook 引用…')
         def done(result,error):
@@ -269,7 +270,9 @@ class ResearchChatDialog(QDialog):
             if error:self.status.setText('Playbook 引用未打开：'+error)
             else:
                 self.details.setPlainText(json.dumps(result,ensure_ascii=False,indent=2))
-                self.status.setText('已在右侧业务明细打开只读引用：'+str(identifier))
+                if kind=='playbook_selection' and result.get('incomplete'):
+                    self.status.setText('复盘引用不完整：'+str(len(result.get('errors',[])))+' 条记录校验失败；请查看右侧错误，不能视为完整复盘。')
+                else:self.status.setText('已在右侧业务明细打开只读引用：'+str(identifier))
             if self.close_requested:self.close()
         self.window.async_call(read,done,guarded=False)
 

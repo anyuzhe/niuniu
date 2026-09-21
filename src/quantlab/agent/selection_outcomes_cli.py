@@ -30,6 +30,7 @@ def main(argv=None):
     parser.add_argument('--definition-id', default='')
     parser.add_argument('--frame', default='')
     parser.add_argument('--limit', type=int, default=2000)
+    parser.add_argument('--offset', type=int, default=0, help='--list 从第几条有效记录开始（默认0）')
     parser.add_argument('--full', action='store_true', help='--list/--get 输出包含逐证券结果')
     args = parser.parse_args(argv)
     try:
@@ -46,13 +47,24 @@ def main(argv=None):
             if not args.full:
                 data = {**data, 'records': [service.compact(row) for row in data['records']]}
         elif args.list:
-            data = service.list(args.definition_id, args.kind, args.frame, limit=min(args.limit, 1000))
+            data = service.list(args.definition_id, args.kind, args.frame, offset=args.offset,
+                                limit=min(args.limit, 1000), full=args.full)
         else:
             data = service.summary(args.definition_id, args.kind, args.frame)
-        print(encode({'ok': True, 'data': data}))
+        if args.auto_all:
+            status = data['status']
+            ok = status == 'SUCCESS'
+            print(encode({'ok': ok, 'status': status, 'data': data}))
+            return 0 if ok else (3 if status == 'PARTIAL_FAILURE' else 2)
+        if data.get('incomplete'):
+            status = 'PARTIAL_FAILURE' if data.get('records') or data.get('rows') else 'FAILED'
+            print(encode({'ok': False, 'status': status, 'data': data}))
+            return 3 if status == 'PARTIAL_FAILURE' else 2
+        print(encode({'ok': True, 'status': 'SUCCESS', 'data': data}))
         return 0
     except (SelectionOutcomeError, OSError, ValueError, KeyError, TypeError) as error:
-        print(encode({'ok': False, 'error': {'code': getattr(error, 'code', 'INVALID_REQUEST'), 'message': str(error)[:500]}}))
+        print(encode({'ok': False, 'status': 'FAILED',
+                      'error': {'code': getattr(error, 'code', 'INVALID_REQUEST'), 'message': str(error)[:500]}}))
         return 2
 
 
