@@ -169,6 +169,51 @@ class StrategyRunCatalogTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "changed after archive verification"):
                 catalog.get_strategy_run(self.output, run.run_id)
 
+    def test_revision_keeps_historical_identity_separate_without_writes(self):
+        run = self.archive(); expected = compile_strategy(package())
+        before = self.fingerprint(self.output)
+        with patch('quantlab.data.mqc.MQCParquetProvider.load', side_effect=AssertionError('no source data reads')):
+            value = catalog.prepare_strategy_revision(self.output, run.run_id,
+                expected_package_hash=expected['package_hash'])
+        self.assertTrue(value['current_matches_history'])
+        self.assertFalse(value['execution_authorized'])
+        self.assertEqual(value['source']['run_id'], run.run_id)
+        self.assertEqual(value['compiled'], expected)
+        self.assertEqual(value['historical_package'], expected['package'])
+        value['compiled']['package']['name'] = 'private edited copy'
+        self.assertEqual(value['historical_package']['name'], expected['package']['name'])
+        self.assertEqual(before, self.fingerprint(self.output))
+
+    def test_revision_rejects_stale_selection_and_damaged_evidence(self):
+        run = self.archive(); expected = compile_strategy(package())['package_hash']
+        for value in ('0' * 64, 'not-a-hash', None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                catalog.prepare_strategy_revision(self.output, run.run_id, expected_package_hash=value)
+        (run.artifact_path / 'bars.parquet').write_bytes(b'broken')
+        with self.assertRaises(ValueError):
+            catalog.prepare_strategy_revision(self.output, run.run_id, expected_package_hash=expected)
+
+    def test_revision_discloses_current_code_drift_without_rewriting_history(self):
+        from quantlab.app import default_registry
+        run = self.archive(); expected = compile_strategy(package())
+        before = self.fingerprint(self.output)
+        with patch.object(type(default_registry()), 'code_hash', return_value='f' * 64):
+            value = catalog.prepare_strategy_revision(self.output, run.run_id,
+                expected_package_hash=expected['package_hash'])
+        self.assertFalse(value['current_matches_history'])
+        self.assertEqual(value['source']['package_identity']['compiled_spec_hash'], expected['compiled_spec_hash'])
+        self.assertNotEqual(value['compiled']['compiled_spec_hash'], expected['compiled_spec_hash'])
+        self.assertEqual(value['historical_package'], expected['package'])
+        self.assertEqual(before, self.fingerprint(self.output))
+
+    def test_revision_missing_current_signal_is_not_silently_substituted(self):
+        run = self.archive(); expected = compile_strategy(package())['package_hash']
+        before = self.fingerprint(self.output)
+        with patch('quantlab.trading.strategy_package.compile_strategy', side_effect=ValueError('removed signal')):
+            with self.assertRaisesRegex(ValueError, 'removed signal'):
+                catalog.prepare_strategy_revision(self.output, run.run_id, expected_package_hash=expected)
+        self.assertEqual(before, self.fingerprint(self.output))
+
 
 if __name__ == "__main__":
     unittest.main()

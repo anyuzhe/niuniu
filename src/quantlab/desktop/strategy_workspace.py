@@ -7,7 +7,7 @@ import re
 from PyQt6 import sip
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
-    QGroupBox, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit, QScrollArea, QTabWidget, QVBoxLayout, QWidget)
+    QGroupBox, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QScrollArea, QTabWidget, QVBoxLayout, QWidget)
 from quantlab.agent.planning import parse_spec
 from quantlab.agent.strategy_package_cli import _read_package
 from quantlab.app import default_registry
@@ -36,6 +36,7 @@ class StrategyWorkspaceDialog(QDialog):
         self.result_package = self.result_compiled_hash = self.compiled = self.baseline = None
         self._loading = False; self.busy = False
         self._archive_generation = 0; self._archive_page = None
+        self.revision_origin = None
         self._base = {'format': FORMAT, 'strategy_key': '', 'name': '', 'version': '',
             'lifecycle': dict(LIFECYCLE), 'spec': {'mode': 'execution', 'replay': True,
             'qualification': 'research_only', 'execution': {}, 'portfolio': {}}}
@@ -101,6 +102,8 @@ class StrategyWorkspaceDialog(QDialog):
         form.addRow(label('已导入的高级设置原样保留。数值输入是配置，不是推荐；目标限制不保证实际持仓永远满足。','muted',True))
         for c in (self.timeframe,self.adjustment,self.weighting,self.price_mode): c.currentIndexChanged.connect(self.invalidate)
         for c in (self.t_plus_one,self.statutory_fees): c.toggled.connect(self.invalidate)
+        self.revision_note = label('当前草稿未从历史归档载入。', 'muted', True)
+        layout.addWidget(self.revision_note)
         self.preview = BusinessDetails({}); layout.addWidget(self.preview)
         self.tabs.addTab(page,'配置编辑')
 
@@ -108,6 +111,7 @@ class StrategyWorkspaceDialog(QDialog):
         page = QWidget(); layout = QVBoxLayout(page)
         layout.addWidget(label('以载入的原版本或指定策略包为基线，比较当前草稿。同名同版本内容不同会警告，不自动改版本。','note',True))
         self.baseline_label = label('尚无对照基线','muted',True); layout.addWidget(self.baseline_label)
+        self.origin_details = BusinessDetails({}); layout.addWidget(self.origin_details)
         layout.addWidget(row(button('选择对照策略包',self.import_baseline),button('比较当前草稿',self.compare_versions)))
         self.version_details = BusinessDetails({}); layout.addWidget(self.version_details,1); self.tabs.addTab(page,'版本差异')
 
@@ -126,6 +130,8 @@ class StrategyWorkspaceDialog(QDialog):
         self.archive_right_button = button('选到右侧', lambda: self.choose_archive('right'))
         self.archive_inspect_button = button('核验选中归档', self.inspect_archive)
         layout.addWidget(row(self.archive_left_button,self.archive_right_button,self.archive_inspect_button))
+        self.archive_edit_button = button('载入为可编辑副本（不执行）', self.edit_archived_strategy)
+        layout.addWidget(self.archive_edit_button)
         self.archive_query.textChanged.connect(self.invalidate_archive_listing)
         self.archive_query.returnPressed.connect(lambda: self.load_archives(0))
         self.archive_list.currentItemChanged.connect(self.archive_selection_changed)
@@ -137,6 +143,12 @@ class StrategyWorkspaceDialog(QDialog):
         self.left_run.textChanged.connect(self._clear_results); self.right_run.textChanged.connect(self._clear_results)
         self.tabs.addTab(page,'结果对照')
 
+    def done(self, result):
+        # Closing a dialog does not necessarily delete it before a worker returns.
+        # Invalidate pending reads so a cancelled draft cannot be replaced later.
+        self._archive_generation += 1
+        super().done(result)
+
     def invalidate_archive_listing(self, *_):
         self._archive_generation += 1; self._archive_page = None
         self.archive_list.clear(); self.archive_next_button.setEnabled(False)
@@ -147,7 +159,7 @@ class StrategyWorkspaceDialog(QDialog):
         item = self.archive_list.currentItem()
         record = item.data(Qt.ItemDataRole.UserRole) if item else None
         enabled = not self.busy and bool(record) and record.get('status') == 'completed'
-        for control in (self.archive_left_button,self.archive_right_button,self.archive_inspect_button):
+        for control in (self.archive_left_button,self.archive_right_button,self.archive_inspect_button,self.archive_edit_button):
             control.setEnabled(enabled)
 
     def _archive_read(self, work, done):
@@ -215,6 +227,47 @@ class StrategyWorkspaceDialog(QDialog):
             self.status.setText('归档内部一致性已核验；这是历史证据，不代表Alpha、重新运行或批准。')
         self._archive_read(lambda:get_strategy_run(self.output,record['run_id']),loaded)
 
+    def edit_archived_strategy(self):
+        if self.busy: return
+        item = self.archive_list.currentItem()
+        record = deepcopy(item.data(Qt.ItemDataRole.UserRole)) if item else None
+        if not record or record.get('status') != 'completed': return
+        answer = QMessageBox.question(self, '载入历史策略副本',
+            '核验所选归档后，将替换当前工作台中尚未保存的草稿。\n'
+            '原归档、结果和批准均不修改，也不会自动执行。是否继续？',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes: return
+        from quantlab.trading.strategy_run_catalog import prepare_strategy_revision
+        def loaded(value):
+            try:
+                self.apply_package(value['compiled']['package'],
+                    expected_compiled_hash=value['compiled']['compiled_spec_hash'])
+                self.revision_origin = deepcopy(value)
+                self.origin_details.setPlainText(encode({'historical_source': value['source'],
+                    'historical_package': value['historical_package'],
+                    'current_compiled_spec_hash_on_load': value['compiled']['compiled_spec_hash'],
+                    'current_matches_history_on_load': value['current_matches_history'],
+                    'warnings': value['warnings']}))
+                identity = value['source']['package_identity']
+                self.revision_note.setText('来自历史实验 ' + value['source']['run_id'] + ' · '
+                    + identity['strategy_key'] + ' @ ' + identity['version']
+                    + '；仅本次编辑保留来源说明，新草稿不继承历史批准。'
+                    + (' 当前编译指纹不同，请明确新版本。' if not value['current_matches_history'] else ' 请重新预览。'))
+                self.tabs.setCurrentIndex(0)
+                self.status.setText('历史配置副本已载入，未保存、未批准、未执行；历史证据见版本差异页。')
+            except (ValueError,TypeError,KeyError,OSError) as error:
+                self.status.setText('历史副本未载入，原草稿保留：' + str(error))
+        self._archive_read(lambda: prepare_strategy_revision(self.output, record['run_id'],
+            expected_package_hash=record['package_hash']), loaded)
+
+    def _check_revision_identity(self, compiled):
+        if self.revision_origin is None: return
+        source = self.revision_origin['source']['package_identity']
+        current = compiled['package']
+        if (current['strategy_key'] == source['strategy_key'] and current['version'] == source['version']
+                and compiled['compiled_spec_hash'] != source['compiled_spec_hash']):
+            raise ValueError('历史策略的配置或信号实现已变化；请填写新的策略版本，或明确使用新的策略标识。')
+
     def invalidate(self, *_):
         if self._loading: return
         self.compiled = None
@@ -234,21 +287,27 @@ class StrategyWorkspaceDialog(QDialog):
                 self.parameters.setPlainText('{}')  # Parameterized combinations require user-supplied inputs.
         self.invalidate()
 
-    def apply_package(self, package, *, baseline=True):
+    def apply_package(self, package, *, baseline=True, expected_compiled_hash=None):
         compiled = compile_strategy(package)
+        if expected_compiled_hash is not None and compiled['compiled_spec_hash'] != expected_compiled_hash:
+            raise ValueError('信号源码或配置在载入期间变化，请重新核验；原草稿保留。')
         normalized = compiled['package']; spec = normalized['spec']
         selected = ('theory',spec['theory'],spec['theory_version']) if 'theory' in spec else ('factor',spec['factor'],spec['version'])
         # QVariant does not reliably compare Python tuple objects by value.
         index = next((i for i in range(self.signal.count())
                       if tuple(self.signal.itemData(i) or ()) == selected), -1)
         if index<0: raise ValueError('当前界面未找到精确信号版本，原草稿保留。')
+        selections = [(c, c.findData(v)) for c,v in [(self.timeframe,spec['timeframe']),
+            (self.adjustment,spec['adjustment']),(self.weighting,spec['portfolio']['weighting']),
+            (self.price_mode,spec['execution']['price_mode'])]]
+        if any(i < 0 for _,i in selections):
+            raise ValueError('当前界面不支持该配置选项，原草稿保留。')
         self._loading = True
         try:
             self._base = deepcopy(normalized)
             for k,c in self.identity.items(): c.setText(normalized[k])
             for k,c in self.scope.items(): c.setText(' '.join(spec[k]) if k=='symbols' else spec[k])
-            for c,v in [(self.timeframe,spec['timeframe']),(self.adjustment,spec['adjustment']),
-                (self.weighting,spec['portfolio']['weighting']),(self.price_mode,spec['execution']['price_mode'])]: c.setCurrentIndex(c.findData(v))
+            for c,i in selections: c.setCurrentIndex(i)
             self.signal.setCurrentIndex(index); self.parameters.setEnabled(selected[0]=='factor')
             self.parameters.setPlainText(encode(spec.get('parameters',{})))
             for fields,controls,values in [(EXECUTION_FIELDS,self.execution,spec['execution']),(PORTFOLIO_FIELDS,self.portfolio,spec['portfolio'])]:
@@ -256,6 +315,9 @@ class StrategyWorkspaceDialog(QDialog):
             self.t_plus_one.setChecked(spec['execution']['t_plus_one']); self.statutory_fees.setChecked(spec['execution']['statutory_fees'])
             if baseline:
                 self.baseline = deepcopy(normalized)
+                self.revision_origin = None
+                self.revision_note.setText('当前草稿未从历史归档载入。')
+                self.origin_details.setPlainText('{}')
                 self.baseline_label.setText(normalized['name']+' @ '+normalized['version']+' · '+compiled['package_hash'])
         finally: self._loading = False
         self.invalidate(); self.status.setText('已载入可编辑副本；原文件、历史提案和结果均未修改。')
@@ -284,7 +346,9 @@ class StrategyWorkspaceDialog(QDialog):
 
     def validate_preview(self):
         try:
-            self.compiled = compile_strategy(self.collect_package()); self.preview.setPlainText(encode(self.compiled))
+            self.compiled = compile_strategy(self.collect_package())
+            self._check_revision_identity(self.compiled)
+            self.preview.setPlainText(encode(self.compiled))
             self.use_button.setEnabled(True); self.status.setText('配置校验通过，未检查正式数据或创建任务。编译指纹：'+self.compiled['compiled_spec_hash']); return True
         except (ValueError,TypeError,KeyError,OSError) as error:
             self.compiled = None; self.use_button.setEnabled(False); self.preview.setPlainText('{}')
@@ -294,6 +358,7 @@ class StrategyWorkspaceDialog(QDialog):
         if self.busy: return
         try:
             current = compile_strategy(self.collect_package())
+            self._check_revision_identity(current)
             if self.compiled is None or current['compiled_spec_hash']!=self.compiled['compiled_spec_hash']:
                 raise ValueError('配置或信号源码已变化，请先重新预览。')
             self.result_package = deepcopy(current['package']); self.result_compiled_hash = current['compiled_spec_hash']; self.accept()
@@ -309,6 +374,7 @@ class StrategyWorkspaceDialog(QDialog):
 
     def save_package(self,path):
         compiled = compile_strategy(self.collect_package())
+        self._check_revision_identity(compiled)
         if self.compiled is None or compiled['compiled_spec_hash']!=self.compiled['compiled_spec_hash']:
             raise ValueError('请先预览当前配置，再另存。')
         with Path(path).open('x',encoding='utf-8') as stream: stream.write(encode(compiled['package'])+'\n')

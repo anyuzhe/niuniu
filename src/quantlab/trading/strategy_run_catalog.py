@@ -1,6 +1,8 @@
 """Bounded, read-only discovery and inspection of archived strategy runs."""
 from __future__ import annotations
 
+from copy import deepcopy
+
 from pathlib import Path
 from uuid import UUID
 import os
@@ -244,4 +246,38 @@ def get_strategy_run(output, run_id) -> dict:
     }
 
 
-__all__ = ["list_strategy_runs", "get_strategy_run"]
+def prepare_strategy_revision(output, run_id, *, expected_package_hash):
+    """Verify a selected archive, then separately compile an editable copy today.
+
+    The source identity is historical evidence, not a new grant, proposal or
+    reproducibility claim.  No source bytes or persistent state are written.
+    """
+    if (type(expected_package_hash) is not str or len(expected_package_hash) != 64
+            or any(c not in '0123456789abcdef' for c in expected_package_hash)):
+        raise ValueError('必须传入所选归档的精确 package_hash，请重新查找归档。')
+    detail = get_strategy_run(output, run_id)
+    if detail['package_identity']['package_hash'] != expected_package_hash:
+        raise ValueError('所选归档配置已变化，请重新查找并核验；原草稿保留。')
+    from quantlab.trading.strategy_package import compile_strategy
+    compiled = compile_strategy(deepcopy(detail['package']))
+    source = {
+        'run_id': detail['run_id'],
+        'package_identity': deepcopy(detail['package_identity']),
+        'evidence_fingerprint': deepcopy(detail['evidence_fingerprint']),
+        'verification': detail['verification'],
+    }
+    matches = compiled['compiled_spec_hash'] == source['package_identity']['compiled_spec_hash']
+    warnings = ['历史归档已核验；当前编译只是新草稿解释，不是复算、批准或旧结果可重现的证明。']
+    if not matches:
+        warnings.append('当前编译与历史指纹不同；原配置/信号解析已变化，同一策略须指定新版本。')
+    return {
+        'source': source,
+        'historical_package': deepcopy(detail['package']),
+        'compiled': compiled,
+        'current_matches_history': matches,
+        'warnings': warnings,
+        'execution_authorized': False,
+    }
+
+
+__all__ = ["list_strategy_runs", "get_strategy_run", "prepare_strategy_revision"]

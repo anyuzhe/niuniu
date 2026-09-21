@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 from PyQt6 import sip
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from quantlab.desktop.strategy_workspace import StrategyWorkspaceDialog
 from quantlab.storage.codec import encode
 from quantlab.trading.strategy_package import compile_strategy
@@ -84,5 +84,136 @@ class StrategyRunPickerTests(unittest.TestCase):
         (run.artifact_path/'bars.parquet').write_bytes(b'broken')
         self.dialog.inspect_archive();self.assertEqual(self.dialog.result_details.toPlainText(),'{}')
         self.assertIn('失败',self.dialog.status.text());self.assertFalse(self.dialog.busy)
+
+    def select_revision_source(self):
+        run = self.make_run()
+        self.dialog.load_archives(); self.dialog.archive_list.setCurrentRow(0)
+        self.assertTrue(self.dialog.archive_edit_button.isEnabled())
+        return run
+
+    def load_revision(self):
+        with patch('quantlab.desktop.strategy_workspace.QMessageBox.question',
+                   return_value=QMessageBox.StandardButton.Yes):
+            self.dialog.edit_archived_strategy()
+
+    def test_cancel_revision_preserves_unsaved_draft_without_reading_archive(self):
+        self.select_revision_source(); self.dialog.apply_package(package())
+        self.assertTrue(self.dialog.validate_preview()); before = self.dialog.compiled
+        with patch('quantlab.desktop.strategy_workspace.QMessageBox.question',
+                   return_value=QMessageBox.StandardButton.No), \
+             patch('quantlab.trading.strategy_run_catalog.prepare_strategy_revision') as read:
+            self.dialog.edit_archived_strategy()
+        read.assert_not_called(); self.assertEqual(self.dialog.compiled, before)
+        self.assertIsNone(self.dialog.revision_origin)
+
+    def test_revision_edit_requires_new_version_preserves_source_and_explicit_handoff(self):
+        from quantlab.storage.artifact_integrity import snapshot_tree
+        run = self.select_revision_source(); before = snapshot_tree(self.root, run.run_id)
+        self.load_revision()
+        self.assertEqual(self.dialog.revision_origin['source']['run_id'], run.run_id)
+        self.assertIsNone(self.dialog.compiled); self.assertFalse(self.dialog.use_button.isEnabled())
+        self.assertEqual(self.dialog.tabs.currentIndex(), 0)
+        self.assertTrue(self.dialog.validate_preview(), self.dialog.status.text())
+        self.dialog.portfolio['max_position'].setText('0.5')
+        self.assertFalse(self.dialog.validate_preview()); self.assertIn('新', self.dialog.status.text())
+        self.dialog.finish(); self.assertIsNone(self.dialog.result_package)
+        with self.assertRaises(ValueError): self.dialog.save_package(self.root / 'rejected.json')
+        self.dialog.identity['version'].setText('draft-2')
+        self.assertTrue(self.dialog.validate_preview(), self.dialog.status.text())
+        self.dialog.save_package(self.root / 'draft-2.json'); self.dialog.finish()
+        self.assertEqual(self.dialog.result_package['version'], 'draft-2')
+        self.assertEqual(self.dialog.revision_origin['historical_package']['version'], '1.0.0')
+        self.assertEqual(before, snapshot_tree(self.root, run.run_id))
+        self.assertFalse((self.root / '_jobs').exists()); self.assertFalse((self.root / 'rejected.json').exists())
+
+    def test_current_signal_drift_is_visible_and_needs_explicit_new_version(self):
+        from quantlab.app import default_registry
+        self.select_revision_source()
+        with patch.object(type(default_registry()), 'code_hash', return_value='f' * 64):
+            self.load_revision()
+            self.assertFalse(self.dialog.revision_origin['current_matches_history'])
+            self.assertIn('指纹不同', self.dialog.revision_note.text())
+            source = json.loads(self.dialog.origin_details.toPlainText())
+            self.assertFalse(source['current_matches_history_on_load'])
+            self.assertFalse(self.dialog.validate_preview())
+            self.dialog.identity['version'].setText('source-upgrade-1')
+            self.assertTrue(self.dialog.validate_preview(), self.dialog.status.text())
+        self.assertFalse((self.root / '_jobs').exists())
+
+    def test_bad_revision_source_keeps_existing_draft_and_unlocks(self):
+        run = self.select_revision_source(); self.dialog.apply_package(package())
+        self.assertTrue(self.dialog.validate_preview()); before = self.dialog.compiled
+        (run.artifact_path / 'bars.parquet').write_bytes(b'broken')
+        self.load_revision()
+        self.assertEqual(self.dialog.compiled, before)
+        self.assertIsNone(self.dialog.revision_origin); self.assertFalse(self.dialog.busy)
+        self.assertTrue(self.dialog.tabs.isEnabled()); self.assertIn('失败', self.dialog.status.text())
+
+    def test_revision_reply_cannot_replace_draft_after_query_change(self):
+        self.select_revision_source(); self.dialog.identity['name'].setText('keep this draft')
+        captured = []; self.host.async_call = lambda work,done,guarded=False: captured.append((work,done))
+        self.load_revision(); self.assertTrue(self.dialog.busy)
+        self.dialog.archive_query.setText('different query')
+        work, done = captured.pop(); done(work(), '')
+        self.assertEqual(self.dialog.identity['name'].text(), 'keep this draft')
+        self.assertIsNone(self.dialog.revision_origin); self.assertFalse(self.dialog.busy)
+
+    def test_closing_workspace_rejects_pending_revision_reply(self):
+        self.select_revision_source(); self.dialog.identity['name'].setText('cancelled draft')
+        captured = []; self.host.async_call = lambda work,done,guarded=False: captured.append((work,done))
+        self.load_revision(); self.assertTrue(self.dialog.busy)
+        self.dialog.reject()
+        work, done = captured.pop(); done(work(), '')
+        self.assertEqual(self.dialog.identity['name'].text(), 'cancelled draft')
+        self.assertIsNone(self.dialog.revision_origin)
+        self.assertIsNone(self.dialog.result_package)
+
+    def test_revision_checks_current_compilation_again_before_applying(self):
+        from copy import deepcopy
+        from quantlab.trading.strategy_run_catalog import prepare_strategy_revision
+        run = self.select_revision_source()
+        value = prepare_strategy_revision(self.root, run.run_id,
+            expected_package_hash=compile_strategy(package())['package_hash'])
+        self.dialog.apply_package(package()); self.assertTrue(self.dialog.validate_preview())
+        before = self.dialog.compiled
+        stale = deepcopy(value); stale['compiled']['compiled_spec_hash'] = '0' * 64
+        with patch('quantlab.trading.strategy_run_catalog.prepare_strategy_revision', return_value=stale):
+            self.load_revision()
+        self.assertEqual(self.dialog.compiled, before); self.assertIsNone(self.dialog.revision_origin)
+        self.assertIn('未载入', self.dialog.status.text())
+
+    def test_independent_import_clears_revision_origin_but_tree_edit_preserves_it(self):
+        self.select_revision_source(); self.load_revision()
+        changed = self.dialog.collect_package(); changed['spec']['portfolio']['max_position'] = 0.5
+        self.dialog.apply_package(changed, baseline=False)
+        self.assertIsNotNone(self.dialog.revision_origin); self.assertFalse(self.dialog.validate_preview())
+        self.dialog.apply_package(package())
+        self.assertIsNone(self.dialog.revision_origin)
+        self.assertEqual(self.dialog.origin_details.toPlainText(), '{}')
+        self.assertTrue(self.dialog.validate_preview())
+
+    def test_revision_returns_to_original_pending_gate_without_inheriting_approval(self):
+        from quantlab.desktop.agent_proposals import ProposalDialog
+        from unittest.mock import patch
+        run = self.select_revision_source(); parent = ProposalDialog(self.host)
+        try:
+            parent.apply_strategy_package(package()); parent.create(); parent.confirm.setChecked(True)
+            old_id = parent.selected['proposal_id']
+            self.assertTrue(parent.approve_button.isEnabled())
+            def edit_and_accept(editor):
+                editor.load_archives(); editor.archive_list.setCurrentRow(0)
+                with patch('quantlab.desktop.strategy_workspace.QMessageBox.question',
+                           return_value=QMessageBox.StandardButton.Yes): editor.edit_archived_strategy()
+                self.assertEqual(editor.revision_origin['source']['run_id'], run.run_id)
+                editor.identity['version'].setText('draft-2')
+                self.assertTrue(editor.validate_preview(), editor.status.text()); editor.finish()
+                return editor.result()
+            with patch.object(StrategyWorkspaceDialog, 'exec', edit_and_accept): parent.open_strategy_workspace()
+            self.assertIsNone(parent.selected); self.assertFalse(parent.confirm.isChecked())
+            self.assertFalse(parent.approve_button.isEnabled()); parent.create()
+            self.assertEqual(parent.selected['status'], 'pending')
+            self.assertNotEqual(parent.selected['proposal_id'], old_id)
+            self.assertFalse(parent.confirm.isChecked()); self.assertFalse((self.root / '_jobs').exists())
+        finally: parent.close(); sip.delete(parent)
 
 if __name__=='__main__':unittest.main()
