@@ -1408,3 +1408,10 @@
 - 验证：新增11项测试（选择复盘8、控制包/registry钉值2、0字节blob归档1）。云端容器Python 3.11按文件逐个运行全仓235个测试文件、1339项，并与e0d9050基线逐文件对照：除 `test_desktop.py` 3项因 `desktop/replay.py` 使用3.12 f-string语法无法在3.11导入（基线相同）外全部通过；15个桌面测试文件在断言全部通过后于Qt offscreen退出阶段段错误，基线同样出现且随机翻转。文档检查PASS，`git diff --check` 无问题。未在Mac真实桌面启动窗口或点击验证。
 - Git：本条与代码、测试和文档同一提交；SHA以该提交Git历史为准。
 - 后续：是否对热度反向假设做个股级预注册事件研究由牛牛自行决定；确认事件日历与产业链映射需要新的PIT数据接入，另行授权。选择结果复盘需宿主运行 `--auto-all` 或后续显式接入调度后才会产生样本。
+
+### 2026-09-21｜[Research Skill数据根] AI产业雷达策展包写入niuniu-data
+
+- 用户随后授权 `/Volumes/Lexar/niuniu-data`。写入内容：161个内容寻址对象、1个Git receipt和1个策展包目录（14个文件），共176个新文件；未覆盖、未删除任何已有文件。策展包先写到临时目录，全部核对后整体改名为 `packages/ai_industry_radar/`，避免Library看到半成品目录。
+- 核验：176个文件逐一SHA256与隔离数据根一致；`research-skill-git-audit` 对 ai_industry_radar 与 zhengxi 均为1/1 verified、0 invalid；Library在真实数据根上两项技能均为VERIFIED，get/search/excerpt可读。核验在牛牛Cowork虚拟机中用Python 3.10兼容垫片运行、从已提交的 `research_skills/` 副本读取，未对真实仓库执行Git-clean检查。
+- 事故与修正：经桌面应用文件写入通道写入的1个PNG对象（上游 `docs/examples/演示K线图.png`）被附加了C2PA元数据，大小由83,519变为89,289字节。SHA256核对当场发现后，已从本地副本按原字节就地重写，复核通过。今后向数据根传输图片等二进制对象后必须逐个核对SHA256，不能只看写入回执。
+- Git：本条为文档补记，单独提交在前一提交之后。
