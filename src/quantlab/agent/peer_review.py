@@ -79,6 +79,8 @@ class ReviewReadOnlyAPI:
             result['data']['access']='peer_review_read_only'
             result['data']['tools']=[s['name'] for s in self._schemas]
             result['data']['peer_review_write_tools']=False
+            result['data']['strategy_archive_discovery_available']=False
+            result['data']['strategy_result_comparison_available']=False
         return result
 
 class PeerReviewStore:

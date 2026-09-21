@@ -25,6 +25,9 @@ TOOLS = [
     schema('get_research_template', '读取精确版本模板的规则、组件、来源哈希与theory/theory_version提案字段；不批准、不执行，不替代QM50原始规格。', {'template_id': TEXT, 'version': TEXT}),
     schema('get_strategy_package_contract', '只读查看统一策略包v1必填字段与实际支持的持有退出合同；不给出资金或交易参数建议。', {}),
     schema('preview_strategy_package', '纯配置校验：编译用户明确提供的完整策略包JSON，返回完整绑定spec和哈希；不读取行情、不保存提案、不批准或执行。不得用模板代替缺失资金/费用/持有规则。', {'package_json': {'type': 'string', 'maxLength': 65536}}),
+    schema('list_strategy_runs', '按名称/版本/标识查找本工作空间策略实验（含失败）；目录仅核验元信息，不代表结果可用。offset是UUID候选扫描位置，续页使用next_offset，须披露errors/incomplete及has_more。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
+    schema('get_strategy_run', '重新核验明确策略实验的完整归档，读取策略身份、绩效与证据指纹；不执行、不回测，不把内部一致性或完成状态当作Alpha。', {'run_id': TEXT}),
+    schema('compare_strategy_runs', '只读比较两个明确策略实验，复用宿主归档核验；不可比时披露blockers并保留空delta，不能按收益挑赢家或扩大研究。', {'left_run_id': TEXT, 'right_run_id': TEXT}),
     schema('list_experiments', '检索当前目录实际实验，包含失败记录。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_experiment', '读取指定实验的统计摘要和实际证据引用。', {'run_id': TEXT}),
     schema('get_job', '读取现有任务状态，不提交或取消任务。', {'job_id': TEXT}),
@@ -61,9 +64,17 @@ def restricted_dsl_contract():
             'registration_is_host_only': True, 'arbitrary_code_allowed': False}
 
 
+def resolve_research_output(output):
+    """Preserve the explicit workspace-root policy before resolving its spelling."""
+    path = Path(output)
+    if path.is_symlink():
+        raise ValueError('Research output root must not be a symlink')
+    return path.resolve()
+
+
 class ReadOnlyResearchAPI:
     def __init__(self, output):
-        self.output = Path(output).resolve()
+        self.output = resolve_research_output(output)
         self.catalog = ArtifactCatalog(self.output)
         self.registry = default_registry()
 
@@ -95,6 +106,8 @@ class ReadOnlyResearchAPI:
                     'model_connected': False, 'execution_tools_available': False,
                     'research_template_catalog_available': True, 'template_execution_authorized': False,
                     'strategy_package_preview_available': True, 'strategy_package_execution_authorized': False,
+                    'strategy_archive_discovery_available': True, 'strategy_result_comparison_available': True,
+                    'strategy_archive_write_authorized': False,
                     'limitations': ['只读研究接口，不是已经接入大模型的对话助手。',
                         '历史行业/每日市值、严格 PIT 与官方历史涨跌停规则仍有资料缺口。',
                         '实验成功状态不代表统计有效、真实可成交或未来盈利。',
@@ -160,6 +173,23 @@ class ReadOnlyResearchAPI:
             except (ValueError, TypeError, KeyError, RecursionError) as error:
                 raise ValueError('INVALID_ARGUMENT：' + str(error)[:240]) from error
             return {**result, 'data_checked': False, 'proposal_created': False}, []
+        if name == 'list_strategy_runs':
+            from quantlab.trading.strategy_run_catalog import list_strategy_runs
+            result = list_strategy_runs(self.output, **args)
+            return result, [{'kind': 'experiment', 'run_id': row['run_id']} for row in result['runs']]
+        if name == 'get_strategy_run':
+            from quantlab.trading.strategy_run_catalog import get_strategy_run
+            result = get_strategy_run(self.output, self.identifier(args['run_id']))
+            # This is evidence reading, not a new executable spec or an implicit recompile.
+            result.pop('package', None)
+            return result, [{'kind': 'experiment', 'run_id': args['run_id'],
+                             'uri': 'quantlab://run/' + args['run_id']}]
+        if name == 'compare_strategy_runs':
+            from quantlab.trading.strategy_comparison import compare_strategy_runs
+            result = compare_strategy_runs(self.output, self.identifier(args['left_run_id']),
+                                           self.identifier(args['right_run_id']))
+            return result, [{'kind': 'experiment', 'run_id': args[key],
+                             'uri': 'quantlab://run/' + args[key]} for key in ('left_run_id', 'right_run_id')]
         if name == 'list_experiments':
             result = self.catalog.list(**args)
             for row in result['runs']:
@@ -195,10 +225,13 @@ class ReadOnlyResearchAPI:
         try:
             self.validate(name, arguments)
             data, evidence = self._read(name, arguments)
-            result = {'ok': True, 'tool': name, 'data': data if name == 'preview_strategy_package' else compact(data),
+            exact = name in {'preview_strategy_package', 'list_strategy_runs', 'get_strategy_run', 'compare_strategy_runs'}
+            result = {'ok': True, 'tool': name, 'data': data if exact else compact(data),
                       'evidence': evidence, 'warnings': [], 'error': None}
-            if name == 'preview_strategy_package' and len(encode(result)) > 24000:
-                raise ValueError('RESULT_TOO_LARGE：完整策略包超过模型工具输出预算；请使用宿主CLI预览导出，不可提交截断的spec。')
+            if name == 'list_strategy_runs' and data.get('incomplete'):
+                result['warnings'].append('归档目录存在读取错误；当前返回不是完整有效样本，详情见errors。')
+            if exact and len(encode(result)) > 24000:
+                raise ValueError('RESULT_TOO_LARGE：完整策略配置或证据超过模型输出预算；缩小分页或使用宿主CLI/工作台，不返回截断配置、遗漏错误或不完整比较。')
             if len(encode(result)) > 24000:
                 result['data'] = {'omitted': True, 'reason': 'result_size_limit'}
                 result['warnings'].append('超过摘要预算；请缩小查询或在工作台打开证据。')

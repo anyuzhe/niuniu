@@ -43,8 +43,22 @@ def main(argv=None) -> int:
     results.add_argument('--output', type=Path, required=True)
     results.add_argument('--left-run', required=True)
     results.add_argument('--right-run', required=True)
+    listing = commands.add_parser('list-runs', help='有界发现策略归档；仅元信息，不表示完整归档已核验。')
+    listing.add_argument('--output', type=Path, required=True)
+    listing.add_argument('--query', default='')
+    listing.add_argument('--offset', type=int, default=0)
+    listing.add_argument('--limit', type=int, default=20)
+    reading = commands.add_parser('get-run', help='只读核验指定策略归档；不执行或重做回测。')
+    reading.add_argument('--output', type=Path, required=True)
+    reading.add_argument('--run-id', required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command in ('list-runs', 'get-run'):
+            from quantlab.trading.strategy_run_catalog import list_strategy_runs, get_strategy_run
+            result = (list_strategy_runs(args.output, args.query, args.offset, args.limit)
+                      if args.command == 'list-runs' else get_strategy_run(args.output, args.run_id))
+            print(encode({'ok': True, 'data': result}))
+            return 3 if result.get('incomplete') else 0
         if args.command in ('compare-packages', 'compare-runs'):
             from quantlab.trading.strategy_comparison import compare_strategy_packages, compare_strategy_runs
             result = (compare_strategy_packages(_read_package(args.left_package), _read_package(args.right_package))

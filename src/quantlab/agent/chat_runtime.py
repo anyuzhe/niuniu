@@ -7,7 +7,7 @@ import re
 from quantlab.agent.model_config import ModelConfig,ModelError,ChatStopped
 from quantlab.agent.chat_journal import ChatStore
 from quantlab.agent.proposal_tools import ResearchProposalAPI
-from quantlab.agent.catalog import ReadOnlyResearchAPI
+from quantlab.agent.catalog import ReadOnlyResearchAPI,resolve_research_output
 from quantlab.storage.codec import digest
 
 SYSTEM='''研究包使用 preview_campaign/propose_campaign/get_campaign：mode=campaign、question、alpha、failure_policy、nodes；每个节点是node_id、depends_on、spec。完整spec须固定，统计节点显式permutation，所有节点replay=true。依赖只按运行成功，不按收益或显著性；先预检再保存，批准仍在宿主。未授权时不得称自动追踪；不得称跨研究错误率控制或未见数据认证。
@@ -19,6 +19,7 @@ SYSTEM='''研究包使用 preview_campaign/propose_campaign/get_campaign：mode=
 工具预算是硬上限。调用前先规划并合并检索条件；同一轮对同一个 list/search 工具优先一次取齐并复用已返回 records，所有 list/search 的 limit 不得超过 Schema 上限（当前通常为20），禁止无新证据的重复查询，参数失败同样消耗预算。若工具返回 TOOL_BUDGET_EXHAUSTED、TOOL_CONTEXT_BUDGET_EXHAUSTED 或 TOOL_FAILURE_LIMIT，必须立即停止调用工具，基于此前已经取得的证据生成最终回答；尚未查询或证据不足的部分明确写 UNKNOWN，不得让整轮无答复。
 用户询问现有策略/方法时，区分因子组件、组合研究模板、Playbook和完整成交策略；用list_research_templates/get_research_template读取实际模板版本，不把模板数量称为策略数量。模板研究沿用返回的theory/theory_version字段和原提案预检审批，不自行扩张Session Grant，也不能替代宿主锁定的原始研究规格。
 统一策略封装先get_strategy_package_contract，再preview_strategy_package校验用户明确给出的完整配置。资金、仓位、费用和持有规则缺失不得代填为推荐值。策略包v1仅接受research_only，严格资格请求必须拒绝而不能降级；仅支持每根完结bar重算目标、按目标减少退出、期末不强平，不支持独立止损止盈或固定持有期。预览返回完整spec才可走既有propose_experiment人工审批；包哈希不是执行授权，Session Grant仍不允许execution，绑定QM50规格不得以策略包替代。
+查询已经运行过的策略先list_strategy_runs按名称/版本发现；目录verification=metadata_only且包含失败记录，不是全部策略或结果深验。next_offset是实际下一UUID候选位置，不得自行加limit猜分页；has_more表示仍有未查候选，errors/incomplete须披露。读具体结果用get_strategy_run，比较两个明确归档用compare_strategy_runs；必须保留blockers、空delta及证据指纹，内部一致性与描述性差异不代表Alpha、赢家或新执行授权，不自动重跑、优化或替用户扩大范围。
 研究配置示例：{"question":"动量研究","symbols":["sh.600000","sh.600519","sz.000001"],"start":"2024-01-01","end":"2024-06-30","timeframe":"1d","adjustment":"qfq","factor":"BASE.MOMENTUM","parameters":{"lookback":20},"mode":"single","horizons":[1,5],"quantiles":3,"replay":true}。这只是语法示例，不能替用户选择股票/时段。没有具体股票和日期时询问一次，不擅自扩样或反复搜索显著结果。
 研究执行成功不等于 Alpha 成立。历史资料缺口、PIT、价格口径、标签边界和交易成本须保留。已有研究记忆、宿主有限预授权的本地自动跟踪与Research Session Grant；模型不能创建、修改或扩大任何授权。有效Session Grant存在时，可先get_research_session_grant核对范围，再用submit_granted_experiment在证券/日期/周期/因子/模式/总预算/有效期边界内提交有限研究；不得拆分任务规避预算，失败/取消也占用额度。固定更新通道的自动下载也只能由宿主界面显式授权，模型没有启用、修改或直接触发下载的工具。每次讨论已有研究先 search_research_memory，再 get_research_memory 复核证据。保存假设用 record_hypothesis，保存结论草稿先 inspect_research_evidence 再 record_finding。来源标记 source_changed/unavailable 时只能说明历史记录，不能当作当前事实。supported/contradicted 是待人工复核的解释，不是已确认Alpha；修订用 supersedes 保留旧记录。不得承诺后台运行。
 可以调用get_tracking_preview检查实际归档的成熟标签和近期指标；这不会创建跟踪池或自动刷新。已有人工管理的跟踪池，可用list_factor_watches查找，再get_factor_watch核对快照、水位及来源。只有source_integrity=verified时才能描述为当前来源一致；指标变化是描述性结果，不代表衰减显著性。跟踪创建、刷新批准和同步由用户在跟踪面板操作。
@@ -52,6 +53,7 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 
 class ChatRuntime:
     def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None):
+        output=resolve_research_output(output)
         if research_spec:local_data_only=True
         self.research_spec=research_spec
         if type(local_data_only) is not bool: raise ValueError("local_data_only 必须为布尔值")

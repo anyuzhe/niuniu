@@ -5,8 +5,9 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 import re
 from PyQt6 import sip
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
-    QGroupBox, QLineEdit, QPlainTextEdit, QScrollArea, QTabWidget, QVBoxLayout, QWidget)
+    QGroupBox, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit, QScrollArea, QTabWidget, QVBoxLayout, QWidget)
 from quantlab.agent.planning import parse_spec
 from quantlab.agent.strategy_package_cli import _read_package
 from quantlab.app import default_registry
@@ -34,6 +35,7 @@ class StrategyWorkspaceDialog(QDialog):
         self.host = host; self.output = Path(host.output)
         self.result_package = self.result_compiled_hash = self.compiled = self.baseline = None
         self._loading = False; self.busy = False
+        self._archive_generation = 0; self._archive_page = None
         self._base = {'format': FORMAT, 'strategy_key': '', 'name': '', 'version': '',
             'lifecycle': dict(LIFECYCLE), 'spec': {'mode': 'execution', 'replay': True,
             'qualification': 'research_only', 'execution': {}, 'portfolio': {}}}
@@ -111,13 +113,107 @@ class StrategyWorkspaceDialog(QDialog):
 
     def _make_results(self):
         page = QWidget(); layout = QVBoxLayout(page)
-        layout.addWidget(label('只读本工作空间两个已完成策略包实验，填写原实验UUID。数据、环境、费用或样本口径不一致时列原因，不判定赢家。','note',True))
+        layout.addWidget(label('查找本工作空间策略归档并选到左右两侧，也可手填UUID。目录仅核验元信息；详情与比较会重新核验完整归档，不判定赢家。','note',True))
+        self.archive_query = QLineEdit(); self.archive_query.setPlaceholderText('按策略名称、版本、标识或研究问题查找')
+        self.archive_search_button = button('查找 / 刷新归档', lambda: self.load_archives(0))
+        self.archive_next_button = button('下一页候选', self.next_archive_page); self.archive_next_button.setEnabled(False)
+        layout.addWidget(row(self.archive_query, self.archive_search_button, self.archive_next_button))
+        self.archive_list = QListWidget(); self.archive_list.setMaximumHeight(160)
+        self.archive_list.setAccessibleName('策略归档目录（元信息）'); layout.addWidget(self.archive_list)
+        self.archive_note = label('尚未读取归档。查找不读取数据根，不创建研究或自动挑选收益最高的结果。','muted',True)
+        layout.addWidget(self.archive_note)
+        self.archive_left_button = button('选到左侧', lambda: self.choose_archive('left'))
+        self.archive_right_button = button('选到右侧', lambda: self.choose_archive('right'))
+        self.archive_inspect_button = button('核验选中归档', self.inspect_archive)
+        layout.addWidget(row(self.archive_left_button,self.archive_right_button,self.archive_inspect_button))
+        self.archive_query.textChanged.connect(self.invalidate_archive_listing)
+        self.archive_query.returnPressed.connect(lambda: self.load_archives(0))
+        self.archive_list.currentItemChanged.connect(self.archive_selection_changed)
+        self.archive_selection_changed()
         form = QFormLayout(); self.left_run = QLineEdit(); self.right_run = QLineEdit()
         form.addRow('左侧实验 run_id',self.left_run); form.addRow('右侧实验 run_id',self.right_run); layout.addLayout(form)
         layout.addWidget(button('读取并核对结果',self.compare_results))
         self.result_details = BusinessDetails({}); layout.addWidget(self.result_details,1)
         self.left_run.textChanged.connect(self._clear_results); self.right_run.textChanged.connect(self._clear_results)
         self.tabs.addTab(page,'结果对照')
+
+    def invalidate_archive_listing(self, *_):
+        self._archive_generation += 1; self._archive_page = None
+        self.archive_list.clear(); self.archive_next_button.setEnabled(False)
+        self.archive_note.setText('查询已修改，请重新查找；旧列表不再用于选择。')
+        self.archive_selection_changed()
+
+    def archive_selection_changed(self, *_):
+        item = self.archive_list.currentItem()
+        record = item.data(Qt.ItemDataRole.UserRole) if item else None
+        enabled = not self.busy and bool(record) and record.get('status') == 'completed'
+        for control in (self.archive_left_button,self.archive_right_button,self.archive_inspect_button):
+            control.setEnabled(enabled)
+
+    def _archive_read(self, work, done):
+        if self.busy: return
+        generation = self._archive_generation; self.busy = True; self.tabs.setEnabled(False)
+        for control in (self.import_button,self.preview_button,self.export_button,self.use_button): control.setEnabled(False)
+        self.archive_selection_changed()
+        def finished(value, error):
+            if sip.isdeleted(self): return
+            self.busy = False; self.tabs.setEnabled(True)
+            for control in (self.import_button,self.preview_button,self.export_button): control.setEnabled(True)
+            self.use_button.setEnabled(self.compiled is not None)
+            if generation != self._archive_generation:
+                self.status.setText('查询已变化，忽略旧查询返回值，请重新查找。')
+            elif error:
+                self.result_details.setPlainText('{}'); self.status.setText('归档读取失败：'+str(error))
+                self.archive_note.setText('读取未完成，不将失败解释为空目录。')
+            else: done(value)
+            self.archive_selection_changed()
+        try: self.host.async_call(work,finished,guarded=False)
+        except Exception as error: finished(None,str(error))
+
+    def load_archives(self, offset=0):
+        if self.busy: return
+        from quantlab.trading.strategy_run_catalog import list_strategy_runs
+        query = self.archive_query.text()
+        self.archive_list.clear(); self._archive_page = None; self.archive_next_button.setEnabled(False)
+        self.archive_note.setText('正在读取有界归档目录…')
+        def loaded(value):
+            self._archive_page = value
+            for record in value['runs']:
+                state = '已完成（未深验）' if record['status']=='completed' else record['status']+'（不可选作结果）'
+                item = QListWidgetItem(record['name']+' @ '+record['version']+' · '+state+' · '+record['run_id'])
+                item.setData(Qt.ItemDataRole.UserRole,record); self.archive_list.addItem(item)
+            self.archive_next_button.setEnabled(bool(value.get('has_more')) and value.get('next_offset') is not None)
+            message = f"本页发现 {len(value['runs'])} 条；仅元信息核验。"
+            if value.get('has_more'): message += ' 仍有候选，请使用下一页；当前不是完整匹配总数。'
+            if value.get('incomplete'):
+                message += ' 目录不完整：' + str(len(value.get('errors',[]))) + ' 项错误。'
+                message += ' ' + '; '.join(str(e.get('run_id',''))+': '+str(e.get('message',e.get('reason',e.get('error','读取失败')))) for e in value.get('errors',[])[:3])
+            self.archive_note.setText(message); self.status.setText('本页目录读取完成；失败归档保留，核验及对照不会自动执行研究。')
+        self._archive_read(lambda:list_strategy_runs(self.output,query=query,offset=offset,limit=20),loaded)
+
+    def next_archive_page(self):
+        if self._archive_page and self._archive_page.get('has_more'):
+            offset = self._archive_page.get('next_offset')
+            if offset is not None: self.load_archives(offset)
+
+    def choose_archive(self, side):
+        if self.busy: return
+        item = self.archive_list.currentItem(); record = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if not record or record.get('status')!='completed': return
+        target = self.left_run if side=='left' else self.right_run
+        target.setText(record['run_id'])
+        self.status.setText('已选择实验编号，尚未核验完整归档；点击读取并核对结果。')
+
+    def inspect_archive(self):
+        if self.busy: return
+        item = self.archive_list.currentItem(); record = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if not record or record.get('status')!='completed': return
+        from quantlab.trading.strategy_run_catalog import get_strategy_run
+        self.result_details.setPlainText('{}')
+        def loaded(value):
+            self.result_details.setPlainText(encode(value))
+            self.status.setText('归档内部一致性已核验；这是历史证据，不代表Alpha、重新运行或批准。')
+        self._archive_read(lambda:get_strategy_run(self.output,record['run_id']),loaded)
 
     def invalidate(self, *_):
         if self._loading: return

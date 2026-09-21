@@ -11,6 +11,7 @@ from quantlab.agent.playbook_tools import PlaybookResearchAPI, TOOLS as PLAYBOOK
 import copy
 from quantlab.agent.research_skill_tools import ResearchSkillResearchAPI
 from quantlab.storage.codec import encode
+from quantlab.agent.catalog import resolve_research_output
 
 WRITE_PREFIXES=('propose_','record_')
 
@@ -70,12 +71,12 @@ class MCPResearchAPI(MarketDataResearchAPI):
 
 
 def build_mcp_api(output,data_root=None):
-    output=Path(output).resolve();data_root=Path(data_root).resolve() if data_root else None
+    output=resolve_research_output(output);data_root=Path(data_root).resolve() if data_root else None
     return ResearchSkillResearchAPI(LimitResearchAPI(MCPResearchAPI(output,data_root),forecaster='ai:mcp'),data_root)
 
 
 def build_mcp_server(output,data_root=None):
-    output=Path(output).resolve();data_root=Path(data_root).resolve() if data_root else None
+    output=resolve_research_output(output);data_root=Path(data_root).resolve() if data_root else None
     api=build_mcp_api(output,data_root)
     server=MCPServer('niuniu-research',version='0.1.0',
         description='牛牛个人量化研究工作台的标准MCP接口',
