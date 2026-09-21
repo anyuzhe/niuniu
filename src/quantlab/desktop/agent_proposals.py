@@ -1,5 +1,6 @@
 """Human proposal review; approval is never a model-facing tool."""
 import json
+from pathlib import Path
 from uuid import uuid4
 from PyQt6 import sip
 from PyQt6.QtCore import Qt
@@ -17,6 +18,7 @@ class ProposalDialog(QDialog):
         self.requested_selection=selected_id
         super().__init__(window);self.window=window;self.selected=None;self.busy=False
         self.service=ProposalService(window.output,window.data_root);self.request_id=str(uuid4())
+        self.input_check=None;self._input_check_generation=0;self._input_closed=False
         self.setWindowTitle('研究提案与人工批准');self.resize(1080,860)
         box=QVBoxLayout(self)
         box.addWidget(label('草稿 → 预检 → 保存固定提案 → 人工批准 → 原任务队列。聊天助手只能生成提案，批准在此进行。','note',True))
@@ -26,6 +28,10 @@ class ProposalDialog(QDialog):
         self.draft=QPlainTextEdit();self.draft.setPlaceholderText('可用上方业务表单，或粘贴现有研究配置 JSON。')
         self.draft.setMaximumHeight(150);self.draft.setAccessibleName('研究提案草稿');box.addWidget(self.draft)
         box.addWidget(row(button('仅预检配置与预算',self.preview),button('保存待批准提案',self.create,True),button('刷新已保存提案',self.refresh)))
+        self.input_check_button=button('核对草稿与归档输入（只读）',self.check_inputs)
+        box.addWidget(self.input_check_button)
+        self.input_status=label('归档输入兼容性尚未核对；本检查不批准、不运行，也不修改草稿。','muted',True)
+        box.addWidget(self.input_status)
         self.listing=QListWidget();self.listing.setMaximumHeight(130);box.addWidget(self.listing)
         self.details=BusinessDetails({});box.addWidget(self.details,1)
         self.confirm=QCheckBox('我已核对选中的已保存提案、预算和数据口径；不是批准上方未保存草稿。');box.addWidget(self.confirm)
@@ -43,8 +49,14 @@ class ProposalDialog(QDialog):
 
     def draft_changed(self):
         self.request_id=str(uuid4());self.confirm.setChecked(False)
+        self._input_check_generation+=1
+        if self.input_check is not None:self.details.setPlainText('{}')
+        self.input_check=None
+        self.input_status.setText('草稿已变化；旧输入核对失效，请重新核对。')
 
     def select(self,current=None,previous=None):
+        self._input_check_generation+=1;self.input_check=None
+        self.input_status.setText('当前显示对象已变化；草稿的旧核对不适用于选中提案，请按明确草稿重新核对。')
         self.selected=current.data(Qt.ItemDataRole.UserRole) if current else None
         self.confirm.setChecked(False);self.run_id=None
         if self.selected:
@@ -53,7 +65,7 @@ class ProposalDialog(QDialog):
             self.status.setText(f"已保存提案 {self.selected['proposal_id'][:8]} · {self.selected['status']} · {e['symbols']} 证券 / {e['calendar_days']} 自然日 / {e['leaf_studies']} 叶子研究。完整配置与限制见明细。")
         self.actions()
 
-    def perform(self,work,done=None):
+    def perform(self,work,done=None,on_error=None):
         if self.busy:return
         self.busy=True;self.confirm.setChecked(False)
         self.controls=[(b,b.isEnabled()) for b in self.findChildren(QPushButton)]
@@ -65,10 +77,51 @@ class ProposalDialog(QDialog):
             for b,enabled in self.controls:
                 if not sip.isdeleted(b):b.setEnabled(enabled)
             self.draft.setEnabled(True);self.listing.setEnabled(True);self.confirm.setEnabled(True)
-            if error:self.status.setText('未完成：'+error)
+            if error:
+                self.status.setText('未完成：'+error)
+                if on_error:on_error(error)
             elif done:done(value)
             self.actions()
-        self.window.async_call(work,finished,guarded=False)
+        try:self.window.async_call(work,finished,guarded=False)
+        except Exception as error:finished(None,str(error))
+
+    def closeEvent(self,event):
+        self._input_closed=True;self._input_check_generation+=1;self.input_check=None
+        super().closeEvent(event)
+
+    def reject(self):
+        self._input_closed=True;self._input_check_generation+=1;self.input_check=None
+        super().reject()
+
+    def done(self,result):
+        self._input_closed=True;self._input_check_generation+=1;self.input_check=None
+        super().done(result)
+
+    def check_inputs(self):
+        if self.busy or self._input_closed:return
+        from quantlab.data.archived_research_check import check_archived_daily_research
+        text=self.draft.toPlainText();self.listing.setCurrentRow(-1)
+        self.confirm.setChecked(False);self.input_check=None
+        self._input_check_generation+=1;generation=self._input_check_generation
+        output,root=self.window.output,self.window.data_root
+        self.details.setPlainText('{}')
+        if root is None or Path(output).resolve()!=self.service.output or Path(root).resolve()!=self.service.data_root:
+            self.input_status.setText('原提案面板的数据根或工作空间已过期，请重新打开；未读取输入。');return
+        self.input_status.setText('正在只读核对完整输入包与当前草稿；不计算因子、不保存或批准提案。')
+        def current():
+            return not self._input_closed and generation==self._input_check_generation and self.draft.toPlainText()==text and self.window.output==output and self.window.data_root==root
+        def failed(error):
+            self.input_check=None
+            if not self._input_closed:self.input_status.setText('输入核对失败或已失效：'+str(error))
+        def loaded(report):
+            if not current():failed('草稿、工作空间或数据根已变化，忽略旧结果');return
+            self.input_check=report;self.details.setPlainText(encode(report))
+            if report['compatible']:
+                message='当前行情输入匹配：'+report['dataset_id']+'；未检验因子预热和统计样本充分性，仍须原人工批准。'
+            else:
+                message='输入不匹配／未覆盖依赖：'+'；'.join(item['role']+': '+item['message'] for item in report['blockers'])
+            self.input_status.setText(message);self.status.setText('输入核对完成；草稿未修改、未保存、未批准、未执行。')
+        self.perform(lambda:check_archived_daily_research(root,parse_spec(text)),loaded,failed)
 
     def render(self,records,selected_id=None):
         self.listing.clear();self.selected=None;self.run_id=None;self.confirm.setChecked(False)

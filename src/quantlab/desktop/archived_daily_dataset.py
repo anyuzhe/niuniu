@@ -58,6 +58,7 @@ class ArchivedDailyDatasetDialog(QDialog):
         self.closed = False
         self._next_token = 1
         self._pending = {}
+        self._selected_input = None
         self.preview_hash = None
         self.preview_value = None
         self._preview_request = None
@@ -109,6 +110,8 @@ class ArchivedDailyDatasetDialog(QDialog):
         self.inspect_button = button("深验已有包", self.inspect_package)
         self.use_button = button("人工选择为研究输入", self.use_package, True)
         box.addWidget(row(self.inspect_button, self.use_button, button("关闭", self.reject)))
+        self.proposals_button = button('进入研究提案（不执行）', self.open_proposals)
+        box.addWidget(self.proposals_button)
 
         self.summary = label(
             "初始为空：请先手动发现或填写范围。发现只展示 capture 元信息/errors，不会自动选择证券或日期。",
@@ -179,6 +182,19 @@ class ArchivedDailyDatasetDialog(QDialog):
         self.use_button.setEnabled(
             available and self.inspected_dataset_id is not None and self.inspected_path is not None
         )
+        self.proposals_button.setEnabled(available and self._selected_input is not None and
+            self._current_context() == (self._opening_output, self._path_key(self._selected_input['path'])))
+
+    def open_proposals(self):
+        if self.busy or self.closed or self.closing:return
+        selected=self._selected_input
+        if selected is None or self._current_context() != (self._opening_output, self._path_key(selected['path'])):
+            self.status.setText('请先由宿主选择输入；当前工作空间或数据根不匹配，未打开提案。')
+            return
+        from .agent_proposals import ProposalDialog
+        dialog=ProposalDialog(self.window)
+        self.window.show_dialog(dialog)
+        dialog.input_status.setText('当前根来自所选归档输入；请填写自己的研究草稿，再点击“核对草稿与归档输入”。没有自动填入策略或授权。')
 
     def set_busy(self, busy, operation=None):
         """Set the dialog's own guard before asking the host to schedule work."""
@@ -488,6 +504,8 @@ class ArchivedDailyDatasetDialog(QDialog):
             self.details.setPlainText(encode(result))
             self.summary.setText("宿主已完成人工选择并核对 dataset_id=" + expected_dataset_id + "。")
             self.status.setText("研究输入已由宿主显式切换；本页未创建授权、提案或任务。")
+            self._selected_input={'dataset_id':expected_dataset_id,'path':path}
+            self._refresh_actions()
 
         self._pending[token] = {
             "operation": "select",
@@ -519,6 +537,7 @@ class ArchivedDailyDatasetDialog(QDialog):
 
     def _mark_closed(self):
         self.closed = True
+        self._selected_input = None
         self.set_busy(False)
         self._pending.clear()
         self.preview_hash = None

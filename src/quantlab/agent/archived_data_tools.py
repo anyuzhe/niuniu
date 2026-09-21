@@ -1,7 +1,7 @@
 """Generic read-only access to host-bound archived market data.
 
-This wrapper intentionally creates no provider, performs no collection, and does not
-normalize retrospective vendor observations into PIT market-rule facts.
+This wrapper performs no collection or research execution. Explicit input checks may
+read the finite package Provider; no retrospective observation becomes a PIT fact.
 """
 from __future__ import annotations
 
@@ -28,6 +28,8 @@ TOOLS = [
     schema('inspect_archived_daily', '读取并核验指定capture中1-10只证券、最多371自然日日线；保留供应商原字段，不推导涨跌停价、流通股本或PIT。',
            {'capture_id': TEXT, 'symbols': TEXT, 'start': TEXT, 'end': TEXT}),
     schema('get_archived_daily_dataset', '只读核验宿主data_root中已显式生成的归档日线研究输入包；返回固定证券、范围、源证据和限制。只支持raw日线，不创建输入包、不批准、不执行；不能代替原始QM50规格。', {}),
+    schema('check_archived_daily_research', '只读核对明确研究spec与宿主选定F9日线包：证券、日期、周期、复权和背景输入；返回全部不匹配原因。不是审批或统计样本充分性证明，不改配置、不创建任务。',
+           {'spec_json': {'type': 'string', 'maxLength': 65536}}),
     schema('get_tdx_data_status', '只读查看已配置TDX湖状态；剔除大体计划字段。不联网、不采集，能力不代表数据存在。', {}),
     schema('read_tdx_data', '只读查询TDX catalog中的tdx_*数据；返回original_record、单位、observed_at和source_id，不标准化、不PIT升级。',
            {'family': TEXT, 'symbol': TEXT, 'start': TEXT, 'end': TEXT,
@@ -246,6 +248,13 @@ class ArchivedMarketDataAPI:
                         if key != 'path'}  # The host binds the root; model output need not expose it.
                 evidence = [{'kind': 'archived_daily_dataset', 'dataset_id': data['dataset_id'],
                              'qualification': 'research_only', 'historical_available_at_verified': False}]
+            elif name == 'check_archived_daily_research':
+                from quantlab.agent.planning import parse_spec
+                from quantlab.data.archived_research_check import check_archived_daily_research
+                data = check_archived_daily_research(self.data_root, parse_spec(args['spec_json']))
+                evidence = [{'kind': 'archived_daily_dataset', 'dataset_id': data['dataset_id'],
+                             'spec_digest': data['spec_digest'], 'check_hash': data['check_hash'],
+                             'compatible': data['compatible'], 'qualification': 'research_only'}]
             elif name == 'get_tdx_data_status':
                 data = _tdx_status(self.data_root)
                 evidence = [{'kind': 'tdx_root_config', 'configured': bool(data.get('configured'))}]
@@ -257,7 +266,7 @@ class ArchivedMarketDataAPI:
                 raise ValueError('Unknown archived data tool')
             return _ok(name, data, evidence=evidence)
         except Exception as exc:
-            return _error(name, _classify(exc), type(exc).__name__ + ': ' + str(exc), detail={'exception_type': type(exc).__name__})
+            return _error(name, getattr(exc, 'code', None) or _classify(exc), type(exc).__name__ + ': ' + str(exc), detail={'exception_type': type(exc).__name__})
 
 
 __all__ = ['ArchivedMarketDataAPI', 'TOOLS', 'NAMES']
