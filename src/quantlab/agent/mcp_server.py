@@ -7,6 +7,8 @@ from mcp.server import MCPServer
 from mcp import types
 from quantlab.agent.limit_research_tools import LimitResearchAPI
 from quantlab.agent.market_data_tools import MarketDataResearchAPI
+from quantlab.agent.playbook_tools import PlaybookResearchAPI, TOOLS as PLAYBOOK_TOOLS
+import copy
 from quantlab.agent.research_skill_tools import ResearchSkillResearchAPI
 from quantlab.storage.codec import encode
 
@@ -39,9 +41,37 @@ def _tool_function(api,definition):
     return invoke
 
 
+class MCPResearchAPI(MarketDataResearchAPI):
+    """Compose missing read-only Playbook tools without replacing existing market tool contracts."""
+    def __init__(self, output, data_root=None):
+        super().__init__(output, data_root)
+        self._playbook_api = PlaybookResearchAPI(output, data_root)
+        existing = {tool['name'] for tool in super().schemas()}
+        self._playbook_schemas = [copy.deepcopy(tool) for tool in PLAYBOOK_TOOLS
+            if tool['name'].startswith(('get_', 'list_')) and tool['name'] not in existing]
+        self._playbook_names = {tool['name'] for tool in self._playbook_schemas}
+
+    def schemas(self):
+        return super().schemas() + copy.deepcopy(self._playbook_schemas)
+
+    def call(self, name, arguments):
+        if name in self._playbook_names:
+            return self._playbook_api.call(name, arguments)
+        result = super().call(name, arguments)
+        if name == 'get_capabilities' and result.get('ok'):
+            result['data'].update(playbook_lab_available=True, playbook_write_model=False,
+                strategy_source_available=True, strategy_source_write_model=False,
+                agent_scorecard_available=True, agent_scorecard_write_model=False,
+                agent_scorecard_composite_score=False,
+                selection_outcome_available=True, selection_outcome_write_model=False,
+                selection_outcome_auto_reweighting=False,
+                tools=[tool['name'] for tool in self.schemas()])
+        return result
+
+
 def build_mcp_api(output,data_root=None):
     output=Path(output).resolve();data_root=Path(data_root).resolve() if data_root else None
-    return ResearchSkillResearchAPI(LimitResearchAPI(MarketDataResearchAPI(output,data_root),forecaster='ai:mcp'),data_root)
+    return ResearchSkillResearchAPI(LimitResearchAPI(MCPResearchAPI(output,data_root),forecaster='ai:mcp'),data_root)
 
 
 def build_mcp_server(output,data_root=None):

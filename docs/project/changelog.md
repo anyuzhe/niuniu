@@ -1428,3 +1428,15 @@
 - 验证：18个原功能模块106项逐模块通过；首个总进程480秒超时停在headless模块，随后headless独立6项通过。最终新旧选择复盘15项、无硬链接2项、Playbook工具3项、headless6项共26项通过且4个产品文件测试前后SHA一致；文件系统/桌面4项也在Lexar卷临时目录通过。去重合计22模块131项，新增11项，不把重跑累计成更多测试。
 - 限制：一次早期组合回归180秒超时；最终26项中60秒faulthandler输出定位到外置卷依赖导入，随后正常结束为OK(69.492秒)，不是测试失败。Pi实施任务有中断，独立Reviewer任务未产出结论；最终修改由主控逐处复核并补回归，不声称独立Reviewer PASS。不运行全仓重负载、真实桌面、付费模型或盈利验证。日志/结果保存在本轮新目录artifacts/functional-validation-20260921。
 - Git：只将本轮4个产品文件、3个测试文件与3份现有说明形成独立提交；不包含TDX、行情或artifacts。普通推送及远端SHA核对以本轮实际回执为准，失败不得视为已推送。
+
+### 2026-09-21｜[按序实施] 跨层生命周期、MCP接线与组合模板目录
+
+- 顺序：先同步积压Git提交，再验证完整功能链，最后落地策略能力发现的首个增量。旧三笔提交已普通push到51b0fc4并取得成功回执；SSH 443连接间歇关闭，独立远端SHA复核与本轮新提交推送以最新回执为准，不修改网络配置或强推。
+- 缺陷修复：标准MCP原先只组合MarketData链，缺少Playbook/来源/选择复盘读取层。新增MCPResearchAPI仅补既有get/list只读工具，重名MarketSnapshot仍保留原市场API合同。新增测试先复现缺失，再经真实进程内Client和stdio新进程查询同一选择/归档，验证工具唯一、只读注解、坏记录披露及执行权限不扩大。首轮Reviewer仍不读取复盘结果或Scorecard。
+- 策略发现：在原ReadOnlyResearchAPI增加list_research_templates/get_research_template，直接读取16个原组合模板；分页、精确ID/版本、来源摘要哈希和原theory/theory_version提案字段均保留。逐一验证16个模板与resolve_template一致且可进入既有preview；不注册新因子、改公式、代定交易参数、把模板计为成品策略或放宽Grant/QM50绑定。
+- 跨层研究测试：脚本化Provider驱动正式headless ChatRuntime发现工具、记录假设；临时宿主Grant允许一次真实JobQueue执行并冻结实际输入，随后读证据/保存finding；同turn/spec重试不新增job，新spawn进程读回相同run_id、source SHA和预算used=1/remaining=0。不是自主模型质量或策略有效性验证。
+- 跨层模拟测试：通用非Qimo Playbook由SYSTEM_PREDICTION桥接WATCH，再经人工READY/PLAN_OPEN及宿主确认PaperPlan/执行，得到模拟fill、OPEN和D1复盘；新spawn进程重复交付不增加订单、成交、账户版本或决策。未确认与NO_TRADE分支不生成Paper账户、订单或虚假股票Decision。
+- 验证：新增3个MCP场景、4个模板用例、3个生命周期场景，共10项。最终主控重跑14模块88项全部通过，4个产品文件及3个新增测试文件前后SHA一致；原MCP、聊天、记忆、选择复盘、核心、授权、Paper桥接回归均包含。Qt引用另做offscreen独立验证，结果见ui-regression.json，不称真实桌面验收。
+- 复核：独立Pi只读审查4个产品文件及MCP/模板测试，未发现有证据支持的权限/版本/工具接线缺陷；主控另检查并改进生命周期测试的冷启动等待和子进程清理。实施worker早期夹具错误保留在日志，最后在测试内修正，未为通过测试改产品合同。
+- 范围：未访问niuniu-data、运行正式研究/业务模型/行情采集、启停公共服务、修改TDX治理文件或原策略公式。新临时测试与日志位于artifacts/functional-lifecycle-20260921，artifacts不进Git。F3b资金/持有/退出/费用/执行的完整策略封装仍是下一阶段，不把本轮目录发现算成已完成。
+- Git：本条与本轮4个产品文件、3个新测试及3份既有文档组成独立提交；仅普通push并核对回执，精确SHA在Git历史与本轮commit/push记录中，不自称已部署。

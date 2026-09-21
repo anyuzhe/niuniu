@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from uuid import UUID
 from quantlab.app import default_registry
-from quantlab.storage.codec import encode
+from quantlab.storage.codec import digest, encode
 from quantlab.storage.experiments import load_record_fields
 from quantlab.workbench.server import ArtifactCatalog
 
@@ -21,6 +21,8 @@ TOOLS = [
     schema('get_capabilities', '查询当前只读研究接口的能力和限制。', {}),
     schema('search_factors', '搜索实际注册因子，空关键词列出全部。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('describe_factor', '先用 search_factors 获取真实版本，再读取定义和默认参数；version 不支持 latest 或空字符串，不能猜测。', {'factor_id': TEXT, 'version': TEXT}),
+    schema('list_research_templates', '只读检索实际组合研究模板，空query列出全部；模板不是成品交易策略，不创建研究。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
+    schema('get_research_template', '读取精确版本模板的规则、组件、来源哈希与theory/theory_version提案字段；不批准、不执行，不替代QM50原始规格。', {'template_id': TEXT, 'version': TEXT}),
     schema('list_experiments', '检索当前目录实际实验，包含失败记录。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_experiment', '读取指定实验的统计摘要和实际证据引用。', {'run_id': TEXT}),
     schema('get_job', '读取现有任务状态，不提交或取消任务。', {'job_id': TEXT}),
@@ -89,6 +91,7 @@ class ReadOnlyResearchAPI:
         if name == 'get_capabilities':
             return {'version': '1.0', 'access': 'read_only', 'tools': [t['name'] for t in TOOLS],
                     'model_connected': False, 'execution_tools_available': False,
+                    'research_template_catalog_available': True, 'template_execution_authorized': False,
                     'limitations': ['只读研究接口，不是已经接入大模型的对话助手。',
                         '历史行业/每日市值、严格 PIT 与官方历史涨跌停规则仍有资料缺口。',
                         '实验成功状态不代表统计有效、真实可成交或未来盈利。',
@@ -111,6 +114,30 @@ class ReadOnlyResearchAPI:
                 description['expression_contract']=restricted_dsl_contract()
             return json.loads(encode(description)), [
                 {'kind': 'factor', 'factor_id': args['factor_id'], 'version': args['version']}]
+        if name == 'list_research_templates':
+            from quantlab.theory.templates import templates
+            values = [item for item in templates() if args['query'].casefold() in encode(item).casefold()]
+            fields = ('template_id', 'version', 'name', 'scope', 'concepts')
+            rows = [{key: item[key] for key in fields}
+                    for item in values[args['offset']:args['offset'] + args['limit']]]
+            return {'templates': rows, 'total': len(values), 'offset': args['offset'],
+                    'category': 'COMBINATION_RESEARCH_TEMPLATE', 'complete_trading_strategy': False}, []
+        if name == 'get_research_template':
+            from quantlab.theory.templates import resolve_template
+            try:
+                parameters, origin = resolve_template(args['template_id'], self.registry, args['version'])
+            except ValueError as error:
+                raise ValueError('INVALID_ARGUMENT：找不到精确模板版本；请先列出模板，不接受空版本或latest。') from error
+            components = [{'kind': 'factor', 'factor_id': spec['factor_id'], 'version': spec['version']}
+                          for spec in parameters['inputs'].values()]
+            return {'template': origin, 'template_digest': digest(origin),
+                    'submission_fields': {'theory': args['template_id'], 'theory_version': args['version']},
+                    'category': 'COMBINATION_RESEARCH_TEMPLATE', 'complete_trading_strategy': False,
+                    'execution_authorized': False,
+                    'limitations': ['沿用原模板定义和现有提案审批；证券、日期、周期与预算必须由宿主范围确定。',
+                        '不能同时覆盖factor/version/parameters/grid；需要改规则时应另建明确版本。',
+                        'Research Session Grant v1不允许theory/context/execution；读取模板不扩大授权。',
+                        '模板是研究假设，不包含完整仓位、持有退出与成交合同，不构成盈利证明。']}, components
         if name == 'list_experiments':
             result = self.catalog.list(**args)
             for row in result['runs']:

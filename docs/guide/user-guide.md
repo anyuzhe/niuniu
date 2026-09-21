@@ -95,6 +95,14 @@ quantlab run \
 
 实现入口：[组合模板](../../src/quantlab/theory/templates.py)、[理论研究](../../src/quantlab/experiments/theory_study.py)、[成交研究](../../src/quantlab/experiments/execution.py)、[Qimo 模拟流程](../../src/quantlab/trading/qimo_paper.py)。
 
+### 通过助手发现组合研究模板
+
+本地聊天和标准 MCP 均支持 `list_research_templates(query, offset, limit)` 与 `get_research_template(template_id, version)`；首轮 Reviewer 也能读取这些事前规则定义。目录直接来自同一 `theory/templates.py`，不维护另一套手写清单。可以要求助手“列出现有组合研究模板，区分研究信号和完整交易策略”，然后按返回的精确 ID/版本读取规则、组件和来源哈希；不接受 `latest` 或猜测版本。
+
+模板详情返回 `submission_fields={theory, theory_version}`，用于原有 `preview_experiment/propose_experiment`。证券、日期、周期、模式等仍需按实际宿主范围固定；固定模板不能同时覆盖 `factor/version/parameters/grid`。读取模板不会启动研究，Research Session Grant v1 仍拒绝 theory/context/execution；宿主锁定 QM50 原始规格时也不会开放通用模板作为替代。
+
+策略统一封装按以下顺序继续，而不是把模板自动登记成成品策略：先固定信号版本与输入范围，再显式给出资金、持仓/退出、费用和成交配置，最后通过既有审批、ExecutionStudy/Paper 与复盘链验证。当前完成的是目录发现和通用链路的合成验收；没有替用户指定交易参数、增加已验证策略或部署常驻执行。
+
 ## 4. AI 问答与正式研究
 
 在 AI 助手中明确证券代码或本地正式名称，可触发本轮明确范围的一次只读行情查询；唯一证券上下文的明确追问可以沿用，多股歧义不猜。配置扶摇后以扶摇为主，公开网页共识用于校验/回退；冲突与缺失需看返回的来源、时间和限制。
@@ -104,6 +112,8 @@ quantlab run \
 外部经验先作为来源或 DRAFT 假设。Research Skill Library 只读检索不等于已把外部规则写入 Playbook；显示原文不代表该方法已验证。
 
 Playbook 选择结果复盘由宿主运行 `niuniu-selection-outcomes --output artifacts --auto-all` 生成（重新安装本项目前可用 `python -m quantlab.agent.selection_outcomes_cli`）。它比较同一冻结候选集内选中与未选中证券的后续信号收益，用来发现错杀或过度保守；不是可成交收益或 Alpha，不会自动修改 Playbook 或权重。AI 助手只能读取已生成的结果。
+
+标准 MCP 已补齐同源只读 Playbook/来源/选择复盘工具；既有同名 MarketSnapshot 工具保持原实现与参数合同。可通过三个 `get/list_selection_outcome_*` 工具读取宿主已生成的结果和不完整提示，不产生第二份归档。首轮 Reviewer 仍不开放选择结果复盘及 Scorecard，MCP 不开放研究批准、Grant 提交、Paper 执行、下载或交易权限。
 
 同一窗口重复运行会核对实际使用的交易日和 accepted 日线：日历仅正常延长时保留原始 v1 记录、哈希和创建时间，同时补齐新的成熟窗口；窗口内交易日或日线发生实质修订仍报告 `REVIEW_CONFLICT`。每次 build 重新观察输入，不沿用上次缺日或旧修订缓存。多个正式服务写入由进程锁串行化；兼容不支持硬链接的文件系统，不会因为两个服务同时运行而覆盖不同结果。
 
