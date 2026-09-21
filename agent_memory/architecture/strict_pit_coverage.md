@@ -13,7 +13,7 @@ Strict PIT Coverage 是证据缺口地图，不是数据集证书，也禁止生
 
 ## 性能与权限
 
-- 真实 MQC 默认优先使用只读 `catalog/mqc.duckdb` 做历史 bar inventory；没有 catalog 时才回退 Parquet metadata，不扫描数值列做统计结论。
+- 历史 bar inventory 只统计宿主数据根内明确枚举且无符号链接的文件：内存 DuckDB 仅扫描日期、证券及抓取时点列，最多10000个文件、2线程、512MB且禁磁盘spill。不得直接执行复制来的 `catalog/mqc.duckdb` 视图，因为SQL可能仍指向旧数据根；不打开或自动修复正式catalog。小表与silver inventory同样检查祖先目录和文件链接；路径检查是读源约束，不是PIT或行情质量认证。
 - System Health 不在页面刷新时深扫 5215 个 Parquet；它可深验受控的 PIT Universe、SecurityStatus v2 与 Official MarketRules receipt/官方文档小库，但必须明确这是全局 archive inventory，规模增长后需保持有界。
 - `niuniu-pit-coverage`、AI/MCP `get_strict_pit_coverage` 和桌面 Coverage 均只读；模型无 archive/download/certify 权限。
 - 当前 `/Volumes/Lexar/niuniu-data` 已有 `security_status=14` verified sparse statements（7只股票），其它三类 statement、PIT Universe v1 与 SecurityStatus v2 完整逐日 snapshot 均为0；历史 bars 很多不改变覆盖不完整这一事实。2026-09-17 staging中的5,563只review baseline和规范addendum只属候选inventory，不计入任何receipt或coverage。

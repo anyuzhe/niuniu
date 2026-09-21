@@ -32,6 +32,9 @@ niuniu-data/lake/
 
 该布局不是任意 Parquet/CSV 的自动识别规则。字段与编码以 [mqc.py](../../src/quantlab/data/mqc.py)、[validation.py](../../src/quantlab/data/validation.py) 为准。内部证券编码例如 `sh.600000`；高周期数据须按真实交易时段和 available_at 对齐，不能从 5m 反推真实 1m。
 
+Coverage 的日线库存从宿主根内实际文件名单读取，返回 `inventory_source=root_bound_parquet_scan`、`catalog_views_used=false`；不使用持久catalog中的旧SQL视图，不修改数据库。复制数据目录不保证复制来的视图已改指新根；当前索引引用的治理与历史manifest路径保留是不同任务，不能批量替换历史证据。库存小表和silver同样拒绝指向根外的链接，读取失败不当作空库；库存存在仍不证明逐日完整性、正确复权或严格时点资格。
+
+
 AR 回溯日线还有独立的 pack 合并与读取实现，见 [retro_daily.py](../../src/quantlab/data/retro_daily.py)。历史小文件到 pack 的迁移已记录在 AR 验收中；本轮只整理文档，不重复执行合并或删除数据。前瞻日增量见 [forward_daily.py](../../src/quantlab/data/forward_daily.py)。
 
 ## 3. 研究价格和账户价格

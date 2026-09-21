@@ -59,6 +59,82 @@ class StrictPITCoverageTests(unittest.TestCase):
         self.assertIn('HISTORICAL_STATUS_FIELDS_NOT_IN_BAR_LAKE',codes)
         self.assertIn('INDUSTRY_SOURCE_IS_SNAPSHOT_ONLY',codes)
 
+    def test_inventory_ignores_catalog_view_bound_to_other_data_root(self):
+        import duckdb
+        self.seed_retrospective()
+        with tempfile.TemporaryDirectory() as outside:
+            foreign=Path(outside)/'foreign.parquet'
+            pl.DataFrame({'date':[date(2001,1,1)],'code':['sh.600999'],
+                'fetch_ts':['2001-01-02']}).write_parquet(foreign)
+            catalog=self.root/'catalog/mqc.duckdb';catalog.parent.mkdir()
+            with duckdb.connect(str(catalog)) as con:
+                con.execute("CREATE VIEW bronze_stock_kline_daily AS SELECT * FROM read_parquet('"+
+                    str(foreign).replace("'","''")+"')")
+            before=catalog.read_bytes()
+            value=strict_pit_coverage(self.root)['retrospective_inventory']['bars']
+            self.assertEqual(value['rows'],4)
+            self.assertEqual(value['date_range'],{'min':'2025-01-02','max':'2025-01-03'})
+            self.assertEqual(value['symbols'],2)
+            self.assertEqual(catalog.read_bytes(),before)
+
+    def test_inventory_does_not_open_broken_or_locked_catalog(self):
+        self.seed_retrospective()
+        catalog=self.root/'catalog/mqc.duckdb';catalog.parent.mkdir();catalog.write_bytes(b'not a database')
+        value=strict_pit_coverage(self.root)['retrospective_inventory']['bars']
+        self.assertEqual(value['rows'],4)
+        self.assertEqual(value['inventory_source'],'root_bound_parquet_scan')
+        self.assertEqual(catalog.read_bytes(),b'not a database')
+
+    def test_inventory_rejects_symlinked_daily_file(self):
+        from quantlab.data.pit_coverage import _bars_inventory
+        self.seed_retrospective()
+        folder=self.root/'lake/bronze/provider=baostock/stock_kline_daily'
+        with tempfile.TemporaryDirectory() as outside:
+            foreign=Path(outside)/'foreign.parquet'
+            pl.DataFrame({'date':[date(2001,1,1)],'code':['sh.600999']}).write_parquet(foreign)
+            (folder/'sh_600999.parquet').symlink_to(foreign)
+            with self.assertRaisesRegex(ValueError,'symlink'):
+                _bars_inventory(self.root)
+
+    def test_inventory_missing_fetch_timestamp_is_explicit_not_error(self):
+        from quantlab.data.pit_coverage import _bars_inventory
+        folder=self.root/'lake/bronze/provider=baostock/stock_kline_daily';folder.mkdir(parents=True)
+        pl.DataFrame({'date':[date(2025,1,2)],'code':['sh.600000']}).write_parquet(folder/'sh_600000.parquet')
+        value=_bars_inventory(self.root)
+        self.assertEqual(value['rows'],1)
+        self.assertEqual(value['files_with_fetch_ts'],0)
+        self.assertEqual(value['fetch_ts_range'],{'min':None,'max':None})
+        self.assertFalse(value['strict_pit_certified'])
+
+    def test_small_inventory_rejects_symlinked_ancestor(self):
+        from quantlab.data.pit_coverage import _small_table
+        with tempfile.TemporaryDirectory() as outside:
+            foreign=Path(outside);(foreign/'stock_basic.parquet').write_bytes(b'not read')
+            provider=self.root/'lake/bronze/provider=baostock';provider.mkdir(parents=True)
+            (provider/'stock_basic').symlink_to(foreign,target_is_directory=True)
+            with self.assertRaisesRegex(ValueError,'symlink'):
+                _small_table(self.root,'lake/bronze/provider=baostock/stock_basic/stock_basic.parquet','stock_basic')
+
+    def test_silver_inventory_rejects_symlinked_folder_and_file(self):
+        from quantlab.data.pit_coverage import _silver_inventory
+        with tempfile.TemporaryDirectory() as outside:
+            foreign=Path(outside);pl.DataFrame({'symbol':['sh.600999']}).write_parquet(foreign/'rows.parquet')
+            silver=self.root/'lake/silver';silver.mkdir(parents=True)
+            linked=silver/'security_status';linked.symlink_to(foreign,target_is_directory=True)
+            with self.assertRaisesRegex(ValueError,'symlink'):_silver_inventory(self.root)
+            linked.unlink();linked.mkdir()
+            (linked/'rows.parquet').symlink_to(foreign/'rows.parquet')
+            with self.assertRaisesRegex(ValueError,'symlink'):_silver_inventory(self.root)
+
+    def test_silver_inventory_counts_nested_local_files_without_writes(self):
+        from quantlab.data.pit_coverage import _silver_inventory
+        folder=self.root/'lake/silver/security_status/year=2025';folder.mkdir(parents=True)
+        pl.DataFrame({'symbol':['sh.600000','sz.000001']}).write_parquet(folder/'rows.parquet')
+        before=sorted(str(p) for p in self.root.rglob('*'))
+        result=_silver_inventory(self.root)
+        self.assertEqual(result['security_status'],{'files':1,'present':True,'rows':2})
+        self.assertEqual(before,sorted(str(p) for p in self.root.rglob('*')))
+
     def archive_all_kinds(self):
         doc=self.document();url='https://www.cninfo.com.cn/new/disclosure/detail?stockCode=600000'
         archive_pit_evidence(self.root,'universe_eligibility',[

@@ -73,45 +73,57 @@ def _metadata_date_range(files,column):
     return {'min':str(min(mins)) if mins else None,'max':str(max(maxs)) if maxs else None}
 
 
+def _inventory_path(root, relative):
+    root=Path(root).resolve();path=root/relative
+    if not path.is_relative_to(root):raise ValueError('inventory path outside data root')
+    for current in (path,*path.parents):
+        if current==root:break
+        if current.is_symlink():raise ValueError('inventory path or ancestor cannot be symlink')
+    if not path.resolve().is_relative_to(root):raise ValueError('inventory path outside data root')
+    return path
+
+
 def _bars_inventory(root):
-    folder=root/'lake/bronze/provider=baostock/stock_kline_daily'
+    """Bind inventory to actual root files, never a copied catalog's SQL views.
+
+    An otherwise valid mqc.duckdb can still reference a previous data root.
+    Query a bounded literal file list in memory; do not open or repair that DB.
+    """
+    import duckdb
+    root=Path(root).resolve()
+    folder=_inventory_path(root,'lake/bronze/provider=baostock/stock_kline_daily')
     files=sorted(folder.glob('*.parquet')) if folder.is_dir() else []
     if len(files)>10000:raise ValueError('historical bar inventory exceeds 10000-file budget')
-    catalog=root/'catalog/mqc.duckdb'
-    if catalog.is_file() and not catalog.is_symlink():
-        try:
-            import duckdb
-            with duckdb.connect(str(catalog),read_only=True) as con:
-                tables={r[0] for r in con.execute('show tables').fetchall()}
-                if 'bronze_stock_kline_daily' in tables:
-                    names=[r[0] for r in con.execute("select column_name from information_schema.columns where table_name='bronze_stock_kline_daily' order by ordinal_position").fetchall()]
-                    row=con.execute("select count(*), count(distinct code), min(date), max(date), min(fetch_ts), max(fetch_ts) from bronze_stock_kline_daily").fetchone()
-                    return {'files':len(files),'rows':int(row[0]),'symbols':int(row[1]),
-                        'date_range':{'min':str(row[2]) if row[2] else None,'max':str(row[3]) if row[3] else None},
-                        'fetch_ts_range':{'min':row[4],'max':row[5]},'fields':names,
-                        'files_with_tradestatus':len(files) if 'tradestatus' in names else 0,
-                        'files_with_isST':len(files) if 'isST' in names else 0,
-                        'files_with_fetch_ts':len(files) if 'fetch_ts' in names else 0,
-                        'inventory_source':'read_only_catalog/mqc.duckdb',
-                        'knowledge_policy':'historical OHLCV inventory only; fetch_ts is collection time, not historical publication time',
-                        'strict_pit_certified':False}
-        except (OSError,ValueError,TypeError):pass
-    rows=0;tradestatus=0;isst=0;fetch_ts=0;common=None
+    fields=set();common=None;counts={'tradestatus':0,'isST':0,'fetch_ts':0}
     for path in files:
-        pf=pq.ParquetFile(path);rows+=pf.metadata.num_rows;names=set(pf.schema_arrow.names)
-        common=names if common is None else common&names
-        tradestatus+=int('tradestatus' in names);isst+=int('isST' in names);fetch_ts+=int('fetch_ts' in names)
-    return {'files':len(files),'rows':rows,'date_range':_metadata_date_range(files,'date'),
+        if path.is_symlink() or not path.is_file() or path.resolve().parent!=folder:
+            raise ValueError('historical bar inventory file cannot be symlink or leave its folder')
+        names=set(pq.ParquetFile(path).schema_arrow.names)
+        if not {'date','code'}<=names:raise ValueError('historical bar inventory requires date/code in every file')
+        fields.update(names);common=names if common is None else common&names
+        for name in counts:counts[name]+=int(name in names)
+    row=(0,0,None,None,None,None)
+    if files:
+        fetch='min(fetch_ts), max(fetch_ts)' if 'fetch_ts' in fields else 'NULL, NULL'
+        try:
+            with duckdb.connect(':memory:',config={'threads':2,'memory_limit':'512MB','temp_directory':''}) as con:
+                row=con.execute('SELECT count(*), count(distinct code), min(date), max(date), '+fetch+
+                    ' FROM read_parquet(?, union_by_name=true, hive_partitioning=false)',
+                    [[str(path) for path in files]]).fetchone()
+        except duckdb.Error as error:
+            raise ValueError('Root-bound historical bar inventory could not read the selected files') from error
+    return {'files':len(files),'rows':int(row[0]),'symbols':int(row[1]),
+        'date_range':{'min':str(row[2]) if row[2] is not None else None,'max':str(row[3]) if row[3] is not None else None},
+        'fetch_ts_range':{'min':row[4],'max':row[5]},'fields':sorted(fields),
         'fields_present_in_all_files':sorted(common or ()),
-        'files_with_tradestatus':tradestatus,'files_with_isST':isst,'files_with_fetch_ts':fetch_ts,
-        'inventory_source':'parquet_metadata_fallback',
+        **{'files_with_'+name:count for name,count in counts.items()},
+        'inventory_source':'root_bound_parquet_scan','catalog_views_used':False,
         'knowledge_policy':'historical OHLCV inventory only; fetch_ts is collection time, not historical publication time',
         'strict_pit_certified':False}
 
 
 def _small_table(root,relative,kind):
-    path=root/relative
-    if path.is_symlink():raise ValueError(kind+' inventory path cannot be symlink')
+    path=_inventory_path(root,relative)
     if not path.is_file():return {'present':False,'rows':0}
     if path.stat().st_size>150_000_000:raise ValueError(kind+' inventory file exceeds 150MB')
     frame=pl.read_parquet(path);result={'present':True,'rows':frame.height,'fields':frame.columns,
@@ -129,10 +141,15 @@ def _small_table(root,relative,kind):
 
 
 def _silver_inventory(root):
-    result={}
+    root=Path(root).resolve();result={}
     for name in SILVER_TABLES:
-        folder=root/'lake/silver'/name
-        files=sorted(folder.glob('**/*.parquet')) if folder.is_dir() else []
+        folder=_inventory_path(root,Path('lake/silver')/name)
+        files=[]
+        if folder.is_dir():
+            for index,path in enumerate(folder.rglob('*')):
+                if index>=10000:raise ValueError('silver inventory exceeds 10000-entry budget per table')
+                _inventory_path(root,path.relative_to(root))
+                if path.suffix=='.parquet' and path.is_file():files.append(path)
         result[name]={'files':len(files),'present':bool(files)}
         if files:
             result[name]['rows']=sum(pq.ParquetFile(path).metadata.num_rows for path in files)
