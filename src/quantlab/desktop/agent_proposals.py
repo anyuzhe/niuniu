@@ -22,6 +22,7 @@ class ProposalDialog(QDialog):
         box.addWidget(label('草稿 → 预检 → 保存固定提案 → 人工批准 → 原任务队列。聊天助手只能生成提案，批准在此进行。','note',True))
         box.addWidget(row(button('使用原业务表单填写提案草稿',self.edit_form),
             button('导入完整策略包（不执行）',self.import_strategy_package)))
+        box.addWidget(button('策略工作台：可视化编辑 / 版本差异 / 结果对照', self.open_strategy_workspace))
         self.draft=QPlainTextEdit();self.draft.setPlaceholderText('可用上方业务表单，或粘贴现有研究配置 JSON。')
         self.draft.setMaximumHeight(150);self.draft.setAccessibleName('研究提案草稿');box.addWidget(self.draft)
         box.addWidget(row(button('仅预检配置与预算',self.preview),button('保存待批准提案',self.create,True),button('刷新已保存提案',self.refresh)))
@@ -124,15 +125,37 @@ class ProposalDialog(QDialog):
     def open_result(self):
         if self.run_id:self.hide();self.window.open_run(self.run_id)
 
-    def apply_strategy_package(self, package):
+    def apply_strategy_package(self, package, *, expected_compiled_hash=None):
         if self.busy:return
         from quantlab.trading.strategy_package import compile_strategy
         compiled=compile_strategy(package)
+        if expected_compiled_hash is not None and compiled['compiled_spec_hash'] != expected_compiled_hash:
+            raise ValueError('策略草稿或信号源码与工作台预览不同，请重新核对。')
         self.listing.setCurrentRow(-1);self.selected=None;self.run_id=None
         self.draft.setPlainText(encode(compiled['spec']))
         self.details.setPlainText(encode(compiled))
         self.confirm.setChecked(False);self.actions()
         self.status.setText('策略包已载入草稿：'+compiled['package_hash']+'；未保存、未批准、未执行。')
+
+    def open_strategy_workspace(self):
+        if self.busy:return
+        from .strategy_workspace import StrategyWorkspaceDialog
+        dialog=None
+        try:
+            package=None
+            if self.draft.toPlainText().strip():
+                spec=parse_spec(self.draft.toPlainText())
+                if 'strategy_package' in spec:
+                    from quantlab.workbench.jobs import prepare
+                    package=prepare(spec).strategy_package['package']
+            dialog=StrategyWorkspaceDialog(self,self.window,package)
+            if dialog.exec():
+                self.apply_strategy_package(dialog.result_package,
+                    expected_compiled_hash=dialog.result_compiled_hash)
+        except (ValueError,TypeError,KeyError,OSError) as error:
+            self.status.setText('策略工作台未应用，原草稿保留：'+str(error))
+        finally:
+            if dialog is not None and not sip.isdeleted(dialog):sip.delete(dialog)
 
     def import_strategy_package(self):
         if self.busy:return

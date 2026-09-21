@@ -36,8 +36,22 @@ def main(argv=None) -> int:
     propose.add_argument('--output', type=Path, required=True)
     propose.add_argument('--data-root', type=Path, required=True)
     propose.add_argument('--request-id', required=True, help='调用者保存的规范 UUID；同一请求重试时复用。')
+    versions = commands.add_parser('compare-packages', help='只读比较两份策略配置的逐字段差异。')
+    versions.add_argument('--left-package', type=Path, required=True)
+    versions.add_argument('--right-package', type=Path, required=True)
+    results = commands.add_parser('compare-runs', help='只读对照两个本地策略实验；先核对可比口径，不选择赢家。')
+    results.add_argument('--output', type=Path, required=True)
+    results.add_argument('--left-run', required=True)
+    results.add_argument('--right-run', required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command in ('compare-packages', 'compare-runs'):
+            from quantlab.trading.strategy_comparison import compare_strategy_packages, compare_strategy_runs
+            result = (compare_strategy_packages(_read_package(args.left_package), _read_package(args.right_package))
+                      if args.command == 'compare-packages' else
+                      compare_strategy_runs(args.output, args.left_run, args.right_run))
+            print(encode({'ok': True, 'data': result}))
+            return 3 if args.command == 'compare-runs' and not result['comparable'] else 0
         from quantlab.trading.strategy_package import compile_strategy
         compiled = compile_strategy(_read_package(args.package))
         if args.command == 'preview':

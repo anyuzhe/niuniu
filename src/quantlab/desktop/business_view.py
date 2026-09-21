@@ -68,3 +68,13 @@ LABELS.update({'watch_id':'跟踪编号','snapshot_id':'快照编号','snapshot_
 VALUES.update({'verified':'来源校验一致','source_changed':'来源已变化','unavailable':'不可用',
     'advanced':'水位推进','no_new_data':'没有新数据','historical_revision':'历史输入修订',
     'insufficient_mature_dates':'成熟样本日期不足','descriptive':'仅描述性比较'})
+
+LABELS.update({'strategy_key':'策略固定标识','package':'策略包','package_hash':'策略配置指纹',
+    'compiled_spec_hash':'完整编译指纹','lifecycle':'持有与退出规则','resolved_config':'实际解析配置',
+    'signal':'信号来源','execution_authorized':'已获执行授权','left':'左侧','right':'右侧',
+    'left_present':'左侧有此字段','right_present':'右侧有此字段','changes':'配置差异',
+    'config_changes':'策略配置差异','same_strategy_key':'相同策略标识','same_version':'相同版本标签',
+    'comparable':'口径可比','blockers':'不可比原因','metric':'指标','delta':'右侧减左侧（原始单位）',
+    'net_return':'净收益率','max_drawdown':'最大回撤','final_equity':'期末权益',
+    'ending_positions':'期末持仓','evidence_fingerprint':'归档证据指纹'})
+VALUES.update({'DESCRIPTIVE_ONLY':'仅描述性对照，非显著性或Alpha证明'})
