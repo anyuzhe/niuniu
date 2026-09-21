@@ -27,10 +27,11 @@ def local_data_provider(root, adjustment='raw'):
         from quantlab.data.baostock_provider import BaostockSnapshotProvider
         # A malformed marker is an error, never permission to silently fall back.
         return BaostockSnapshotProvider(root, adjustment)
+    # Raw daily resolves the opt-in pointer lazily, and only if a request extends
+    # beyond an MQC full-file cutoff.  Thus qfq/minute and in-trunk identities remain
+    # independent of an unused retrospective source.
     retro_tail = None
     if adjustment == 'raw':
-        from quantlab.data.retro_tail import load_pointer, RetroTail
-        pointer = load_pointer(root)
-        if pointer is not None:
-            retro_tail = RetroTail(pointer)
+        from quantlab.data.retro_tail import RetroTail
+        retro_tail = RetroTail(supplied)
     return MQCParquetProvider(root, adjustment, retro_tail=retro_tail)

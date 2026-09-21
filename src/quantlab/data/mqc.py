@@ -3,7 +3,7 @@
 import hashlib
 import io
 import re
-from datetime import time, date
+from datetime import time, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -38,7 +38,12 @@ class MQCParquetProvider:
             self.root / "lake/bronze/provider=baostock" / f"stock_kline_{suffix}"
             if self.adjustment == "raw" else self.root / "lake/silver" / f"qfq_kline_{suffix}"
         )
-        frames, files = [], []
+        frames, files, tail_ranges, base_present = [], [], {}, set()
+        tail_enabled = (
+            self.retro_tail is not None
+            and request.timeframe == Timeframe.DAILY
+            and self.adjustment == "raw"
+        )
         for symbol in sorted(request.symbols):
             if not re.fullmatch(r"(?:sh|sz|bj)\.\d{6}", symbol):
                 raise ValueError(f"Invalid MQC symbol: {symbol}")
@@ -65,9 +70,20 @@ class MQCParquetProvider:
                 raise ValueError(f"Symbol mismatch in {path}")
             if self.adjustment == "raw" and frame.filter(pl.col("adjustflag").is_null() | (pl.col("adjustflag") != "3")).height:
                 raise ValueError(f"Expected unadjusted bars in {path}")
+            # The extension boundary is the full MQC file's maximum daily date, never
+            # the maximum after request-window filtering.  Retro may extend only the
+            # strict suffix; it cannot replace this trunk or fill an internal gap.
+            trunk_end = frame["date"].max() if request.timeframe == Timeframe.DAILY else None
+            if tail_enabled:
+                if trunk_end is None:
+                    raise ValueError(f"MQC daily trunk has no bars for {symbol}")
+                if request.end > trunk_end:
+                    tail_ranges[symbol] = (max(request.start, trunk_end + timedelta(days=1)), request.end)
             frame = frame.filter(pl.col("date").is_between(request.start, request.end))
-            if frame.is_empty():
+            if frame.is_empty() and symbol not in tail_ranges:
                 raise ValueError(f"No requested bars for {symbol}")
+            if frame.is_empty():
+                continue
             if request.timeframe == Timeframe.DAILY:
                 timestamp = pl.col("date").dt.combine(time(15)).dt.replace_time_zone(TZ)
             elif eastmoney_minute:
@@ -87,19 +103,19 @@ class MQCParquetProvider:
                 (pl.col("factor") if "factor" in frame.columns else pl.lit(1.0)).alias("adj_factor"),
             )
             frames.append(frame)
-        if self.retro_tail is not None and request.timeframe == Timeframe.DAILY and self.adjustment == "raw" and frames:
-            # Extend the recent raw-daily tail beyond Baostock coverage from a verified retro pack.
-            # Kept raw-only (no qfq fabrication); snapshot identity absorbs the retro source so the
-            # approval-time freeze and reproduction capture exactly what the runner used.
-            base = pl.concat(frames)
-            covered = base.group_by("symbol").agg(pl.col("datetime").dt.date().max().alias("md"))
-            tail, tail_files = self.retro_tail.tail_bars(request)
-            if tail.height:
-                tail = tail.join(covered, on="symbol", how="left")
-                tail = tail.filter(pl.col("date") > pl.col("md").fill_null(pl.lit(date(1970, 1, 1)))).drop("md", "date")
-                if tail.height:
-                    frames.append(tail)
-                    files.extend(tail_files)
+            base_present.add(symbol)
+        if tail_ranges:
+            # RetroTail verifies exact raw+typed source bytes and requires every planned
+            # trading session.  It raises on empty/missing/suspended/invalid rows rather
+            # than silently truncating the requested extension.
+            tail, tail_files = self.retro_tail.tail_bars(request, tail_ranges)
+            if tail is None:  # Pointer absent: preserve the original MQC-only behavior.
+                missing = sorted(set(tail_ranges) - base_present)
+                if missing:
+                    raise ValueError(f"No requested bars for {missing[0]}")
+            else:
+                frames.append(tail.drop("date"))
+                files.extend(tail_files)
         bars = pl.concat(frames).sort("symbol", "datetime")
         validate_bars(bars)
         snapshot_id = digest({"files": files, "request": request, "adjustment": self.adjustment})
