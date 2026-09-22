@@ -1692,5 +1692,5 @@
 - 执行侧把成交price与valuation mark分开：停牌证券不进入open价格表，目标变化记录 `vendor_suspended` 且0 fill；持仓优先沿用最后真实可交易close，无历史mark时才可用vendor_previous_close估值。`vnpy_open`明确拒绝含停牌v2行；open/vnpy_rules继续走显式状态路径。
 - 独立Reviewer指出停牌除权日若沿用除权前mark同时计应收现金/送股会重复估值，已改为持仓在停牌除权现金/送股时要求显式post-action valuation，缺失直接阻断；股票拆分等原有缺真实估值bar路径继续fail-closed，不从preclose推导除权后fill。
 - 批准冻结对v2的DataSnapshot身份新增冻结parquet SHA、原source snapshot_id和input_contract；冻结file evidence也保留input_contract。相同请求的v1/v2或不同冻结字节不能共享snapshot_id；v1无contract时沿用旧身份算法。验证了批准后源包离线仍从冻结字节运行并numerically_matched复算。
-- 新增 `tests/test_archived_suspension_contract.py` 8项并扩桌面1项，共新增9项；新增的第8项固定 `vnpy_open` 对保留停牌行必须明确拒绝。修后固定源码按三组回归：停牌/公司行动23项、F9/桌面/审批冻结48项、执行/复算/策略68项，合计139项全部通过，0失败/错误；模块不重复。大而慢的早期联合Job因超时未作为验收证据，最终数字只取三组成功回归。
+- 新增 `tests/test_archived_suspension_contract.py` 8项并扩桌面1项，共新增9项；新增的第8项固定 `vnpy_open` 对保留停牌行必须明确拒绝。提交后按不重复测试用例统计：F20/公司行动26项PASS；F9/桌面/审批冻结组48项中47项直接PASS，唯一旧v1冻结生命周期因组合压力等待超时后单独PASS；纸面账户与限价37项PASS；执行/研究复算轻量9项PASS；`native_vnpy_rules_reproduction` 慢单项独立PASS；策略包/F14/提案/日历40项PASS，合计161项明确PASS。既有 `test_parent_studies_rebuild_all_descendants_and_training_pipeline` 单独运行超过300秒被超时终止，期间无断言失败，未计入通过数；更早的大组资源争用/超时也不作为验收证据。
 - 本轮不读取或修改正式行情、TDX、治理产物、数据库或指针，不执行采集，不扩大研究/交易授权，不启动真实模型或可见GUI；并行 `scripts/collect/*` 数据侧改动保持独立，不纳入F20提交。

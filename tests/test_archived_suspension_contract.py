@@ -95,7 +95,7 @@ class ArchivedSuspensionContractTests(TestCase):
         return code, json.loads(out.getvalue())
 
     def settled(self, job_id):
-        deadline = time.monotonic() + 90
+        deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             job = next(j for j in self.queue.list() if j["job_id"] == job_id)
             if job["status"] not in ("queued", "running"):

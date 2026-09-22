@@ -206,7 +206,7 @@ AI产业雷达以 `ai_industry_radar` Research Skill 入库（PUBLIC_METHOD）�
 | F17 指纹绑定的配股候选读取 | 宿主双文件/双SHA显式绑定；分类、公式和汇总复核；Chat/MCP/CLI只读分页 | 已完成；14模块148项全部通过，新增40项；完整分页读取已交付878条候选且源字节未变，代码/测试指纹稳定。Chat/MCP/CLI显式宿主绑定，不改治理资料/正式数据、不默认选源、不接重建发布，首轮Reviewer和QM50原规格权限不扩展。 |
 | F18 有界候选重建预览 | 固定F17版本与完整列内范围、逐事件来源草案、所有阻断与单事件算术，纯只读 | 已完成；16模块188项通过，新增40项，源码/测试指纹稳定；独立只读复核未发现范围内阻断缺陷。已验收候选包3事件×2假设预览验证，源文件不变；不发布因子、不读取正式行情、不隐式解开待决或未知，不改F9、授权和原复算。 |
 | F19 未决配股补充证据消费 | S1 JSONL+summary 双SHA绑定父F17 conflict全集；Chat/MCP/CLI查询并可选附加到F18 | 已完成；修后联合回归19模块209项全部通过，真实S1只读smoke为19/19 UNRESOLVED。独立复核发现的diagnostics布尔计数与非规范日期两项已修并补回归；S1不解除EVENT_REQUIRES_SEPARATE_ADJUDICATION，不产生计算/裁决/重建/发布权限，未绑定S1时F18保持原结构。 |
-| F20 F9停牌状态输入合同v2 | 保留tradestatus=0完整session，OHLC不填充；研究排除、成交禁止、估值mark与冻结身份显式分层 | 已完成；固定源码分3组139项回归全部通过，新增9项。v1仍默认拒绝停牌；v2合同进入包/preview/dataset/冻结snapshot身份。停牌目标不fill、持仓沿最后真实close估值；无历史mark才用vendor_previous_close且绝非成交价。Reviewer发现的停牌除权重复估值风险已改为开/收盘生效均fail-closed，v2冻结snapshot绑定冻结SHA/source snapshot/contract；不改正式数据、采集或权限。 |
+| F20 F9停牌状态输入合同v2 | 保留tradestatus=0完整session，OHLC不填充；研究排除、成交禁止、估值mark与冻结身份显式分层 | 已完成；提交后按不重复测试用例统计有161项明确PASS，新增9项。第2组中47项直接PASS、唯一旧v1冻结生命周期因组合压力等待超时后单独PASS；另有1个既有“父研究全后代+训练管线”重型单测单独运行超过300秒被超时终止、无断言失败，不计入通过数。v1仍默认拒绝停牌；v2合同进入包/preview/dataset/冻结snapshot身份。停牌目标不fill、持仓沿最后真实close估值；无历史mark才用vendor_previous_close且绝非成交价。Reviewer发现的停牌除权重复估值风险已改为开/收盘生效均fail-closed，v2冻结snapshot绑定冻结SHA/source snapshot/contract；不改正式数据、采集或权限。 |
 
 本轮证据保存于 `artifacts/functional-lifecycle-20260921/`；独立只读复核未发现本轮4个产品文件的权限、版本或接线缺陷（不等于全仓正确性证明）。跨层测试以脚本化Provider驱动正式接口，只证明工程链路，不冒充真实模型自主研究。只触及功能代码、测试和文档，不改TDX、正式数据、部署或用户授权。
 
