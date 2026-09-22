@@ -1631,3 +1631,13 @@
 - 实际交付第一次只读smoke验证878行746/88/19/25，sh.600626只在conflicts，两个源artifact字节及mtime未变；不是正式行情或公告验收。最终受影响模块回归与修后同一smoke继续按accepted-regression.json、handoff-smoke-final.json记录；不把固定CSV身份当上游真值认证。
 - 最终固定源码逐模块独立进程回归14模块148项，0失败/错误/跳过；新增29后端+11入口共40项，ID去重且全部产品/受测文件SHA前后一致。包含真实MCP进程内/stdio重开、脚本化模型走正式ChatRuntime、旧F15/F16/规格/Grant/提案/策略复算及F14。修后实际交付全量分页只读878个唯一事件通过，桶与已验收版一致，两个源文件字节及mtime不变；不等于完整重建或真实助手研究验收。
 - 原始测试、复核、反例、数据侧下一步说明与交付回执存放artifacts/rights-candidate-consumption-20260922/。仅本轮5个产品文件、2个新测试及3份现有文档纳入独立提交，普通推送后核对远端；无自动部署。正式重建、待决事件来源选择和F9停牌新合同仍为后续范围。
+
+### 2026-09-22｜[数据侧S1] 19条未决配股事件的本地证据包
+
+- 基线main@20fc254、工作区干净。按任务书第一优先级执行：父交付artifacts/data-governance-20260922-D1D3的per-event-status.csv与rights-final-v2.json双SHA逐字节核验一致后原样保留，新结论全部写入独立补充目录artifacts/data-governance-20260922-S1-rights19。本轮不采集、不联网、不改正式niuniu-data或数据库、不发布复权因子，父CSV的final_status=NEEDS_DECISION保持不变。
+- 对象为父CSV中event_class=rights_issue_missing且final_status=NEEDS_DECISION的19条，与父摘要buckets.conflicts=19一致；处理顺序按任务书指定，先sh.600626/1993-06-21的零值与槽位疑问，再sh.600624、sh.600633、sh.600628、sh.600820的股份基数线索。只读取本地既有资料：巨潮配股Parquet的15个字段、tdx_capital_changes除权日±60日全部15个类目、EM/THS股息库覆盖情况。
+- 三个可复核判据全部不使用价格。判据一以TDX股本变动扣除c3蕴含送转量求出不含任何巨潮数字的配股量：10/19可求出，其中8条与巨潮实际配股数量相对差<1e-4，2条（sh.600601、sh.600686）不一致；其余9条在−5~+20日窗口内无TDX股本变动记录。判据二只比较两家各自上报的配股前总股本之比与(1+c3/10)，得一致6条、恰好相差送转因子4条、缺一侧上报值9条；该判据不使用任何比例数字，因此不触犯禁止的乘1.1推理。判据三的蕴含基数分子取自巨潮实际配股数量，已在交付中明确标注其非完全独立。
+- 争点定位显示分歧集中且互斥：仅比例分歧11条、仅配股价分歧6条、TDX配股价槽为0导致不可比1条、两者皆分歧1条；阈值1e-4，TDX价格为float32的约1e-8差异记为表示误差而非分歧。sh.600626两家配股比例同为6.0，争议仅在价格槽，其TDX派息2.5与巨潮配股价2.5数值相同但本轮未据此交换槽位。
+- 19条verdict全部为UNRESOLVED，摘要中adjudications_made=0、price_evidence_used=false、parent_files_modified=false。逐条给出缺什么证据，主要缺口为配股说明书/实施公告原文的配股基准股本口径、分股东类别实配拆分、方案修订序列。独立股息旁证只覆盖5/19，EM与THS股息库最早止于1993年报（实施于1994年），1992–1993年除权事件在本地无任何独立股息旁证。巨潮自身存在缺陷：多条配股前流通股本报0，sh.600633与sz.000513的配股后减配股前不等于实际配股数量，均已记入缺证据项而非静默采用。
+- 同时发现父CSV首列带UTF-8 BOM（表头第0列实为﻿event_class）且ths_raw列含内嵌换行，须用utf-8-sig读取且不能按行切分，已写入交付供代码侧解析参考。parent_event_digest定义为该行各字段按表头顺序用csv.writer(lineterminator="\n")规范化重序列化后的UTF-8文本sha256，代码侧可复现；action_or_plan_id一律为显式unknown，因巨潮stock_allotment_cninfo与tdx_capital_changes均不返回方案编号。
+- 交付为README、S1-19条未决配股事件证据包.md、evidence下JSONL/CSV/确定性摘要与logs下两个只读脚本，摘要不含墙钟时间并以summarises_jsonl_sha256绑定JSONL；采集器连续两次重跑JSONL的SHA稳定为a34c869d…。artifacts/在.gitignore内不进版本库，本次提交仅含本条开发史。不认证供应商正确性、上游独立性、历史可得时点或因子完整性，也未裁决任何一条事件。
