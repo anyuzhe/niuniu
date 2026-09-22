@@ -1652,3 +1652,14 @@
 - 最终固定源码逐模块独立进程回归16模块188项，0失败/错误/跳过，新增40项包含在总数内；测试ID去重，全部产品Python及受测文件SHA前后一致。涵盖F17、F15/F16入口、原Chat/MCP、QM50、Grant、提案及策略复算/F14链路；accepted-regression.json保留真实ID和明细，不是可见客户端或真实模型自主研究验收。
 - 仅对已接受的候选CSV/摘要做正式服务只读smoke：sh.600626零值冲突及sz.000759未匹配事件，分别提出TDX/巨潮假设仍blocked；sz.000589小差异两套假设各得独立ready_for_review预览，但未选择赢家或保存裁决。3事件×2假设不重复计入单元测试数；两个候选文件字节与mtime不变，未访问正式行情根。记录见handoff-preview-smoke.json。
 - 仅本轮5个产品文件、2个新测试、3份现有文档纳入独立提交；提交前后按to-be-committed.json和delivery.json核对验证文件、普通推送及远端SHA。数据侧b78cdd2的S1记录保留为既有祖先，未将新S1证据自动接入裁决。F9停牌合同、持续因子曲线、实际重建发布仍是后续独立范围。
+
+### 2026-09-22｜[数据侧S2] 采集脚本整改并入版本库
+
+- 用户明确"数据采集都应该写成脚本，助手只监控脚本运行"，随后要求检查并整改现有采集脚本。清点 artifacts/data-governance-20260922-D1D3/logs/ 下 47 个 .py，真正触网的只有 5 个：ths-collect.py、ths-pilot.py、cninfo-collect.py、cninfo-pilot.py、d4-min5-backfill.py，其余为离线分析一次性脚本。全部位于 .gitignore 的 artifacts/ 内，代码维护侧无法复核。
+- 结构性结论：baostock 采集产品 CLI 已有 fetch-bars/fetch-status/fetch-reference/dividend-import，d4-min5-backfill.py 属重复实现，标注应改用产品 CLI，本轮不迁移其逻辑；akshare 下的同花顺分红与巨潮配股则在产品内无任何入口，确属新增能力，故整改为版本库内的 scripts/collect/。
+- 新增 scripts/collect/envelope.py 共用采集信封：目标目录非空即拒绝（除非显式 --resume）、--dry-run 不发起任何供应商请求、临时文件加 os.replace 原子写入、逐符号回读校验行数与列名、ok/empty/failed/schema_issue 四态分明（失败不写文件，空结果写零行文件）、运行前后按列签名分组稽核并写入回执 column_signatures/schema_is_uniform。退出码 0/1/2 分别对应成功、有失败、拒绝执行。
+- 新增 scripts/collect/universe.py，清单只能来自具名预设或 --universe 显式文件。旧 cninfo 脚本清单取自分析产物 d4/rights-issue-adjustment-gaps.csv，是其比目标总体少 114 只的根因；预设 tdx-rights 由 TDX 除权除息 c4>0 解析得 706 只，stocks 由 baostock stock_basic type=1 得 5552 只，并显式声明退市股仅 337 只、1990 年代摘牌标的多半不在内这一已知局限。
+- ths_dividend.py 取代 ths-collect.py/ths-pilot.py：去掉全表 astype(str)（旧版把缺失值写成字符串 'nan'），改为仅对 parquet 写不下的列逐列降级并在回执 coerced_to_string 点名；schema_issue 证券不再是既无文件也不进失败名单的黑洞。cninfo_allotment.py 取代 cninfo-collect.py/cninfo-pilot.py：删除 15 列 KEEP 白名单投影，原样保留供应商全部列，REQUIRED 仅作存在性门槛；回执不再错写进 ths/ 目录；去掉 python -O 下会被优化掉的裸 assert。
+- 新增 tests/test_collect_envelope.py 共 15 项，注入假 fetcher，全程离线、只写临时目录，覆盖非空拒绝先于任何请求发生、dry-run 零请求零写入、四态互不混淆、重试次数、全列保留与数值 dtype 保持、续采跳过已校验文件且已有文件 SHA 不变、续采重采损坏文件、混合列签名被标记、fail-fast、limit 与路径分隔符拒绝。本机 .venv 全部通过，用时 0.2s；scripts/check_docs.py 122 文档 545 本地链接 PASS 0 错误。
+- 仅以 --dry-run 对真实湖目录做只读计划核对，未发起任何采集：cninfo 目标目录无 --resume 时按预期拒绝执行；加 --resume 后精确报出 114 只缺口，与此前诊断的口径缺陷数一致。列签名稽核当场查出既有 592 个文件并非同一 schema——588 个 16 列、4 个 15 列（旧脚本写空结果用 pd.DataFrame(columns=KEEP) 漏掉 plan_symbol），且 16 列版已丢弃供应商另约 40 列，其中含停牌起始日、缴款日期、大股东认购数量等判定 19 条未决配股事件所需证据。因此明确记录：该目录不得用 --resume 补齐，正确做法是全宽采到新目录重来，由代码维护侧决定指针替换。核实运行后真实湖内未产生 _receipts 或 .tmp 文件。
+- 本轮不运行任何采集，真正发起采集仍需用户单独授权。artifacts/.../logs/README.md 已把四个旧采集器标注 ⛔ 作废并写明各自缺陷，指向 scripts/collect/README.md。提交只纳入 scripts/collect/ 与 tests/test_collect_envelope.py；同时段 src/quantlab/ 下 5 个文件与 rights_conflict_evidence.py 属代码维护侧并行未提交工作，未暂存、未改动。
