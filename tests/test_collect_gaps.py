@@ -1,16 +1,23 @@
 import json
 import sys
 import tempfile
+import time
 import unittest
 from datetime import date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from collect import baostock_dividend as dividend_mod
+from collect import baostock_reference_snapshot as reference_mod
+from collect import baostock_daily_status as status_mod
 from collect import bars_incremental as apply_mod
+from collect import migrate_empty_parquet as migration_mod
+from collect import ths_dividend as ths_mod
 from collect import coverage
 from collect import scan_gaps
 
@@ -123,6 +130,95 @@ class GapPlanTests(unittest.TestCase):
         self.assertTrue(result["known_vendor_limit"])
 
 
+class ThsCollectorTests(unittest.TestCase):
+    def test_http_200_stock_page_without_tables_is_typed_empty_evidence(self):
+        def no_tables(**_kwargs):
+            raise ValueError("No tables found")
+
+        response = SimpleNamespace(
+            status_code=200,
+            content=b"<title>Test Corp (600001) dividend</title>",
+            text="<title>Test Corp (600001) dividend</title>",
+            encoding=None,
+        )
+        fake_akshare = SimpleNamespace(stock_fhps_detail_ths=no_tables)
+        fake_requests = SimpleNamespace(get=lambda *_args, **_kwargs: response)
+        with patch.dict(sys.modules, {"akshare": fake_akshare, "requests": fake_requests}):
+            frame = ths_mod.make_fetcher()("sh.600001")
+        self.assertEqual(len(frame), 0)
+        self.assertEqual(frame.attrs["http_status"], 200)
+        self.assertEqual(frame.attrs["table_count"], 0)
+        self.assertEqual(len(frame.attrs["response_sha256"]), 64)
+
+
+class EmptyMigrationTests(unittest.TestCase):
+    def test_verified_empty_parquet_is_backed_up_and_replaced_by_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); dest = root / "dataset"; dest.mkdir()
+            source = dest / "sh_600001.parquet"
+            pd.DataFrame(columns=["code", "value"]).to_parquet(source, index=False)
+            receipt = root / "source-receipt.json"
+            from collect.envelope import sha256_file
+            receipt.write_text(json.dumps({"empty": [{"code": "sh.600001",
+                                                       "sha256": sha256_file(source)}]}))
+            plan = migration_mod.build_plan(dest, receipt)
+            backup = root / "backup"
+            self.assertEqual(migration_mod.main([
+                "--dest", str(dest), "--receipt", str(receipt), "--apply",
+                "--approve-sha256", plan["plan_sha256"],
+                "--backup-root", str(backup)]), 0)
+            self.assertFalse(source.exists())
+            self.assertTrue((backup / source.name).is_file())
+            marker = dest / "_empty" / "sh_600001.json"
+            self.assertEqual(json.loads(marker.read_text())["status"], "empty")
+
+
+class StatusCollectorTests(unittest.TestCase):
+    def test_review_mode_does_not_start_status_provider(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "status"
+            listed = {"sh.600001": date(2020, 1, 1)}
+            with patch.object(status_mod.coverage, "listed_a_shares", return_value=listed), \
+                 patch.object(status_mod, "StatusSession") as session:
+                self.assertEqual(status_mod.main(["--dest", str(dest), "--limit", "1",
+                                                  "--end", "2026-09-22"]), 0)
+                session.assert_not_called()
+            self.assertFalse(dest.exists())
+
+
+class DividendCollectorTests(unittest.TestCase):
+    def test_review_mode_does_not_start_provider_or_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "dividend"
+            listed = {"sh.600001": date(2020, 1, 1)}
+            with patch.object(dividend_mod.coverage, "listed_a_shares", return_value=listed), \
+                 patch.object(dividend_mod, "DividendSession") as session:
+                self.assertEqual(dividend_mod.main(["--dest", str(dest), "--limit", "1"]), 0)
+                session.assert_not_called()
+            self.assertFalse(dest.exists())
+
+
+class ReferenceSnapshotTests(unittest.TestCase):
+    def test_plan_is_deterministic_and_date_bound(self):
+        dest = Path("/tmp/reference-test")
+        first = reference_mod.build_plan(date(2026, 9, 22), dest)
+        second = reference_mod.build_plan(date(2026, 9, 22), dest)
+        self.assertEqual(first, second)
+        self.assertNotEqual(first["plan_sha256"],
+                            reference_mod.build_plan(date(2026, 9, 21), dest)["plan_sha256"])
+
+    def test_review_and_bad_approval_do_not_create_destination(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "batch"
+            self.assertEqual(reference_mod.main([
+                "--snapshot-date", "2026-09-22", "--dest", str(dest)]), 0)
+            self.assertFalse(dest.exists())
+            self.assertEqual(reference_mod.main([
+                "--snapshot-date", "2026-09-22", "--dest", str(dest),
+                "--apply", "--approve-sha256", "0" * 64]), 2)
+            self.assertFalse(dest.exists())
+
+
 class ApprovalTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -176,16 +272,49 @@ class ApprovalTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 apply_mod.validate_plan_state(self.plan)
 
+    def test_provider_request_timeout_interrupts_stall(self):
+        def stalled(_symbol, _start, _end):
+            time.sleep(1)
+            return []
+        with self.assertRaises(TimeoutError):
+            apply_mod.call_with_timeout(stalled, "sh.600001", "2026-09-18",
+                                        "2026-09-21", 0.02)
+
+    def test_receipt_checkpoint_is_atomic_and_readable(self):
+        path = self.root / "receipt.json"
+        apply_mod.write_receipt_checkpoint(path, {"run_status": "running", "n": 1})
+        self.assertEqual(json.loads(path.read_text()), {"run_status": "running", "n": 1})
+        self.assertFalse(path.with_suffix(".json.tmp").exists())
+
     def test_merge_replaces_approved_last_day(self):
         action = dict(self.plan["actions"][0])
         action["path"] = self.dataset / "sh_600001.parquet"
-        rows = [["2026-09-18", "sh.600001", "2", "2", "2", "2", "200", "400", "3"],
-                ["2026-09-21", "sh.600001", "3", "3", "3", "3", "300", "900", "3"]]
+        rows = [["2026-09-18", "sh.600001", "2", "2", "2", "2", "200", "400", "3", "1"],
+                ["2026-09-21", "sh.600001", "3", "3", "3", "3", "300", "900", "3", "1"]]
         schema = pl.read_parquet_schema(action["path"])
         merged, stats = apply_mod.merge_rows(action, rows, "baostock-daily", schema)
         self.assertEqual(merged.height, 2)
         self.assertEqual(stats["returned_end"], "2026-09-21")
         self.assertEqual(merged.filter(pl.col("date") == date(2026, 9, 18))["close"][0], 2.0)
+
+    def test_suspended_daily_rows_are_not_filled_with_zero(self):
+        action = dict(self.plan["actions"][0])
+        action["path"] = self.dataset / "sh_600001.parquet"
+        rows = [["2026-09-18", "sh.600001", "", "", "", "", "", "", "3", "0"],
+                ["2026-09-21", "sh.600001", "3", "3", "3", "3", "300", "900", "3", "1"]]
+        schema = pl.read_parquet_schema(action["path"])
+        merged, stats = apply_mod.merge_rows(action, rows, "baostock-daily", schema)
+        self.assertEqual(stats["suspended_rows_ignored"], 1)
+        self.assertEqual(merged.filter(pl.col("date") == date(2026, 9, 18))["close"][0], 1.0)
+        self.assertEqual(merged.filter(pl.col("date") == date(2026, 9, 21))["close"][0], 3.0)
+
+    def test_all_suspended_daily_rows_are_explicit_not_empty_data(self):
+        action = dict(self.plan["actions"][0])
+        action["path"] = self.dataset / "sh_600001.parquet"
+        rows = [["2026-09-18", "sh.600001", "", "", "", "", "", "", "3", "0"]]
+        schema = pl.read_parquet_schema(action["path"])
+        with self.assertRaises(apply_mod.SuspendedRange):
+            apply_mod.merge_rows(action, rows, "baostock-daily", schema)
 
 
 if __name__ == "__main__":

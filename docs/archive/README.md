@@ -55,6 +55,7 @@
 
 ## 数据与 PIT 取证
 
+- [2026-09-22/23 全量数据采集与交验](data-evidence/20260923-全量数据采集与交验.md)：在市A股日K、5分钟、状态/ST、两源分红、巨潮配股与参考快照的覆盖、停牌、schema、空结果和备份回执验收；未切catalog/产品指针。
 - [牛牛 A 股数据资格与 Strict PIT 验收说明](data-evidence/AI研究助手_A股数据资格与StrictPIT_验收说明.md)
 - [牛牛：Baostock 数据接入、估值因子与日历检查](data-evidence/Baostock数据接入_验收与使用说明.md)
 - [牛牛 AI 交易工作台：2026-09-17 前瞻 Universe 与 SecurityStatus 取证阶段验收说明](data-evidence/牛牛AI交易工作台_20260917前瞻Universe与SecurityStatus取证阶段验收说明.md)

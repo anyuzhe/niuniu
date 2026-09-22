@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import sys
 import time
 from pathlib import Path
@@ -46,6 +47,18 @@ def symbol_filename(code: str) -> str:
     return code.replace('.', '_') + '.parquet'
 
 
+def empty_marker_path(dest: Path, code: str) -> Path:
+    return dest / '_empty' / (code.replace('.', '_') + '.json')
+
+
+def _verify_empty_marker(path: Path, code: str) -> bool:
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return False
+    return value.get('code') == code and value.get('status') == 'empty'
+
+
 def build_parser(description: str, *, default_dest: str, default_throttle: float) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=description)
     p.add_argument('--dest', default=default_dest,
@@ -59,6 +72,8 @@ def build_parser(description: str, *, default_dest: str, default_throttle: float
     p.add_argument('--throttle', type=float, default=default_throttle,
                    help='每次请求后的等待秒数（默认 %(default)s）')
     p.add_argument('--retries', type=int, default=3, help='单只证券的最大尝试次数（默认 %(default)s）')
+    p.add_argument('--request-timeout', type=float, default=60.0,
+                   help='单只供应商请求硬超时秒数（默认 %(default)s）')
     p.add_argument('--resume', action='store_true',
                    help='续采：跳过已存在且回读校验通过的文件；不覆盖、不删除')
     p.add_argument('--dry-run', action='store_true',
@@ -131,15 +146,21 @@ class Envelope:
             universe = universe[:self.args.limit]
 
         existing = sorted(p.name for p in self.dest.glob('*.parquet')) if self.dest.exists() else []
-        if existing and not self.args.resume:
+        markers = sorted((self.dest / '_empty').glob('*.json')) if self.dest.exists() else []
+        occupied = list(self.dest.iterdir()) if self.dest.exists() else []
+        if occupied and not self.args.resume:
             raise CollectionRefused(
-                '目标目录已有 %d 个 parquet，拒绝执行：%s\n'
+                '目标目录已有 %d 个 parquet、%d 个空结果标记或其它运行产物，拒绝执行：%s\n'
                 '本采集器只写新目录。要在已有结果上继续，请显式加 --resume（只增不覆盖）。'
-                % (len(existing), self.dest))
+                % (len(existing), len(markers), self.dest))
 
         todo, skipped, corrupt = [], [], []
         for code in universe:
             path = self.dest / symbol_filename(code)
+            marker = empty_marker_path(self.dest, code)
+            if self.args.resume and marker.exists() and _verify_empty_marker(marker, code):
+                skipped.append({'code': code, 'reason': 'verified empty marker'})
+                continue
             if self.args.resume and path.exists():
                 ok, reason, _sig = _verify_existing(path, self.pd.read_parquet)
                 (skipped if ok else corrupt).append({'code': code, 'reason': reason})
@@ -149,9 +170,24 @@ class Envelope:
         incumbent = _signature_audit(self.dest, self.pd.read_parquet) if existing else []
         return {'universe': len(universe), 'todo': todo,
                 'skipped_verified': skipped, 'existing_unreadable': corrupt,
-                'existing_files': len(existing), 'incumbent_signatures': incumbent}
+                'existing_files': len(existing), 'empty_markers': len(markers),
+                'incumbent_signatures': incumbent}
 
     # -- writing --------------------------------------------------------------
+
+    def _write_empty_marker(self, code: str, evidence: dict | None = None) -> dict:
+        path = empty_marker_path(self.dest, code)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        value = {'code': code, 'status': 'empty', 'source': self.source,
+                 'run_id': self.run_id,
+                 'note': 'supplier returned zero rows; no zero-row parquet was created'}
+        if evidence:
+            value['evidence'] = evidence
+        tmp = path.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps(value, ensure_ascii=False, indent=1), encoding='utf-8')
+        os.replace(tmp, path)
+        return {'code': code, 'marker': str(path), 'sha256': sha256_file(path),
+                'note': value['note']}
 
     def _write_verified(self, code: str, df) -> dict:
         """Atomic write + readback. Returns the per-symbol receipt entry."""
@@ -186,6 +222,28 @@ class Envelope:
                 'coerced_to_string': coerced,
                 'sha256': sha256_file(path)}
 
+    def _checkpoint(self, receipt: dict) -> None:
+        tmp = self.receipt_path.with_suffix(self.receipt_path.suffix + '.tmp')
+        self.receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(receipt, ensure_ascii=False, indent=1), encoding='utf-8')
+        os.replace(tmp, self.receipt_path)
+
+    def _fetch_with_timeout(self, fetch, code: str):
+        seconds = getattr(self.args, 'request_timeout', 60.0)
+        if seconds <= 0 or not hasattr(signal, 'SIGALRM'):
+            return fetch(code)
+
+        def timeout_handler(_signum, _frame):
+            raise TimeoutError('供应商请求超过 %.1f 秒' % seconds)
+
+        previous = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.setitimer(signal.ITIMER_REAL, seconds)
+        try:
+            return fetch(code)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous)
+
     # -- driving --------------------------------------------------------------
 
     def run(self, universe: list[str], fetch) -> int:
@@ -196,8 +254,9 @@ class Envelope:
         print('来源     %s' % self.source)
         print('目标     %s' % self.dest)
         print('全集     %d 只' % plan['universe'])
-        print('已存在   %d 个文件（校验通过 %d，不可读 %d）'
-              % (plan['existing_files'], len(plan['skipped_verified']), len(plan['existing_unreadable'])))
+        print('已存在   %d 个 parquet、%d 个空结果标记（校验通过 %d，不可读 %d）'
+              % (plan['existing_files'], plan['empty_markers'],
+                 len(plan['skipped_verified']), len(plan['existing_unreadable'])))
         print('待采集   %d 只' % len(todo))
         print('节流     %.2fs   重试 %d 次   失败即停=%s'
               % (self.args.throttle, self.args.retries, self.args.fail_fast))
@@ -232,14 +291,15 @@ class Envelope:
             'skipped_verified': [e['code'] for e in plan['skipped_verified']],
             'required_columns': self.required,
             'ok': [], 'empty': [], 'failed': [], 'schema_issue': [],
-            'stopped_early': False,
+            'stopped_early': False, 'run_status': 'running',
         }
+        self._checkpoint(receipt)
         stopped = False
         for i, code in enumerate(todo, 1):
             df, err = None, None
             for attempt in range(1, self.args.retries + 1):
                 try:
-                    df = fetch(code)
+                    df = self._fetch_with_timeout(fetch, code)
                     err = None
                     break
                 except Exception as exc:                    # noqa: BLE001 - recorded
@@ -256,10 +316,8 @@ class Envelope:
                         receipt['stopped_early'] = True
                         stopped = True
                 elif df is None or len(df) == 0:
-                    empty = self.pd.DataFrame(columns=list(self.required) or ['code'])
-                    entry = self._write_verified(code, empty)
-                    entry['note'] = '供应商返回 0 行；写出零行文件以便续采时不再重复请求'
-                    receipt['empty'].append(entry)
+                    evidence = getattr(df, 'attrs', None) if df is not None else None
+                    receipt['empty'].append(self._write_empty_marker(code, evidence))
                 else:
                     missing = [c for c in self.required if c not in df.columns]
                     if missing:
@@ -277,6 +335,9 @@ class Envelope:
                 if self.args.fail_fast:
                     receipt['stopped_early'] = True
                     stopped = True
+            receipt['summary'] = {k: len(receipt[k]) for k in ('ok', 'empty', 'failed', 'schema_issue')}
+            receipt['summary']['skipped_verified'] = len(receipt['skipped_verified'])
+            self._checkpoint(receipt)
             if stopped:
                 break
             if i % 25 == 0:
@@ -286,13 +347,13 @@ class Envelope:
             time.sleep(self.args.throttle)
 
         receipt['finished_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+        receipt['run_status'] = 'stopped_early' if receipt['stopped_early'] else 'finished'
         receipt['summary'] = {k: len(receipt[k]) for k in ('ok', 'empty', 'failed', 'schema_issue')}
         receipt['summary']['skipped_verified'] = len(receipt['skipped_verified'])
         receipt['files_in_dest'] = len(list(self.dest.glob('*.parquet')))
         receipt['column_signatures'] = _signature_audit(self.dest, self.pd.read_parquet)
         receipt['schema_is_uniform'] = len(receipt['column_signatures']) <= 1
-        with open(self.receipt_path, 'w', encoding='utf-8') as f:
-            json.dump(receipt, f, ensure_ascii=False, indent=1)
+        self._checkpoint(receipt)
 
         print('\n=== 回执 %s ===' % self.receipt_path)
         print(json.dumps(receipt['summary'], ensure_ascii=False))

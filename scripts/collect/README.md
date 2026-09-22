@@ -28,6 +28,10 @@
 | `bars_incremental.py` | 按已批准计划补日线/5m | 只执行计划内证券与日期 |
 | `ths_dividend.py` | `akshare.stock_fhps_detail_ths` | `stocks-listed`，退市股排除 |
 | `cninfo_allotment.py` | `akshare.stock_allotment_cninfo` | `tdx-rights-listed`，退市股排除 |
+| `baostock_dividend.py` | Baostock逐年历史分红 | `stocks-listed`，全历史写新目录 |
+| `baostock_daily_status.py` | Baostock交易/停牌/ST日状态 | `stocks-listed`，保留`tradestatus=0` |
+| `baostock_reference_snapshot.py` | 日历、证券、行业和三大指数成分 | 不可变日期批次，不切产品指针 |
+| `migrate_empty_parquet.py` | 将旧零行占位Parquet迁为有类型空标记 | 先备份和核SHA，再移除混合schema |
 
 ## 采集信封（`envelope.py`）
 
@@ -41,11 +45,15 @@
 - **保留供应商全部列**。`REQUIRED` 只是「这些列必须在」的存在性门槛，**不是投影白名单**。
 - **不做全表 `astype(str)`**。只有 parquet 写不下的列才逐列降级为字符串，
   并在回执 `coerced_to_string` 里逐列点名。
-- **三态分明**：`ok` / `empty` / `failed` / `schema_issue` 各自可数。
+- **四态分明**：`ok` / `empty` / `failed` / `schema_issue` 各自可数。
   失败**不写文件**，所以「文件不在 + 出现在 failed」和「文件不在 + 压根没采」不会混淆；
-  空结果**写零行文件**，这样续采不会反复去问同一只。
+  空结果写入 `_empty/<symbol>.json` 有类型标记，不写缺列的零行Parquet，避免污染数据集schema；
+  `--resume` 会校验并跳过该标记，不会反复请求。
 - **列签名稽核**：运行前后都把目标目录按列签名分组。出现两种以上签名会告警，
   并写进回执的 `column_signatures` / `schema_is_uniform`。
+- **逐证券检查点**：每处理一只就原子更新回执；进程被终止时，已完成/失败边界仍可复核。
+- **硬超时**：行情、分红和状态的Baostock会话运行在可杀掉并重启的独立worker中；
+  Akshare采集至少受单请求SIGALRM和持久回执保护，卡住时可按回执续采。
 
 公司行动采集器共用参数：`--dest --receipt --universe --universe-preset --limit --throttle
 --retries --resume --dry-run --apply --fail-fast`。**不加 `--apply` 永远只展示计划**。
@@ -79,6 +87,13 @@
 正确做法是采到一个全新目录、全宽重来，再由代码维护侧决定如何替换指针。
 `--dry-run --resume` 可以安全地先看到这个局面（信封会告警），它不写任何东西。
 
+## 每日运行边界
+
+- `scan_gaps.py` → `bars_incremental.py` 支持每日重新扫描、生成新计划SHA，并在当次批准后增量补行情。
+- `baostock_reference_snapshot.py` 支持按日期建立新的不可变快照，不覆盖旧日期批次。
+- 同花顺、巨潮、Baostock分红及日状态当前用于**全量基线和中断续采**；`--resume` 会跳过已有文件，不能发现已有证券后来新增或修订的事件，尚不能当每日智能更新器。
+- 每日真实联网仍须当次授权；脚本不会因为被调度就绕过 `--apply` 或行情计划SHA。
+
 ## 授权边界
 
 脚本写好不等于可以跑。**真正发起采集需要用户每次单独授权**：
@@ -90,7 +105,7 @@
 
 ## 测试
 
-`tests/test_collect_envelope.py` 与 `tests/test_collect_gaps.py` 共 27 个用例，注入假 fetcher，
+`tests/test_collect_envelope.py` 与 `tests/test_collect_gaps.py` 共 40 个用例，注入假 fetcher，
 覆盖无授权不联网、计划哈希防篡改、退市排除、周末过滤、18:00 截止、供应商历史下限、
 整只未采/末尾落后、5m 末日不足 48 根重取、旧文件指纹变化拒绝、整日替换与 schema/主键校验。
 全程离线，只写临时目录。

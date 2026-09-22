@@ -18,6 +18,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import re
 import sys
 from pathlib import Path
 
@@ -34,10 +36,41 @@ REQUIRED = ['报告期', '实施公告日', '分红方案说明', 'A股股权登
 def make_fetcher():
     """Import akshare lazily so --help / --dry-run work without it installed."""
     import akshare as ak
+    import pandas as pd
+    import requests
 
     def fetch(code: str):
-        df = ak.stock_fhps_detail_ths(symbol=code.split('.')[1])
+        bare = code.split('.')[1]
+        try:
+            df = ak.stock_fhps_detail_ths(symbol=bare)
+        except ValueError as exc:
+            if 'No tables found' not in str(exc):
+                raise
+            url = f'https://basic.10jqka.com.cn/new/{bare}/bonus.html'
+            response = requests.get(
+                url,
+                headers={'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                                        'AppleWebKit/537.36 Chrome/89.0.4389.90 Safari/537.36')},
+                timeout=30,
+            )
+            response.encoding = 'gbk'
+            title_match = re.search(r'<title[^>]*>(.*?)</title>', response.text,
+                                    flags=re.IGNORECASE | re.DOTALL)
+            title = re.sub(r'\s+', ' ', title_match.group(1)).strip() if title_match else ''
+            table_count = len(re.findall(r'<table', response.text, flags=re.IGNORECASE))
+            if response.status_code != 200 or f'({bare})' not in title or table_count != 0:
+                raise
+            df = pd.DataFrame()
+            df.attrs['empty_evidence'] = {
+                'url': url, 'http_status': response.status_code,
+                'response_bytes': len(response.content), 'title': title,
+                'table_count': table_count,
+                'response_sha256': hashlib.sha256(response.content).hexdigest(),
+                'interpretation': 'correct stock page returned HTTP 200 and zero HTML tables',
+            }
         if df is None or len(df) == 0:
+            if df is not None and 'empty_evidence' in df.attrs:
+                df.attrs.update(df.attrs.pop('empty_evidence'))
             return df
         df = df.copy()
         df['code'] = code          # 供应商只回裸代码，补回带市场前缀的主键

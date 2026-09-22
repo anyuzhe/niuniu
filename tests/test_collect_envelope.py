@@ -10,6 +10,7 @@ import argparse
 import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -17,12 +18,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
 
-from collect.envelope import CollectionRefused, Envelope, symbol_filename
+from collect.envelope import CollectionRefused, Envelope, empty_marker_path, symbol_filename
 
 
 def make_args(dest, **over):
     base = dict(dest=str(dest), receipt=None, universe=None, limit=None, throttle=0.0,
-                retries=2, resume=False, dry_run=False, apply=True, fail_fast=False)
+                retries=2, request_timeout=60.0, resume=False, dry_run=False,
+                apply=True, fail_fast=False)
     base.update(over)
     return argparse.Namespace(**base)
 
@@ -85,6 +87,11 @@ class EnvelopeTests(unittest.TestCase):
 
     # -- dry run --------------------------------------------------------------
 
+    def test_request_timeout_interrupts_stalled_fetcher(self):
+        env = self.env(make_args(self.dest, request_timeout=0.02))
+        with self.assertRaises(TimeoutError):
+            env._fetch_with_timeout(lambda _code: time.sleep(1), 'sh.600000')
+
     def test_dry_run_makes_no_request_and_writes_nothing(self):
         fetcher = RecordingFetcher()
         env = self.env(make_args(self.dest, dry_run=True))
@@ -116,10 +123,23 @@ class EnvelopeTests(unittest.TestCase):
         self.assertEqual(rec['schema_issue'][0]['missing'], ['配股价格', '配股比例'])
         # A failure leaves no file, so 'absent' is never ambiguous against 'never tried'.
         self.assertFalse((self.dest / symbol_filename('sh.600002')).exists())
-        # An empty result does leave a file, so resume will not re-request it.
-        self.assertTrue((self.dest / symbol_filename('sh.600001')).exists())
+        # Empty is a typed marker, never a schema-breaking zero-row parquet.
+        self.assertFalse((self.dest / symbol_filename('sh.600001')).exists())
+        self.assertTrue(empty_marker_path(self.dest, 'sh.600001').is_file())
         # A schema issue leaves no half-understood file either.
         self.assertFalse((self.dest / symbol_filename('sh.600003')).exists())
+
+    def test_empty_marker_preserves_fetcher_evidence(self):
+        def fetcher(_code):
+            frame = pd.DataFrame()
+            frame.attrs["http_status"] = 200
+            frame.attrs["response_sha256"] = "a" * 64
+            return frame
+        env = self.env(make_args(self.dest))
+        self.assertEqual(env.run(["sh.600000"], fetcher), 0)
+        marker = json.loads(empty_marker_path(self.dest, "sh.600000").read_text())
+        self.assertEqual(marker["evidence"]["http_status"], 200)
+        self.assertEqual(marker["evidence"]["response_sha256"], "a" * 64)
 
     def test_failure_is_retried_up_to_the_limit(self):
         fetcher = RecordingFetcher({'sh.600000': 'raise'})
@@ -164,6 +184,13 @@ class EnvelopeTests(unittest.TestCase):
         self.assertEqual(len(again), 2)
         from collect.envelope import sha256_file
         self.assertEqual(sha256_file(self.dest / symbol_filename('sh.600000')), sha_before)
+
+    def test_resume_skips_verified_empty_marker(self):
+        first = RecordingFetcher({'sh.600000': 'empty'})
+        self.env(make_args(self.dest)).run(['sh.600000'], first)
+        second = RecordingFetcher()
+        self.env(make_args(self.dest, resume=True)).run(['sh.600000'], second)
+        self.assertEqual(second.calls, [])
 
     def test_resume_re_fetches_a_corrupt_existing_file(self):
         self.dest.mkdir(parents=True)

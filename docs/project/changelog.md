@@ -1694,3 +1694,13 @@
 - 批准冻结对v2的DataSnapshot身份新增冻结parquet SHA、原source snapshot_id和input_contract；冻结file evidence也保留input_contract。相同请求的v1/v2或不同冻结字节不能共享snapshot_id；v1无contract时沿用旧身份算法。验证了批准后源包离线仍从冻结字节运行并numerically_matched复算。
 - 新增 `tests/test_archived_suspension_contract.py` 8项并扩桌面1项，共新增9项；新增的第8项固定 `vnpy_open` 对保留停牌行必须明确拒绝。提交后按不重复测试用例统计：F20/公司行动26项PASS；F9/桌面/审批冻结组48项中47项直接PASS，唯一旧v1冻结生命周期因组合压力等待超时后单独PASS；纸面账户与限价37项PASS；执行/研究复算轻量9项PASS；`native_vnpy_rules_reproduction` 慢单项独立PASS；策略包/F14/提案/日历40项PASS，合计161项明确PASS。既有 `test_parent_studies_rebuild_all_descendants_and_training_pipeline` 单独运行超过300秒被超时终止，期间无断言失败，未计入通过数；更早的大组资源争用/超时也不作为验收证据。
 - 本轮不读取或修改正式行情、TDX、治理产物、数据库或指针，不执行采集，不扩大研究/交易授权，不启动真实模型或可见GUI；并行 `scripts/collect/*` 数据侧改动保持独立，不纳入F20提交。
+
+### 2026-09-23｜[数据侧S4] 在市A股全量基线采集与独立交验
+
+- 用户逐批授权后，版本化脚本在后台完成全部已定义核心采集；总体固定为Baostock `stock_basic` 中 `type=1 AND status=1` 的5,215只当前在市A股，退市股排除。日K和5分钟目标为2026-09-22；公司行动写同花顺/巨潮/Baostock独立v2目录，参考数据写不可变日期批次。没有续写旧混合目录、刷新catalog、切换Provider/产品指针、裁决公司行动或发布复权因子。
+- 日K最终17,137,682行、5分钟363,380,939行、日状态/ST 17,137,823行，各5,215文件且单一schema；三个主键分别为`(code,date)`、`(code,date,time)`、`(code,date)`，全量相邻键扫描均0重复/0空值。目标日5,202只交易、13只停牌；5分钟目标日每只精确48根。日K/5分钟复扫仍列13条tail，但状态表逐只证明最后行情之后全部为`tradestatus=0`、无任何交易状态行，不能再作为普通采集失败重试。
+- 行情运行期两次暴露Baostock底层解析卡死，进程内`SIGALRM`不能可靠中断；改为可杀并重启的provider worker、请求硬超时和逐证券原子回执。停牌空值不填零，全区间停牌显式记`suspended`。10,427个行情备份及各证券最后成功目标文件SHA256全部复核一致。历史bronze仍保留供应商早期停牌表示，完整状态中473,485条停牌；消费者必须连接状态表，不能把“有K线行”直接视为可交易。
+- 公司行动完成：同花顺5,209有数据+6个HTTP 200正确证券页面零表证据，146,457行；巨潮639+5，988行、58列且`记录标识`唯一；Baostock分红5,090+125，50,210行、15列。旧零行占位Parquet共130个均先备份核SHA再迁为`_empty/*.json`，覆盖总体无缺失/额外/重叠。同花顺保留5,028个`分红总额`和181个`AH分红总额`的具名12列变体；Baostock分红保留83条供应商精确重复，未在bronze层静默删除，正式事件层须另定可追溯去重合同。
+- 新增`baostock_reference_snapshot.py`、`baostock_dividend.py`、`baostock_daily_status.py`及`migrate_empty_parquet.py`；通用信封增加持久检查点、空结果marker及页面证据，THS仅在HTTP 200、标题代码匹配且0表时分类empty。参考快照7/7成功：日历13,062、证券8,971、行业5,555、全市场7,393、上证50/沪深300/中证500分别50/300/500，manifest文件SHA全部复核一致。
+- 采集专项离线回归最终40项通过；真实数据另做文件数、行数、schema、证券身份、主键、目标日48根、空marker、迁移备份、行情备份和manifest SHA交验，不能以单元测试替代。本次真实结果与限制归档于[2026-09-22/23 全量数据采集与交验](../archive/data-evidence/20260923-全量数据采集与交验.md)。行情扫描/计划SHA/逐次批准可每日重复，参考快照可按日期重建；公司行动与状态脚本当前仍是全量基线/中断续采，不冒充每日事件修订维护器或Strict PIT。
+- 提交仅纳入本批`scripts/collect`、两份采集测试和文档；并行`src/quantlab/agent/*`、`src/quantlab/data/version_ledger.py`不纳入。普通push及远端SHA以本条所在提交为准，不自动部署或变更正式数据指针。
