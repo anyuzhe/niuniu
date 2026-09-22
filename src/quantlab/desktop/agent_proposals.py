@@ -37,6 +37,8 @@ class ProposalDialog(QDialog):
         self.confirm=QCheckBox('我已核对选中的已保存提案、预算和数据口径；不是批准上方未保存草稿。');box.addWidget(self.confirm)
         self.approve_button=button('批准选中提案并提交',self.approve,True)
         box.addWidget(row(self.approve_button,button('拒绝选中待批准提案',self.reject_proposal),button('查看选中提案任务状态',self.job_status)))
+        self.progress_button=button('跟踪选中提案任务与结果（只读）',self.open_progress)
+        box.addWidget(self.progress_button)
         self.open_button=button('在原工作台打开实际结果',self.open_result);self.run_id=None;box.addWidget(self.open_button)
         self.status=label('策略包校验不是授权；正式提案还须核对数据资格，批准时冻结实际输入字节，再交给原任务队列。','muted',True);box.addWidget(self.status)
         self.listing.currentItemChanged.connect(self.select);self.confirm.toggled.connect(self.actions)
@@ -46,6 +48,7 @@ class ProposalDialog(QDialog):
         self.approve_button.setEnabled(not self.busy and self.selected is not None and self.confirm.isChecked()
             and self.selected['status'] in ('pending','approved','submitted'))
         self.open_button.setEnabled(not self.busy and self.run_id is not None)
+        self.progress_button.setEnabled(not self.busy and self.selected is not None)
 
     def draft_changed(self):
         self.request_id=str(uuid4());self.confirm.setChecked(False)
@@ -165,6 +168,16 @@ class ProposalDialog(QDialog):
             self.service.store.reject(record['proposal_id'],record['proposal_digest'])
             return self.service.store.list()
         self.perform(work,lambda records:self.render(records,record['proposal_id']))
+
+    def open_progress(self):
+        if self.busy or self.selected is None:return
+        from .proposal_progress import ProposalProgressDialog
+        self.confirm.setChecked(False)
+        if Path(self.window.output).resolve()!=self.service.output:
+            self.status.setText('原提案面板的工作空间已过期；请在正确工作空间重新打开。');return
+        dialog=ProposalProgressDialog(self.window,self.selected['proposal_id'],
+            expected_digest=self.selected['proposal_digest'])
+        self.window.show_dialog(dialog)
 
     def job_status(self):
         if not self.selected:return

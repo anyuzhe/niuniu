@@ -31,6 +31,7 @@ TOOLS = [
     schema('list_experiments', '检索当前目录实际实验，包含失败记录。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_experiment', '读取指定实验的统计摘要和实际证据引用。', {'run_id': TEXT}),
     schema('get_job', '读取现有任务状态，不提交或取消任务。', {'job_id': TEXT}),
+    schema('get_proposal_progress', '只读关联一个真实提案、任务日志、冻结清单和结果头部；须披露errors/incomplete，不把日志running当进程在线。不批准、不恢复、不重跑。', {'proposal_id': TEXT}),
 ]
 
 
@@ -208,6 +209,15 @@ class ReadOnlyResearchAPI:
             if record.get('run_id') != args['run_id']: raise ValueError('INVALID_ARTIFACT：归档身份不一致。')
             return record, [{'kind': 'experiment', 'run_id': args['run_id'],
                              'uri': 'quantlab://run/'+args['run_id']}]
+        if name == 'get_proposal_progress':
+            from quantlab.agent.proposal_progress import read_proposal_progress
+            data = read_proposal_progress(self.output, args['proposal_id'])
+            evidence = [{'kind': 'proposal', 'proposal_id': args['proposal_id']}] if data.get('proposal') else []
+            if data.get('job'):
+                evidence.append({'kind': 'job', 'job_id': data['job']['job_id']})
+            if data.get('can_open_result'):
+                evidence.append({'kind': 'experiment', 'run_id': data['result']['run_id']})
+            return data, evidence
         if name == 'get_job':
             job_id = self.identifier(args['job_id'])
             path = self.output/'_jobs'/(job_id+'.json')
@@ -229,11 +239,13 @@ class ReadOnlyResearchAPI:
         try:
             self.validate(name, arguments)
             data, evidence = self._read(name, arguments)
-            exact = name in {'preview_strategy_package', 'list_strategy_runs', 'get_strategy_run', 'compare_strategy_runs'}
+            exact = name in {'preview_strategy_package', 'list_strategy_runs', 'get_strategy_run', 'compare_strategy_runs', 'get_proposal_progress'}
             result = {'ok': True, 'tool': name, 'data': data if exact else compact(data),
                       'evidence': evidence, 'warnings': [], 'error': None}
             if name == 'list_strategy_runs' and data.get('incomplete'):
                 result['warnings'].append('归档目录存在读取错误；当前返回不是完整有效样本，详情见errors。')
+            if name == 'get_proposal_progress' and data.get('incomplete'):
+                result['warnings'].append('任务回查不完整；须披露errors，不能把旧完成状态当作可打开的结果。')
             if exact and len(encode(result)) > 24000:
                 raise ValueError('RESULT_TOO_LARGE：完整策略配置或证据超过模型输出预算；缩小分页或使用宿主CLI/工作台，不返回截断配置、遗漏错误或不完整比较。')
             if len(encode(result)) > 24000:

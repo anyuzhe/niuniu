@@ -11,6 +11,12 @@ from test_context_experiments import ContextProvider, context_config, runner
 from quantlab.agent.catalog import ReadOnlyResearchAPI, compact
 
 
+EXPECTED_TOOLS = {'get_capabilities','search_factors','describe_factor','list_research_templates',
+    'get_research_template','get_strategy_package_contract','preview_strategy_package',
+    'list_strategy_runs','get_strategy_run','compare_strategy_runs','list_experiments',
+    'get_experiment','get_job','get_proposal_progress'}
+
+
 class AgentCatalogTests(unittest.TestCase):
     def source(self, root):
         result = runner(ContextProvider(), root).run(replace(context_config(), context=None, replay=True))
@@ -19,7 +25,8 @@ class AgentCatalogTests(unittest.TestCase):
     def test_real_registry_and_typed_read_only_contracts(self):
         with tempfile.TemporaryDirectory() as tmp:
             api = ReadOnlyResearchAPI(tmp)
-            self.assertEqual(len(api.schemas()), 6)
+            self.assertEqual({t['name'] for t in api.schemas()}, EXPECTED_TOOLS)
+            self.assertEqual(len(api.schemas()),len(EXPECTED_TOOLS))
             caps = api.call('get_capabilities', {})
             self.assertEqual(caps['data']['access'], 'read_only')
             self.assertFalse(caps['data']['model_connected'])
@@ -28,7 +35,7 @@ class AgentCatalogTests(unittest.TestCase):
             item = api.call('describe_factor', {'factor_id':'BASE.MOMENTUM','version':'1.0.0'})
             self.assertTrue(item['ok']); self.assertIn('lookback', item['data']['defaults'])
             self.assertEqual(list(Path(tmp).iterdir()), [])
-            schemas = api.schemas(); schemas.clear(); self.assertEqual(len(api.schemas()), 6)
+            schemas = api.schemas(); schemas.clear(); self.assertEqual(len(api.schemas()), len(EXPECTED_TOOLS))
 
     def test_rejects_writes_invalid_fields_and_oversized_pages(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -72,7 +79,8 @@ class AgentCatalogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             command = [sys.executable, '-m', 'quantlab.agent', '--output', tmp]
             value = subprocess.run(command+['--schemas'], capture_output=True, text=True, timeout=30)
-            self.assertEqual(value.returncode, 0, value.stderr); self.assertEqual(len(json.loads(value.stdout)['tools']), 6)
+            self.assertEqual(value.returncode, 0, value.stderr)
+            self.assertEqual({t['name'] for t in json.loads(value.stdout)['tools']}, EXPECTED_TOOLS)
             value = subprocess.run(command+['--call','submit_experiment'], capture_output=True, text=True, timeout=30)
             self.assertEqual(value.returncode, 2); self.assertFalse(json.loads(value.stdout)['ok'])
             self.assertEqual(list(Path(tmp).iterdir()), [])
