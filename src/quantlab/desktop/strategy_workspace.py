@@ -33,6 +33,9 @@ class StrategyWorkspaceDialog(QDialog):
     def __init__(self, parent, host, package=None):
         super().__init__(parent)
         self.host = host; self.output = Path(host.output)
+        self._closed = False
+        output_stat = self.output.stat()
+        self._workspace_identity = (output_stat.st_dev, output_stat.st_ino)
         self.result_package = self.result_compiled_hash = self.compiled = self.baseline = None
         self._loading = False; self.busy = False
         self._archive_generation = 0; self._archive_page = None
@@ -145,11 +148,26 @@ class StrategyWorkspaceDialog(QDialog):
         self.left_run.textChanged.connect(self._clear_results); self.right_run.textChanged.connect(self._clear_results)
         self.tabs.addTab(page,'结果对照')
 
+    def _context_valid(self):
+        if self._closed or getattr(self.host, 'closing', False) or Path(self.host.output) != self.output:
+            return False
+        try:
+            info = self.output.stat()
+            return not self.output.is_symlink() and (info.st_dev, info.st_ino) == self._workspace_identity
+        except (OSError, RuntimeError):
+            return False
+
+    def _close_reads(self):
+        # A closed Qt object can survive until its asynchronous worker finishes.
+        self._closed = True; self._archive_generation += 1; self.busy = False
+        self.result_details.setPlainText('{}')
+        self.use_button.setEnabled(False)
+
+    def closeEvent(self, event):
+        self._close_reads(); super().closeEvent(event)
+
     def done(self, result):
-        # Closing a dialog does not necessarily delete it before a worker returns.
-        # Invalidate pending reads so a cancelled draft cannot be replaced later.
-        self._archive_generation += 1
-        super().done(result)
+        self._close_reads(); super().done(result)
 
     def invalidate_archive_listing(self, *_):
         self._archive_generation += 1; self._archive_page = None
@@ -160,26 +178,38 @@ class StrategyWorkspaceDialog(QDialog):
     def archive_selection_changed(self, *_):
         item = self.archive_list.currentItem()
         record = item.data(Qt.ItemDataRole.UserRole) if item else None
-        enabled = not self.busy and bool(record) and record.get('status') == 'completed'
+        enabled = not self.busy and self._context_valid() and bool(record) and record.get('status') == 'completed'
         for control in (self.archive_left_button,self.archive_right_button,self.archive_inspect_button,self.archive_edit_button):
             control.setEnabled(enabled)
 
     def _archive_read(self, work, done):
-        if self.busy: return
+        if self.busy or self._closed: return
+        if not self._context_valid():
+            self.result_details.setPlainText('{}'); self.use_button.setEnabled(False)
+            self.status.setText('工作空间已变化，请重新打开策略工作台；不读取旧工作空间。')
+            self.archive_selection_changed(); return
+        self._archive_generation += 1
         generation = self._archive_generation; self.busy = True; self.tabs.setEnabled(False)
         for control in (self.import_button,self.preview_button,self.export_button,self.use_button): control.setEnabled(False)
         self.archive_selection_changed()
         def finished(value, error):
             if sip.isdeleted(self): return
-            self.busy = False; self.tabs.setEnabled(True)
+            self.busy = False
+            if self._closed: return
+            self.tabs.setEnabled(True)
             for control in (self.import_button,self.preview_button,self.export_button): control.setEnabled(True)
-            self.use_button.setEnabled(self.compiled is not None)
-            if generation != self._archive_generation:
-                self.status.setText('查询已变化，忽略旧查询返回值，请重新查找。')
-            elif error:
-                self.result_details.setPlainText('{}'); self.status.setText('归档读取失败：'+str(error))
+            self.use_button.setEnabled(self.compiled is not None and self._context_valid())
+            try:
+                if not self._context_valid():
+                    raise ValueError('工作空间已变化，忽略旧查询返回值，请重新打开工作台')
+                if generation != self._archive_generation:
+                    raise ValueError('查询已变化，忽略旧查询返回值，请重新查找')
+                if error: raise ValueError(str(error))
+                if not isinstance(value, dict): raise ValueError('归档读取未返回有效回执')
+                done(value)
+            except Exception as exc:
+                self.result_details.setPlainText('{}'); self.status.setText('归档读取失败：'+str(exc))
                 self.archive_note.setText('读取未完成，不将失败解释为空目录。')
-            else: done(value)
             self.archive_selection_changed()
         try: self.host.async_call(work,finished,guarded=False)
         except Exception as error: finished(None,str(error))
@@ -394,8 +424,9 @@ class StrategyWorkspaceDialog(QDialog):
             self.status.setText('校验未通过：'+str(error)); return False
 
     def finish(self):
-        if self.busy: return
+        if self.busy or self._closed: return
         try:
+            if not self._context_valid(): raise ValueError('工作空间已变化，不能填入旧草稿')
             current = compile_strategy(self.collect_package())
             self._check_revision_identity(current)
             if self.compiled is None or current['compiled_spec_hash']!=self.compiled['compiled_spec_hash']:
@@ -451,24 +482,21 @@ class StrategyWorkspaceDialog(QDialog):
         except (ValueError,TypeError,KeyError,OSError) as error:
             self.version_details.setPlainText('{}'); self.status.setText('版本未比较：'+str(error))
 
-    def _clear_results(self,*_): self.result_details.setPlainText('{}')
+    def _clear_results(self,*_):
+        self._archive_generation += 1
+        self.result_details.setPlainText('{}')
 
     def compare_results(self):
-        if self.busy: return
+        if self.busy or self._closed: return
         from quantlab.trading.strategy_comparison import compare_strategy_runs
         left,right = self.left_run.text().strip(),self.right_run.text().strip()
-        self.result_details.setPlainText('{}'); self.busy = True
-        self.tabs.setEnabled(False)
-        for c in (self.import_button,self.preview_button,self.export_button,self.use_button): c.setEnabled(False)
+        self.result_details.setPlainText('{}')
         self.status.setText('正在只读核对两个归档的身份、输入和结果…')
-        def finished(value,error):
-            if sip.isdeleted(self): return
-            self.busy = False; self.tabs.setEnabled(True)
-            for c in (self.import_button,self.preview_button,self.export_button): c.setEnabled(True)
-            self.use_button.setEnabled(self.compiled is not None)
-            if error:
-                self.result_details.setPlainText('{}'); self.status.setText('结果核对失败：'+str(error)); return
+        def loaded(value):
+            if (type(value.get('comparable')) is not bool or
+                    value.get('left', {}).get('run_id') != left or
+                    value.get('right', {}).get('run_id') != right):
+                raise ValueError('结果回执未绑定当前两侧实验编号')
             self.result_details.setPlainText(encode(value))
-            self.status.setText('口径一致，仅描述性对照，不代表Alpha。' if value.get('comparable') else '结果不可直接比较，请查看阻塞原因，不据此判断优劣。')
-        try: self.host.async_call(lambda:compare_strategy_runs(self.output,left,right),finished,guarded=False)
-        except Exception as error: finished(None,str(error))
+            self.status.setText('口径一致，仅描述性对照，不代表Alpha。' if value['comparable'] else '结果不可直接比较，请查看阻塞原因，不据此判断优劣。')
+        self._archive_read(lambda:compare_strategy_runs(self.output,left,right),loaded)

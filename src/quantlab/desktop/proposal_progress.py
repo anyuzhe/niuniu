@@ -86,6 +86,8 @@ class ProposalProgressDialog(QDialog):
         if self.busy:return
         if not self._context_valid() or self._auto_reads_left <= 0:
             self._stop_auto()
+            if not self._context_valid():
+                self.report = None; self.details.setPlainText('{}'); self.stage.setText(''); self._actions()
             if not self._closed:self.status.setText('自动查看已停止；可手动刷新，不会改变任何任务。')
             return
         self._auto_reads_left -= 1
@@ -119,6 +121,7 @@ class ProposalProgressDialog(QDialog):
         if self.busy or self._closed:return
         if not self._context_valid():
             self.report = None; self._stop_auto(); self._actions()
+            self.details.setPlainText('{}'); self.stage.setText('')
             self.status.setText('工作空间已变化，请从正确的工作空间重新打开。');return
         self._generation += 1; generation = self._generation
         self.busy = True; self.report = None; self._actions()

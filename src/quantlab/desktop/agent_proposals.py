@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog,QVBoxLayout,QPlainTextEdit,QListWidget,QListWidgetItem,QCheckBox,QPushButton,QFileDialog
 from quantlab.agent.planning import parse_spec
 from quantlab.agent.proposals import ProposalService
-from quantlab.agent.catalog import ReadOnlyResearchAPI
 from quantlab.storage.codec import encode
 from .business_view import BusinessDetails
 from .widgets import label,button,row
@@ -19,6 +18,9 @@ class ProposalDialog(QDialog):
         super().__init__(window);self.window=window;self.selected=None;self.busy=False
         self.service=ProposalService(window.output,window.data_root);self.request_id=str(uuid4())
         self.input_check=None;self._input_check_generation=0;self._input_closed=False
+        self._result_generation=0;self._result_binding=None
+        output_stat=self.service.output.stat()
+        self._output_identity=(output_stat.st_dev,output_stat.st_ino)
         self.setWindowTitle('研究提案与人工批准');self.resize(1080,860)
         box=QVBoxLayout(self)
         box.addWidget(label('草稿 → 预检 → 保存固定提案 → 人工批准 → 原任务队列。聊天助手只能生成提案，批准在此进行。','note',True))
@@ -47,10 +49,11 @@ class ProposalDialog(QDialog):
     def actions(self):
         self.approve_button.setEnabled(not self.busy and self.selected is not None and self.confirm.isChecked()
             and self.selected['status'] in ('pending','approved','submitted'))
-        self.open_button.setEnabled(not self.busy and self.run_id is not None)
-        self.progress_button.setEnabled(not self.busy and self.selected is not None)
+        self.open_button.setEnabled(not self.busy and not self._input_closed and self.run_id is not None)
+        self.progress_button.setEnabled(not self.busy and not self._input_closed and self.selected is not None)
 
     def draft_changed(self):
+        self._clear_result_binding()
         self.request_id=str(uuid4());self.confirm.setChecked(False)
         self._input_check_generation+=1
         if self.input_check is not None:self.details.setPlainText('{}')
@@ -58,6 +61,7 @@ class ProposalDialog(QDialog):
         self.input_status.setText('草稿已变化；旧输入核对失效，请重新核对。')
 
     def select(self,current=None,previous=None):
+        self._clear_result_binding()
         self._input_check_generation+=1;self.input_check=None
         self.input_status.setText('当前显示对象已变化；草稿的旧核对不适用于选中提案，请按明确草稿重新核对。')
         self.selected=current.data(Qt.ItemDataRole.UserRole) if current else None
@@ -89,19 +93,23 @@ class ProposalDialog(QDialog):
         except Exception as error:finished(None,str(error))
 
     def closeEvent(self,event):
+        self._clear_result_binding()
         self._input_closed=True;self._input_check_generation+=1;self.input_check=None
         super().closeEvent(event)
 
     def reject(self):
+        self._clear_result_binding()
         self._input_closed=True;self._input_check_generation+=1;self.input_check=None
         super().reject()
 
     def done(self,result):
+        self._clear_result_binding()
         self._input_closed=True;self._input_check_generation+=1;self.input_check=None
         super().done(result)
 
     def check_inputs(self):
         if self.busy or self._input_closed:return
+        self._clear_result_binding()
         from quantlab.data.archived_research_check import check_archived_daily_research
         text=self.draft.toPlainText();self.listing.setCurrentRow(-1)
         self.confirm.setChecked(False);self.input_check=None
@@ -127,6 +135,7 @@ class ProposalDialog(QDialog):
         self.perform(lambda:check_archived_daily_research(root,parse_spec(text)),loaded,failed)
 
     def render(self,records,selected_id=None):
+        self._clear_result_binding()
         self.listing.clear();self.selected=None;self.run_id=None;self.confirm.setChecked(False)
         for record in records:
             item=QListWidgetItem(record['status']+' · '+record['plan']['spec'].get('question','未命名研究')+' · '+record['proposal_id'][:8])
@@ -139,6 +148,8 @@ class ProposalDialog(QDialog):
         self.perform(lambda:self.service.store.list(),lambda rows:self.render(rows,selected))
 
     def preview(self):
+        if self.busy or self._input_closed:return
+        self._clear_result_binding()
         self.listing.setCurrentRow(-1)
         text=self.draft.toPlainText()
         self.perform(lambda:self.service.preview(parse_spec(text)),lambda result:self.details.setPlainText(encode(result)))
@@ -173,23 +184,76 @@ class ProposalDialog(QDialog):
         if self.busy or self.selected is None:return
         from .proposal_progress import ProposalProgressDialog
         self.confirm.setChecked(False)
-        if Path(self.window.output).resolve()!=self.service.output:
+        if not self._result_context_valid():
             self.status.setText('原提案面板的工作空间已过期；请在正确工作空间重新打开。');return
         dialog=ProposalProgressDialog(self.window,self.selected['proposal_id'],
             expected_digest=self.selected['proposal_digest'])
         self.window.show_dialog(dialog)
 
+    def _clear_result_binding(self):
+        self._result_generation+=1;self._result_binding=None;self.run_id=None
+        if hasattr(self,'open_button'):self.open_button.setEnabled(False)
+
+    def _result_context_valid(self):
+        if self._input_closed or getattr(self.window,'closing',False):return False
+        try:
+            if Path(self.window.output).resolve()!=self.service.output:return False
+            info=self.service.output.stat()
+            return (info.st_dev,info.st_ino)==self._output_identity
+        except (OSError,RuntimeError):return False
+
+    def _read_result_record(self, proposal_id, expected_digest, open_expected=None):
+        if self.busy or self._input_closed:return
+        from quantlab.agent.proposal_progress import read_proposal_progress
+        from .proposal_progress import PHASES
+        self._clear_result_binding();generation=self._result_generation
+        self.details.setPlainText('{}')
+        if not self._result_context_valid():
+            self.status.setText('工作空间已变化，请重新打开提案面板；未读取或打开旧结果。');return
+        self.status.setText('正在只读核对固定提案、任务、冻结清单与结果头部…')
+        def failed(error):
+            self._clear_result_binding()
+            if not self._input_closed:
+                self.details.setPlainText('{}');self.status.setText('结果回查失败：'+str(error))
+        def loaded(report):
+            if self._input_closed:return
+            try:
+                if generation!=self._result_generation:
+                    raise ValueError('显示对象已变化，忽略旧结果回执')
+                if not self._result_context_valid():
+                    raise ValueError('工作空间已变化，忽略旧结果回执')
+                if not isinstance(report,dict) or report.get('proposal_id')!=proposal_id:
+                    raise ValueError('结果回执未绑定所选提案')
+                proposal=report.get('proposal')
+                if proposal is not None and proposal.get('proposal_digest')!=expected_digest:
+                    raise ValueError('所选提案配置身份已变化，请重新核对')
+                self.details.setPlainText(encode(report))
+                message=PHASES.get(report.get('phase'),'结果尚不可读取')
+                if report.get('incomplete'):
+                    message+='；回查不完整：'+'；'.join(e['code']+': '+e['message'] for e in report['errors'])
+                if report.get('can_open_result') and not report.get('incomplete') and proposal is not None:
+                    run_id=report['result']['run_id']
+                    if open_expected is not None and run_id!=open_expected:
+                        raise ValueError('实际结果已变化，未打开原结果')
+                    self.run_id=run_id
+                    self._result_binding=(proposal_id,expected_digest,run_id)
+                    message+='；结果头部身份已核对，尚未做完整归档验收。'
+                    if open_expected is not None:
+                        self.hide();self.window.open_run(run_id)
+                self.status.setText(message)
+            except Exception as error:failed(error)
+        self.perform(lambda:read_proposal_progress(self.service.output,proposal_id),loaded,failed)
+
     def job_status(self):
-        if not self.selected:return
+        if self.busy or self._input_closed or not self.selected:return
         record=self.selected
         self.listing.setCurrentRow(-1)
-        def done(value):
-            self.details.setPlainText(encode(value));self.run_id=value['data'].get('run_id') if value['ok'] else None
-            self.status.setText('任务状态：'+value['data']['status'] if value['ok'] else '尚无可读取的任务日志；提案保存不等于已运行。')
-        self.perform(lambda:ReadOnlyResearchAPI(self.window.output).call('get_job',{'job_id':record['job_id']}),done)
+        self._read_result_record(record['proposal_id'],record['proposal_digest'])
 
     def open_result(self):
-        if self.run_id:self.hide();self.window.open_run(self.run_id)
+        if self.busy or self._input_closed or self._result_binding is None:return
+        proposal_id,expected_digest,run_id=self._result_binding
+        self._read_result_record(proposal_id,expected_digest,open_expected=run_id)
 
     def apply_strategy_package(self, package, *, expected_compiled_hash=None):
         if self.busy:return
@@ -204,7 +268,9 @@ class ProposalDialog(QDialog):
         self.status.setText('策略包已载入草稿：'+compiled['package_hash']+'；未保存、未批准、未执行。')
 
     def open_strategy_workspace(self):
-        if self.busy:return
+        if self.busy or self._input_closed:return
+        if not self._result_context_valid():
+            self.status.setText('工作空间已变化，请重新打开提案面板；未载入旧草稿。');return
         from .strategy_workspace import StrategyWorkspaceDialog
         dialog=None
         try:
@@ -216,6 +282,8 @@ class ProposalDialog(QDialog):
                     package=prepare(spec).strategy_package['package']
             dialog=StrategyWorkspaceDialog(self,self.window,package)
             if dialog.exec():
+                if not self._result_context_valid():
+                    raise ValueError('工作空间已变化，未接收旧工作台草稿')
                 self.apply_strategy_package(dialog.result_package,
                     expected_compiled_hash=dialog.result_compiled_hash)
         except (ValueError,TypeError,KeyError,OSError) as error:
