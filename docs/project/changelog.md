@@ -1683,3 +1683,14 @@
 - 首轮独立只读复核未发现权限绕过，但指出两项非阻断正确性问题：参与汇总的 diagnostics 非空值可被 bool/string 伪装，以及查询接受无连字符 ISO 日期。已改为有限 int/float（排除 bool）或 null，并严格 YYYY-MM-DD，补反例回归。
 - 修后专项配股链 101 项通过；联合回归 19 模块 209 项全部通过，0 失败/错误。覆盖 F17/F18/F19、Chat/MCP、日历/治理工具、QM50权限、Grant、审批、策略包复算和 F14 生命周期。第二轮独立只读复核对 R1/R2 修复返回 PASS，并确认 S1 仍不解除 conflict blocker、calculation 仍 null、重建/发布权限仍 false；不是官方公司行动认证、真实模型自主研究或正式因子发布验收。
 - 本轮只提交 F19 的 6 个产品文件、2 个新增测试和 3 份现有文档；并行数据侧 S2/S3 提交均作为现有祖先保留，没有把采集逻辑纳入 F19。
+
+### 2026-09-22｜[F20] F9 停牌状态输入合同 v2
+
+- 保留原 `tradable_only_v1` 默认行为：请求中出现 `tradestatus!=1` 仍拒绝，旧v1包的format/request/summary与冻结snapshot算法不迁移。新增显式 `preserve_suspension_state_v2`，CLI与桌面均需主动选择；合同进入preview hash、manifest、dataset_id和normalized bars的 `input_contract`，切换合同清除旧预检。
+- v2保留完整证券×session网格和raw/typed源字节；停牌行保留 `bs_trade_status=0`，OHLC必须null，volume/turnover仅接受来源null或有限非负值，`vendor_previous_close`必须有限正数但只作估值证据，不生成K线或成交价。缺/混合合同、未知状态或缺估值参考fail-closed；没有v2 `input_contract` 的旧数据继续走原OHLCV验证。
+- 研究侧仅对显式v2启用状态mask：停牌session不删行，当日强制ineligible，shift/horizon仍基于完整session网格，落在停牌价格端点的forward label为null；不forward-fill、不将复牌价压缩成下一行。v1研究身份不新增停牌policy字段。
+- 执行侧把成交price与valuation mark分开：停牌证券不进入open价格表，目标变化记录 `vendor_suspended` 且0 fill；持仓优先沿用最后真实可交易close，无历史mark时才可用vendor_previous_close估值。`vnpy_open`明确拒绝含停牌v2行；open/vnpy_rules继续走显式状态路径。
+- 独立Reviewer指出停牌除权日若沿用除权前mark同时计应收现金/送股会重复估值，已改为持仓在停牌除权现金/送股时要求显式post-action valuation，缺失直接阻断；股票拆分等原有缺真实估值bar路径继续fail-closed，不从preclose推导除权后fill。
+- 批准冻结对v2的DataSnapshot身份新增冻结parquet SHA、原source snapshot_id和input_contract；冻结file evidence也保留input_contract。相同请求的v1/v2或不同冻结字节不能共享snapshot_id；v1无contract时沿用旧身份算法。验证了批准后源包离线仍从冻结字节运行并numerically_matched复算。
+- 新增 `tests/test_archived_suspension_contract.py` 8项并扩桌面1项，共新增9项；新增的第8项固定 `vnpy_open` 对保留停牌行必须明确拒绝。修后固定源码按三组回归：停牌/公司行动23项、F9/桌面/审批冻结48项、执行/复算/策略68项，合计139项全部通过，0失败/错误；模块不重复。大而慢的早期联合Job因超时未作为验收证据，最终数字只取三组成功回归。
+- 本轮不读取或修改正式行情、TDX、治理产物、数据库或指针，不执行采集，不扩大研究/交易授权，不启动真实模型或可见GUI；并行 `scripts/collect/*` 数据侧改动保持独立，不纳入F20提交。

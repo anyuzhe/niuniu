@@ -9,6 +9,7 @@ from uuid import uuid4
 import polars as pl
 
 from quantlab.data.base import DataProvider, UniverseProvider
+from quantlab.data.validation import suspension_state_aware
 from quantlab.domain import FactorType
 from quantlab.experiments.config import ExperimentConfig
 from quantlab.experiments.research import FactorResearchEngine
@@ -40,6 +41,16 @@ def runtime_fingerprint() -> dict:
         "python": platform.python_version(),
         "dependencies": {name: importlib.metadata.version(name) for name in ["polars", "pyarrow", "duckdb"]},
     }
+
+
+def _apply_trade_state_mask(bars: pl.DataFrame, mask: pl.DataFrame) -> pl.DataFrame:
+    if not suspension_state_aware(bars) or not bars.filter(pl.col('bs_trade_status') == 0).height:
+        return mask
+    state = bars.select('symbol','datetime',(pl.col('bs_trade_status') == 1).alias('_state_eligible'))
+    joined = mask.join(state,on=['symbol','datetime'],how='left',validate='1:1')
+    if joined['_state_eligible'].null_count():
+        raise ValueError('Trade-state mask must cover every research bar')
+    return joined.select('symbol','datetime',(pl.col('eligible') & pl.col('_state_eligible')).alias('eligible'))
 
 
 @dataclass(frozen=True)
@@ -105,6 +116,13 @@ class ExperimentRunner:
             if reused is not None:return reused
             values = compute_factor(factor, batch.bars, parameters)
             mask = precomputed_mask if precomputed_mask is not None else self.universe.mask(batch.bars).sort("symbol", "datetime")
+            mask = _apply_trade_state_mask(batch.bars, mask)
+            suspended_rows = (batch.bars.filter(pl.col('bs_trade_status')==0).height
+                              if suspension_state_aware(batch.bars) else 0)
+            if suspended_rows:
+                manifest['trade_state_policy'] = {'column':'bs_trade_status','eligible_value':1,
+                    'suspended_value':0,'suspended_rows':suspended_rows,
+                    'scope':'Suspended rows remain in the session grid but are ineligible for signal selection; no row deletion or price fill.'}
             # Hash the actual mask, not just the provider's human-readable name.
             manifest["universe"]["mask_hash"] = hashlib.sha256(mask.write_json().encode()).hexdigest()
             raw_values = None
@@ -112,7 +130,8 @@ class ExperimentRunner:
                 raw_values = values
                 if isinstance(config.processor, PipelineConfig):
                     training_universe = getattr(self.universe, 'source', self.universe)
-                    pipeline = FactorPipeline(config.processor).fit(values, training_universe.mask(batch.bars))
+                    training_mask = _apply_trade_state_mask(batch.bars, training_universe.mask(batch.bars))
+                    pipeline = FactorPipeline(config.processor).fit(values, training_mask)
                     values = pipeline.transform(values, mask)
                     manifest['processor'] = pipeline.manifest()
                     if pipeline.audit:record['processor_audit'] = pipeline.audit
@@ -206,6 +225,7 @@ class ExperimentRunner:
                 "IC 每时点至少 3 个有效标的；分位统计要求足够标的及不同因子值。",
                 "未自动训练或择优；可选 Holm 校正仅覆盖当前研究，不覆盖跨研究探索；未进行全量数据质量审计。",
                 f"复权口径：{batch.snapshot.adjustment}；raw 含除权跳变，qfq 尚未核查历史可用性。",
+                *(['停牌行保留在完整交易所session网格中，但bs_trade_status=0强制不参与当日信号选择；停牌OHLC不填充，落在停牌端点的价格标签保持缺失。'] if suspended_rows else []),
             ]})
         except Exception as error:
             record.update({"experiment_id": digest(manifest), "status": "failed", "error": f"{type(error).__name__}: {error}"})

@@ -147,9 +147,17 @@ class ApprovalFrozenDataProvider:
         if frame.is_empty() or set(frame['symbol'].unique())!=set(request.symbols):raise ValueError('Frozen approval input does not cover requested symbols/range')
         validate_bars(frame)
         original=row['source_snapshot']
-        snapshot=DataSnapshot(digest({'approval_entry':row['entry_key'],'request':request}),original['source'],row['adjustment'],
-            ({'path':row['file'],'sha256':row['sha256'],'bytes':(Path(root)/row['file']).stat().st_size,'approval_time_frozen':True,
-              'approval_entry_key':row['entry_key'],'source_snapshot_id':original['snapshot_id'],'source_files':original.get('files',[])},))
+        source_contracts={item.get('input_contract') for item in original.get('files',[]) if item.get('input_contract') is not None}
+        if len(source_contracts)>1:
+            raise ValueError('Frozen source snapshot mixes input contracts')
+        source_contract=next(iter(source_contracts),None)
+        identity={'approval_entry':row['entry_key'],'request':request}
+        file_entry={'path':row['file'],'sha256':row['sha256'],'bytes':(Path(root)/row['file']).stat().st_size,'approval_time_frozen':True,
+              'approval_entry_key':row['entry_key'],'source_snapshot_id':original['snapshot_id'],'source_files':original.get('files',[])}
+        if source_contract is not None:
+            identity.update(frozen_sha256=row['sha256'],source_snapshot_id=original['snapshot_id'],input_contract=source_contract)
+            file_entry['input_contract']=source_contract
+        snapshot=DataSnapshot(digest(identity),original['source'],row['adjustment'],(file_entry,))
         return DataBatch(frame,snapshot)
 
     def load(self,request):

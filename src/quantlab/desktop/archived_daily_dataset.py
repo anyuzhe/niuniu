@@ -95,7 +95,9 @@ class ArchivedDailyDatasetDialog(QDialog):
         form.addRow("全新包目录", row(self.destination, button("选择路径", self.choose_destination)))
         box.addLayout(form)
 
-        self.confirm = QCheckBox("我已核对完整 capture、证券、日期、预检指纹和全新目标目录，确认生成新包。")
+        self.suspension_v2 = QCheckBox("保留停牌状态 v2：保留 tradestatus=0 session，OHLC 不填充；研究排除、成交禁止、仅允许估值。")
+        box.addWidget(self.suspension_v2)
+        self.confirm = QCheckBox("我已核对完整 capture、证券、日期、合同版本、预检指纹和全新目标目录，确认生成新包。")
         box.addWidget(self.confirm)
         self.discover_button = button("手动发现 capture（仅读元信息）", self.discover)
         self.preview_button = button("预检范围与源字节", self.preview)
@@ -129,6 +131,7 @@ class ArchivedDailyDatasetDialog(QDialog):
         for control in (self.capture_id, self.symbols, self.start, self.end, self.destination):
             control.textChanged.connect(self.invalidate_preview)
         self.package_path.textChanged.connect(self.invalidate_inspection)
+        self.suspension_v2.toggled.connect(self.invalidate_preview)
         self.confirm.toggled.connect(self._refresh_actions)
         self._result_ready.connect(self._deliver_result)
         self._refresh_actions()
@@ -159,6 +162,10 @@ class ArchivedDailyDatasetDialog(QDialog):
             self.start.text().strip(),
             self.end.text().strip(),
         )
+
+    def _input_contract(self):
+        from quantlab.data.archived_daily_dataset import CONTRACT_V1, CONTRACT_V2
+        return CONTRACT_V2 if self.suspension_v2.isChecked() else CONTRACT_V1
 
     def _all_inputs(self):
         request = self._request()
@@ -207,6 +214,7 @@ class ArchivedDailyDatasetDialog(QDialog):
             self.end,
             self.destination,
             self.package_path,
+            self.suspension_v2,
             self.confirm,
         ):
             control.setEnabled(not busy and not self.closed and not self.closing)
@@ -347,6 +355,7 @@ class ArchivedDailyDatasetDialog(QDialog):
         if self.busy or self.closed or self.closing:
             return
         request = self._request()
+        contract = self._input_contract()
         target = self.destination.text().strip()
         self.preview_hash = None
         self.preview_value = None
@@ -370,21 +379,21 @@ class ArchivedDailyDatasetDialog(QDialog):
             self.details.setPlainText(encoded)
             self.preview_hash = preview_hash
             self.preview_value = result
-            self._preview_request = request
+            self._preview_request = (request, contract)
             self._preview_target = target
             self.summary.setText(
                 f"预检通过：{len(result.get('symbols', []))} 只证券，"
                 f"{result.get('actual_sessions', '未知')} 个交易日，{result.get('rows', '未知')} 行；"
-                f"raw / 1d / {result.get('qualification', 'research_only')}。"
+                f"raw / 1d / {result.get('qualification', 'research_only')}；合同={result.get('input_contract', 'tradable_only_v1')}。"
             )
             self.status.setText("预检成功；请核对完整指纹和全新目标目录后显式勾选确认。")
             self._refresh_actions()
 
         self._start_async(
             "preview",
-            lambda: preview_archived_daily_dataset(self.output, *request),
+            lambda: preview_archived_daily_dataset(self.output, *request, **({'contract': contract} if contract == 'preserve_suspension_state_v2' else {})),
             loaded,
-            is_current=lambda: self._request() == request
+            is_current=lambda: self._request() == request and self._input_contract() == contract
             and self.destination.text().strip() == target,
         )
 
@@ -394,9 +403,10 @@ class ArchivedDailyDatasetDialog(QDialog):
         try:
             capture_id, symbols, start, end, destination = self._all_inputs()
             request = (capture_id, symbols, start, end)
+            contract = self._input_contract()
             if not self.confirm.isChecked():
                 raise ValueError("生成前必须显式勾选确认。")
-            if (self.preview_hash is None or self._preview_request != request
+            if (self.preview_hash is None or self._preview_request != (request, contract)
                     or self._preview_target != destination):
                 raise ValueError("当前完整输入和目标没有有效预检，请重新预检。")
             preview_hash = self.preview_hash
@@ -428,9 +438,10 @@ class ArchivedDailyDatasetDialog(QDialog):
                 destination,
                 expected_preview_hash=preview_hash,
                 confirmed=True,
+                **({'contract': contract} if contract == 'preserve_suspension_state_v2' else {}),
             ),
             loaded,
-            is_current=lambda: self._request() == request
+            is_current=lambda: self._request() == request and self._input_contract() == contract
             and self.destination.text().strip() == destination,
         )
 
@@ -464,7 +475,7 @@ class ArchivedDailyDatasetDialog(QDialog):
             self.inspected_value = result
             self.summary.setText(
                 f"深验通过：{len(result.get('symbols', []))} 只证券，"
-                f"{result.get('start')} 至 {result.get('end')}，raw / 1d / research_only；"
+                f"{result.get('start')} 至 {result.get('end')}，raw / 1d / research_only；合同={result.get('input_contract', 'tradable_only_v1')}；"
                 f"dataset_id={dataset_id}。"
             )
             self.status.setText("已有包当前深验通过；尚未切换数据根。使用时宿主仍须核对同一 dataset_id。")

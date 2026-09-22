@@ -9,7 +9,7 @@ from dataclasses import asdict
 from datetime import timedelta
 from importlib.metadata import version
 import polars as pl
-from quantlab.data.validation import ordered_bars
+from quantlab.data.validation import ordered_bars, suspension_state_aware
 
 
 def validate_config(config):
@@ -43,6 +43,8 @@ class VnpyOpenBacktester:
         from vnpy.trader.object import BarData
         from vnpy.trader.constant import Direction, Interval, Exchange
         cfg=self.config;bars=ordered_bars(bars);symbols=sorted(bars['symbol'].unique().to_list())
+        if suspension_state_aware(bars) and bars.filter(pl.col('bs_trade_status')==0).height:
+            raise ValueError('vnpy_open does not accept preserved suspension rows; use open or vnpy_rules so suspension is modeled explicitly')
         if bars['timeframe'][0] not in ('1d','1m','5m','15m','30m','60m') or bars.filter(pl.col('available_at')!=pl.col('datetime')).height:
             raise ValueError('vnpy_open requires immediate-close registered bars')
         for col in ('datetime','available_at'):

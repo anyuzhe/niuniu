@@ -8,7 +8,7 @@ from datetime import timedelta
 from zoneinfo import ZoneInfo
 from decimal import Decimal, ROUND_HALF_UP
 import polars as pl
-from quantlab.data.validation import ordered_bars
+from quantlab.data.validation import ordered_bars, suspension_state_aware
 from quantlab.storage.codec import digest
 from quantlab.data.industry import IndustryHistory
 from quantlab.execution.corporate_actions import CashDividends, StockSplits, RightsIssues
@@ -98,6 +98,7 @@ class OpenExecutionBacktester:
 
     def run(self,targets,bars):
         bars=ordered_bars(bars);cfg=self.config;industry=IndustryHistory(cfg.industry_events)
+        state_aware=suspension_state_aware(bars)
         audit=ExecutionAudit(cfg.initial_cash)
         if bars['timeframe'][0] not in ('1d','1m','5m','15m','30m','60m'):
             raise ValueError('Execution requires one of the six registered timeframes')
@@ -164,7 +165,17 @@ class OpenExecutionBacktester:
             for action in dividends.records:
                 if action['record_at']>=first_bar and action['action_id'] not in dividends.accrued and action['ex_at']<=opening and action['symbol'] in symbols and (economic_quantity(action['symbol']) or ('stock_per_share' in action and dividends.entitlements.get(action['action_id'],{}).get('shares',0))) and action['symbol'] not in set(group['symbol']):
                     raise ValueError('Missing ex-date valuation bar for held dividend stock')
-            prices=dict(zip(group['symbol'],group['open']))
+            tradable_group=group if not state_aware else group.filter(pl.col('bs_trade_status')==1)
+            suspended_group=group.head(0) if not state_aware else group.filter(pl.col('bs_trade_status')==0)
+            if state_aware and suspended_group.height:
+                suspended_symbols=set(suspended_group['symbol'])
+                for action in dividends.records:
+                    entitlement=dividends.entitlements.get(action['action_id'])
+                    if (action['symbol'] in suspended_symbols and opening<=action['ex_at']<=end
+                            and action['action_id'] not in dividends.accrued and entitlement
+                            and (entitlement.get('net',0) or entitlement.get('shares',0))):
+                        raise ValueError('Suspended ex-date dividend/distribution requires an explicit post-action valuation mark: '+action['action_id'])
+            prices=dict(zip(tradable_group['symbol'],tradable_group['open']))
             split_count=len(splits.ledger)
             cash+=splits.advance(opening,end,lots,prices,marks,last_close,dividends,self.matcher,rights,holding_tax,traded_rights)
             cash+=splits.settle(opening,end,self.matcher)
@@ -183,10 +194,29 @@ class OpenExecutionBacktester:
             if exercise and self.matcher:self.matcher.cash_distribution(exercise)
             withheld=holding_tax.settle(opening,end,cash,'opening');cash+=withheld
             if withheld and self.matcher:self.matcher.cash_distribution(withheld)
-            prices=dict(zip(group['symbol'],group['open']))
+            prices=dict(zip(tradable_group['symbol'],tradable_group['open']))
             valuation={**marks,**prices}
+            if state_aware:
+                for row in suspended_group.iter_rows(named=True):
+                    symbol=row['symbol'];mark=marks.get(symbol)
+                    if mark is None:
+                        mark=row.get('vendor_previous_close')
+                        if mark is None or not math.isfinite(mark) or mark<=0:
+                            raise ValueError('Suspended valuation requires prior mark or vendor_previous_close: '+symbol)
+                    valuation[symbol]=mark
             equity=cash+dividends.receivable+rights.prepaid+splits.receivable-holding_tax.payable+sum(economic_quantity(s)*valuation.get(s,0) for s in symbols)
             if weights:
+                orders=[]
+                if state_aware:
+                    for row in suspended_group.iter_rows(named=True):
+                        symbol=row['symbol'];mark=valuation[symbol]
+                        desired=math.floor(equity*weights[symbol]/mark/cfg.lot_size)*cfg.lot_size
+                        delta=desired-economic_quantity(symbol)
+                        if delta:
+                            requested=abs(delta);buying=delta>0
+                            rejections.append({'symbol':symbol,'at':opening,'side':'buy' if buying else 'sell',
+                                'requested':requested,'filled':0,'reason':'vendor_suspended'})
+                            audit.attempt(opening,decision,symbol,buying,requested,0,'vendor_suspended',None)
                 orders=[]
                 for symbol,price in prices.items():
                     if weights[symbol]>0:
@@ -292,11 +322,24 @@ class OpenExecutionBacktester:
                         rejections.append({'symbol':symbol,'at':opening,'side':'buy' if buying else 'sell',
                             'requested':requested,'filled':size,'reason':reason})
                     audit.attempt(opening,decision,symbol,buying,requested,size,reason,capacity)
-            for row in group.iter_rows(named=True):
+            for row in tradable_group.iter_rows(named=True):
                 marks[row['symbol']]=row['close'];last_close[row['symbol']]=row['close']
                 prior_volume[row['symbol']]={'at':end,'volume':row['volume']}
-            prices=dict(zip(group['symbol'],group['open']))
+            if state_aware:
+                for row in suspended_group.iter_rows(named=True):
+                    symbol=row['symbol'];reference=row['vendor_previous_close']
+                    if symbol not in marks:marks[symbol]=reference
+                    last_close[symbol]=reference
+            prices=dict(zip(tradable_group['symbol'],tradable_group['open']))
             cash+=splits.settle(end,end,self.matcher)
+            if state_aware and suspended_group.height:
+                suspended_symbols=set(suspended_group['symbol'])
+                for action in dividends.records:
+                    entitlement=dividends.entitlements.get(action['action_id'])
+                    if (action['symbol'] in suspended_symbols and action['ex_at']==end
+                            and action['action_id'] not in dividends.accrued and entitlement
+                            and (entitlement.get('net',0) or entitlement.get('shares',0))):
+                        raise ValueError('Suspended ex-date dividend/distribution requires an explicit post-action valuation mark: '+action['action_id'])
             distribution=dividends.advance(end,end,first_bar,symbols,deliver_shares)
             cash+=distribution
             if distribution and self.matcher:self.matcher.cash_distribution(distribution)

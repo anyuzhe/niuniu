@@ -174,6 +174,27 @@ class ArchivedDatasetDesktopTests(unittest.TestCase):
         self.assertIn("cap-bad", self.dialog.details.toPlainText())
         self.assertFalse(self.dialog.busy)
 
+    def test_v2_toggle_invalidates_preview_and_binds_preview_export_contract(self):
+        destination = self.root / "new-package"
+        self.fill_request(destination)
+        self.preview_success()
+        self.dialog.confirm.setChecked(True)
+        self.dialog.suspension_v2.setChecked(True)
+        self.assertIsNone(self.dialog.preview_hash)
+        self.assertFalse(self.dialog.confirm.isChecked())
+        value = {**self.preview_value(), "input_contract": "preserve_suspension_state_v2", "suspended_rows": 1,
+                 "tradable_rows": 15, "valuation_policy": "synthetic", "research_policy": "synthetic", "execution_policy": "synthetic"}
+        with patch("quantlab.desktop.archived_daily_dataset.preview_archived_daily_dataset", return_value=value) as previewing:
+            self.dialog.preview()
+        self.assertEqual(previewing.call_args.kwargs, {"contract": "preserve_suspension_state_v2"})
+        self.dialog.confirm.setChecked(True)
+        result = {"dataset_id": HASH_B, "path": str(destination), "preview_hash": HASH_A, "rows": 16,
+                  "input_contract": "preserve_suspension_state_v2"}
+        with patch("quantlab.desktop.archived_daily_dataset.export_archived_daily_dataset", return_value=result) as exporting:
+            self.dialog.export()
+        self.assertEqual(exporting.call_args.kwargs,
+            {"expected_preview_hash": HASH_A, "confirmed": True, "contract": "preserve_suspension_state_v2"})
+
     def test_scope_or_destination_change_clears_preview_and_confirmation(self):
         self.fill_request(self.root / "new-package")
         self.preview_success()

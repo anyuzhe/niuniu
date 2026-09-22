@@ -245,3 +245,19 @@ F19在F17候选与F18预览之上增加**可选的第二层宿主绑定**，用�
 `preview_rights_rebuild` 只有在宿主同时绑定S1时，才给对应conflict事件附加 `supplemental_evidence`。该信息包括股份基数发现、争点、股息旁证、缺失证据和待答问题，文本始终视为不可信来源声明。**它不会删除 `EVENT_REQUIRES_SEPARATE_ADJUDICATION`，不会生成calculation，也不会把 `UNRESOLVED` 改为来源选择、裁决或重建许可。** `reconstruction_authorized` 与 `publication_authorized` 继续为false；Reviewer与QM50锁定会话不新增这些工具。
 
 CLI增加 `rights-evidence-manifest` 与 `rights-evidence-query`；`rights-preview` 可额外带四个 `--rights-evidence-*` 宿主参数。普通Chat/MCP只看到无路径的只读工具。当前已验收S1只读smoke读取19条、`adjudications_made=0`、`price_evidence_used=false`，并验证 `sh.600626/1993-06-21` 即使显式提出TDX来源仍保持blocked；父候选与S1四个文件的内容SHA和mtime均未变化。F19仍不读取正式行情/公告，不执行治理脚本，不修改候选状态、因子、审批或授权。
+
+## 13. F9 停牌状态输入合同 v2
+
+F9 原 `tradable_only_v1` 保持默认：请求范围内出现 `tradestatus!=1` 仍拒绝，不静默改变既有包格式、preview/request/manifest或旧研究身份。需要保留停牌时，CLI `preview/export` 或桌面工作台必须显式选择 `preserve_suspension_state_v2`；v2 使用独立包格式，合同版本进入preview hash、manifest、dataset_id和冻结后的数据身份，切换合同会使旧预检/确认失效。
+
+v2 保留固定交易日历中的完整证券×session网格以及原始raw/typed字节。`tradestatus=1` 行继续要求完整有限OHLCV；`tradestatus=0` 行必须显式保留 `bs_trade_status=0`，normalized OHLC保持null，禁止用前收或其它价格填成K线。停牌volume/turnover只保留来源已有的null/非负有限值；`vendor_previous_close`必须为有限正数，但它只是在没有历史mark时可用的估值参考，绝不是open/close/fill价格。缺状态、混合/未知contract、缺少估值参考、非有限值均fail-closed。
+
+研究侧只有带显式v2 `input_contract` 的bars才启用停牌语义。停牌session仍留在完整网格中，因子shift/horizon不会因删行跳到复牌日；当日universe mask强制 `eligible=false`，停牌OHLC为null，因此以停牌日作为价格终点的forward label保持null。因子或处理器若不能处理null，应显式失败，不做隐藏forward-fill或删行。没有v2 contract的旧数据即使含 `bs_trade_status` 字段，也继续按旧OHLCV验证规则处理。
+
+执行侧将可成交价格和估值mark分开。v2停牌行不进入open价格表，不产生fill；目标变化记录 `vendor_suspended` 拒绝并在后续可交易session继续由既有目标语义处理。持仓估值优先沿用最后一个真实可交易close；若账户在没有历史mark时遇停牌，仅可使用来源 `vendor_previous_close` 建立估值mark。`vnpy_open` 明确拒绝含停牌v2行，避免将null OHLC交给原生撮合；open/vnpy_rules沿状态感知路径处理。
+
+停牌日如果同时发生会改变经济价值的公司行动，不能一边沿用除权前mark、一边又计应收现金/新增股份，否则会重复估值。当前对持仓的停牌除权现金/送股场景直接阻断并要求显式的行动后估值证据；股票拆分等原有流程缺少真实估值bar时继续按既有规则fail-closed，不从 `vendor_previous_close` 推导除权后成交价。
+
+人工批准仍冻结实际normalized parquet。对v2，冻结后的 `DataSnapshot.snapshot_id` 额外绑定冻结parquet SHA、原source snapshot id和 `preserve_suspension_state_v2`；文件证据同时保留 `input_contract`。因此原数据包/来源在批准后离线仍可从冻结字节运行和复算，但不能把相同请求的v1/v2或不同冻结字节视为同一snapshot。v1没有contract字段时沿用原snapshot算法，不做无关身份迁移。
+
+F9 v2仍然只是 `research_only/raw/1d` 的有限归档输入合同，不证明历史停牌状态官方完整、价格正确、Strict PIT、可交易性或全市场覆盖，也不改变权限、采集、正式数据或自动交易边界。

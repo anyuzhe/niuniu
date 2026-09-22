@@ -16,6 +16,7 @@ def main(argv=None):
         command.add_argument('--symbols', nargs='+', required=True)
         command.add_argument('--start', required=True)
         command.add_argument('--end', required=True)
+        command.add_argument('--contract', choices=('tradable_only_v1','preserve_suspension_state_v2'), default='tradable_only_v1')
         if action == 'export':
             command.add_argument('--destination', required=True)
             command.add_argument('--expected-preview-hash', required=True)
@@ -32,12 +33,12 @@ def main(argv=None):
         else:
             selected = (args.source_workspace, args.capture_id, ' '.join(args.symbols), args.start, args.end)
             if args.action == 'preview':
-                data = preview_archived_daily_dataset(*selected)
+                data = preview_archived_daily_dataset(*selected, contract=args.contract)
             else:
                 if not args.confirm_create:
                     raise ValueError('export requires --confirm-create; no files were created')
                 data = export_archived_daily_dataset(*selected, args.destination,
-                    expected_preview_hash=args.expected_preview_hash, confirmed=True)
+                    expected_preview_hash=args.expected_preview_hash, confirmed=True, contract=args.contract)
         print(encode({'ok': True, 'data': data, 'error': None, 'research_executed': False,
                       'research_approved': False}))
         return 0

@@ -29,12 +29,17 @@ from quantlab.agent.qm50_archived_inputs import ArchivedDailyBridge
 from quantlab.data.base import DataBatch, DataRequest, DataSnapshot
 from quantlab.data.retro_daily import FIELDS, SCHEMA, normalize_symbol_rows
 from quantlab.data.session_coverage import calendar_sessions
-from quantlab.data.validation import ordered_bars
+from quantlab.data.validation import SUSPENSION_INPUT_CONTRACT, ordered_bars
 from quantlab.domain import Timeframe
 from quantlab.storage.codec import digest, encode
 
 MARKER = "archived-daily-dataset.json"
-FORMAT = "niuniu-archived-daily-dataset-v1"
+FORMAT_V1 = "niuniu-archived-daily-dataset-v1"
+FORMAT_V2 = "niuniu-archived-daily-dataset-v2"
+FORMAT = FORMAT_V1  # backward-compatible public constant
+CONTRACT_V1 = "tradable_only_v1"
+CONTRACT_V2 = SUSPENSION_INPUT_CONTRACT
+_CONTRACTS = {CONTRACT_V1: FORMAT_V1, CONTRACT_V2: FORMAT_V2}
 _SYMBOL = re.compile(r"^(?:sh|sz)\.\d{6}$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _MAX_SYMBOLS = 10
@@ -60,6 +65,27 @@ LIMITATIONS = [
     "isST=1 is retained when its archived market row is valid; it does not establish historical tradability.",
     "The package grants no source-workspace, approval, collection, strategy, execution, or trading permission.",
 ]
+LIMITATIONS_V2 = [
+    "Retrospective provider observations only; this package is research_only and is not Strict PIT certification.",
+    "available_at is a nominal close-time alignment, not evidence of historical publication or availability.",
+    "Calendar coverage is the capture's fixed provider calendar, not an official historical security population.",
+    "v2 preserves every requested provider session and tradestatus; suspended rows keep OHLC null and are never converted into fill bars.",
+    "Suspended rows use source vendor_previous_close only as an explicit valuation mark; it is not an executable price or synthetic OHLC.",
+    "Research eligibility excludes bs_trade_status=0; labels keep the full session grid so suspension is not compressed into a later price.",
+    "Factors that cannot process null OHLC fail explicitly; no forward-fill, session deletion, or hidden imputation is permitted.",
+    "isST=1 is retained when its archived market row is valid; it does not establish historical tradability.",
+    "The package grants no source-workspace, approval, collection, strategy, execution, or trading permission.",
+]
+
+
+def _contract(value: str) -> str:
+    if value not in _CONTRACTS:
+        raise ValueError("Archived daily contract must be tradable_only_v1 or preserve_suspension_state_v2")
+    return value
+
+
+def _limitations(contract: str) -> list[str]:
+    return list(LIMITATIONS if contract == CONTRACT_V1 else LIMITATIONS_V2)
 
 
 def _sha(payload: bytes) -> str:
@@ -201,7 +227,8 @@ def _semantic_rows(bars: pl.DataFrame) -> list[dict]:
 
 def _normalize_material(*, capture_id: str, symbols: tuple[str, ...], lo: date, hi: date,
                         payloads: dict[str, dict[str, bytes]], files: dict[str, bytes],
-                        source_manifests: dict[str, dict]) -> dict:
+                        source_manifests: dict[str, dict], contract: str = CONTRACT_V1) -> dict:
+    contract = _contract(contract)
     if set(payloads) != set(symbols) or set(source_manifests) != set(symbols):
         raise ValueError("Requested source symbol set differs from archived payloads")
     if set(files) != {"plan.json", "reference/stock_basic.json.gz", "reference/trade_calendar.json.gz"}:
@@ -263,12 +290,30 @@ def _normalize_material(*, capture_id: str, symbols: tuple[str, ...], lo: date, 
         dates = selected["date"].to_list()
         if len(dates) != len(expected) or len(set(dates)) != len(dates) or set(dates) != expected:
             raise ValueError("Requested archive calendar has missing, duplicate, or unexpected rows: " + symbol)
-        if selected.filter(pl.col("tradestatus") != 1).height:
-            raise ValueError("v1 rejects requested tradestatus!=1 rows: " + symbol)
         required_numbers = ["open", "high", "low", "close", "preclose", "volume", "amount", "turn", "pctChg"]
-        if any(selected[column].null_count() for column in required_numbers) \
-                or selected.filter(pl.any_horizontal([~pl.col(column).is_finite() for column in required_numbers])).height:
-            raise ValueError("Requested archive row has empty or non-finite required values: " + symbol)
+        if contract == CONTRACT_V1:
+            if selected.filter(pl.col("tradestatus") != 1).height:
+                raise ValueError("v1 rejects requested tradestatus!=1 rows: " + symbol)
+            if any(selected[column].null_count() for column in required_numbers) \
+                    or selected.filter(pl.any_horizontal([~pl.col(column).is_finite() for column in required_numbers])).height:
+                raise ValueError("Requested archive row has empty or non-finite required values: " + symbol)
+        else:
+            tradable = selected.filter(pl.col("tradestatus") == 1)
+            suspended = selected.filter(pl.col("tradestatus") == 0)
+            if any(tradable[column].null_count() for column in required_numbers) \
+                    or tradable.filter(pl.any_horizontal([~pl.col(column).is_finite() for column in required_numbers])).height:
+                raise ValueError("v2 tradable archive row has empty or non-finite required values: " + symbol)
+            if suspended.height:
+                if suspended.filter(pl.any_horizontal([pl.col(column).is_not_null() for column in ("open", "high", "low", "close")])).height:
+                    raise ValueError("v2 suspended rows must preserve null OHLC without synthesis: " + symbol)
+                if suspended["preclose"].null_count() or suspended.filter(~pl.col("preclose").is_finite() | (pl.col("preclose") <= 0)).height:
+                    raise ValueError("v2 suspended rows require finite positive preclose valuation evidence: " + symbol)
+                for column in ("volume", "amount", "turn", "pctChg"):
+                    if suspended.filter(pl.col(column).is_not_null() & ~pl.col(column).is_finite()).height:
+                        raise ValueError("v2 suspended source numeric field is non-finite: " + symbol + ":" + column)
+                for column in ("volume", "amount"):
+                    if suspended.filter(pl.col(column).is_not_null() & (pl.col(column) < 0)).height:
+                        raise ValueError("v2 suspended volume/amount cannot be negative: " + symbol)
         try:
             fetched = datetime.fromisoformat(manifest["fetched_at"])
         except (TypeError, ValueError) as error:
@@ -292,6 +337,8 @@ def _normalize_material(*, capture_id: str, symbols: tuple[str, ...], lo: date, 
             pl.col("pctChg").cast(pl.Float64).alias("vendor_pct_change"),
             pl.lit(manifest["fetched_at"]).alias("source_fetched_at"),
         )
+        if contract == CONTRACT_V2:
+            bars = bars.with_columns(pl.lit(CONTRACT_V2).alias("input_contract"))
         parts_out.append(bars)
         evidence_symbols.append({
             "symbol": symbol,
@@ -325,12 +372,18 @@ def _normalize_material(*, capture_id: str, symbols: tuple[str, ...], lo: date, 
         "qualification": "research_only",
         "historical_available_at_verified": False,
     }
+    if contract == CONTRACT_V2:
+        source_snapshot.update(input_contract=CONTRACT_V2,
+                               suspension_state_preserved=True,
+                               valuation_policy="vendor_previous_close_for_suspended_valuation_only_never_fill")
     return {"bars": bars, "sessions": sessions, "source_snapshot": source_snapshot, "semantic_sha256": semantic_sha}
 
 
-def _preview_core(capture_id: str, symbols: tuple[str, ...], lo: date, hi: date, material: dict) -> dict:
+def _preview_core(capture_id: str, symbols: tuple[str, ...], lo: date, hi: date, material: dict,
+                  contract: str = CONTRACT_V1) -> dict:
+    contract = _contract(contract)
     bars = material["bars"]
-    return {
+    result = {
         "capture_id": capture_id,
         "symbols": list(symbols),
         "start": lo.isoformat(),
@@ -342,11 +395,22 @@ def _preview_core(capture_id: str, symbols: tuple[str, ...], lo: date, hi: date,
         "qualification": "research_only",
         "time_policy": TIME_POLICY,
         "source_evidence": material["source_snapshot"],
-        "limitations": LIMITATIONS,
+        "limitations": _limitations(contract),
     }
+    if contract == CONTRACT_V2:
+        result.update(
+            input_contract=CONTRACT_V2,
+            tradable_rows=bars.filter(pl.col("bs_trade_status") == 1).height,
+            suspended_rows=bars.filter(pl.col("bs_trade_status") == 0).height,
+            valuation_policy="carry_last_tradable_close; source vendor_previous_close only if no prior mark; never a fill price",
+            research_policy="bs_trade_status=0 is ineligible; full session grid is retained for shifts/labels; no forward-fill",
+            execution_policy="bs_trade_status=0 cannot create fills; target changes remain pending/rejected for that session",
+        )
+    return result
 
 
-def _prepare_source(source_workspace, capture_id, symbols, start, end) -> dict:
+def _prepare_source(source_workspace, capture_id, symbols, start, end, *, contract=CONTRACT_V1) -> dict:
+    contract = _contract(contract)
     parsed_symbols = _parse_symbols(symbols)
     lo, hi = _parse_range(start, end)
     if _forbidden_symlink_component(Path(source_workspace).expanduser()):
@@ -358,16 +422,18 @@ def _prepare_source(source_workspace, capture_id, symbols, start, end) -> dict:
     if (bridge_lo, bridge_hi) != (lo, hi):
         raise ValueError("Archive bridge returned a different request range")
     material = _normalize_material(capture_id=capture_id, symbols=parsed_symbols, lo=lo, hi=hi,
-                                   payloads=payloads, files=files, source_manifests=evidence["symbols"])
-    core = _preview_core(capture_id, parsed_symbols, lo, hi, material)
+                                   payloads=payloads, files=files, source_manifests=evidence["symbols"],
+                                   contract=contract)
+    core = _preview_core(capture_id, parsed_symbols, lo, hi, material, contract)
     preview = {"preview_hash": digest(core), **core}
     return {"preview": preview, "payloads": payloads, "files": files, "material": material,
-            "symbols": parsed_symbols, "lo": lo, "hi": hi, "source_root": bridge.root}
+            "symbols": parsed_symbols, "lo": lo, "hi": hi, "source_root": bridge.root,
+            "contract": contract}
 
 
-def preview_archived_daily_dataset(source_workspace, capture_id, symbols, start, end) -> dict:
+def preview_archived_daily_dataset(source_workspace, capture_id, symbols, start, end, *, contract=CONTRACT_V1) -> dict:
     """Validate existing exact source bytes and return a stable, write-free export preview."""
-    return _prepare_source(source_workspace, capture_id, symbols, start, end)["preview"]
+    return _prepare_source(source_workspace, capture_id, symbols, start, end, contract=contract)["preview"]
 
 
 def _file_entry(path: str, payload: bytes, role: str, rows: int | None = None) -> dict:
@@ -379,6 +445,7 @@ def _file_entry(path: str, payload: bytes, role: str, rows: int | None = None) -
 
 def _manifest_for(prepared: dict, serialized_bars: bytes) -> dict:
     preview = prepared["preview"]
+    contract = prepared.get("contract", CONTRACT_V1)
     symbols = prepared["symbols"]
     source_files = prepared["files"]
     payloads = prepared["payloads"]
@@ -394,10 +461,15 @@ def _manifest_for(prepared: dict, serialized_bars: bytes) -> dict:
             _file_entry(prefix + "daily.parquet", payloads[symbol]["daily"], "source_typed_daily"),
         ))
     entries.append(_file_entry("normalized/bars.parquet", serialized_bars, "normalized_bars", preview["rows"]))
+    request_keys = ("capture_id", "symbols", "start", "end", "adjustment")
+    summary_keys = ("rows", "actual_sessions", "fields", "qualification", "time_policy", "limitations")
+    if contract == CONTRACT_V2:
+        request_keys += ("input_contract",)
+        summary_keys += ("input_contract", "tradable_rows", "suspended_rows", "valuation_policy", "research_policy", "execution_policy")
     core = {
-        "format": FORMAT,
-        "request": {key: preview[key] for key in ("capture_id", "symbols", "start", "end", "adjustment")},
-        "summary": {key: preview[key] for key in ("rows", "actual_sessions", "fields", "qualification", "time_policy", "limitations")},
+        "format": _CONTRACTS[contract],
+        "request": {key: preview[key] for key in request_keys},
+        "summary": {key: preview[key] for key in summary_keys},
         "preview_hash": preview["preview_hash"],
         "source_snapshot": preview["source_evidence"],
         "normalized": {"path": "normalized/bars.parquet", "rows": preview["rows"],
@@ -502,7 +574,7 @@ def _rename_noreplace(source: Path, destination: Path) -> None:
 
 
 def export_archived_daily_dataset(source_workspace, capture_id, symbols, start, end, destination, *,
-                                  expected_preview_hash, confirmed=False) -> dict:
+                                  expected_preview_hash, confirmed=False, contract=CONTRACT_V1) -> dict:
     """Re-read a preview, stage exact bytes beside the target, and publish without overwrite."""
     if confirmed is not True:
         raise ValueError("Export requires confirmed=True")
@@ -522,7 +594,7 @@ def export_archived_daily_dataset(source_workspace, capture_id, symbols, start, 
         os.fsync(lock_fd)
         if os.path.lexists(target):
             raise ValueError("Destination must be a wholly new directory")
-        prepared = _prepare_source(source_workspace, capture_id, symbols, start, end)
+        prepared = _prepare_source(source_workspace, capture_id, symbols, start, end, contract=contract)
         if prepared["preview"]["preview_hash"] != expected_preview_hash:
             raise ValueError("Preview hash changed; source/request must be reviewed again")
         buffer = io.BytesIO()
@@ -554,8 +626,11 @@ def export_archived_daily_dataset(source_workspace, capture_id, symbols, start, 
         _rename_noreplace(stage, target)
         stage = None
         _fsync_directory(parent)
-        return {"dataset_id": manifest["dataset_id"], "path": str(target),
-                "preview_hash": expected_preview_hash, "rows": prepared["preview"]["rows"]}
+        result = {"dataset_id": manifest["dataset_id"], "path": str(target),
+                  "preview_hash": expected_preview_hash, "rows": prepared["preview"]["rows"]}
+        if contract == CONTRACT_V2:
+            result["input_contract"] = CONTRACT_V2
+        return result
     except FileExistsError as error:
         raise ValueError("Destination or concurrent export already exists") from error
     finally:
@@ -630,7 +705,7 @@ def _exact_tree(root: Path, symbols: tuple[str, ...]) -> None:
 def _manifest_identity(manifest: dict) -> None:
     required = {"format", "request", "summary", "preview_hash", "source_snapshot", "normalized",
                 "files", "dataset_id", "checksum"}
-    if set(manifest) != required or manifest.get("format") != FORMAT:
+    if set(manifest) != required or manifest.get("format") not in (FORMAT_V1, FORMAT_V2):
         raise ValueError("Archived dataset manifest format or fields are invalid")
     signed = {key: value for key, value in manifest.items() if key != "checksum"}
     if manifest["checksum"] != digest(signed):
@@ -649,8 +724,13 @@ def _inspect_package(root) -> dict:
         raise ValueError("Archived dataset manifest must be an object")
     _manifest_identity(manifest)
     request = manifest["request"]
-    if not isinstance(request, dict) or set(request) != {"capture_id", "symbols", "start", "end", "adjustment"} \
-            or request["adjustment"] != "raw" or not isinstance(request["symbols"], list):
+    contract = CONTRACT_V1 if manifest["format"] == FORMAT_V1 else CONTRACT_V2
+    expected_request = {"capture_id", "symbols", "start", "end", "adjustment"}
+    if contract == CONTRACT_V2:
+        expected_request.add("input_contract")
+    if not isinstance(request, dict) or set(request) != expected_request \
+            or request["adjustment"] != "raw" or not isinstance(request["symbols"], list) \
+            or (contract == CONTRACT_V2 and request.get("input_contract") != CONTRACT_V2):
         raise ValueError("Archived dataset request is invalid")
     if any(not isinstance(symbol, str) for symbol in request["symbols"]):
         raise ValueError("Archived dataset symbols must be strings")
@@ -721,14 +801,16 @@ def _inspect_package(root) -> dict:
         payloads[symbol] = {"raw": payload_by_path[prefix + "rows.json.gz"],
                             "daily": payload_by_path[prefix + "daily.parquet"]}
     material = _normalize_material(capture_id=request["capture_id"], symbols=symbols, lo=lo, hi=hi,
-                                   payloads=payloads, files=files, source_manifests=evidence)
+                                   payloads=payloads, files=files, source_manifests=evidence, contract=contract)
     if source_snapshot != material["source_snapshot"]:
         raise ValueError("Archived source snapshot does not match saved raw/typed/calendar semantics")
-    preview_core = _preview_core(request["capture_id"], symbols, lo, hi, material)
+    preview_core = _preview_core(request["capture_id"], symbols, lo, hi, material, contract)
     if manifest["preview_hash"] != digest(preview_core):
         raise ValueError("Archived preview hash does not match saved source semantics")
-    expected_summary = {key: preview_core[key] for key in
-                        ("rows", "actual_sessions", "fields", "qualification", "time_policy", "limitations")}
+    summary_keys = ("rows", "actual_sessions", "fields", "qualification", "time_policy", "limitations")
+    if contract == CONTRACT_V2:
+        summary_keys += ("input_contract", "tradable_rows", "suspended_rows", "valuation_policy", "research_policy", "execution_policy")
+    expected_summary = {key: preview_core[key] for key in summary_keys}
     if manifest["summary"] != expected_summary:
         raise ValueError("Archived dataset summary does not match saved source semantics")
     normalized = manifest["normalized"]
@@ -742,6 +824,7 @@ def _inspect_package(root) -> dict:
         raise ValueError("Normalized bars disagree with saved raw/typed/calendar semantics")
     return {"root": root, "manifest": manifest, "marker_payload": marker_payload,
             "payloads": payload_by_path, "bars": stored, "sessions": material["sessions"],
+            "contract": contract,
             "preview": {"preview_hash": manifest["preview_hash"], **preview_core}}
 
 
@@ -757,7 +840,7 @@ class ArchivedDailyDatasetProvider:
 
     def __init__(self, root, adjustment="raw"):
         if adjustment != "raw":
-            raise ValueError("Archived daily dataset v1 supports adjustment='raw' only")
+            raise ValueError("Archived daily dataset supports adjustment='raw' only")
         self.root = _safe_package_root(root)
         self.adjustment = adjustment
 
@@ -765,7 +848,7 @@ class ArchivedDailyDatasetProvider:
         if not isinstance(request, DataRequest):
             raise ValueError("load requires a DataRequest")
         if request.timeframe != Timeframe.DAILY:
-            raise ValueError("Archived daily dataset v1 supports timeframe=1d only; no fallback or resampling")
+            raise ValueError("Archived daily dataset supports timeframe=1d only; no fallback or resampling")
         checked = _inspect_package(self.root)  # deliberately no cache: every read observes tampering
         manifest = checked["manifest"]
         packaged = manifest["request"]
@@ -792,6 +875,10 @@ class ArchivedDailyDatasetProvider:
             "historical_available_at_verified": False,
             "time_policy": TIME_POLICY,
         }
+        if checked["contract"] == CONTRACT_V2:
+            common.update(input_contract=CONTRACT_V2,
+                          suspension_state_preserved=True,
+                          valuation_policy="carry_last_tradable_close_then_vendor_previous_close_for_valuation_only")
         file_entries = []
         for entry in manifest["files"]:
             file_entries.append({**entry, "path": str(self.root / entry["path"]), **common})
