@@ -99,6 +99,8 @@ class ChatRuntime:
             base_system+='\n已有回溯日线先用list_archived_daily_sources发现宿主工作空间中的capture，再用list_archived_daily_symbols分页、inspect_archived_daily核验原始与typed字段。TDX已存资料用get_tdx_data_status/read_tdx_data读取明确family；这些是不同来源，不因MQC目录缺字段就断言整个项目没有数据。目录元信息不等于原始字节核验，原始记录可读也不等于通用策略Provider已接入；保留单位、observed_at、缺失和未核验标记。工具不下载、标准化、选择供应商版本或自动创建研究。'
         if not self.research_spec:
             base_system+='\n宿主显式选择archived-daily-dataset.json输入根时，用get_archived_daily_dataset核验固定范围与来源；仅raw日线、research_only。不要当作MQC目录或请求qfq，不自动导出、切换数据根、扩大Grant或用此包替代QM50原始规格。'
+        if not self.research_spec:
+            base_system+='\nTDX覆盖用get_tdx_data_coverage读取真实COUNT与逐证券日期分位，必须按date_axis解释过滤；不能把publication数、全局跨度当证券数/连续覆盖。公司行动与qfq风险先get_adjustment_review_contract，再inspect_corporate_action_sources读取一个明确证券窗口的候选；保留errors/incomplete、source缺失、未知税基及方案范围。不能跨供应商累加、用2:1或零偏差认证真值/独立血缘、把全部差异称欠调或把目录旧数字当最终缺陷名单。本地qfq可加载不等于完整复权；工具只做候选证据检查，不能重算、修复或发布因子。'
         if self.local_data_only:
             base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         if self.research_spec:

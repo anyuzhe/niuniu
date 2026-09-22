@@ -110,3 +110,39 @@ Git Markdown 保存规则、说明、工程经验与架构；结构化归档保�
 竞价不同观测版本须区分完全相同副本与数值冲突，明确事件键、早/晚盘阶段、来源选择与同时间并列规则；仅写 `DISTINCT(date,code,event_time)` 不能决定冲突的价格和数量。跨来源比值只能提供单位候选，不得覆盖原单位未核验标记；同一供应商两个接口也不是独立规格证明。指示性可匹配量、累计快照和最终成交量要分别解释，不把观测版本或累计快照求和当成交量。金额缺失保持缺失；任何经验证的推导金额须另列字段、公式及输入证据。
 
 覆盖清单的哈希只固定清单自身；`path+bytes+mtime`、文件数量或日期数量相等不等于冻结行情字节或精确交易日集合完整。可执行研究交付需明确每个输入文件/切片的SHA256、选择规则和实际证券×日期范围；完整历史固定队列也不等于无幸存者偏差的PIT股票池。Universe/状态/交易规则是部分资格组件，不代替该研究实际需要的行情版本、行业、市值和发布时间证据。
+
+## 8. 治理资料的只读消费入口（F15 第一批）
+
+普通本地研究聊天与标准MCP新增 `get_tdx_data_coverage`、`get_adjustment_review_contract`、`inspect_corporate_action_sources`。它们不创建研究任务、不采集、不修改库/指针、不重建或发布复权因子；首轮Reviewer和锁定QM50原始规格会话不增加这三项权限。读取合同不需要数据根，另两项仅使用宿主已配置的data_root，不接受模型传入路径或SQL。
+
+### TDX覆盖与日期轴
+
+`read_tdx_data` 保留原始行、排序与qualification，新增date_axis：bars_daily/bars_5m/bars_1m/trades/opening_match/auction/capital_changes为event_date；depth/finance/quotes/securities/topics为observed_date；limit_ladder为batch_date，且明确部分行源自trading_date_value，不是统一事件日认证。非事件族的读取与覆盖结果均附date_filter_is_not_event_date警告，不制造不存在的event_time。
+
+`get_tdx_data_coverage(family,symbol,start,end)` 聚合一个族全部符合过滤条件的行，而非取一页推算。返回rows、COUNT(DISTINCT code)、source_ids、日期范围/不同日期数，以及逐code日期数min/p25/median/p75/max。codes遵循SQL定义，空字符串纳入distinct、NULL排除，两者行数另列；非事件族的event_date与per_symbol_event_days字段为null，改用date_min/date_max/distinct_dates/per_symbol_dates。明确时区的observed_at按UTC时刻比较，坏值、空值和缺时区分别计数，不按电脑时区补齐。
+
+覆盖查询由独立内存DuckDB连接只读附加原catalog，资源为2线程/512MB/30秒查询上限、禁临时落盘；不改变其他现有连接的设置。缺表、不可读、查询预算或检测到文件变化时失败，不当空集。结果固定catalog_rows_only、source_bytes_verified=false、history_complete=false、strict_pit=false；不认证源页字节、去重、连续行情或全市场覆盖。本轮没有在正式大库上做性能或全量对账验收。
+
+### 公司行动候选与qfq诊断
+
+先调用get_adjustment_review_contract，再以一个规范证券和明确日期窗口调用inspect_corporate_action_sources；上限3660自然日、每页1–20个除权日、offset≤20000。只读固定TDX资本变动视图，以及东财/同花顺分红Parquet和可选已存qfq文件；逐源披露缺失、错误、字节哈希和定位。TDX部分仅是catalog行观察，不宣称原始协议页已深验。来源文本作为不可信数据，不是工具指令。
+
+只解析少量明确、完整方案语法，保留原文、每股/每10股基数和税基。未知/待定文案不能变成三个零；税后、现金缺税基、限售/流通不同分配、残余复杂语法均阻断候选归并。东财比例字段在本合同下没有显式税基，原值保留但不按默认税前参与总额。TDX c槽仅标统计反解候选，非协议认证；未支持类目不命名。
+
+同一来源内，精确重复保留全部定位而不重复计值；有可区分方案身份时才形成候选合计。公告日变化不创建新方案身份；同报告期修订冲突、身份不清或同文本不同身份均不自动相加。不同供应商描述永不求和；agreement/disagreement仅是候选值关系，不通过2:1、匹配率或零偏差认证真值/独立上游。
+
+qfq只显示指定证券已存相邻因子的变化方向与比值，不计算修正因子或“正确收益”。比值上升、下降或不变都不能单独证明欠调/完整；不存在已认证差异清单时保持known_issue_list_status=not_bound。此前治理报告的46/64/272等分类数字不写入产品真值表。已有本地qfq盘点和载入检查增加supplier_adjustment_not_verified提示，但不改变原始raw/qfq价格、研究参数、批准冻结或复算身份。
+
+顶层ok表示接口读取是否成功；data.incomplete、errors、每个来源blockers和pagination仍须同时展示。解析/来源阻断不能被描述为“没有差异”或“已修好”；未知税基下部分源不能比较，并不证明该供应商数据错误。MCP/CLI沿现有64KiB完整响应上限，超限明确要求缩小页量，不截掉错误生成成功回复。
+
+宿主CLI与模型工具同源：
+
+```bash
+# 纯合同读取，不接触数据
+.venv/bin/python -B -m quantlab.agent.data_review_cli contract
+# 下列两个子命令需显式传入宿主选择的数据根；不会采集或写入
+# tdx-coverage --data-root <root> --family <family> [--symbol <code>] [--start YYYY-MM-DD] [--end YYYY-MM-DD]
+# corporate-actions --data-root <root> --symbol <code> --start YYYY-MM-DD --end YYYY-MM-DD [--offset 0] [--limit 20]
+```
+
+CLI退出码0=读取完成，3=读取完成但资料/候选不完整，2=参数/读取/接口失败；0不是数据正确或PIT认证。R3事件版本合同、R12/R13正式因子重建、最终逐事件差异清单、R16第三源采集仍是后续范围，不由本批只读查询暗中执行。

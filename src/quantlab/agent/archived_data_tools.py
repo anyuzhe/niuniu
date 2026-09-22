@@ -30,6 +30,13 @@ TOOLS = [
     schema('get_archived_daily_dataset', '只读核验宿主data_root中已显式生成的归档日线研究输入包；返回固定证券、范围、源证据和限制。只支持raw日线，不创建输入包、不批准、不执行；不能代替原始QM50规格。', {}),
     schema('check_archived_daily_research', '只读核对明确研究spec与宿主选定F9日线包：证券、日期、周期、复权和背景输入；返回全部不匹配原因。不是审批或统计样本充分性证明，不改配置、不创建任务。',
            {'spec_json': {'type': 'string', 'maxLength': 65536}}),
+    schema('get_adjustment_review_contract', '读取公司行动候选对账与复权风险合同；不读行情、不把供应商一致性认证为官方真值或独立血缘，不批准重建。', {}),
+    schema('inspect_corporate_action_sources', '只读核对宿主data_root中一个证券、最多3660自然日的TDX/东财/同花顺公司行动与已存qfq因子诊断。按源保留候选、原文、冲突和未识别项；不跨供应商相加、不判最终真值、不生成修正因子。errors/incomplete和分页必须披露，缺源不等于零事件。',
+           {'symbol': TEXT, 'start': TEXT, 'end': TEXT,
+            'offset': {'type': 'integer', 'minimum': 0, 'maximum': 20000},
+            'limit': {'type': 'integer', 'minimum': 1, 'maximum': 20}}),
+    schema('get_tdx_data_coverage', '只读聚合一个TDX族的真实行数、不同证券数、日期范围与逐证券日数分位。返回date_axis；全局跨度不代表每只证券覆盖，非事件族不伪造事件日期。不选择版本、不校验源页字节、不认证完整性或PIT。',
+           {'family': TEXT, 'symbol': TEXT, 'start': TEXT, 'end': TEXT}),
     schema('get_tdx_data_status', '只读查看已配置TDX湖状态；剔除大体计划字段。不联网、不采集，能力不代表数据存在。', {}),
     schema('read_tdx_data', '只读查询TDX catalog中的tdx_*数据；返回original_record、单位、observed_at和source_id，不标准化、不PIT升级。',
            {'family': TEXT, 'symbol': TEXT, 'start': TEXT, 'end': TEXT,
@@ -212,6 +219,8 @@ class ArchivedMarketDataAPI:
         if not isinstance(base.get('data'), dict):
             return _error('get_capabilities', 'INVALID_RESULT', '内层能力接口缺少data对象。')
         data = {**base['data'], 'archived_daily_read_available': True, 'tdx_read_available': True,
+                'tdx_coverage_read_available': True, 'corporate_action_review_available': True,
+                'adjustment_rebuild_authorized': False, 'corporate_action_official_verification': False,
                 'archived_data_write_authorized': False,
                 'tools': [tool['name'] for tool in self.schemas()]}
         return _ok('get_capabilities', data, evidence=base.get('evidence'),
@@ -255,6 +264,22 @@ class ArchivedMarketDataAPI:
                 evidence = [{'kind': 'archived_daily_dataset', 'dataset_id': data['dataset_id'],
                              'spec_digest': data['spec_digest'], 'check_hash': data['check_hash'],
                              'compatible': data['compatible'], 'qualification': 'research_only'}]
+            elif name == 'get_adjustment_review_contract':
+                from quantlab.data.corporate_action_review import get_adjustment_review_contract
+                data = get_adjustment_review_contract()
+            elif name == 'inspect_corporate_action_sources':
+                if self.data_root is None:
+                    raise ValueError('Corporate action data root not configured')
+                from quantlab.data.corporate_action_review import inspect_corporate_action_sources
+                data = inspect_corporate_action_sources(self.data_root, **args)
+                evidence = data.get('evidence', [])
+            elif name == 'get_tdx_data_coverage':
+                if self.data_root is None:
+                    raise ValueError('TDX data root not configured')
+                from quantlab.data.tdx_lake import TdxLake
+                data = TdxLake(self.data_root).coverage(**args)
+                evidence = [{'kind': 'tdx_coverage_query', 'family': args['family'],
+                             'date_axis': data['date_axis'], 'verification': 'catalog_rows_only'}]
             elif name == 'get_tdx_data_status':
                 data = _tdx_status(self.data_root)
                 evidence = [{'kind': 'tdx_root_config', 'configured': bool(data.get('configured'))}]

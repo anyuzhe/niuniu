@@ -1,0 +1,54 @@
+"""Host-side read-only data review; no download, repair, export or execution commands."""
+from __future__ import annotations
+
+import argparse
+from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
+from quantlab.storage.codec import encode
+
+
+class _NoOtherTools:
+    def schemas(self):
+        return []
+
+    def call(self, name, args):
+        raise ValueError('This command supports only explicit read-only review tools')
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='牛牛只读覆盖和公司行动候选复核；不改库、不重算因子')
+    commands = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('contract', help='只读取复权候选复核合同，不需要数据根')
+    coverage = commands.add_parser('tdx-coverage', help='查询一个TDX族的实际聚合覆盖')
+    coverage.add_argument('--data-root', required=True)
+    coverage.add_argument('--family', required=True)
+    coverage.add_argument('--symbol', default='')
+    coverage.add_argument('--start', default='')
+    coverage.add_argument('--end', default='')
+    action = commands.add_parser('corporate-actions', help='读取一个证券的公司行动候选与来源差异')
+    action.add_argument('--data-root', required=True)
+    action.add_argument('--symbol', required=True)
+    action.add_argument('--start', required=True)
+    action.add_argument('--end', required=True)
+    action.add_argument('--offset', type=int, default=0)
+    action.add_argument('--limit', type=int, default=20)
+    parsed = parser.parse_args(argv)
+    api = ArchivedMarketDataAPI(_NoOtherTools(), None, getattr(parsed, 'data_root', None))
+    if parsed.command == 'contract':
+        name, arguments = 'get_adjustment_review_contract', {}
+    elif parsed.command == 'tdx-coverage':
+        name = 'get_tdx_data_coverage'
+        arguments = {key: getattr(parsed, key) for key in ('family', 'symbol', 'start', 'end')}
+    else:
+        name = 'inspect_corporate_action_sources'
+        arguments = {key: getattr(parsed, key) for key in ('symbol', 'start', 'end', 'offset', 'limit')}
+    result = api.call(name, arguments)
+    print(encode(result))
+    if not result.get('ok'):
+        return 2
+    # A completed read can be incomplete; differences alone do not mean an API failure.
+    data = result.get('data') or {}
+    return 3 if data.get('incomplete') else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

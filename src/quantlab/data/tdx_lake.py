@@ -12,6 +12,8 @@ from uuid import uuid4
 import duckdb
 import polars as pl
 
+from quantlab.data.tdx_query import catalog_coverage,family_table,read_contract,validate_text_filters
+
 FAMILIES=('securities','bars_1m','bars_5m','bars_daily','trades','opening_match','auction','quotes','depth','finance','capital_changes','topics','limit_ladder')
 READ_COLUMNS={'date':pl.Date,'code':pl.String,'event_time':pl.String,'observed_at':pl.String,
     'open':pl.Float64,'high':pl.Float64,'low':pl.Float64,'close':pl.Float64,
@@ -382,16 +384,18 @@ class TdxLake:
             'families':stored,'jobs':jobs,'plans':plans,'control':control,'history_complete':False,'qualification':QUALIFICATION,
             'limitations':['Snapshot families are observation-time versions, not historical daily snapshots.','SAVED page is not a complete history; inspect pending/deferred jobs and exact requested range.','No PIT, official MarketRules, order-queue or financial restatement certification.']}
     def read(self,family,symbol='',start='',end='',offset=0,limit=20):
-        if family not in FAMILIES or type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:raise ValueError('Invalid read bounds')
-        if symbol and not re.fullmatch(r'(sh|sz|bj)\.\d{6}',symbol):raise ValueError('Invalid symbol')
-        for day in (start,end):
-            if day:date.fromisoformat(day)
+        table=family_table(family)
+        if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:raise ValueError('Invalid read bounds')
+        validate_text_filters(symbol,start,end)
         terms=[];args=[]
         for expr,val in [('code = ?',symbol),('date >= ?::DATE',start),('date <= ?::DATE',end)]:
             if val:terms.append(expr);args.append(val)
         where=' WHERE '+' AND '.join(terms) if terms else ''
         with duckdb.connect(str(self.catalog),read_only=True) as con:
-            rows=con.execute('SELECT * FROM tdx_'+family+where+' ORDER BY date,code,source_id,record_index LIMIT ? OFFSET ?',args+[limit,offset]).fetchall()
+            rows=con.execute('SELECT * FROM '+table+where+' ORDER BY date,code,source_id,record_index LIMIT ? OFFSET ?',args+[limit,offset]).fetchall()
             columns=[d[0] for d in con.description]
         return {'family':family,'rows':[dict(zip(columns,r)) for r in rows],'offset':offset,'limit':limit,
-                'qualification':QUALIFICATION,'more_may_exist':len(rows)==limit}
+                'qualification':QUALIFICATION,'more_may_exist':len(rows)==limit,**read_contract(family)}
+    def coverage(self,family,symbol='',start='',end=''):
+        """Describe all selected catalog rows without certifying PIT or history completeness."""
+        return catalog_coverage(self.catalog,family,symbol,start,end)

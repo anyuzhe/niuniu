@@ -30,6 +30,18 @@ TOOLS = [
 NAMES = {t['name'] for t in TOOLS}
 WARNING = '本地文件/摘要不认证PIT、交易日历完整、可交易股票池或Alpha；缺失不填零，异常不得靠改参数隐去。'
 
+def adjustment_review_notice(adjustment):
+    if adjustment != 'qfq':
+        return {}
+    return {'adjustment_review': {
+        'status': 'supplier_adjustment_not_verified',
+        'corporate_actions_complete_verified': False,
+        'known_issue_list_status': 'not_bound',
+        'read_only_review_tool': 'inspect_corporate_action_sources',
+        'note': '可加载和SHA256只证明所读字节，不证明公司行动完整、复权正确或历史当时可得。候选对账不修正价格；未核验不等于全部有错。',
+    }}
+
+
 class LocalMarketDataTools:
     def __init__(self, data_root):
         self.root = Path(data_root).resolve() if data_root else None
@@ -100,7 +112,8 @@ class LocalMarketDataTools:
         offset = args['offset']+len(selected)
         return {'provider': 'mqc_parquet', 'timeframe': args['timeframe'], 'adjustment': args['adjustment'],
                 'records': rows, 'total': len(files), 'offset': args['offset'],
-                'next_offset': offset if offset < len(files) else None, 'calendar_completeness_verified': False}, refs
+                'next_offset': offset if offset < len(files) else None, 'calendar_completeness_verified': False,
+                **adjustment_review_notice(args['adjustment'])}, refs
 
     def profile(self, args):
         directory = self._directory(args['timeframe'], args['adjustment'])
@@ -147,7 +160,8 @@ class LocalMarketDataTools:
                 'records': rows, 'request_loadable': all(r['loadable'] for r in rows),
                 'ic_min_symbols_per_timestamp': 3, 'timestamps_with_at_least_3_bars': ready,
                 'ic_ready_note': '只检查行情截面数量；因子预热、常数截面和未来标签成熟度仍可能使IC不可计算。',
-                'calendar_completeness_verified': False, 'qualification': 'not_certified'}, refs
+                'calendar_completeness_verified': False, 'qualification': 'not_certified',
+                **adjustment_review_notice(args['adjustment'])}, refs
 
     def call(self, name, arguments):
         try:
