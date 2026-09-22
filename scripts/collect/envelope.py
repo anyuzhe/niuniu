@@ -62,7 +62,9 @@ def build_parser(description: str, *, default_dest: str, default_throttle: float
     p.add_argument('--resume', action='store_true',
                    help='续采：跳过已存在且回读校验通过的文件；不覆盖、不删除')
     p.add_argument('--dry-run', action='store_true',
-                   help='只打印计划，不发起任何供应商请求')
+                   help='只打印计划，不发起任何供应商请求（兼容旧命令）')
+    p.add_argument('--apply', action='store_true',
+                   help='真正采集；每次运行都必须在用户审阅计划并授权后显式添加')
     p.add_argument('--fail-fast', action='store_true',
                    help='任一只证券失败即停止，保留已完成部分')
     return p
@@ -213,8 +215,8 @@ class Envelope:
                   '若既有文件是旧采集器截列写下的，正确做法是**采到新目录重来**，'
                   '而不是在旧目录上续采。运行结束会再核对一次列签名。')
 
-        if self.args.dry_run:
-            print('\n--dry-run：未发起任何供应商请求，未写入任何文件。')
+        if self.args.dry_run or not getattr(self.args, 'apply', False):
+            print('\n未加 --apply：仅展示计划；未调用供应商、未写入任何文件。')
             return 0
         if not todo:
             print('\n无待采集项，退出。')

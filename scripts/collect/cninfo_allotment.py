@@ -10,8 +10,8 @@
   - **不再从分析产物取清单。** 旧脚本的证券清单来自
     ``d4/rights-issue-adjustment-gaps.csv``，那是一份带上游筛选的分析结果，
     导致采集口径比目标总体少 114 只。现在走 ``scripts/collect/universe.py`` 的具名
-    预设，默认 ``tdx-rights``（TDX 除权除息中 c4>0 的 706 只，即历史上确有配股的标的），
-    也可以 ``--universe-preset stocks`` 取全体 A 股或 ``--universe`` 给显式清单。
+    预设，默认 ``tdx-rights-listed``（TDX c4>0 与当前在市 A 股的交集，退市股排除），
+    也可以 ``--universe`` 给显式清单；默认运行不会采集退市股。
   - 目标目录、回执路径参数化。旧脚本把 cninfo 的回执写进了 ``ths/`` 目录。
   - ``--resume`` / ``--dry-run`` / 原子写入 / 回读校验统一由采集信封提供。
   - 不再用裸 ``assert`` 做行数校验（``python -O`` 下会被整条优化掉）。
@@ -55,7 +55,7 @@ def make_fetcher():
 
 def main(argv=None) -> int:
     p = build_parser(__doc__.splitlines()[0], default_dest=DEFAULT_DEST, default_throttle=1.2)
-    p.add_argument('--universe-preset', default='tdx-rights', choices=sorted(uni.PRESETS),
+    p.add_argument('--universe-preset', default='tdx-rights-listed', choices=sorted(uni.PRESETS),
                    help='默认证券清单预设（默认 %(default)s）')
     args = p.parse_args(argv)
 
@@ -67,7 +67,7 @@ def main(argv=None) -> int:
     print('列策略    保留供应商全部列（REQUIRED 仅作存在性门槛，不做投影）')
 
     env = Envelope(args, name='cninfo-allotment', source=SOURCE, required_columns=REQUIRED)
-    fetch = (lambda code: None) if args.dry_run else make_fetcher()
+    fetch = (lambda code: None) if (args.dry_run or not args.apply) else make_fetcher()
     return env.run(codes, fetch)
 
 

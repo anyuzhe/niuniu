@@ -48,7 +48,7 @@ def make_fetcher():
 
 def main(argv=None) -> int:
     p = build_parser(__doc__.splitlines()[0], default_dest=DEFAULT_DEST, default_throttle=1.5)
-    p.add_argument('--universe-preset', default='stocks', choices=sorted(uni.PRESETS),
+    p.add_argument('--universe-preset', default='stocks-listed', choices=sorted(uni.PRESETS),
                    help='默认证券清单预设（默认 %(default)s）')
     args = p.parse_args(argv)
 
@@ -59,7 +59,7 @@ def main(argv=None) -> int:
         print('清单已知局限：%s' % uni.known_limitations())
 
     env = Envelope(args, name='ths-dividend', source=SOURCE, required_columns=REQUIRED)
-    fetch = (lambda code: None) if args.dry_run else make_fetcher()
+    fetch = (lambda code: None) if (args.dry_run or not args.apply) else make_fetcher()
     return env.run(codes, fetch)
 
 

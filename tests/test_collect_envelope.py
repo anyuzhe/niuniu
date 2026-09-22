@@ -22,7 +22,7 @@ from collect.envelope import CollectionRefused, Envelope, symbol_filename
 
 def make_args(dest, **over):
     base = dict(dest=str(dest), receipt=None, universe=None, limit=None, throttle=0.0,
-                retries=2, resume=False, dry_run=False, fail_fast=False)
+                retries=2, resume=False, dry_run=False, apply=True, fail_fast=False)
     base.update(over)
     return argparse.Namespace(**base)
 
@@ -89,6 +89,13 @@ class EnvelopeTests(unittest.TestCase):
         fetcher = RecordingFetcher()
         env = self.env(make_args(self.dest, dry_run=True))
         self.assertEqual(env.run(['sh.600000', 'sh.600001'], fetcher), 0)
+        self.assertEqual(fetcher.calls, [])
+        self.assertFalse(self.dest.exists())
+
+    def test_apply_is_required_for_every_real_run(self):
+        fetcher = RecordingFetcher()
+        env = self.env(make_args(self.dest, apply=False))
+        self.assertEqual(env.run(['sh.600000'], fetcher), 0)
         self.assertEqual(fetcher.calls, [])
         self.assertFalse(self.dest.exists())
 

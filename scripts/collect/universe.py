@@ -21,7 +21,8 @@ CATALOG = Path('/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb')
 PRESETS = {
     'stocks': 'baostock stock_basic 中 type=1 的全部 A 股，含已退市（status=0）',
     'stocks-listed': 'baostock stock_basic 中 type=1 且 status=1 的在市 A 股',
-    'tdx-rights': 'TDX 除权除息记录中 c4（配股比例）> 0 的证券，即历史上确有配股的标的',
+    'tdx-rights': 'TDX 除权除息记录中 c4（配股比例）> 0 的证券，含退市标的',
+    'tdx-rights-listed': 'TDX c4>0 与 baostock status=1 在市 A 股的交集',
 }
 
 
@@ -64,6 +65,9 @@ def resolve(preset: str) -> list[str]:
         codes = _baostock_stocks(listed_only=True)
     elif preset == 'tdx-rights':
         codes = _tdx_rights()
+    elif preset == 'tdx-rights-listed':
+        listed = set(_baostock_stocks(listed_only=True))
+        codes = sorted(code for code in _tdx_rights() if code in listed)
     else:
         raise ValueError('未知的 universe 预设 %r，可选：%s' % (preset, ', '.join(PRESETS)))
     if not codes:
@@ -77,5 +81,5 @@ def describe(preset: str) -> str:
 
 def known_limitations() -> str:
     return (
-        'baostock stock_basic 的退市股仅 337 只，1990 年代摘牌的标的多半不在其中；'
-        '需要覆盖早年退市股时请用 --universe 显式给清单，不要假设预设即全集。')
+        'status 来自当前 stock_basic 快照，属于弱 PIT；默认预设明确排除 status=0 退市股。'
+        '显式 --universe 会覆盖该默认边界，运行前必须另行审阅。')

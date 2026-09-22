@@ -4,26 +4,30 @@
 助手负责监控脚本运行，而不是在会话里手工逐条拉取。既然复核由独立的代码维护侧进行，
 采集脚本必须自身可读、可重跑、可审计——所以它们进版本库，而不是留在 `artifacts/`（已被 gitignore）。
 
-## 先去产品 CLI 找，找不到再写这里
+## 两段式运行：先扫描，再凭批准计划采集
 
-baostock 系的采集**产品里已经有**，不要在本目录重复实现：
+产品 CLI 已有按显式证券和日期取数的底层能力，但没有全市场缺口发现与批准计划绑定。
+本目录补的是这一层调度，不替换产品 Provider：
 
-| 需求 | 用这个 |
-|---|---|
-| 日线 / 5 分钟历史原始行情 | `quantlab fetch-bars` |
-| ST / 交易状态 | `quantlab fetch-status` |
-| 行业、季度股本、历史 ST、停牌 | `quantlab fetch-reference` |
-| 分红导入 | `quantlab dividend-import` |
-| 元数据导入 | `quantlab metadata-import` |
+1. `scan_gaps.py` 只读归档交易日历、`stock_basic` 与现有 parquet，排除退市股，分别找出
+   **整只未采**与**末尾日期落后**；18:00（北京时间）前默认只追到上一个交易日，之后含当日。
+2. 扫描结果是确定性 JSON，带 `plan_sha256`。可以用 `--limit` 先形成有限计划供用户审阅。
+3. `bars_incremental.py` 只有同时收到 `--apply --plan ... --approve-sha256 ...` 才登录供应商；
+   批准哈希、日历/证券表指纹、每个既有文件指纹任一不符都会在联网前拒绝。
+4. 写入前逐文件备份并核对 SHA256；返回日期只能落在获批区间，合并后校验 schema 和主键，
+   临时文件回读成功后才原子替换。
 
-本目录只承载**产品 CLI 尚未覆盖**的供应商，目前是 akshare 下的同花顺分红与巨潮配股。
+中间缺失交易日可能是停牌，不自动补。baostock 5 分钟数据在 2020-01-02 以前的全市场
+硬边界标为 `known_vendor_limit`，不作为可重试缺口。
 
 ## 采集器
 
-| 脚本 | 来源 | 默认清单 | 默认目标 |
-|---|---|---|---|
-| `ths_dividend.py` | `akshare.stock_fhps_detail_ths` | `stocks`（5552 只） | `lake/bronze/provider=ths/corporate_actions_dividend` |
-| `cninfo_allotment.py` | `akshare.stock_allotment_cninfo` | `tdx-rights`（706 只） | `lake/bronze/provider=cninfo/corporate_actions_allotment` |
+| 脚本 | 来源/功能 | 默认清单或目标 |
+|---|---|---|
+| `scan_gaps.py` | 只读发现日线/5m 缺口并生成批准计划 | `stocks-listed`，退市股排除 |
+| `bars_incremental.py` | 按已批准计划补日线/5m | 只执行计划内证券与日期 |
+| `ths_dividend.py` | `akshare.stock_fhps_detail_ths` | `stocks-listed`，退市股排除 |
+| `cninfo_allotment.py` | `akshare.stock_allotment_cninfo` | `tdx-rights-listed`，退市股排除 |
 
 ## 采集信封（`envelope.py`）
 
@@ -43,8 +47,9 @@ baostock 系的采集**产品里已经有**，不要在本目录重复实现：
 - **列签名稽核**：运行前后都把目标目录按列签名分组。出现两种以上签名会告警，
   并写进回执的 `column_signatures` / `schema_is_uniform`。
 
-共用参数：`--dest --receipt --universe --universe-preset --limit --throttle --retries
---resume --dry-run --fail-fast`。退出码：`0` 成功，`1` 有失败或提前停止，`2` 拒绝执行。
+公司行动采集器共用参数：`--dest --receipt --universe --universe-preset --limit --throttle
+--retries --resume --dry-run --apply --fail-fast`。**不加 `--apply` 永远只展示计划**。
+退出码：`0` 成功，`1` 有失败或提前停止，`2` 拒绝执行。
 
 ## 证券清单（`universe.py`）
 
@@ -56,7 +61,8 @@ baostock 系的采集**产品里已经有**，不要在本目录重复实现：
 |---|---|
 | `stocks` | baostock `stock_basic` 中 `type=1` 的全部 A 股，含已退市 |
 | `stocks-listed` | 同上但只取 `status=1` 在市标的 |
-| `tdx-rights` | TDX 除权除息记录中 `c4`（配股比例）> 0 的证券，即历史上确有配股的标的 |
+| `tdx-rights` | TDX `c4>0` 的历史证券，含退市，只能显式选用 |
+| `tdx-rights-listed` | TDX `c4>0` 与当前在市 A 股的交集（巨潮默认） |
 
 已知局限：`stock_basic` 的退市股只有 337 只，1990 年代摘牌的标的多半不在内。
 要覆盖早年退市股请用 `--universe` 给显式清单，不要假设预设即全集。
@@ -75,13 +81,21 @@ baostock 系的采集**产品里已经有**，不要在本目录重复实现：
 
 ## 授权边界
 
-脚本写好不等于可以跑。**真正发起采集需要用户单独授权**；未获授权时只使用 `--dry-run`。
+脚本写好不等于可以跑。**真正发起采集需要用户每次单独授权**：
+
+- 公司行动采集器必须显式加 `--apply`；默认和 `--dry-run` 都不会初始化供应商请求。
+- 行情增量采集还必须提交用户已审阅计划的完整 `--approve-sha256`；不能扩大日期或证券范围。
+
 按 `AGENTS.md`：不直接操作真实客户端，不启动可见窗口，缺数据不填零、不伪造。
 
 ## 测试
 
-`tests/test_collect_envelope.py`，15 个用例，注入假 fetcher，全程离线、只写临时目录。
-运行：`cd tests && ../.venv/bin/python -m unittest test_collect_envelope`
+`tests/test_collect_envelope.py` 与 `tests/test_collect_gaps.py` 共 27 个用例，注入假 fetcher，
+覆盖无授权不联网、计划哈希防篡改、退市排除、周末过滤、18:00 截止、供应商历史下限、
+整只未采/末尾落后、5m 末日不足 48 根重取、旧文件指纹变化拒绝、整日替换与 schema/主键校验。
+全程离线，只写临时目录。
+
+运行：`.venv/bin/python -m unittest tests.test_collect_gaps tests.test_collect_envelope -q`
 
 ## 被替代的旧脚本
 
