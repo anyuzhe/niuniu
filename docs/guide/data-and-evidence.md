@@ -146,3 +146,32 @@ qfq只显示指定证券已存相邻因子的变化方向与比值，不计算�
 ```
 
 CLI退出码0=读取完成，3=读取完成但资料/候选不完整，2=参数/读取/接口失败；0不是数据正确或PIT认证。R3事件版本合同、R12/R13正式因子重建、最终逐事件差异清单、R16第三源采集仍是后续范围，不由本批只读查询暗中执行。
+
+## 9. 显式日历来源与日线日期集合核对（F16）
+
+普通Chat/MCP新增只读 `get_trading_calendar(source,capture_id,start,end)` 和 `check_daily_date_coverage(source,capture_id,symbols,start,end)`；CLI仍用 `quantlab.agent.data_review_cli`。两项均要求明确来源及1–371自然日，日期检查限1–10个不同沪深代码；不接受模型路径/SQL，不修改数据、Provider、授权或F9限制。
+
+| source | 宿主绑定位置 | capture_id |
+|---|---|---|
+| baostock_bronze | data_root下的Baostock raw日线、trade_calendar/calendar.parquet及stock_basic/stock_basic.parquet | 空字符串 |
+| retro_capture | source_workspace下指定的原始retro capture，复用原raw/typed验证与pack读取 | 已发现的精确UUID |
+| archived_dataset | data_root下已生成的F9输入包，复用完整包核验及包内参考日历，不回读原来源 | 空字符串 |
+
+不扫描最新capture或选择更晚日历；bronze根遇到受管理标记拒绝回退，不自动接raw尾部。F9包和capture窗口仍受各自冻结范围限制。日历先检查全部请求自然日，末端过期、中间缺日（包括未知周末）返回blocked和完整missing_calendar_dates，trading_dates为null；不根据已有短日历宣称完整。空交易日窗口不形成完整研究日期验收。
+
+`calendar_content_hash` 是排序后的日期/开市标记对之规范化摘要，含明确content_hash_semantics；`source_calendar_content_hash` 单独保留capture原始参考JSON内容摘要（bronze为null）；evidence另给实际所读文件SHA256/字节数。三种身份不互相替代。读取后重核已追踪的文件；retro行情仍由原Bridge固定实际源字节，F9仍从自己的保存字节核验。
+
+日期检查返回完整missing_dates、unexpected_dates、duplicate_dates，不仅前几个示例。期望集合按所选日历与同来源ipoDate/outDate闭区间相交；outDate为空字符串仅表示来源未报告结束，不认证历史状态。生命周期缺失/歧义或文件不可读时相关集合为null并保留error，而不是空缺口；来源本身损坏按原读取合同拒绝，不尝试修复或补值。
+
+`status=complete` 仅表示本次日期存在且唯一：停牌行仍计入存在，suspended_dates与unknown_state_dates另列。f9_blockers是已知不兼容原因，不是完整F9预检；固定f9_export_verified=false、price_values_verified=false、tradability_verified=false、strict_pit=false。日期齐全不能把含停牌的候选直接导出F9，也不证明复权或价格正确。
+
+```bash
+# 仅示意参数；先明确选择已交付的源和窗口，不替用户选样本。
+.venv/bin/python -B -m quantlab.agent.data_review_cli calendar \
+  --source baostock_bronze --data-root <明确数据根> --start YYYY-MM-DD --end YYYY-MM-DD
+.venv/bin/python -B -m quantlab.agent.data_review_cli daily-coverage \
+  --source retro_capture --source-workspace <明确来源工作空间> --capture-id <精确UUID> \
+  --symbols '<沪深代码，最多10个>' --start YYYY-MM-DD --end YYYY-MM-DD
+```
+
+CLI仍以0/3/2区分读取完成、已读但日期不完整或blocked、接口错误。Chat/MCP沿64KiB完整响应预算，超限拒绝并要求缩小范围，不能截断日期集后显示成功。首轮Reviewer和原QM50锁定会话不增加这两项权限。标准MCP在SDK过滤前验证宿主required/extra字段，并公布additionalProperties=false，避免与直接API校验不同；不改变研究批准权限。

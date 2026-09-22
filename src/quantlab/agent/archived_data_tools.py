@@ -30,6 +30,10 @@ TOOLS = [
     schema('get_archived_daily_dataset', '只读核验宿主data_root中已显式生成的归档日线研究输入包；返回固定证券、范围、源证据和限制。只支持raw日线，不创建输入包、不批准、不执行；不能代替原始QM50规格。', {}),
     schema('check_archived_daily_research', '只读核对明确研究spec与宿主选定F9日线包：证券、日期、周期、复权和背景输入；返回全部不匹配原因。不是审批或统计样本充分性证明，不改配置、不创建任务。',
            {'spec_json': {'type': 'string', 'maxLength': 65536}}),
+    schema('get_trading_calendar', '只读核对明确来源的日历和1–371自然日窗口。source必选baostock_bronze/retro_capture/archived_dataset；retro须精确capture_id，其他留空。返回内容哈希、max_date与全部缺日，不默认日历、不以未知日推断休市，不认证PIT。',
+           {'source': TEXT, 'capture_id': TEXT, 'start': TEXT, 'end': TEXT}),
+    schema('check_daily_date_coverage', '按同一明确来源的日历、上市区间和raw日线核对1–10只沪深证券、1–371自然日。返回完整missing/unexpected/duplicate日期集，停牌和未知状态另列。complete仅日期存在，不证明价格、交易资格或F9可导出；不得换源补洞。',
+           {'source': TEXT, 'capture_id': TEXT, 'symbols': TEXT, 'start': TEXT, 'end': TEXT}),
     schema('get_adjustment_review_contract', '读取公司行动候选对账与复权风险合同；不读行情、不把供应商一致性认证为官方真值或独立血缘，不批准重建。', {}),
     schema('inspect_corporate_action_sources', '只读核对宿主data_root中一个证券、最多3660自然日的TDX/东财/同花顺公司行动与已存qfq因子诊断。按源保留候选、原文、冲突和未识别项；不跨供应商相加、不判最终真值、不生成修正因子。errors/incomplete和分页必须披露，缺源不等于零事件。',
            {'symbol': TEXT, 'start': TEXT, 'end': TEXT,
@@ -220,6 +224,7 @@ class ArchivedMarketDataAPI:
             return _error('get_capabilities', 'INVALID_RESULT', '内层能力接口缺少data对象。')
         data = {**base['data'], 'archived_daily_read_available': True, 'tdx_read_available': True,
                 'tdx_coverage_read_available': True, 'corporate_action_review_available': True,
+                'calendar_source_review_available': True, 'calendar_review_write_authorized': False,
                 'adjustment_rebuild_authorized': False, 'corporate_action_official_verification': False,
                 'archived_data_write_authorized': False,
                 'tools': [tool['name'] for tool in self.schemas()]}
@@ -264,6 +269,11 @@ class ArchivedMarketDataAPI:
                 evidence = [{'kind': 'archived_daily_dataset', 'dataset_id': data['dataset_id'],
                              'spec_digest': data['spec_digest'], 'check_hash': data['check_hash'],
                              'compatible': data['compatible'], 'qualification': 'research_only'}]
+            elif name in ('get_trading_calendar', 'check_daily_date_coverage'):
+                from quantlab.data.calendar_review import get_trading_calendar, check_daily_date_coverage
+                reader = get_trading_calendar if name == 'get_trading_calendar' else check_daily_date_coverage
+                data = reader(self.data_root, source_workspace=self.source_workspace, **args)
+                evidence = [{'kind': 'calendar_review_source', **item} for item in data.get('evidence', [])]
             elif name == 'get_adjustment_review_contract':
                 from quantlab.data.corporate_action_review import get_adjustment_review_contract
                 data = get_adjustment_review_contract()

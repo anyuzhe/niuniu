@@ -31,10 +31,27 @@ def main(argv=None):
     action.add_argument('--end', required=True)
     action.add_argument('--offset', type=int, default=0)
     action.add_argument('--limit', type=int, default=20)
+    for command in ('calendar', 'daily-coverage'):
+        sub = commands.add_parser(command, help='显式来源日历/日期集合只读核对')
+        sub.add_argument('--source', required=True, choices=('baostock_bronze', 'retro_capture', 'archived_dataset'))
+        sub.add_argument('--data-root')
+        sub.add_argument('--source-workspace')
+        sub.add_argument('--capture-id', default='')
+        sub.add_argument('--start', required=True)
+        sub.add_argument('--end', required=True)
+        if command == 'daily-coverage':
+            sub.add_argument('--symbols', required=True)
     parsed = parser.parse_args(argv)
-    api = ArchivedMarketDataAPI(_NoOtherTools(), None, getattr(parsed, 'data_root', None))
+    api = ArchivedMarketDataAPI(_NoOtherTools(), None, getattr(parsed, 'data_root', None),
+                                source_workspace=getattr(parsed, 'source_workspace', None))
     if parsed.command == 'contract':
         name, arguments = 'get_adjustment_review_contract', {}
+    elif parsed.command in ('calendar', 'daily-coverage'):
+        name = 'get_trading_calendar' if parsed.command == 'calendar' else 'check_daily_date_coverage'
+        keys = ['source', 'capture_id', 'start', 'end']
+        if parsed.command == 'daily-coverage':
+            keys.append('symbols')
+        arguments = {key: getattr(parsed, key) for key in keys}
     elif parsed.command == 'tdx-coverage':
         name = 'get_tdx_data_coverage'
         arguments = {key: getattr(parsed, key) for key in ('family', 'symbol', 'start', 'end')}

@@ -101,6 +101,8 @@ class ChatRuntime:
             base_system+='\n宿主显式选择archived-daily-dataset.json输入根时，用get_archived_daily_dataset核验固定范围与来源；仅raw日线、research_only。不要当作MQC目录或请求qfq，不自动导出、切换数据根、扩大Grant或用此包替代QM50原始规格。'
         if not self.research_spec:
             base_system+='\nTDX覆盖用get_tdx_data_coverage读取真实COUNT与逐证券日期分位，必须按date_axis解释过滤；不能把publication数、全局跨度当证券数/连续覆盖。公司行动与qfq风险先get_adjustment_review_contract，再inspect_corporate_action_sources读取一个明确证券窗口的候选；保留errors/incomplete、source缺失、未知税基及方案范围。不能跨供应商累加、用2:1或零偏差认证真值/独立血缘、把全部差异称欠调或把目录旧数字当最终缺陷名单。本地qfq可加载不等于完整复权；工具只做候选证据检查，不能重算、修复或发布因子。'
+        if not self.research_spec:
+            base_system+='\n核对日历和日期完整性用get_trading_calendar/check_daily_date_coverage，source必须明确选baostock_bronze、retro_capture或archived_dataset；retro使用已发现的capture_id，禁止隐式换日历或合并来源。保留全部缺日、意外日期、重复、上市区间、停牌和未知状态；status=complete只说明日期集合，f9_export_verified=false，不代替F9预检、批准冻结或PIT。超出日历尾部/中间缺日应阻断，不将未知日视为休市。'
         if self.local_data_only:
             base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         if self.research_spec:
