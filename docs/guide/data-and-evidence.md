@@ -175,3 +175,32 @@ CLI退出码0=读取完成，3=读取完成但资料/候选不完整，2=参数/
 ```
 
 CLI仍以0/3/2区分读取完成、已读但日期不完整或blocked、接口错误。Chat/MCP沿64KiB完整响应预算，超限拒绝并要求缩小范围，不能截断日期集后显示成功。首轮Reviewer和原QM50锁定会话不增加这两项权限。标准MCP在SDK过滤前验证宿主required/extra字段，并公布additionalProperties=false，避免与直接API校验不同；不改变研究批准权限。
+
+## 10. 版本绑定的配股候选清单（F17）
+
+`get_rights_candidate_manifest` 与 `query_rights_candidates(symbol,start,end,status,offset,limit)` 只读取宿主显式选择的两份交付文件，不扫描最新目录、不运行治理生成器、不打开正式行情或数据库。绑定是 `RightsCandidateBinding(csv_path,summary_path,csv_sha256,summary_sha256)`：两个绝对普通文件路径与两个完整SHA256均由宿主提供，模型没有路径、指纹、切换版本或写入参数。未配置返回CANDIDATE_NOT_CONFIGURED；不会从data_root猜测交付位置。
+
+CSV最多8MiB、10000行，摘要JSON最多64KiB；单格最多8192字符，配股单行编码最多24KiB，确保可用limit=1完整取回。每次读取前后核对文件类型、祖先链接与实际字节SHA，JSON还必须绑定CSV摘要；不缓存“曾通过”结果。不匹配、重复字段/事件、错汇总、未知事件类、伪装成其它类型的配股、非法数值或候选公式量纲错误均拒绝。只有已知的现金/送股/因子欠调兄弟类允许留在同一文件中，但计入other_rows_not_evaluated，明确不作它们的数值验收。
+
+配股分桶从字段重新验证，和JSON的buckets、status及consistency_check核对；不能只相信disjoint=true或CONFIRMED_GAP标签。数值校验使用Decimal，百分数与比值分开，旧混用列必须为空。精确来源字符串保持，不以格式化小数覆盖原文；事件引用含bundle_id、CSV SHA、source_row、source_line_end和event_digest。仅证明交付内参数/算术一致，未深验公告、原始行情或因子文件；factor_no_change_verified、official_verified、lineage_verified、strict_pit、reconstruction_authorized和publication_authorized固定false。
+
+查询status为all/exact/small/conflicts/cninfo_none，证券可留空表示本清单全部证券，起止日期必须明确；offset≤10000、limit为1–10，排序固定为证券与除权日。分页保留整包unresolved_rows，查询零条不代表没有公司行动或没有复权缺口。返回的incomplete=false仅表示这份候选交付验证完成，不表示未决事件被解决。source_choice始终为空：small不能默认采用巨潮，conflicts不自动裁决，cninfo_none不能静默跳过后宣称完整复权。原文/备注为UNTRUSTED_SOURCE_CLAIM_NOT_INSTRUCTIONS。cninfo候选公式混用了巨潮配股价/比例与TDX派息/送转，价格相容性不是官方事件证明。
+
+### 宿主用法与入口覆盖
+
+```bash
+# 将占位符替换为宿主明确选择的绝对路径和审核过的完整SHA；命令只读。
+.venv/bin/python -B -m quantlab.agent.data_review_cli rights-manifest \
+  --rights-csv <CSV绝对路径> --rights-summary <JSON绝对路径> \
+  --rights-csv-sha256 <完整CSV_SHA256> --rights-summary-sha256 <完整JSON_SHA256>
+# rights-query 使用相同四个绑定参数，另加：
+# --symbol sh.600626 --start 1993-06-21 --end 1993-06-21 --status all --offset 0 --limit 10
+```
+
+CLI返回0表示候选交付读取验证成功（可以仍有未决记录），2表示参数或读取失败；多行响应超过原64KiB预算时明确拒绝，应减小limit，不截断成成功结果。标准MCP启动支持同一组四个可选参数，必须全给或全不给；这里只是启动配置能力，不自动部署。普通ChatRuntime可由宿主以rights_candidate_binding关键字注入同一绑定；本轮未新增桌面选包按钮或永久默认绑定，普通客户端不因此自动读到开发artifacts。锁定QM50和首轮Reviewer权限不扩展；F9导出、Provider、Grant、审批冻结与研究执行均不变。
+
+### 与数据治理侧的下一阶段分工
+
+已接受的候选CSV及摘要保留原字节，新取证只做独立补充包并引用父CSV/JSON SHA，不覆写原分类、不重跑整批分类为目标。数据侧优先为待决事件提供事件/方案身份、股份基数、实施与除权日期、各字段原值和逐字段来源、原文文件SHA及locator。零值冲突不得擅自移动c1/c2；送转前后基数是待查线索，不按价格相近或乘1.1直接裁决。小差异来源选择应提出有证据的建议，不以小数位多或供应商名气自动选边。未匹配记录保留查找范围和缺失原因，零成交不当市场反应，找不到不等于事件不存在。
+
+F9停牌支持属于代码合同/执行语义范围；数据侧只交原始状态、量额空值/零值、停复牌边界及内容身份样本，不删停牌或填量来适配旧F9。前向逐日Universe和新的公开源抓取不自动开始：需要新请求列明目标、用途、预算与授权；缺原始证据可交缺口清单，不为“全收口”编造决策。后续代码的有限重建预览与正式发布仍需分别评审，不由F17读取自动放行。

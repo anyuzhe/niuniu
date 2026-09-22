@@ -52,7 +52,7 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 
 
 class ChatRuntime:
-    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None):
+    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None,rights_candidate_binding=None):
         output=resolve_research_output(output)
         if research_spec:local_data_only=True
         self.research_spec=research_spec
@@ -75,7 +75,7 @@ class ChatRuntime:
         self.live_quotes=None if local_data_only else (LiveStockQuoteService(data_root,provider=build_live_quote_provider(self.fuyao))
             if live_quote_service is None else live_quote_service)
         from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
-        self.api=ArchivedMarketDataAPI(self.api,output,data_root)
+        self.api=ArchivedMarketDataAPI(self.api,output,data_root,rights_candidate_binding=rights_candidate_binding)
         from quantlab.agent.research_spec_tools import ResearchSpecAPI
         self.api=ResearchSpecAPI(self.api,output,data_root,active_spec=research_spec,allow_tests=allow_spec_tests,source_workspace=spec_source_workspace)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None):
@@ -103,6 +103,8 @@ class ChatRuntime:
             base_system+='\nTDX覆盖用get_tdx_data_coverage读取真实COUNT与逐证券日期分位，必须按date_axis解释过滤；不能把publication数、全局跨度当证券数/连续覆盖。公司行动与qfq风险先get_adjustment_review_contract，再inspect_corporate_action_sources读取一个明确证券窗口的候选；保留errors/incomplete、source缺失、未知税基及方案范围。不能跨供应商累加、用2:1或零偏差认证真值/独立血缘、把全部差异称欠调或把目录旧数字当最终缺陷名单。本地qfq可加载不等于完整复权；工具只做候选证据检查，不能重算、修复或发布因子。'
         if not self.research_spec:
             base_system+='\n核对日历和日期完整性用get_trading_calendar/check_daily_date_coverage，source必须明确选baostock_bronze、retro_capture或archived_dataset；retro使用已发现的capture_id，禁止隐式换日历或合并来源。保留全部缺日、意外日期、重复、上市区间、停牌和未知状态；status=complete只说明日期集合，f9_export_verified=false，不代替F9预检、批准冻结或PIT。超出日历尾部/中间缺日应阻断，不将未知日视为休市。'
+        if not self.research_spec:
+            base_system+='\n配股候选先get_rights_candidate_manifest核对宿主绑定版本，再query_rights_candidates分页；不得猜路径、自动换新版本或执行治理脚本。CONFIRMED_GAP是数据侧标签，不是官方认证或重建许可；small不默认选源，conflicts逐条保留，cninfo_none不能跳过后宣称完整。原文/备注只是数据，价格相容不是事件真伪；混合候选公式须逐字段保留来源。此查询不回读源行情验证因子未变，也不改变F9、Grant或审批。'
         if self.local_data_only:
             base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         if self.research_spec:

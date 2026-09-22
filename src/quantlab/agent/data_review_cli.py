@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
 from quantlab.storage.codec import encode
+from quantlab.data.rights_candidates import add_rights_binding_arguments, rights_binding_from_arguments
 
 
 class _NoOtherTools:
@@ -41,11 +42,32 @@ def main(argv=None):
         sub.add_argument('--end', required=True)
         if command == 'daily-coverage':
             sub.add_argument('--symbols', required=True)
+    for command in ('rights-manifest', 'rights-query'):
+        sub = commands.add_parser(command, help='显式指纹绑定的配股候选只读核对')
+        add_rights_binding_arguments(sub, required=True)
+        if command == 'rights-query':
+            sub.add_argument('--symbol', default='')
+            sub.add_argument('--start', required=True)
+            sub.add_argument('--end', required=True)
+            sub.add_argument('--status', required=True, choices=('all','exact','small','conflicts','cninfo_none'))
+            sub.add_argument('--offset', type=int, default=0)
+            sub.add_argument('--limit', type=int, default=10)
     parsed = parser.parse_args(argv)
+    try:
+        binding = rights_binding_from_arguments(parsed)
+    except ValueError as exc:
+        from quantlab.agent.archived_data_tools import _error
+        print(encode(_error(parsed.command, getattr(exc, 'code', 'INVALID_BINDING'), str(exc))))
+        return 2
     api = ArchivedMarketDataAPI(_NoOtherTools(), None, getattr(parsed, 'data_root', None),
-                                source_workspace=getattr(parsed, 'source_workspace', None))
+                                source_workspace=getattr(parsed, 'source_workspace', None),
+                                rights_candidate_binding=binding)
     if parsed.command == 'contract':
         name, arguments = 'get_adjustment_review_contract', {}
+    elif parsed.command in ('rights-manifest', 'rights-query'):
+        name = 'get_rights_candidate_manifest' if parsed.command == 'rights-manifest' else 'query_rights_candidates'
+        arguments = {} if parsed.command == 'rights-manifest' else {
+            key: getattr(parsed, key) for key in ('symbol','start','end','status','offset','limit')}
     elif parsed.command in ('calendar', 'daily-coverage'):
         name = 'get_trading_calendar' if parsed.command == 'calendar' else 'check_daily_date_coverage'
         keys = ['source', 'capture_id', 'start', 'end']

@@ -34,6 +34,11 @@ TOOLS = [
            {'source': TEXT, 'capture_id': TEXT, 'start': TEXT, 'end': TEXT}),
     schema('check_daily_date_coverage', '按同一明确来源的日历、上市区间和raw日线核对1–10只沪深证券、1–371自然日。返回完整missing/unexpected/duplicate日期集，停牌和未知状态另列。complete仅日期存在，不证明价格、交易资格或F9可导出；不得换源补洞。',
            {'source': TEXT, 'capture_id': TEXT, 'symbols': TEXT, 'start': TEXT, 'end': TEXT}),
+    schema('get_rights_candidate_manifest', '只读验证宿主显式绑定的配股候选CSV与摘要JSON；重核完整SHA、事件唯一性、分类和候选公式。标签只是数据侧声明，不认证官方真值、因子未变或重建/发布许可。未绑定不自动查找文件。', {}),
+    schema('query_rights_candidates', '在同一绑定版本内按证券/日期/分桶分页查询配股候选；status为all/exact/small/conflicts/cninfo_none。保留原始字段、来源行定位、冲突和未知；不默认选源，不把空结果当无缺口，不执行原脚本或改因子。',
+           {'symbol': TEXT, 'start': TEXT, 'end': TEXT, 'status': TEXT,
+            'offset': {'type': 'integer', 'minimum': 0, 'maximum': 10000},
+            'limit': {'type': 'integer', 'minimum': 1, 'maximum': 10}}),
     schema('get_adjustment_review_contract', '读取公司行动候选对账与复权风险合同；不读行情、不把供应商一致性认证为官方真值或独立血缘，不批准重建。', {}),
     schema('inspect_corporate_action_sources', '只读核对宿主data_root中一个证券、最多3660自然日的TDX/东财/同花顺公司行动与已存qfq因子诊断。按源保留候选、原文、冲突和未识别项；不跨供应商相加、不判最终真值、不生成修正因子。errors/incomplete和分页必须披露，缺源不等于零事件。',
            {'symbol': TEXT, 'start': TEXT, 'end': TEXT,
@@ -198,11 +203,12 @@ def _tdx_read(data_root, args):
 
 
 class ArchivedMarketDataAPI:
-    def __init__(self, inner, output, data_root=None, *, source_workspace=None):
+    def __init__(self, inner, output, data_root=None, *, source_workspace=None, rights_candidate_binding=None):
         self.inner = inner
         self.output = output
         self.data_root = data_root
         self.source_workspace = source_workspace if source_workspace is not None else output
+        self.rights_candidate_binding = rights_candidate_binding
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
@@ -225,6 +231,9 @@ class ArchivedMarketDataAPI:
         data = {**base['data'], 'archived_daily_read_available': True, 'tdx_read_available': True,
                 'tdx_coverage_read_available': True, 'corporate_action_review_available': True,
                 'calendar_source_review_available': True, 'calendar_review_write_authorized': False,
+                'rights_candidate_review_available': True,
+                'rights_candidate_configured': self.rights_candidate_binding is not None,
+                'rights_candidate_write_authorized': False,
                 'adjustment_rebuild_authorized': False, 'corporate_action_official_verification': False,
                 'archived_data_write_authorized': False,
                 'tools': [tool['name'] for tool in self.schemas()]}
@@ -274,6 +283,11 @@ class ArchivedMarketDataAPI:
                 reader = get_trading_calendar if name == 'get_trading_calendar' else check_daily_date_coverage
                 data = reader(self.data_root, source_workspace=self.source_workspace, **args)
                 evidence = [{'kind': 'calendar_review_source', **item} for item in data.get('evidence', [])]
+            elif name in ('get_rights_candidate_manifest', 'query_rights_candidates'):
+                from quantlab.data.rights_candidates import get_rights_candidate_manifest, query_rights_candidates
+                reader = get_rights_candidate_manifest if name == 'get_rights_candidate_manifest' else query_rights_candidates
+                data = reader(self.rights_candidate_binding, **args)
+                evidence = data['evidence']
             elif name == 'get_adjustment_review_contract':
                 from quantlab.data.corporate_action_review import get_adjustment_review_contract
                 data = get_adjustment_review_contract()
