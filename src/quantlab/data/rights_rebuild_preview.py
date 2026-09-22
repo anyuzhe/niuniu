@@ -176,7 +176,7 @@ def _calculate(inputs):
                 'formula_id': FORMULA, 'numerical_representation': 'decimal_string_40_digits_half_even'}
 
 
-def preview_rights_rebuild(binding: RightsCandidateBinding | None, *, request_json: str) -> dict:
+def preview_rights_rebuild(binding: RightsCandidateBinding | None, *, request_json: str, evidence_binding=None) -> dict:
     """All listed rights in the scope are accounted for; no status filter or auto-resolution."""
     request = _parse(request_json)
     if binding is None:
@@ -186,6 +186,13 @@ def preview_rights_rebuild(binding: RightsCandidateBinding | None, *, request_js
     if request['bundle_id'] != binding.bundle_id:
         _fail('Preview refers to a different candidate bundle', 'PREVIEW_BUNDLE_MISMATCH')
     manifest, records = load_rights_candidate_delivery(binding)
+    supplemental_manifest = None
+    supplemental_by_parent = None
+    if evidence_binding is not None:
+        from quantlab.data.rights_conflict_evidence import canonical_parent_event_digest, supplemental_evidence_by_parent_digest
+        supplemental_manifest, supplemental_by_parent = supplemental_evidence_by_parent_digest(binding, evidence_binding)
+        if supplemental_manifest['parent_bundle_id'] != manifest['bundle_id']:
+            _fail('Supplemental evidence refers to a different parent bundle', 'EVIDENCE_PARENT_MISMATCH')
     scope = request['scope']
     selected = [r for r in records if r['fields']['code'] in scope['symbols']
                 and scope['start'] <= r['fields']['ex_date'] <= scope['end']]
@@ -221,6 +228,8 @@ def preview_rights_rebuild(binding: RightsCandidateBinding | None, *, request_js
         if choice and choice['rights_source'] == 'cninfo' and not fields['theo_price_cninfo']:
             reasons.append('SELECTED_SOURCE_HYPOTHESIS_UNAVAILABLE')
         reasons = sorted(set(reasons))
+        supplemental = (supplemental_by_parent.get(canonical_parent_event_digest(fields))
+                        if supplemental_by_parent is not None and record['bucket'] == 'conflicts' else None)
         event = {'code': key[0], 'ex_date': key[1], 'event_digest': record['event_digest'],
                  'source_row': record['source_row'], 'source_line_end': record['source_line_end'],
                  'bucket': record['bucket'], 'proposed_rights_source': choice['rights_source'] if choice else None,
@@ -228,6 +237,8 @@ def preview_rights_rebuild(binding: RightsCandidateBinding | None, *, request_js
                  'calculation': None if reasons else _calculate(inputs), 'blockers': reasons,
                  'price_diagnostic_usable': record['price_diagnostic_usable'],
                  'share_basis_verified': False, 'text_trust': 'SOURCE_CLAIMS_NOT_INSTRUCTIONS'}
+        if supplemental_manifest is not None:
+            event['supplemental_evidence'] = supplemental
         events.append(event)
         blockers.extend({'code': key[0], 'ex_date': key[1], 'reason': reason} for reason in reasons)
     event_identity = [{'code': e['code'], 'ex_date': e['ex_date'], 'event_digest': e['event_digest']} for e in events]
@@ -248,5 +259,9 @@ def preview_rights_rebuild(binding: RightsCandidateBinding | None, *, request_js
               'reconstruction_authorized': False, 'publication_authorized': False,
               'factor_series': None, 'adjusted_prices': None,
               'limitations': list(LIMITATIONS), 'evidence': manifest['evidence']}
+    if supplemental_manifest is not None:
+        result['supplemental_evidence_bound'] = True
+        result['supplemental_evidence_id'] = supplemental_manifest['evidence_id']
+        result['evidence'] = [*manifest['evidence'], *supplemental_manifest['evidence']]
     result['preview_digest'] = digest(result)
     return result

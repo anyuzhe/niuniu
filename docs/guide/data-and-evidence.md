@@ -235,3 +235,13 @@ conflicts/cninfo_none即使带来源选择仍阻断，计算值为null；不支�
 ```
 
 CLI 0=ready_for_review，3=blocked，2=请求/绑定/交付/预算错误；合同查询成功也是0。read-only工具响应ok仅指调用完成，必须再看data.status/incomplete，不将blocked解释为通过。F9停牌合同及实际因子重建发布继续单独推进，F18不修改Provider、原审批冻结、Grant或复算。
+
+## 12. 未决配股补充证据只读绑定（F19）
+
+F19在F17候选与F18预览之上增加**可选的第二层宿主绑定**，用于读取数据侧S1的19条未决配股本地证据。宿主必须同时给出JSONL、summary及各自完整SHA256；summary必须绑定JSONL SHA和父F17 CSV/summary SHA。工具不会扫描“最新文件”，模型也不能传路径或hash。未配置时F18保持原输出结构，不因为代码里存在S1能力就自动发现或加载资料。
+
+`get_rights_conflict_evidence_manifest` 会重新校验父候选全部conflict事件、S1事件全集、`parent_event_digest`、TDX c1-c4与巨潮价/比例等父字段以及摘要计数；S1必须恰好覆盖父候选的全部conflicts，且19条 `verdict` 全部保持 `UNRESOLVED`、`action_or_plan_id=unknown`。参与股数汇总的diagnostics只允许有限数值或null，布尔/字符串/非有限值拒绝。`query_rights_conflict_evidence` 只接受规范 `YYYY-MM-DD` 日期，单页最多5条；空结果只表示该固定补充包中无匹配记录，不表示事件不存在或已解决。
+
+`preview_rights_rebuild` 只有在宿主同时绑定S1时，才给对应conflict事件附加 `supplemental_evidence`。该信息包括股份基数发现、争点、股息旁证、缺失证据和待答问题，文本始终视为不可信来源声明。**它不会删除 `EVENT_REQUIRES_SEPARATE_ADJUDICATION`，不会生成calculation，也不会把 `UNRESOLVED` 改为来源选择、裁决或重建许可。** `reconstruction_authorized` 与 `publication_authorized` 继续为false；Reviewer与QM50锁定会话不新增这些工具。
+
+CLI增加 `rights-evidence-manifest` 与 `rights-evidence-query`；`rights-preview` 可额外带四个 `--rights-evidence-*` 宿主参数。普通Chat/MCP只看到无路径的只读工具。当前已验收S1只读smoke读取19条、`adjudications_made=0`、`price_evidence_used=false`，并验证 `sh.600626/1993-06-21` 即使显式提出TDX来源仍保持blocked；父候选与S1四个文件的内容SHA和mtime均未变化。F19仍不读取正式行情/公告，不执行治理脚本，不修改候选状态、因子、审批或授权。

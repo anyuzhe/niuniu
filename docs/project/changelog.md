@@ -1672,3 +1672,14 @@
 - 新增bars_incremental.py，只消费已审阅计划。真实运行必须同时给--apply、--plan和与计划完全一致的--approve-sha256；计划被改、日历/证券表改变、既有目标文件SHA变化、路径越界或动作重复均在供应商登录前拒绝。每只写入前备份并核SHA，供应商返回不得越过批准日期；按返回日期整日替换后校验schema和主键，临时parquet回读通过才原子替换。未加--apply时仅打印计划，不初始化供应商或写长期库。
 - 同花顺与巨潮脚本也改成默认只展示计划，必须显式--apply才构造真实fetcher；默认清单分别改为stocks-listed与tdx-rights-listed（后者实际644只），退市股排除。历史tdx-rights仍保留为显式可选项，不再作为默认。
 - 新增tests/test_collect_gaps.py并扩充采集信封测试，合计27项离线回归通过：周末过滤、18:00截止、退市排除、full/tail/refresh_last、供应商硬边界、计划确定性和限额哈希、无授权零请求、防篡改、防陈旧文件、整日替换及既有15项信封行为。真实湖只运行只读扫描与无--apply审阅模式；未登录供应商、未发请求、未创建回执/备份/临时文件、未修改任何行情或公司行动数据。
+
+
+### 2026-09-22｜[F19] 未决配股补充证据只读消费
+
+- 在 F17/F18 上增加宿主显式绑定的 S1 补充证据层：JSONL+summary 双文件/双SHA，每次读取重核字节；summary 必须绑定 JSONL 及父 F17 CSV/summary，19 条事件必须与父候选 conflicts 全集一一对应，parent_event_digest 按父CSV字段顺序规范化重序列化后复算。
+- 新增 rights_conflict_evidence 只读读取器，以及 Chat/MCP/CLI 的 get_rights_conflict_evidence_manifest / query_rights_conflict_evidence。模型工具无 path/hash/approve/execute 参数；未配置 fail closed；Reviewer 和 QM50 锁定会话不扩权限。S1 文本一律按不可信来源声明处理。
+- F18 在宿主额外绑定 S1 时仅给 conflict 事件附加 supplemental_evidence；EVENT_REQUIRES_SEPARATE_ADJUDICATION 永久保留，calculation 仍为 null，reconstruction_authorized/publication_authorized 仍 false。未绑定 S1 时 F18 保持原输出结构。
+- 实际 S1 只读 smoke 验证 19/19 verdict=UNRESOLVED、adjudications_made=0、price_evidence_used=false；sh.600626/1993-06-21 即使显式提出 TDX 来源仍 blocked，父候选与 S1 四个文件内容 SHA/mtime 未变化。未读取正式行情/公告、未执行治理脚本或写数据。
+- 首轮独立只读复核未发现权限绕过，但指出两项非阻断正确性问题：参与汇总的 diagnostics 非空值可被 bool/string 伪装，以及查询接受无连字符 ISO 日期。已改为有限 int/float（排除 bool）或 null，并严格 YYYY-MM-DD，补反例回归。
+- 修后专项配股链 101 项通过；联合回归 19 模块 209 项全部通过，0 失败/错误。覆盖 F17/F18/F19、Chat/MCP、日历/治理工具、QM50权限、Grant、审批、策略包复算和 F14 生命周期。第二轮独立只读复核对 R1/R2 修复返回 PASS，并确认 S1 仍不解除 conflict blocker、calculation 仍 null、重建/发布权限仍 false；不是官方公司行动认证、真实模型自主研究或正式因子发布验收。
+- 本轮只提交 F19 的 6 个产品文件、2 个新增测试和 3 份现有文档；并行数据侧 S2/S3 提交均作为现有祖先保留，没有把采集逻辑纳入 F19。

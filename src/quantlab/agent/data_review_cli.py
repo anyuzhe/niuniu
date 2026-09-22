@@ -5,6 +5,7 @@ import argparse
 from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
 from quantlab.storage.codec import encode
 from quantlab.data.rights_candidates import add_rights_binding_arguments, rights_binding_from_arguments
+from quantlab.data.rights_conflict_evidence import add_rights_evidence_binding_arguments, rights_evidence_binding_from_arguments
 
 
 class _NoOtherTools:
@@ -55,18 +56,36 @@ def main(argv=None):
             sub.add_argument('--status', required=True, choices=('all','exact','small','conflicts','cninfo_none'))
             sub.add_argument('--offset', type=int, default=0)
             sub.add_argument('--limit', type=int, default=10)
+    for command in ('rights-evidence-manifest', 'rights-evidence-query'):
+        sub = commands.add_parser(command, help='显式指纹绑定的未决配股补充证据只读核对')
+        add_rights_binding_arguments(sub, required=True)
+        add_rights_evidence_binding_arguments(sub, required=True)
+        if command == 'rights-evidence-query':
+            sub.add_argument('--symbol', default='')
+            sub.add_argument('--start', required=True)
+            sub.add_argument('--end', required=True)
+            sub.add_argument('--offset', type=int, default=0)
+            sub.add_argument('--limit', type=int, default=5)
+    # rights-preview可选择额外绑定S1证据；不绑定时保持F18原行为。
+    add_rights_evidence_binding_arguments(commands.choices['rights-preview'])
     parsed = parser.parse_args(argv)
     try:
         binding = rights_binding_from_arguments(parsed)
+        evidence_binding = rights_evidence_binding_from_arguments(parsed)
     except ValueError as exc:
         from quantlab.agent.archived_data_tools import _error
         print(encode(_error(parsed.command, getattr(exc, 'code', 'INVALID_BINDING'), str(exc))))
         return 2
     api = ArchivedMarketDataAPI(_NoOtherTools(), None, getattr(parsed, 'data_root', None),
                                 source_workspace=getattr(parsed, 'source_workspace', None),
-                                rights_candidate_binding=binding)
+                                rights_candidate_binding=binding, rights_evidence_binding=evidence_binding)
     if parsed.command == 'contract':
         name, arguments = 'get_adjustment_review_contract', {}
+    elif parsed.command in ('rights-evidence-manifest', 'rights-evidence-query'):
+        name = ('get_rights_conflict_evidence_manifest' if parsed.command == 'rights-evidence-manifest'
+                else 'query_rights_conflict_evidence')
+        arguments = {} if parsed.command == 'rights-evidence-manifest' else {
+            key:getattr(parsed,key) for key in ('symbol','start','end','offset','limit')}
     elif parsed.command == 'rights-preview-contract':
         name, arguments = 'get_rights_rebuild_contract', {}
     elif parsed.command == 'rights-preview':

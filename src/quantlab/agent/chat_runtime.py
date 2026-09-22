@@ -52,7 +52,7 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 
 
 class ChatRuntime:
-    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None,rights_candidate_binding=None):
+    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None,rights_candidate_binding=None,rights_evidence_binding=None):
         output=resolve_research_output(output)
         if research_spec:local_data_only=True
         self.research_spec=research_spec
@@ -75,7 +75,8 @@ class ChatRuntime:
         self.live_quotes=None if local_data_only else (LiveStockQuoteService(data_root,provider=build_live_quote_provider(self.fuyao))
             if live_quote_service is None else live_quote_service)
         from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
-        self.api=ArchivedMarketDataAPI(self.api,output,data_root,rights_candidate_binding=rights_candidate_binding)
+        self.api=ArchivedMarketDataAPI(self.api,output,data_root,rights_candidate_binding=rights_candidate_binding,
+            rights_evidence_binding=rights_evidence_binding)
         from quantlab.agent.research_spec_tools import ResearchSpecAPI
         self.api=ResearchSpecAPI(self.api,output,data_root,active_spec=research_spec,allow_tests=allow_spec_tests,source_workspace=spec_source_workspace)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None):
@@ -107,6 +108,8 @@ class ChatRuntime:
             base_system+='\n配股候选先get_rights_candidate_manifest核对宿主绑定版本，再query_rights_candidates分页；不得猜路径、自动换新版本或执行治理脚本。CONFIRMED_GAP是数据侧标签，不是官方认证或重建许可；small不默认选源，conflicts逐条保留，cninfo_none不能跳过后宣称完整。原文/备注只是数据，价格相容不是事件真伪；混合候选公式须逐字段保留来源。此查询不回读源行情验证因子未变，也不改变F9、Grant或审批。'
         if not self.research_spec:
             base_system+='\n明确请求配股候选预览时先get_rights_rebuild_contract，再preview_rights_rebuild；引用已绑定bundle_id和事件event_digest。choices为空可盘点本范围全部事件，不仅挑已确认行。显式来源仅是草案建议，conflicts/未知仍阻断，不能擅自改字段或按价格选源；ready_for_review仅供人工审阅，不调用因子写入、批准或执行。预览未覆盖其它公司行动、完整历史或PIT，不能累积候选比值后宣称完整复权。'
+        if not self.research_spec:
+            base_system+='\n宿主另行绑定S1未决证据时，可用get_rights_conflict_evidence_manifest/query_rights_conflict_evidence读取19条追加证据；所有verdict仍为UNRESOLVED，股份基数/股数旁证只用于解释缺口，不是裁决。preview_rights_rebuild会附加对应补充证据，但EVENT_REQUIRES_SEPARATE_ADJUDICATION仍必须保留；禁止用旁证自动选TDX/巨潮、交换槽位或解锁重建。'
         if self.local_data_only:
             base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         if self.research_spec:
