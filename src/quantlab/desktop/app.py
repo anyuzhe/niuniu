@@ -650,61 +650,24 @@ class MainWindow(QMainWindow):
         return tabs
 
     def open_run(self,run_id):
-        def done(data,error):
-            if error:return
-            dialog=QDialog(self);dialog.setWindowTitle(data['record']['manifest'].get('config',{}).get('research_question',run_id));dialog.resize(1320,850)
-            layout=QVBoxLayout(dialog);layout.addWidget(label(dialog.windowTitle(),'panelTitle'));tabs=self.record_widget(data['record']);layout.addWidget(tabs,1)
-            from PyQt6.QtWidgets import QFileDialog
-            export_status=label('','muted',True)
-            def export():
-                path,_=QFileDialog.getSaveFileName(dialog,'导出实验及子实验包',str(self.output/(run_id+'.zip')),'实验包 (*.zip)')
-                if not path:return
-                from quantlab.storage.bundle import export_bundle
-                export_button.setEnabled(False);export_status.setText('正在打包归档、源码和环境版本…')
-                def exported(result,error):
-                    export_button.setEnabled(True);export_status.setText(error or '已导出：'+result['path'])
-                self.async_call(lambda:export_bundle(self.output/run_id,path),exported,guarded=False)
-            def reproduce():
-                from quantlab.storage.bundle import reproduce_artifact
-                reproduce_button.setEnabled(False);export_status.setText('正在核验源码／环境并使用归档 K 线复算…')
-                def reproduced(result,error):
-                    reproduce_button.setEnabled(True);export_status.setText(error or ('已核对可复算结果；失败或未运行项仍保留：' if result['status']=='available_results_matched' else '归档复算逐项核对一致：')+result['run_id'])
-                self.async_call(lambda:reproduce_artifact(self.output/run_id,self.output),reproduced,guarded=False)
-            export_button=button('导出实验复现包',export);reproduce_button=button('使用归档 K 线复算并核对',reproduce)
-            can_reproduce=data['record'].get('kind','factor') in ('campaign','factor','execution','holdout','walkforward','sweep','ablation','theory_study','correlation','correlation_holdout','correlation_walkforward','residual_alpha','return_increment','stability','return_family','trial_registry') and data['record'].get('status')=='completed'
-            reproduce_button.setEnabled(can_reproduce)
-            reproduce_button.setToolTip('支持全成功固定研究包、因子、成交、样本外、滚动、扫描、消融、理论、相关性及衍生比较；需完整冻结输入及匹配源码和依赖。复算会核对全部子实验，失败原因在此显示。')
-            layout.addWidget(row(export_button,reproduce_button,export_status))
-            if 'reproduction.json' in data['files']:
-                verification=BusinessDetails({});verification.setPlainText('正在读取复算核对记录…');tabs.addTab(verification,'复算核对')
-                verification_path=self.catalog.file(run_id,'reproduction.json')
-                self.async_call(lambda:verification_path.read_text(),lambda text,error:verification.setPlainText(error or text),guarded=False)
-            if 'report.md' in data['files']:
-                report=QTextBrowser();report.setOpenExternalLinks(False);report.setOpenLinks(False);report.setPlainText('正在读取报告…');tabs.addTab(report,'研究报告')
-                path=self.catalog.file(run_id,'report.md')
-                def read_report():
-                    with path.open(encoding='utf-8') as stream:return stream.read(200001)
-                def show_report(text,error):
-                    if error:report.setPlainText(error)
-                    elif len(text)>200000:report.setPlainText(f'大报告仅预览前200,000字符；完整报告：{path}\n\n'+text[:200000])
-                    else:report.setMarkdown(text)
-                self.async_call(read_report,show_report,guarded=False)
-            if 'observations.parquet' in data['files']:tabs.addTab(self.observations_widget(run_id),'观测数据')
-            if 'bars.parquet' in data['files']:tabs.addTab(self.replay_widget(run_id,data['record']),'K 线回放')
-            else:tabs.addTab(label('这是汇总或比较记录；请从“子实验”打开行情来源进行回放。' if data['children'] else '本实验未保存 K 线快照。新实验可勾选“保存 K 线回放”。','muted',True),'K 线回放')
-            if data['children']:
-                tabs.addTab(table(['子实验','ID'],[[v['label'],v['run_id']] for v in data['children']],lambda i:self.open_run(data['children'][i]['run_id'])),'子实验')
-            self.show_dialog(dialog)
-        self.async_call(lambda:self.catalog.detail(run_id,lightweight=True),done)
+        from .result_view import open_result_view
+        return open_result_view(self,run_id)
 
     def show_dialog(self,dialog):
         # Keep widgets alive for outstanding background reads; release with the main window.
         self.dialogs.append(dialog);dialog.show()
 
+    # Observation-table updates affect only visible rows, never archived data.
     def observations_widget(self,run_id):
         w=QWidget();box=QVBoxLayout(w);symbol=QLineEdit();symbol.setPlaceholderText('证券代码，例如 sh.600000');status=label('','muted');holder={'offset':0,'epoch':0,'table':None}
+        def clear_rows(*_):
+            holder['epoch']+=1
+            if holder['table'] is not None:holder['table'].setRowCount(0)
+            prev.setEnabled(False);nxt.setEnabled(False)
+            status.setText('筛选已变化，请重新检索；旧结果已清除。')
         def load(delta=0,reset=False):
             holder['offset']=0 if reset else max(0,holder['offset']+delta);holder['epoch']+=1;request=holder['epoch'];offset=holder['offset'];stock=symbol.text().strip()
+            clear_rows();request=holder['epoch']
             prev.setEnabled(False);nxt.setEnabled(False);status.setText('读取中…')
             def done(data,error):
                 if request!=holder['epoch']:return
@@ -713,7 +676,8 @@ class MainWindow(QMainWindow):
                 t=table(data['columns'],[[r[k] for k in data['columns']] for r in data['rows']]);holder['table']=t;box.addWidget(t,1)
                 status.setText(f"{offset} / {data['total']}（每页 30 行）");prev.setEnabled(offset>0);nxt.setEnabled(offset+30<data['total'])
             self.async_call(lambda:self.catalog.observations(run_id,offset,30,stock),done,False)
-        prev=button('上一页',lambda:load(-30));nxt=button('下一页',lambda:load(30));box.addWidget(row(symbol,button('检索',lambda:load(reset=True)),prev,nxt,status));load();return w
+        prev=button('上一页',lambda:load(-30));nxt=button('下一页',lambda:load(30));box.addWidget(row(symbol,button('检索',lambda:load(reset=True)),prev,nxt,status))
+        symbol.textChanged.connect(clear_rows);load();return w
 
     def replay_widget(self,run_id,record):
         from .replay import ReplayWidget

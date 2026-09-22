@@ -20,7 +20,9 @@ def _hash(path):
 
 
 def export_bundle(artifact, destination, source_directory=None):
-    artifact=Path(artifact).resolve();destination=Path(destination)
+    artifact=Path(artifact)
+    if artifact.is_symlink():raise ValueError('Symlink archive root is not an export source')
+    artifact=artifact.resolve();destination=Path(destination)
     if destination.exists():raise FileExistsError(destination)
     from quantlab.experiments.runner import runtime_fingerprint
     runtime=runtime_fingerprint();files={};records={};pending=[artifact.name]
@@ -73,6 +75,20 @@ def export_bundle(artifact, destination, source_directory=None):
             archive.writestr('bundle.json',encode(manifest))
             for name,path in files.items():archive.write(path,name)
             for name,payload in extras.items():archive.writestr(name,payload)
+        # Validate what was actually serialized, not only files hashed before writing.
+        # A concurrent change must not produce a successful but unrestorable bundle.
+        with zipfile.ZipFile(temp) as archive:
+            for name, expected in manifest['files'].items():
+                if archive.getinfo(name).file_size != expected['bytes']:
+                    raise ValueError('Bundle input changed during export: '+name)
+                with archive.open(name) as source:
+                    if hashlib.file_digest(source,'sha256').hexdigest() != expected['sha256']:
+                        raise ValueError('Bundle input changed during export: '+name)
+        for name, path in files.items():
+            if path.is_symlink() or _hash(path) != manifest['files'][name]['sha256']:
+                raise ValueError('Bundle input changed during export: '+name)
+        if code_hash(package) != packaged_code_hash:
+            raise ValueError('Source tree changed during export')
         # Exclusive publication; never overwrite an existing user artifact.
         with destination.open('xb') as target,temp.open('rb') as source:shutil.copyfileobj(source,target)
     finally:temp.unlink(missing_ok=True)
@@ -116,7 +132,15 @@ def restore_bundle(bundle, destination):
                     companion.write_text(encode(identity_summary(identity,source)));continue
                 if record is None:record=json.loads(source.read_text())
                 (source.parent/name).write_text(encode(make(record,source)))
-        staging.rename(destination)
+        # Reserve the final directory exclusively at publication time. A plain
+        # directory rename can replace a concurrently created empty directory.
+        destination.mkdir(exist_ok=False)
+        incomplete=destination/'.restore-incomplete'
+        incomplete.write_text('Restore publication incomplete; do not use or overwrite this destination.\n')
+        for item in staging.iterdir():
+            item.rename(destination/item.name)
+        staging.rmdir()
+        incomplete.unlink()
     except Exception:
         shutil.rmtree(staging,ignore_errors=True);raise
     return {'path':str(destination),'artifact_root':str(destination/'runs'),'root_run_id':manifest['root_run_id'],'verified_files':len(manifest['files']),
