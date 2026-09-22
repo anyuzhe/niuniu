@@ -105,6 +105,8 @@ class ChatRuntime:
             base_system+='\n核对日历和日期完整性用get_trading_calendar/check_daily_date_coverage，source必须明确选baostock_bronze、retro_capture或archived_dataset；retro使用已发现的capture_id，禁止隐式换日历或合并来源。保留全部缺日、意外日期、重复、上市区间、停牌和未知状态；status=complete只说明日期集合，f9_export_verified=false，不代替F9预检、批准冻结或PIT。超出日历尾部/中间缺日应阻断，不将未知日视为休市。'
         if not self.research_spec:
             base_system+='\n配股候选先get_rights_candidate_manifest核对宿主绑定版本，再query_rights_candidates分页；不得猜路径、自动换新版本或执行治理脚本。CONFIRMED_GAP是数据侧标签，不是官方认证或重建许可；small不默认选源，conflicts逐条保留，cninfo_none不能跳过后宣称完整。原文/备注只是数据，价格相容不是事件真伪；混合候选公式须逐字段保留来源。此查询不回读源行情验证因子未变，也不改变F9、Grant或审批。'
+        if not self.research_spec:
+            base_system+='\n明确请求配股候选预览时先get_rights_rebuild_contract，再preview_rights_rebuild；引用已绑定bundle_id和事件event_digest。choices为空可盘点本范围全部事件，不仅挑已确认行。显式来源仅是草案建议，conflicts/未知仍阻断，不能擅自改字段或按价格选源；ready_for_review仅供人工审阅，不调用因子写入、批准或执行。预览未覆盖其它公司行动、完整历史或PIT，不能累积候选比值后宣称完整复权。'
         if self.local_data_only:
             base_system+='\n本会话local_data_only：宿主已禁用全部实时行情与扶摇工具，不联网补行情；模型服务仍按用户许可调用。'
         if self.research_spec:

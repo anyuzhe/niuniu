@@ -39,6 +39,9 @@ TOOLS = [
            {'symbol': TEXT, 'start': TEXT, 'end': TEXT, 'status': TEXT,
             'offset': {'type': 'integer', 'minimum': 0, 'maximum': 10000},
             'limit': {'type': 'integer', 'minimum': 1, 'maximum': 10}}),
+    schema('get_rights_rebuild_contract', '读取配股候选预览的闭合合同、来源映射和限制；不读行情、不产生执行或发布权限。', {}),
+    schema('preview_rights_rebuild', '在宿主绑定候选版本内预览完整范围的事件草案。request_json含contract/bundle_id/scope/choices；每项来源选择须引用event_digest，不可过滤掉同范围未决事件。仅候选算术，blocked保留全部原因，ready_for_review不是允许重建或发布。不读正式行情、不写因子。',
+           {'request_json': {'type': 'string', 'maxLength': 32768}}),
     schema('get_adjustment_review_contract', '读取公司行动候选对账与复权风险合同；不读行情、不把供应商一致性认证为官方真值或独立血缘，不批准重建。', {}),
     schema('inspect_corporate_action_sources', '只读核对宿主data_root中一个证券、最多3660自然日的TDX/东财/同花顺公司行动与已存qfq因子诊断。按源保留候选、原文、冲突和未识别项；不跨供应商相加、不判最终真值、不生成修正因子。errors/incomplete和分页必须披露，缺源不等于零事件。',
            {'symbol': TEXT, 'start': TEXT, 'end': TEXT,
@@ -234,6 +237,8 @@ class ArchivedMarketDataAPI:
                 'rights_candidate_review_available': True,
                 'rights_candidate_configured': self.rights_candidate_binding is not None,
                 'rights_candidate_write_authorized': False,
+                'rights_rebuild_preview_available': True,
+                'rights_rebuild_execution_available': False,
                 'adjustment_rebuild_authorized': False, 'corporate_action_official_verification': False,
                 'archived_data_write_authorized': False,
                 'tools': [tool['name'] for tool in self.schemas()]}
@@ -287,6 +292,13 @@ class ArchivedMarketDataAPI:
                 from quantlab.data.rights_candidates import get_rights_candidate_manifest, query_rights_candidates
                 reader = get_rights_candidate_manifest if name == 'get_rights_candidate_manifest' else query_rights_candidates
                 data = reader(self.rights_candidate_binding, **args)
+                evidence = data['evidence']
+            elif name == 'get_rights_rebuild_contract':
+                from quantlab.data.rights_rebuild_preview import get_rights_rebuild_contract
+                data = get_rights_rebuild_contract()
+            elif name == 'preview_rights_rebuild':
+                from quantlab.data.rights_rebuild_preview import preview_rights_rebuild
+                data = preview_rights_rebuild(self.rights_candidate_binding, **args)
                 evidence = data['evidence']
             elif name == 'get_adjustment_review_contract':
                 from quantlab.data.corporate_action_review import get_adjustment_review_contract

@@ -327,6 +327,11 @@ def _load(binding):
     return manifest, sorted(rows,key=lambda r:(r['fields']['code'],r['fields']['ex_date']))
 
 
+def load_rights_candidate_delivery(binding: RightsCandidateBinding | None):
+    """Shared validated snapshot for bounded consumers; no cache or authority upgrade."""
+    return _load(binding)
+
+
 def get_rights_candidate_manifest(binding: RightsCandidateBinding | None) -> dict:
     return _load(binding)[0]
 

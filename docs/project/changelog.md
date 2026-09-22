@@ -1641,3 +1641,14 @@
 - 19条verdict全部为UNRESOLVED，摘要中adjudications_made=0、price_evidence_used=false、parent_files_modified=false。逐条给出缺什么证据，主要缺口为配股说明书/实施公告原文的配股基准股本口径、分股东类别实配拆分、方案修订序列。独立股息旁证只覆盖5/19，EM与THS股息库最早止于1993年报（实施于1994年），1992–1993年除权事件在本地无任何独立股息旁证。巨潮自身存在缺陷：多条配股前流通股本报0，sh.600633与sz.000513的配股后减配股前不等于实际配股数量，均已记入缺证据项而非静默采用。
 - 同时发现父CSV首列带UTF-8 BOM（表头第0列实为﻿event_class）且ths_raw列含内嵌换行，须用utf-8-sig读取且不能按行切分，已写入交付供代码侧解析参考。parent_event_digest定义为该行各字段按表头顺序用csv.writer(lineterminator="\n")规范化重序列化后的UTF-8文本sha256，代码侧可复现；action_or_plan_id一律为显式unknown，因巨潮stock_allotment_cninfo与tdx_capital_changes均不返回方案编号。
 - 交付为README、S1-19条未决配股事件证据包.md、evidence下JSONL/CSV/确定性摘要与logs下两个只读脚本，摘要不含墙钟时间并以summarises_jsonl_sha256绑定JSONL；采集器连续两次重跑JSONL的SHA稳定为a34c869d…。artifacts/在.gitignore内不进版本库，本次提交仅含本条开发史。不认证供应商正确性、上游独立性、历史可得时点或因子完整性，也未裁决任何一条事件。
+
+### 2026-09-22｜[F18] 有界候选重建预览及来源草案
+
+- 基线main@20fc254，开工工作区干净。用户要求继续代码维护；只推进F17绑定候选的纯预览，不访问正式niuniu-data，不改治理材料/指针，不采集、安装依赖、真实模型研究、可见GUI或启停公共服务。
+- rights_rebuild_preview复用F17完整校验快照：固定bundle_id与证券日期范围，自动枚举全部列内配股事件（不允许status/page/exclude）；有界20事件、10证券、3660日、32KiB请求。每项来源草案须精确event_digest，成对选择配股价/比例，派息/送转和交付前收来源明确；未知/冲突即使已选源仍blocked，不支持人工裁决伪字段或覆盖数值。
+- 预览只计算每事件候选参考价/因子比/理论raw百分数，40位固定Decimal输出字符串，不累计因子、不生成价格/归一化曲线，不写任何候选状态、任务、因子或批准。scope_digest与preview_digest固定完整范围和来源；ready_for_review不构成官方/完整历史/PIT或执行许可。get_rights_rebuild_contract/preview_rights_rebuild沿现有Chat/MCP，CLI新增rights-preview-contract/rights-preview并区分0/3/2退出码；未新增桌面绑定或默认部署。
+- 初轮30项后端、10项入口测试通过，包含缺项、重复、陈旧身份、来源差异、未决不可绕过、空范围、全部20事件输出、真实MCP/stdio重开、脚本化模型经ChatRuntime及原QM50/Reviewer边界。独立Pi只读复核完成，覆盖5个产品文件和2个新增测试的同一源码SHA，未发现范围内可利用绕过或权限扩大；它未运行测试或核验原始市场材料，不等于全仓或官方事件认证。
+- Lexar新文件事务创建遇到os error45并完整回滚；核实文件不存在后改用结构化Python exclusive create，新文件未覆盖任何已有改动；其余编辑继续使用SHA保护。共享changelog被数据侧S1并行追加并独立提交为b78cdd2，SHA冲突拒绝了旧编辑；重新读取后保留对方提交，仅追加本轮内容。过程、审查和回归证据保存在artifacts/rights-rebuild-preview-20260922/。
+- 最终固定源码逐模块独立进程回归16模块188项，0失败/错误/跳过，新增40项包含在总数内；测试ID去重，全部产品Python及受测文件SHA前后一致。涵盖F17、F15/F16入口、原Chat/MCP、QM50、Grant、提案及策略复算/F14链路；accepted-regression.json保留真实ID和明细，不是可见客户端或真实模型自主研究验收。
+- 仅对已接受的候选CSV/摘要做正式服务只读smoke：sh.600626零值冲突及sz.000759未匹配事件，分别提出TDX/巨潮假设仍blocked；sz.000589小差异两套假设各得独立ready_for_review预览，但未选择赢家或保存裁决。3事件×2假设不重复计入单元测试数；两个候选文件字节与mtime不变，未访问正式行情根。记录见handoff-preview-smoke.json。
+- 仅本轮5个产品文件、2个新测试、3份现有文档纳入独立提交；提交前后按to-be-committed.json和delivery.json核对验证文件、普通推送及远端SHA。数据侧b78cdd2的S1记录保留为既有祖先，未将新S1证据自动接入裁决。F9停牌合同、持续因子曲线、实际重建发布仍是后续独立范围。

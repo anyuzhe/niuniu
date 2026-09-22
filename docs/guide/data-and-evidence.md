@@ -204,3 +204,34 @@ CLI返回0表示候选交付读取验证成功（可以仍有未决记录），2
 已接受的候选CSV及摘要保留原字节，新取证只做独立补充包并引用父CSV/JSON SHA，不覆写原分类、不重跑整批分类为目标。数据侧优先为待决事件提供事件/方案身份、股份基数、实施与除权日期、各字段原值和逐字段来源、原文文件SHA及locator。零值冲突不得擅自移动c1/c2；送转前后基数是待查线索，不按价格相近或乘1.1直接裁决。小差异来源选择应提出有证据的建议，不以小数位多或供应商名气自动选边。未匹配记录保留查找范围和缺失原因，零成交不当市场反应，找不到不等于事件不存在。
 
 F9停牌支持属于代码合同/执行语义范围；数据侧只交原始状态、量额空值/零值、停复牌边界及内容身份样本，不删停牌或填量来适配旧F9。前向逐日Universe和新的公开源抓取不自动开始：需要新请求列明目标、用途、预算与授权；缺原始证据可交缺口清单，不为“全收口”编造决策。后续代码的有限重建预览与正式发布仍需分别评审，不由F17读取自动放行。
+
+## 11. 有界配股事件重建预览（F18）
+
+`get_rights_rebuild_contract` 纯读合同；`preview_rights_rebuild(request_json)` 复用F17宿主双文件/双SHA绑定，只有内存中的事件草案和候选算术。没有发布、保存因子、研究批准、人工裁决或订单接口，不读取正式行情/公告，不执行治理脚本。普通Chat与标准MCP共用原工具层；未新增GUI按钮或默认绑定，QM50锁定和首轮Reviewer权限不扩展。
+
+请求严格包含 `contract=niuniu-rights-rebuild-preview-v1`、已验证的 `bundle_id`、`scope` 和 `choices`。scope为1–10个不重复规范证券代码及1–3660自然日的start/end；自动纳入该范围在绑定CSV里的全部配股事件，整范围最多20条，不支持status过滤、分页、exclude或skip_unknown。其它公司行动类仍明确not_evaluated，清单本身不是全市场事件全集。选择空窗口或含无候选证券，返回blocked，不能解释为没有公司行动。
+
+`choices=[]` 可先盘点该范围的全部事件引用及阻断原因。随后每项选择必须带 `code/ex_date/event_digest/rights_source`，rights_source只能明确为tdx或cninfo，配股价和比例成对取同源。精确组同样要求明确数值来源，不隐式采用舍入后值；小差异不默认选边。重复、范围外、旧事件引用、错误bundle或请求中携带approve/execute/path等字段拒绝；原源文件变化由F17读源校验拒绝，不能靠同路径重绑。
+
+| 返回状态 | 含义 |
+|---|---|
+| blocked | 请求已解析并读取绑定资料，但全范围仍有未选源、待决、未匹配、缺少前收/所选字段等；每条和顶层均保留阻断 |
+| ready_for_review | 本范围清单内全部配股事件已给出可计算的草案，**仅供人工审阅**，不代表全公司行动齐全或允许重建 |
+
+conflicts/cninfo_none即使带来源选择仍阻断，计算值为null；不支持自签approved或新参数覆盖。已有明确事件可展示自身的候选计算，但只要范围内其它事件未解决，整份仍blocked。缺值不填0，空选择不自动补默认源。零成交只令价格诊断不可用，不据此认定行动真假；此处也未核实前一交易日、停复牌和股份基数。
+
+每个草案列出实际使用的交付原字符串、单位、字段和provider_claim：派息/送转固定来自TDX c1/c3，配股价/比例来自所选供应商，前收来自交付prev_raw_close。公式沿已接受的候选合同 `(P-c1/10+(ratio/10)*price)/(1+c3/10+ratio/10)`，**假设旧股基数一致且行动并存，未经认证**。巨潮方案是混合来源，不是官方参考价。仅给理论价、单事件因子比、理论raw变动百分数，使用40位固定Decimal上下文和十进制字符串；不按实际价格挑选来源、不累计事件因子、不生成base_date归一化曲线。
+
+规范化请求、事件键/内容、范围、来源、计算及阻断一起进入preview_digest；scope_digest单独绑定范围和完整列内事件集。请求JSON空白/键顺序、choices与symbols排列不改变同语义预览；换范围、来源或候选版本会改变身份。无墙钟时间戳、无持久成功缓存；单次响应仍受64KiB完整输出预算，超限拒绝而不是截掉后半部分。official_verified、factor_no_change_verified、strict_pit、reconstruction_authorized、publication_authorized始终false；factor_series与adjusted_prices始终null。
+
+```bash
+# 先看精确请求字段；不需任何数据根。
+.venv/bin/python -B -m quantlab.agent.data_review_cli rights-preview-contract
+# 复用第10节四个宿主绑定参数，再给完整JSON字符串。JSON从已验证bundle_id和事件引用生成。
+.venv/bin/python -B -m quantlab.agent.data_review_cli rights-preview \
+  --rights-csv <CSV绝对路径> --rights-summary <JSON绝对路径> \
+  --rights-csv-sha256 <完整CSV_SHA256> --rights-summary-sha256 <完整JSON_SHA256> \
+  --request-json '<完整预览请求JSON>'
+```
+
+CLI 0=ready_for_review，3=blocked，2=请求/绑定/交付/预算错误；合同查询成功也是0。read-only工具响应ok仅指调用完成，必须再看data.status/incomplete，不将blocked解释为通过。F9停牌合同及实际因子重建发布继续单独推进，F18不修改Provider、原审批冻结、Grant或复算。

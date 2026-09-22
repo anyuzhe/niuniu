@@ -19,6 +19,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='牛牛只读覆盖和公司行动候选复核；不改库、不重算因子')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('contract', help='只读取复权候选复核合同，不需要数据根')
+    commands.add_parser('rights-preview-contract', help='读取配股事件预览合同，不读取数据')
     coverage = commands.add_parser('tdx-coverage', help='查询一个TDX族的实际聚合覆盖')
     coverage.add_argument('--data-root', required=True)
     coverage.add_argument('--family', required=True)
@@ -42,9 +43,11 @@ def main(argv=None):
         sub.add_argument('--end', required=True)
         if command == 'daily-coverage':
             sub.add_argument('--symbols', required=True)
-    for command in ('rights-manifest', 'rights-query'):
+    for command in ('rights-manifest', 'rights-query', 'rights-preview'):
         sub = commands.add_parser(command, help='显式指纹绑定的配股候选只读核对')
         add_rights_binding_arguments(sub, required=True)
+        if command == 'rights-preview':
+            sub.add_argument('--request-json', required=True, help='完整预览请求JSON；只输出草案，不写因子')
         if command == 'rights-query':
             sub.add_argument('--symbol', default='')
             sub.add_argument('--start', required=True)
@@ -64,6 +67,10 @@ def main(argv=None):
                                 rights_candidate_binding=binding)
     if parsed.command == 'contract':
         name, arguments = 'get_adjustment_review_contract', {}
+    elif parsed.command == 'rights-preview-contract':
+        name, arguments = 'get_rights_rebuild_contract', {}
+    elif parsed.command == 'rights-preview':
+        name, arguments = 'preview_rights_rebuild', {'request_json': parsed.request_json}
     elif parsed.command in ('rights-manifest', 'rights-query'):
         name = 'get_rights_candidate_manifest' if parsed.command == 'rights-manifest' else 'query_rights_candidates'
         arguments = {} if parsed.command == 'rights-manifest' else {
