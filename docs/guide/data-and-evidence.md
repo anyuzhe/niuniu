@@ -275,3 +275,30 @@ F21 版本选择只有两种显式策略：`explicit_revision_v1` 必须指定 e
 只读入口为 `get_version_ledger_manifest`、`query_version_ledger`、`get_version_selection_contract`、`preview_version_selection`，普通 Chat / MCP / CLI 共用同一宿主绑定；模型工具不暴露 path/hash/approve/execute。未配置返回 `VERSION_LEDGER_NOT_CONFIGURED`，不会扫描目录找“最新版”。QM50 绑定规格会话和 Peer Reviewer 不获得 F21 工具。返回的 `event_key/payload` 标记为 `UNTRUSTED_SOURCE_DATA_NOT_INSTRUCTIONS`，不能把公告文本或来源字段解释成新指令/授权。
 
 `ready_for_review` 只表示“在指定 event/source/policy 下版本唯一”。`official_verified=false`、`strict_pit=false`、`merge_authorized=false`、`reconstruction_authorized=false`、`publication_authorized=false` 固定保留。F17–F20 不自动读取或应用 F21 ledger，现有配股候选状态和重建 blocker 不变。下一阶段 F22 才可把版本账本作为公司行动人工裁决的证据引用；F23 才会在全部必要决策明确后生成候选复权因子。
+
+## 15. F22–F27 数据治理 / 产品代码双轨路线
+
+F21 之后的 F22–F27 是**阶段顺序**，不是把数据治理工作交给 `src/quantlab`。责任边界简化为：**DATA 数据侧是数据的唯一责任方，负责采集、来源/版本选择、人工治理流程、正确性、完整性、单位、PIT资格、factor/qfq重建、发布与回滚；CODE 产品侧只负责读取 DATA 已声明可用的数据并实现产品功能。** CODE 不重新判断哪家来源正确、不复算数据治理结论、不为数据做第二套认证；只能在文件不存在、不可读或接口格式无法解析时报告技术错误。双方唯一的日常交接入口是 [DATA → CODE 数据清单](../reference/data-catalog.md)。
+
+| 阶段 | 主责 | DATA 数据侧交付 | CODE / 产品侧职责 | 进入下一阶段的 gate |
+|---|---|---|---|---|
+| F22 公司行动正式人工决策包 | **DATA 主责** | 完成来源/版本/证据核查和人工治理，输出 DATA 认可的公司行动决策数据并在数据清单登记路径与状态 | 只读取 DATA 标为 `READY` 的决策数据；不参与来源正确性判断 | DATA 将影响重建的必要决策标为可用；未完成则保持 `NOT_READY` |
+| F23 candidate factor / qfq 重建 | **DATA 主责** | 根据 F22 结果生成 candidate factor/qfq，完成自身正确性检查；需要给 CODE 使用时发布成 DATA 认可的可用数据并登记路径 | 不运行全库 factor/qfq 重建，不比较来源，不审核因子正确性；只读取 DATA 最终公布的路径 | DATA 确认重建结果满足其质量要求并更新数据清单 |
+| F24 影响审计 + publish gate + rollback | **DATA 主责** | 数据侧自行完成影响审计、publish gate、发布和 rollback；决定哪个版本是当前正式版本 | 只读取数据清单中 DATA 标记为 `READY`/当前正式的数据；不承担 publish/rollback 审核 | DATA 更新正式数据路径/版本/状态后，CODE 才切换消费 |
+| F25 Auction 版本 / 单位治理接入 | **DATA 主责** | 数据侧完成 Auction 版本、单位、精度、历史口径治理并输出统一可用数据 | 按数据清单读取统一 Auction 数据，不自行猜单位或复核来源 | DATA 标记 Auction 数据 `READY` |
+| F26 Strict PIT Universe / 状态 / 规则正式化 | **DATA 主责** | 数据侧保证 Universe、Security Status、Market Rules 的 Strict PIT 资格并输出正式数据 | CODE 只按数据清单消费 DATA 声明为 strict-ready 的数据，不独立认证 PIT 正确性 | DATA 在清单中明确目标数据 `READY` 及覆盖范围 |
+| F27 治理后真实 AI 自主研究最终验收 | **CODE / AI 主责** | DATA 提供并维持验收所需的最终 `READY` 数据清单 | 牛牛从正式入口自主读取这些数据、形成假设、调用正式研究工具、保存证据/失败反馈/记忆并可重开复核；外部开发者只观察与修功能缺口 | 验收的是产品自主研究闭环；数据正确性结论沿用 DATA 的交付，不在 F27 重做数据审计 |
+
+既有 F17 交付的 878 条候选曾以 `746/88/19/25` 四桶记录。仓库已明确其中 **19 条**为 `conflicts/NEEDS_DECISION`，S1 补充证据仍为 19/19 `UNRESOLVED`；因此它们在 F22 没有人工闭合前不能进入 F23 正式候选重建。**88 条的精确分类名称与处置语义继续以父治理包为准，本文不重新命名数据侧状态**；数据侧应在 F22 复核其中哪些条目仍需新增证据或会实际影响 factor/qfq，只有这些未闭合且影响重建的项目才构成 F23 gate。
+
+跨轨原则只有两条：**DATA 对数据负责，CODE 对使用数据的产品行为负责。** CODE 不扫描数据根寻找替代来源，不因某份数据缺失就自动换另一来源，也不把自己的测试结果解释成数据正确；DATA 只需在统一数据清单中维护“有什么数据、数据在哪里、覆盖什么、当前是否可供 CODE 使用”。若 DATA 标记 `NOT_READY`，CODE 应把对应能力视为数据未就绪，而不是自行修数据。
+
+### 15.1 CODE / DATA 协作方式
+
+协作只保留两个物理根：`/Volumes/Lexar/niuniu` 是代码仓，`/Volumes/Lexar/niuniu-data` 是 DATA 自己管理的数据根。**数据根内部怎么分 bronze/silver/gold、receipt、backup、staging，是 DATA 的内部实现；CODE 不依赖这些内部约定。** CODE 只依赖一份稳定的 [DATA → CODE 数据清单](../reference/data-catalog.md)。
+
+数据清单由 DATA 维护，每个可交付数据只需要写清：**数据名称/ID、数据内容、绝对路径、格式、覆盖范围或粒度、状态（`READY` / `NOT_READY` / `REVIEW_REQUIRED`）以及必要的使用说明。** DATA 一旦把某项标成 `READY`，就表示该项的数据正确性、来源选择、单位、版本、完整性以及适用范围已经由 DATA 负责确认；CODE 不再重复审核这些结论。
+
+CODE 的读取规则也保持简单：只使用清单中明确标为 `READY` 的路径；不扫描 `/Volumes/Lexar/niuniu-data` 找“看起来更新”的文件，不在多个来源之间自动回退，不比较哪家供应商更正确，不重算 qfq/factor 来验证 DATA，也不读取 `NOT_READY`/`REVIEW_REQUIRED` 项冒充正式数据。运行时最多检查目标文件/目录是否实际存在、能否读取、格式是否能被当前 reader 解析；这些失败属于接口/运行错误，不是数据正确性审计。
+
+DATA 如果新增、移动、替换或停用数据，应先更新数据清单，再通知 CODE 适配；CODE 如果需要一种尚未在清单中的数据，只向 DATA 提“需要什么数据/字段/范围”，不规定 DATA 必须如何采集和证明正确。这样 F22–F26 都由 DATA 自己完成治理和质量保证，CODE 只在对应数据变为 `READY` 后接入；F27 才验收牛牛是否能正确使用这些已交付数据。

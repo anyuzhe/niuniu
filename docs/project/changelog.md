@@ -1722,3 +1722,16 @@
 - 版本选择只允许 `explicit_revision_v1` 与 `latest_observed_revision_as_of_v1`。后者必须显式 `as_of`，只在同 source 且 `observed_at <= as_of` 的修订链中选唯一 tail；没有当时版本或存在断开的多根/歧义则 blocked，不回退到当前最新。返回 `ready_for_review` 仅表示该版本唯一，`official_verified/strict_pit/merge/reconstruction/publication` 均固定 false。
 - 接入普通 Chat/MCP/CLI 的 `get_version_ledger_manifest`、`query_version_ledger`、`get_version_selection_contract`、`preview_version_selection`。模型 schema 无 path/hash/approve/execute，未配置不扫描目录；QM50 宿主绑定规格和 Peer Reviewer 不获得 F21 工具。event_key/payload 标记为不可信来源数据，不能作为命令或授权。F17–F20 不自动消费账本，不改变配股状态或重建 blocker。
 - 新增 `tests/test_version_ledger.py` 与 `tests/test_version_ledger_tools.py`，修后专项 23/23 通过（含 direct API、CLI、正式 Chat、MCP in-process + stdio、重复观察、修订链/as_of、跨来源、路径/hash/mutation/预算、QM50/Reviewer 权限）。相关回归另确认旧候选核心29项、相关非stdio/权限链93个真实用例、标准 MCP/归档集成9项；大组里出现的旧 MCP stdio 初始化超时与 AgentMemory Git 状态错误均按单项/小组复核，不作为 F21 功能失败。未访问正式数据、未采集、未执行重建/发布。
+
+### 2026-09-23｜[路线治理] F22–F27 CODE / DATA 双轨责任边界
+
+- 用户重新确认此前既定顺序：F21统一版本/修订选择合同 → F22公司行动正式人工决策包 → 等待数据侧19条/88条进一步证据 → F23 candidate factor/qfq重建 → F24影响审计+publish gate+rollback → F25 Auction版本/单位治理 → F26 Strict PIT Universe/状态/规则正式化 → F27治理后真实AI自主研究最终验收。本条只澄清owner和gate，不宣称F22–F27已实现。
+- 责任边界正式拆开：DATA负责采集、证据闭合、规范化、candidate factor/qfq重建、影响审计、publish/rollback、Auction治理和Strict PIT正式数据；CODE负责闭合合同、身份/SHA/父引用校验、只读查询/消费、人工决策入口和fail-closed权限边界；HUMAN负责公司行动来源/版本裁决及正式发布批准。Research Agent/Chat/MCP不得从“可读取”推导出重建或发布权限。
+- F22为三方协作：数据侧准备按F21 `event_id/source_id/revision_id`绑定的证据与缺口，人作正式决定，代码侧只保存/校验可审计决策包。19条conflict已由S1证明19/19 UNRESOLVED，继续作为F22 blocker；既有878条的`746/88/19/25`桶保持父治理语义，88条不由代码文档重命名，数据侧只需确认其中哪些仍缺证据且会影响F23。
+- F23/F24明确为DATA主责：F23生成candidate factor timeline、candidate qfq、rebuild manifest/lineage和current-vs-candidate差异，但不覆盖正式版本；F24负责影响审计、人工publish gate、active pointer/receipt和可验证rollback。CODE最多增加只读consumer/verifier，产品运行时不得扫描bronze、自动择源、运行全库qfq重建、切正式指针、publish或rollback。
+- F25/F26同样DATA主责：Auction先闭合来源vintage、字段版本、单位/精度/转换规则；Strict PIT再形成带publication/effective时间与coverage的Universe、Security Status、Market Rules正式receipt/版本链。F27才重新以牛牛AI为主角，在数据侧提供的已发布冻结基线上做真实自主研究工程验收，外部开发者不得用手工研究或注入答案代替。
+- 目录协作同步定为“代码仓 + 数据根 + 版本化共享合同 + manifest/SHA handoff”：现有`src/quantlab/data`继续只放产品 reader/verifier/consumer，`scripts/collect`只负责采集；目标新增中立的`contracts/data_governance`、DATA离线`scripts/governance`与人工门控`scripts/publish`。数据根沿已有bronze/silver/gold/catalog/staging/quarantine/backups结构补`governance`控制面，并把未发布候选与active正式数据严格分开。当前仅写规划，禁止为整理目录批量移动既有历史数据或切指针。
+- 本次只更新`docs/guide/data-and-evidence.md`、`docs/project/status.md`和本开发史，不修改`src/quantlab`、采集脚本、正式数据、catalog/Provider、候选状态或发布状态；后续由数据侧审查上述owner、目录/handoff、artifact/gate与19/88口径。
+- 随后用户进一步收紧协作模型：不需要CODE与DATA共同维护复杂治理合同/目录，也不要求CODE复核DATA正确性。最终口径改为 **DATA对数据本身全责，CODE只按统一数据清单读取**。DATA在清单中维护“有哪些数据、绝对路径、格式/覆盖、是否READY”；一旦标READY即代表正确性、来源/版本、单位、完整性和适用范围由DATA确认。CODE仅处理路径不存在、不可读或reader无法解析等技术错误，不扫描数据根找替代来源、不自动回退、不做第二套数据认证。
+- 规划新增`docs/reference/data-catalog.md`作为唯一日常DATA→CODE协作文档。当前仓库/数据根中已发现的主要路径先标`REVIEW_REQUIRED`供数据侧审查，不因路径存在就声明可用于产品；F22–F26完成后由DATA更新对应行到`READY`，CODE再接入。前一版关于新增`contracts/data_governance`、`governance/*`等目录仅作为未实施草案撤回，本轮不创建这些目录、不移动历史数据。
+- 数据侧随后完成审查并认可该协作边界，同时直接维护`docs/reference/data-catalog.md`：已把确认可供CODE使用的日K、5分钟、日状态、2026-09-23参考快照与capture root列为`READY`，把旧qfq标为`DEPRECATED`、F23候选qfq/factor及F22/F24–F26未来正式数据保持`NOT_READY`。这些状态和覆盖说明属于DATA交付结论；CODE沿清单消费，不重复做数据正确性认证。

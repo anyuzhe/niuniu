@@ -15,6 +15,10 @@
 - [Chan 包含与 ICT OB：明确规则 1.0.0](theories/理论扩展规则_Chan包含与ICT_OB.md)
 - [跨实验固定检验族：本地登记与 Holm 校正 1.1.0](theories/跨实验试验登记与Holm校正规则.md)
 
+## DATA / CODE 协作
+
+- [DATA → CODE 数据清单](data-catalog.md)：由数据侧维护“有哪些数据、数据在哪里、覆盖范围与是否可供代码使用”；代码侧按清单读取，不重复承担数据正确性审计。
+
 ## 运行时知识与第三方来源
 
 [Agent 工作记忆](../../agent_memory/README.md)、[Playbooks](../../playbooks/README.md)、[Research Skills](../../research_skills/README.md) 保持原位，因为它们参与程序加载、授权或内容指纹校验。
