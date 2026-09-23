@@ -10,12 +10,13 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collect import coverage as cov  # noqa: E402
+from collect.daily_common import select_reference_file, select_stock_basic  # noqa: E402
 
 DATASETS = {
     "baostock-daily": {
@@ -85,8 +86,8 @@ def _existing_coverage(root: Path) -> dict[str, dict[str, Any]]:
 
 
 def build_plan(dataset: str, *, target_end: date,
-               calendar_path: Path = cov.CALENDAR,
-               stock_basic_path: Path = cov.STOCK_BASIC,
+               calendar_path: Path | None = None,
+               stock_basic_path: Path | None = None,
                dataset_dir: Path | None = None,
                only_symbols: set[str] | None = None,
                action_limit: int | None = None) -> dict[str, Any]:
@@ -97,7 +98,18 @@ def build_plan(dataset: str, *, target_end: date,
     root = Path(dataset_dir or spec["dir"])
     if not root.is_dir():
         raise FileNotFoundError(f"dataset directory does not exist: {root}")
+    auto_calendar = calendar_path is None
+    auto_stock = stock_basic_path is None
+    calendar_manifest_sha = stock_manifest_sha = None
+    if auto_calendar:
+        calendar_path, calendar_manifest_sha = select_reference_file(
+            target_end, lake=cov.LAKE, fallback=cov.CALENDAR, name="trade_calendar")
+    if auto_stock:
+        stock_basic_path, stock_manifest_sha = select_stock_basic(
+            target_end, lake=cov.LAKE, fallback=cov.STOCK_BASIC)
     calendar = cov.TradingCalendar(Path(calendar_path))
+    if target_end > calendar.last:
+        raise ValueError(f"reference calendar ends {calendar.last}; target {target_end} is unverified")
     end = calendar.latest_on_or_before(target_end)
     if end is None:
         raise ValueError(f"target {target_end} predates calendar")
@@ -107,8 +119,11 @@ def build_plan(dataset: str, *, target_end: date,
     existing = _existing_coverage(root)
 
     counts = {key: 0 for key in
-              ("full", "tail", "refresh_last", "up_to_date", "ahead", "not_yet_listed")}
+              ("full", "tail", "refresh_last", "up_to_date", "ahead", "not_yet_listed",
+               "suspended_tail")}
     all_actions: list[dict[str, Any]] = []
+    status_evidence: list[dict[str, Any]] = []
+    status_root = root.parent / "daily_status_v2"
     known_vendor_limits = 0
     for code, ipo_date in listed.items():
         path = root / cov.symbol_filename(code)
@@ -127,6 +142,23 @@ def build_plan(dataset: str, *, target_end: date,
                 current["last_day_rows"] < 48):
             gap = {**gap, "action": "refresh_last", "fetch_start": end,
                    "fetch_end": end, "n_trading_days": 1}
+        # A trailing no-bar range is not retryable if the separately collected
+        # supplier status covers every expected session and marks them all 0.
+        if gap["action"] == "tail" and status_root.is_dir():
+            status_path = status_root / cov.symbol_filename(code)
+            if status_path.is_file():
+                import pandas as pd
+                status = pd.read_parquet(status_path, columns=["date", "code", "tradestatus"])
+                expected = set(calendar.between(current["max_date"] + timedelta(days=1), end))
+                rows = status[status["date"].astype(str).isin({d.isoformat() for d in expected})]
+                if (expected and len(rows) == len(expected) and
+                        set(rows["code"]) == {code} and
+                        {cov.to_date(x) for x in rows["date"]} == expected and
+                        set(rows["tradestatus"]) == {"0"}):
+                    gap["action"] = "suspended_tail"
+                    status_evidence.append({"symbol": code, "path": str(status_path.resolve()),
+                                            "sha256": file_sha256(status_path),
+                                            "sessions": len(expected)})
         counts[gap["action"]] += 1
         known_vendor_limits += int(gap["known_vendor_limit"])
         if gap["action"] not in {"full", "tail", "refresh_last"}:
@@ -163,6 +195,9 @@ def build_plan(dataset: str, *, target_end: date,
             "sha256": file_sha256(Path(calendar_path)),
             "first": calendar.first.isoformat(),
             "last": calendar.last.isoformat(),
+            "auto_selected": auto_calendar,
+            "reference_manifest_sha256": calendar_manifest_sha,
+            "asof": target_end.isoformat(),
         },
         "universe": {
             "path": str(Path(stock_basic_path).resolve()),
@@ -170,6 +205,9 @@ def build_plan(dataset: str, *, target_end: date,
             "contract": "type=1 and status=1; delisted excluded",
             "listed_symbols": len(listed),
             "excluded_nonlisted_files": excluded_files,
+            "auto_selected": auto_stock,
+            "reference_manifest_sha256": stock_manifest_sha,
+            "asof": target_end.isoformat(),
         },
         "vendor_floor": (spec["vendor_floor"].isoformat()
                          if spec["vendor_floor"] else None),
@@ -179,6 +217,7 @@ def build_plan(dataset: str, *, target_end: date,
             "actions_in_plan": len(planned),
             "known_vendor_limits_applied": known_vendor_limits,
         },
+        "status_evidence": status_evidence,
         "actions": planned,
     }
     payload["plan_sha256"] = canonical_digest(payload)
@@ -196,8 +235,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--show", type=int, default=10)
     args = parser.parse_args(argv)
 
-    calendar = cov.TradingCalendar()
-    target = args.target_end or cov.default_target_end(calendar)
+    if args.target_end is None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        current_path, _ = select_reference_file(
+            today, lake=cov.LAKE, fallback=cov.CALENDAR, name="trade_calendar")
+        calendar = cov.TradingCalendar(current_path)
+        if today > calendar.last:
+            raise ValueError(f"reference calendar stale after {calendar.last}; collect today's snapshot first")
+        target = cov.default_target_end(calendar)
+    else:
+        target = args.target_end
     plan = build_plan(
         args.dataset,
         target_end=target,
@@ -209,8 +258,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"target:  {plan['target_end']}")
     print(f"universe: {plan['universe']['listed_symbols']} listed A-shares; "
           f"{plan['universe']['excluded_nonlisted_files']} non-listed files ignored")
-    print("status:   full={full} tail={tail} refresh-last={refresh_last} "
-          "current={up_to_date} ahead={ahead} not-yet-listed={not_yet_listed}".
+    print("status:   full={full} tail={tail} suspended-tail={suspended_tail} "
+          "refresh-last={refresh_last} current={up_to_date} ahead={ahead} "
+          "not-yet-listed={not_yet_listed}".
           format(**summary))
     print(f"plan:     {summary['actions_in_plan']} / {summary['actions_total']} actions")
     print(f"sha256:   {plan['plan_sha256']}")

@@ -1704,3 +1704,12 @@
 - 新增`baostock_reference_snapshot.py`、`baostock_dividend.py`、`baostock_daily_status.py`及`migrate_empty_parquet.py`；通用信封增加持久检查点、空结果marker及页面证据，THS仅在HTTP 200、标题代码匹配且0表时分类empty。参考快照7/7成功：日历13,062、证券8,971、行业5,555、全市场7,393、上证50/沪深300/中证500分别50/300/500，manifest文件SHA全部复核一致。
 - 采集专项离线回归最终40项通过；真实数据另做文件数、行数、schema、证券身份、主键、目标日48根、空marker、迁移备份、行情备份和manifest SHA交验，不能以单元测试替代。本次真实结果与限制归档于[2026-09-22/23 全量数据采集与交验](../archive/data-evidence/20260923-全量数据采集与交验.md)。行情扫描/计划SHA/逐次批准可每日重复，参考快照可按日期重建；公司行动与状态脚本当前仍是全量基线/中断续采，不冒充每日事件修订维护器或Strict PIT。
 - 提交仅纳入本批`scripts/collect`、两份采集测试和文档；并行`src/quantlab/agent/*`、`src/quantlab/data/version_ledger.py`不纳入。普通push及远端SHA以本条所在提交为准，不自动部署或变更正式数据指针。
+
+### 2026-09-23｜[数据侧S5] 每日智能重复计划与独立批准脚本
+
+- 用户要求将全量基线脚本改为每日智能重复使用。本轮只改版本化脚本、离线测试和说明，实际执行**仅只读扫描与计划生成**；没有启动新的供应商采集、修改bronze、catalog/Provider、正式公司行动或复权发布。保留S4按原旧`stock_basic`定义的5,215只历史验收，不覆盖回执。
+- 新增`daily_plan.py`两阶段只读编排：当日参考快照缺失时只生成其不可变计划；完成且七文件SHA复核后，分别生成行情、状态、三家公司行动计划与独立SHA。总索引不构成一揽子批准，真实采集仍逐计划要求`--apply --plan --approve-sha256`（参考快照按原脚本的日期/目录/审批SHA合同）。截止日遵守北京时间18:00，旧日历不伪装成今日覆盖。
+- `scan_gaps.py`改为选择不晚于目标日的最新已完成、manifest与原文件SHA一致的参考日历和证券快照；`bars_incremental.py`联网前复核所选快照未变化。状态表逐交易日证明尾部全为停牌时列`suspended_tail`、绑定状态Parquet SHA，不再生成重复采集动作；内部缺日仍不自动补。`status_incremental.py`自动识别全缺证券和尾部交易日，完整交易日校验、旧文件备份/原子更新/逐证券回执，内部缺日单列；失败按原批准计划显式续跑，不补空价或生成假交易。
+- `corporate_actions_daily.py`对同花顺与巨潮每日重新请求全供应商历史、对Baostock分红默认重查近3个报告年（可显式放宽至60），按全字段顺序无关且保留重复的摘要判断unchanged/new/updated/empty/failed。已存在事件不能被供应商临时空响应擦除；变化先备份旧字节和空marker再原子替换，逐证券观察时间、响应摘要及可续跑回执，未变化文件保持原SHA。Baostock超出回看窗口的早年修订仍为已知未覆盖；不在bronze自动裁决、去重或发布。
+- 只读真实扫描发现2026-09-22已完成参考快照的在市总体为**5,222**，较S4所用旧`stock_basic`多7只（均有9月IPO日期）。在新总体下，日K、5分钟及状态各有7只`full`待采，另13只状态证据支持`suspended_tail`；并没有补采或宣称新总体完成。2026-09-23当日参考快照尚未采集，`artifacts/data-collection-plans-20260923-daily/index.json`只给出`reference_required`及参考计划SHA `c1417216e991836b16a5d094c640fc0d94dcd486dcb9c4a02e2eab66becae230`，不联网。
+- 离线采集专项最终58项通过；文档链接检查与Git差异检查以提交前实跑为准。本批不做真实每日运行成功、历史修订检出率、PIT或客户端验收。仅提交`scripts/collect`、三份采集测试和相应文档；并行`src/quantlab`/version_ledger改动不纳入。普通push并核对远端SHA后记录实际状态。

@@ -32,6 +32,9 @@
 | `baostock_daily_status.py` | Baostock交易/停牌/ST日状态 | `stocks-listed`，保留`tradestatus=0` |
 | `baostock_reference_snapshot.py` | 日历、证券、行业和三大指数成分 | 不可变日期批次，不切产品指针 |
 | `migrate_empty_parquet.py` | 将旧零行占位Parquet迁为有类型空标记 | 先备份和核SHA，再移除混合schema |
+| `daily_plan.py` | 每日只读计划包，参考快照先行、其余计划随后 | 各计划分别批准，不能一键自动采集 |
+| `status_incremental.py` | Baostock交易/ST状态缺整只和尾部增量 | 状态表单独更新，历史内部洞仅报告 |
+| `corporate_actions_daily.py` | 同花顺/巨潮/Baostock分红每日再观察 | 内容SHA比较，变更备份、逐证券回执 |
 
 ## 采集信封（`envelope.py`）
 
@@ -89,10 +92,14 @@
 
 ## 每日运行边界
 
-- `scan_gaps.py` → `bars_incremental.py` 支持每日重新扫描、生成新计划SHA，并在当次批准后增量补行情。
-- `baostock_reference_snapshot.py` 支持按日期建立新的不可变快照，不覆盖旧日期批次。
-- 同花顺、巨潮、Baostock分红及日状态当前用于**全量基线和中断续采**；`--resume` 会跳过已有文件，不能发现已有证券后来新增或修订的事件，尚不能当每日智能更新器。
-- 每日真实联网仍须当次授权；脚本不会因为被调度就绕过 `--apply` 或行情计划SHA。
+先执行只读 `daily_plan.py --date YYYY-MM-DD --out-dir artifacts/<审阅目录>`。如果当日参考快照不存在，它**只输出参考快照计划**；单独审阅并批准 `baostock_reference_snapshot.py --snapshot-date ... --dest ... --apply --approve-sha256 ...` 后重新运行，才输出行情、状态、公司行动各自的JSON和SHA。`index.json` 不是总批准凭证；不能凭一次授权一键启动全部采集。计划输出在可审阅目录，不写数据湖也不联网。
+
+- `scan_gaps.py` → `bars_incremental.py` 按最新已验SHA的参考日历与stock_basic自动发现新上市证券、末尾缺口/5分钟不足48根；计划绑定所选快照，快照在批准后变化则联网前拒绝。若独立状态文件证明尾部每个交易日均`tradestatus=0`，列为`suspended_tail`、绑定状态文件SHA而不进入重试动作；内部无bar日期仍只报告不自动补。
+- `status_incremental.py` 从原状态文件真实末日之后采集完整交易日状态，逐证券备份、原子合并和回执；内部缺日单列 `interior_gaps`，不自动补。`--apply --plan <状态计划> --approve-sha256 <完整SHA>` 才联网；失败用相同计划和 `--resume-run` 续跑。默认计划在参考日历落后于当天时拒绝，不把旧日历末日当今天。
+- `corporate_actions_daily.py` 对同花顺分红、巨潮配股按全供应商历史重新观察；Baostock分红默认重查最近3个报告年度并保留更早原始行，`--lookback-years` 可扩大至60（需要更多请求）。结果按字段和行内容做顺序无关、保留重复的摘要比较；不变文件不改字节，新增/修订先备份旧文件及空结果标记再替换，供应商把已有历史整段返回空值时拒绝擦除。每证券持久回执、可续跑，需单独 `--dataset ... --apply --plan ... --approve-sha256 ...`。Baostock超出批准回看窗口的旧年修订**不会自动发现**；仅生成bronze观察版本，不自动裁决事件、重算因子。
+- `baostock_reference_snapshot.py` 按日期建立新不可变快照；没有快照时下游使用旧归档源并在计划中绑定其SHA。优先使用最新不晚于目标日期的完成快照，必须验证manifest与实际证券文件SHA；最新快照损坏或不完整会拒绝而非回退旧版。参考快照中的在市口径可能不同于2026-09-22首采所用旧stock_basic，差异应单列审阅，不得暗改旧验收总体。
+- 公司行动每日重新观察**全部在市证券**（巨潮仅TDX历史配股证券与在市交集），不是低成本事件推送；供应商访问预算、频率和每日日期由宿主审阅。`--resume`（全量首采脚本）仍只跳过已有文件，不等于上述增量命令。
+- 每日真实联网仍须当次授权；未取得当次批准时只允许生成计划，不因调度自动执行。
 
 ## 授权边界
 
@@ -105,12 +112,12 @@
 
 ## 测试
 
-`tests/test_collect_envelope.py` 与 `tests/test_collect_gaps.py` 共 40 个用例，注入假 fetcher，
+`tests/test_collect_envelope.py`、`tests/test_collect_gaps.py` 与 `tests/test_collect_daily.py` 共 58 个用例，注入假 fetcher，
 覆盖无授权不联网、计划哈希防篡改、退市排除、周末过滤、18:00 截止、供应商历史下限、
 整只未采/末尾落后、5m 末日不足 48 根重取、旧文件指纹变化拒绝、整日替换与 schema/主键校验。
 全程离线，只写临时目录。
 
-运行：`.venv/bin/python -m unittest tests.test_collect_gaps tests.test_collect_envelope -q`
+运行：`.venv/bin/python -m unittest tests.test_collect_gaps tests.test_collect_envelope tests.test_collect_daily -q`
 
 ## 被替代的旧脚本
 

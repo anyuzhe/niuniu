@@ -21,11 +21,14 @@ import shutil
 import signal
 import sys
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collect.scan_gaps import DATASETS, canonical_digest, file_sha256  # noqa: E402
+from collect import coverage as cov  # noqa: E402
+from collect.daily_common import select_reference_file, select_stock_basic  # noqa: E402
 
 FIELDS = {
     "baostock-daily": "date,code,open,high,low,close,volume,amount,adjustflag",
@@ -70,9 +73,26 @@ def validate_plan_state(plan: dict[str, Any]) -> list[dict[str, Any]]:
     if plan_root != expected_root:
         raise ValueError(f"plan dataset_dir is not the configured lake path: {plan_root}")
     for source in ("calendar", "universe"):
-        path = Path(plan[source]["path"])
-        if file_sha256(path) != plan[source]["sha256"]:
+        identity = plan[source]
+        path = Path(identity["path"])
+        if file_sha256(path) != identity["sha256"]:
             raise ValueError(f"stale plan: {source} source changed: {path}")
+        if identity.get("auto_selected") is None:
+            raise ValueError(f"stale plan: {source} selection contract missing")
+        if identity["auto_selected"]:
+            asof = date.fromisoformat(identity["asof"])
+            chosen, manifest_sha = (
+                select_reference_file(asof, lake=cov.LAKE, fallback=cov.CALENDAR,
+                                      name="trade_calendar") if source == "calendar"
+                else select_stock_basic(asof, lake=cov.LAKE, fallback=cov.STOCK_BASIC))
+            if chosen.resolve() != path.resolve() or manifest_sha != identity["reference_manifest_sha256"]:
+                raise ValueError(f"stale plan: {source} newer reference selected")
+    for evidence in plan.get("status_evidence", []):
+        path = Path(evidence["path"]).resolve()
+        if (path.parent != expected_root.parent / "daily_status_v2" or
+                path.name != evidence["symbol"].replace(".", "_", 1) + ".parquet" or
+                file_sha256(path) != evidence["sha256"]):
+            raise ValueError(f"stale plan: suspension evidence changed: {evidence['symbol']}")
     seen: set[str] = set()
     checked: list[dict[str, Any]] = []
     for action in plan["actions"]:

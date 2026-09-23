@@ -109,6 +109,23 @@ class GapPlanTests(unittest.TestCase):
         self.assertEqual(actions["sh.600003"]["fetch_start"], "2026-09-21")
         self.assertNotIn("sh.600004", actions)
 
+    def test_verified_suspension_tail_is_not_retryable_and_hash_bound(self):
+        status_root = self.dataset.parent / "daily_status_v2"
+        status_root.mkdir()
+        path = status_root / "sh_600002.parquet"
+        pd.DataFrame({"date": ["2026-09-21", "2026-09-22"],
+                      "code": ["sh.600002"] * 2,
+                      "tradestatus": ["0", "0"]}).to_parquet(path)
+        plan = self.build()
+        self.assertEqual(plan["summary"]["suspended_tail"], 1)
+        self.assertNotIn("sh.600002", {x["symbol"] for x in plan["actions"]})
+        with patch.dict(scan_gaps.DATASETS["baostock-daily"], {"dir": self.dataset}):
+            apply_mod.validate_plan_state(plan)
+            with path.open("ab") as handle:
+                handle.write(b"changed")
+            with self.assertRaisesRegex(ValueError, "suspension evidence changed"):
+                apply_mod.validate_plan_state(plan)
+
     def test_plan_is_deterministic_and_limit_is_hash_bound(self):
         first = self.build()
         second = self.build()
