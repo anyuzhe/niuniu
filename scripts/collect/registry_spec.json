@@ -302,6 +302,151 @@
     "ends 2026-09-04; stage 4 rebuild pending"
    ],
    "superseded_by": "bars.min5.qfq"
+  },
+  "public.sw_industry_history": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=swsresearch/industry_classification_history",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "申万行业分类变更历史（全量，每行一次归属起始）；每次采集是当天观察的全量快照；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.cninfo_announcements": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=cninfo/announcements",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "巨潮全市场公告，按公告日期分区；当天分区在收盘后仍可能增加，采集当天不算完整；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.ths_limit_up": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=ths/limit_up_pool",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "同花顺涨停池，按交易日分区；供应商可回补历史；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.em_monitor": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/monitor_pool",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财异动监控名单（当前名单），只能当天观察，不能回补；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.em_anomaly": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/price_anomaly_pool",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财股价异常波动（当前名单），只能当天观察，不能回补；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.index_weights": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=csindex/index_weights",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "中证/国证指数最新成分权重（csindex 月度权重文件），只能当天观察；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.margin_official": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=exchange/margin_trading",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "沪深交易所官方融资融券明细，T+1 发布，按交易日分区；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.block_trades": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/block_trades",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财大宗交易明细，按交易日分区，原始东财列名；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.lockup_expiry": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/lockup_expiry",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财限售解禁，按解禁日分区；未来日期是预告，会随公告变化，需要重采；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执",
+   "known_issues": [
+    "future_partitions_are_forecasts"
+   ]
+  },
+  "public.holder_count": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/holder_count_latest",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财股东户数（每只股票最新一期），只能当天观察，原始东财列名；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.northbound_minute": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=ths/northbound_minute",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "同花顺北向分钟净流入（当天），只能当天观察；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.earnings_forecast": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/earnings_forecast",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财业绩预告（2026-06-30、2026-09-30 两个报告期），当天观察；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.institution_survey": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/institution_survey",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财机构调研明细，按公告日期分区；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.holder_trades": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/holder_trades",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财股东增减持，按公告日期分区；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.share_buyback": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/share_buyback",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财回购，只有按最新公告排序的前 5,000 条（供应商分页上限），当天观察；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执",
+   "known_issues": [
+    "truncated_to_latest_5000_rows"
+   ]
+  },
+  "public.equity_pledge": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/equity_pledge",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财股权质押比例（最新交易日），当天观察；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执"
+  },
+  "public.ipo_calendar": {
+   "status": "current",
+   "kind": "dated_snapshots",
+   "path": "lake/bronze/provider=eastmoney/ipo_calendar",
+   "qualification": "vendor_public_web_research_only",
+   "producer": "scripts/collect/public_sources.py",
+   "notes": "东财新股申购与上市（最新 5,000 条），当天观察；首采 2026-09-23（a-stock-data 数据源），分区文件名为 YYYY-MM-DD，_empty/ 为确认无数据的标记，_receipts/ 为采集回执",
+   "known_issues": [
+    "truncated_to_latest_5000_rows"
+   ]
   }
  }
 }
