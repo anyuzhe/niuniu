@@ -1733,3 +1733,8 @@
 - 新目录名为 `lake/_market_data` 而非方案中的 `captures/`，因为 `baostock_series`、`retro_tail` 的校验按目录名 `_market_data` 判断。
 - 注册表更新为 SHA `807ddb62f592…`，新增 `capture_tree` 类型及 5 个 `captures.*` 条目（旧版在 `catalog/registry_history/`）。
 - 测试：新增 8 项（capture root/迁移）与 1 项（NaT 回归）。在 Python 3.11 隔离环境中跑通受影响模块：采集 76 项及 retro_daily、retro_pack、retro_tail 三组、daily_market_archive、public_evidence、forward_daily、baostock_series、baostock_data、evidence_scheduler、limit_research_tools、archived_daily_dataset、archived_data_tools、archived_dataset_lifecycle、archived_research_check 全部通过；`archived_suspension_contract` 中依赖 vnpy 的 1 项因未安装 vnpy 未运行，其余 7 项通过。未跑桌面（PyQt）测试。
+
+### 2026-09-23｜[数据侧] 公司行动全量再观察结论：不再每日复查历史
+
+- 巨潮配股 644/644、同花顺分红 4,478/5,222、Baostock 分红 1,329/5,222，真实修订均为 0；巨潮 43 条 updated 为 NaT 比较 bug 误报（`cdaa2fc` 已修，逐一核对内容相同）。同花顺在用户确认无需继续后停止，回执可续跑；Baostock 因请求间隔被调到 0.3 秒且频繁重新登录，IP 被封禁后中止。
+- 决定：历史记录不再每日全量复查，全量复查只在发布新版 qfq 前做（平时最多每季度一次）；每日只采新事件与新上市证券，`corporate_actions_daily.py` 的子集模式待实现，之前每周一次。Baostock 请求间隔不低于 1 秒、单次登录。详见[再观察结果与采集频率](../archive/data-evidence/20260923-公司行动再观察结果与采集频率.md)。
