@@ -22,6 +22,15 @@ def main(argv=None):
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('contract', help='只读取复权候选复核合同，不需要数据根')
     commands.add_parser('rights-preview-contract', help='读取配股事件预览合同，不读取数据')
+    catalog_list = commands.add_parser('data-catalog-list', help='列出DATA交付清单；默认只看READY')
+    catalog_list.add_argument('--catalog')
+    catalog_list.add_argument('--status', default='READY', choices=('READY','NOT_READY','REVIEW_REQUIRED','DEPRECATED','ALL'))
+    catalog_list.add_argument('--delivery', default='ALL', choices=('FILE','DATABASE','API','STREAM','ALL'))
+    catalog_list.add_argument('--offset', type=int, default=0)
+    catalog_list.add_argument('--limit', type=int, default=20)
+    catalog_get = commands.add_parser('data-catalog-get', help='取得一个DATA已标记READY的数据入口')
+    catalog_get.add_argument('--catalog')
+    catalog_get.add_argument('--dataset-id', required=True)
     coverage = commands.add_parser('tdx-coverage', help='查询一个TDX族的实际聚合覆盖')
     coverage.add_argument('--data-root', required=True)
     coverage.add_argument('--family', required=True)
@@ -94,8 +103,14 @@ def main(argv=None):
     api = ArchivedMarketDataAPI(_NoOtherTools(), None, getattr(parsed, 'data_root', None),
                                 source_workspace=getattr(parsed, 'source_workspace', None),
                                 rights_candidate_binding=binding, rights_evidence_binding=evidence_binding,
-                                version_ledger_binding=version_binding)
-    if parsed.command == 'version-selection-contract':
+                                version_ledger_binding=version_binding,
+                                data_catalog_path=getattr(parsed, 'catalog', None))
+    if parsed.command == 'data-catalog-list':
+        name = 'list_data_catalog'
+        arguments = {key:getattr(parsed,key) for key in ('status','delivery','offset','limit')}
+    elif parsed.command == 'data-catalog-get':
+        name, arguments = 'get_ready_data_source', {'dataset_id': parsed.dataset_id}
+    elif parsed.command == 'version-selection-contract':
         name, arguments = 'get_version_selection_contract', {}
     elif parsed.command == 'version-ledger-manifest':
         name, arguments = 'get_version_ledger_manifest', {}

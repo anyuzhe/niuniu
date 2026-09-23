@@ -52,7 +52,7 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 
 
 class ChatRuntime:
-    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None,rights_candidate_binding=None,rights_evidence_binding=None,version_ledger_binding=None):
+    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None,rights_candidate_binding=None,rights_evidence_binding=None,version_ledger_binding=None,data_catalog_path=None):
         output=resolve_research_output(output)
         if research_spec:local_data_only=True
         self.research_spec=research_spec
@@ -76,7 +76,8 @@ class ChatRuntime:
             if live_quote_service is None else live_quote_service)
         from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
         self.api=ArchivedMarketDataAPI(self.api,output,data_root,rights_candidate_binding=rights_candidate_binding,
-            rights_evidence_binding=rights_evidence_binding,version_ledger_binding=version_ledger_binding)
+            rights_evidence_binding=rights_evidence_binding,version_ledger_binding=version_ledger_binding,
+            data_catalog_path=data_catalog_path)
         from quantlab.agent.research_spec_tools import ResearchSpecAPI
         self.api=ResearchSpecAPI(self.api,output,data_root,active_spec=research_spec,allow_tests=allow_spec_tests,source_workspace=spec_source_workspace)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None):
@@ -96,6 +97,8 @@ class ChatRuntime:
         memory_meta={k:v for k,v in memory.items() if k!='text'}
         base_system=SYSTEM+'\n\nGit-first Agent Operating Memory：\n'+memory['text']
         base_system+='\n本地数据检查使用list_local_market_data/inspect_local_market_data；宿主已授权自主选择范围时，在真实目录/Grant内选取，不要求用户提供因子答案。研究前先记录可证伪假设，研究后检查真实证据并保存结论草稿。'
+        if not self.research_spec:
+            base_system+='\n产品需要数据时先用list_data_catalog查看DATA清单，使用get_ready_data_source取得明确READY入口。DATA对正确性、来源、版本、单位、覆盖和PIT资格负责；不要重新裁决或重算验证。NOT_READY/REVIEW_REQUIRED/DEPRECATED不作为正式输入，不扫描数据根找替代项，也不自己直连第三方数据API顶上。'
         if not self.research_spec:
             base_system+='\n已有回溯日线先用list_archived_daily_sources发现宿主工作空间中的capture，再用list_archived_daily_symbols分页、inspect_archived_daily核验原始与typed字段。TDX已存资料用get_tdx_data_status/read_tdx_data读取明确family；这些是不同来源，不因MQC目录缺字段就断言整个项目没有数据。目录元信息不等于原始字节核验，原始记录可读也不等于通用策略Provider已接入；保留单位、observed_at、缺失和未核验标记。工具不下载、标准化、选择供应商版本或自动创建研究。'
         if not self.research_spec:

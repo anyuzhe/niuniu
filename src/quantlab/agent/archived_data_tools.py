@@ -19,8 +19,18 @@ WARNINGS = [
     '供应商数据为回顾性观察，非PIT/完整历史认证；observed_at保留为观察时点。',
     'preclose不是reference_price，turn不是流通股本或成交额，竞价/成交量未知单位按原单位保留。',
 ]
+CATALOG_WARNINGS = [
+    'DATA清单是CODE的数据交接边界；READY/覆盖/用途由DATA负责，CODE不重复认证数据正确性。',
+    '工具不会扫描数据根找替代项，不会自动fallback，也不会直接调用未由DATA发布的供应商接口。',
+]
 
 TOOLS = [
+    schema('list_data_catalog', '只读列出DATA维护的数据清单。status=READY/NOT_READY/REVIEW_REQUIRED/DEPRECATED/ALL，delivery=FILE/DATABASE/API/STREAM/ALL；只反映DATA声明，不重新验证数据正确性，也不扫描数据根。',
+           {'status': TEXT, 'delivery': TEXT,
+            'offset': {'type': 'integer', 'minimum': 0, 'maximum': 1000},
+            'limit': {'type': 'integer', 'minimum': 1, 'maximum': 20}}),
+    schema('get_ready_data_source', '按dataset_id取得DATA已标记READY的数据入口。只做存在/可读等技术检查，不判断来源、版本、单位、PIT或数值正确性；非READY显式拒绝且不自动换源。',
+           {'dataset_id': TEXT}),
     schema('list_archived_daily_sources', '只读列出宿主绑定source_workspace中的回溯日线capture；最多检查有界候选，坏capture作为错误披露，不回退到其他根。', {}),
     schema('list_archived_daily_symbols', '对指定capture分页列出证券清单。filter_kind=all/has_st/has_suspension仅作诊断过滤，不代表历史候选池。',
            {'capture_id': TEXT, 'offset': {'type': 'integer', 'minimum': 0, 'maximum': 20000},
@@ -219,7 +229,7 @@ def _tdx_read(data_root, args):
 
 
 class ArchivedMarketDataAPI:
-    def __init__(self, inner, output, data_root=None, *, source_workspace=None, rights_candidate_binding=None, rights_evidence_binding=None, version_ledger_binding=None):
+    def __init__(self, inner, output, data_root=None, *, source_workspace=None, rights_candidate_binding=None, rights_evidence_binding=None, version_ledger_binding=None, data_catalog_path=None):
         self.inner = inner
         self.output = output
         self.data_root = data_root
@@ -227,6 +237,7 @@ class ArchivedMarketDataAPI:
         self.rights_candidate_binding = rights_candidate_binding
         self.rights_evidence_binding = rights_evidence_binding
         self.version_ledger_binding = version_ledger_binding
+        self.data_catalog_path = data_catalog_path
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
@@ -246,7 +257,11 @@ class ArchivedMarketDataAPI:
             return base  # An inner failure must not become a successful capability claim.
         if not isinstance(base.get('data'), dict):
             return _error('get_capabilities', 'INVALID_RESULT', '内层能力接口缺少data对象。')
-        data = {**base['data'], 'archived_daily_read_available': True, 'tdx_read_available': True,
+        from quantlab.data.dataset_catalog import default_data_catalog_path
+        catalog_path = default_data_catalog_path() if self.data_catalog_path is None else self.data_catalog_path
+        data = {**base['data'], 'data_catalog_read_available': True,
+                'data_catalog_configured': os.path.isfile(catalog_path), 'data_catalog_write_authorized': False,
+                'archived_daily_read_available': True, 'tdx_read_available': True,
                 'tdx_coverage_read_available': True, 'corporate_action_review_available': True,
                 'calendar_source_review_available': True, 'calendar_review_write_authorized': False,
                 'rights_candidate_review_available': True,
@@ -276,6 +291,13 @@ class ArchivedMarketDataAPI:
         try:
             _validate_args(tool, args)
             evidence = []
+            if name in ('list_data_catalog', 'get_ready_data_source'):
+                from quantlab.data.dataset_catalog import list_data_catalog, get_ready_data_source
+                reader = list_data_catalog if name == 'list_data_catalog' else get_ready_data_source
+                data = reader(self.data_catalog_path, **args)
+                evidence = [{'kind': 'data_catalog', 'authority': 'DATA',
+                             'dataset_id': args.get('dataset_id'), 'status_filter': args.get('status')}]
+                return _ok(name, data, evidence=evidence, warnings=CATALOG_WARNINGS)
             if name.startswith('list_archived_daily') or name == 'inspect_archived_daily':
                 from quantlab.agent.qm50_archived_inputs import ArchivedDailyBridge
                 bridge = ArchivedDailyBridge(self.source_workspace)
@@ -367,7 +389,10 @@ class ArchivedMarketDataAPI:
                 raise ValueError('Unknown archived data tool')
             return _ok(name, data, evidence=evidence)
         except Exception as exc:
-            return _error(name, getattr(exc, 'code', None) or _classify(exc), type(exc).__name__ + ': ' + str(exc), detail={'exception_type': type(exc).__name__})
+            return _error(name, getattr(exc, 'code', None) or _classify(exc),
+                          type(exc).__name__ + ': ' + str(exc),
+                          warnings=CATALOG_WARNINGS if name in ('list_data_catalog', 'get_ready_data_source') else None,
+                          detail={'exception_type': type(exc).__name__})
 
 
 __all__ = ['ArchivedMarketDataAPI', 'TOOLS', 'NAMES']

@@ -302,3 +302,5 @@ F21 之后的 F22–F27 是**阶段顺序**，不是把数据治理工作交给 
 CODE 的读取规则也保持简单：只使用清单中明确标为 `READY` 的路径；不扫描 `/Volumes/Lexar/niuniu-data` 找“看起来更新”的文件，不在多个来源之间自动回退，不比较哪家供应商更正确，不重算 qfq/factor 来验证 DATA，也不读取 `NOT_READY`/`REVIEW_REQUIRED` 项冒充正式数据。运行时最多检查目标文件/目录是否实际存在、能否读取、格式是否能被当前 reader 解析；这些失败属于接口/运行错误，不是数据正确性审计。
 
 DATA 如果新增、移动、替换或停用数据，应先更新数据清单，再通知 CODE 适配；CODE 如果需要一种尚未在清单中的数据，只向 DATA 提“需要什么数据/字段/范围”，不规定 DATA 必须如何采集和证明正确。这样 F22–F26 都由 DATA 自己完成治理和质量保证，CODE 只在对应数据变为 `READY` 后接入；F27 才验收牛牛是否能正确使用这些已交付数据。
+
+代码侧已经实现统一读取层：`list_data_catalog` 分页读取 DATA 清单，`get_ready_data_source` 按 `dataset_id` 取得 `READY` 的 FILE/DATABASE/API/STREAM 入口；普通 Chat、标准 MCP 和只读 CLI 共用该边界。CODE 仅对 FILE/DATABASE 做“路径实际存在且可读”这一技术检查，明确返回 `data_correctness_revalidated_by_code=false` 与 `fallback_performed=false`；`NOT_READY`、`REVIEW_REQUIRED`、`DEPRECATED`、未登记数据均不会自动换源。锁定研究规格会话不新增这两个通用入口。

@@ -229,6 +229,8 @@ AI产业雷达以 `ai_industry_radar` Research Skill 入库（PUBLIC_METHOD）�
 
 F22–F26 的数据正确性、完整性、来源/版本、单位、PIT资格、重建和发布全部由 DATA 负责；CODE 的唯一数据接口是 [DATA → CODE 数据清单](../reference/data-catalog.md)，只关心“有什么、在哪里、是否`READY`”。详细边界见 [数据与证据指南](../guide/data-and-evidence.md#15-f22f27-数据治理--产品代码双轨路线)。
 
+CODE 已增加统一 DATA catalog 只读消费入口：普通 Chat/MCP/CLI 可用 `list_data_catalog` / `get_ready_data_source` 发现并取得 DATA 标记 `READY` 的 FILE/DATABASE/API/STREAM 入口；非 READY 显式拒绝，不扫描数据根、不自动 fallback、不重新认证数据正确性。锁定 QM50 规格会话继续不获得这两个通用工具。现有业务模块中仍有历史硬编码数据路径，后续按功能逐个迁移，不在本次统一入口提交中顺手切换。
+
 本轮证据保存于 `artifacts/functional-lifecycle-20260921/`；独立只读复核未发现本轮4个产品文件的权限、版本或接线缺陷（不等于全仓正确性证明）。跨层测试以脚本化Provider驱动正式接口，只证明工程链路，不冒充真实模型自主研究。只触及功能代码、测试和文档，不改TDX、正式数据、部署或用户授权。
 
 ### 2026-09-21 F3b 策略配置包 v1

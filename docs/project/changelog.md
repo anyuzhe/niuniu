@@ -1734,4 +1734,12 @@
 - 本次只更新`docs/guide/data-and-evidence.md`、`docs/project/status.md`和本开发史，不修改`src/quantlab`、采集脚本、正式数据、catalog/Provider、候选状态或发布状态；后续由数据侧审查上述owner、目录/handoff、artifact/gate与19/88口径。
 - 随后用户进一步收紧协作模型：不需要CODE与DATA共同维护复杂治理合同/目录，也不要求CODE复核DATA正确性。最终口径改为 **DATA对数据本身全责，CODE只按统一数据清单读取**。DATA在清单中维护“有哪些数据、绝对路径、格式/覆盖、是否READY”；一旦标READY即代表正确性、来源/版本、单位、完整性和适用范围由DATA确认。CODE仅处理路径不存在、不可读或reader无法解析等技术错误，不扫描数据根找替代来源、不自动回退、不做第二套数据认证。
 - 规划新增`docs/reference/data-catalog.md`作为唯一日常DATA→CODE协作文档。当前仓库/数据根中已发现的主要路径先标`REVIEW_REQUIRED`供数据侧审查，不因路径存在就声明可用于产品；F22–F26完成后由DATA更新对应行到`READY`，CODE再接入。前一版关于新增`contracts/data_governance`、`governance/*`等目录仅作为未实施草案撤回，本轮不创建这些目录、不移动历史数据。
-- 数据侧随后完成审查并认可该协作边界，同时直接维护`docs/reference/data-catalog.md`：已把确认可供CODE使用的日K、5分钟、日状态、2026-09-23参考快照与capture root列为`READY`，把旧qfq标为`DEPRECATED`、F23候选qfq/factor及F22/F24–F26未来正式数据保持`NOT_READY`。这些状态和覆盖说明属于DATA交付结论；CODE沿清单消费，不重复做数据正确性认证。
+- 数据侧随后完成审查并认可该协作边界，同时直接维护`docs/reference/data-catalog.md`：已把确认可供CODE使用的数据列为`READY`，其后又继续独立扩充qfq、公开来源文件与研究查询API；这些状态、覆盖和交付方式均属于DATA结论，CODE沿清单消费，不重复做数据正确性认证。
+
+### 2026-09-23｜[CODE] 统一 DATA catalog 消费入口
+
+- 新增 `src/quantlab/data/dataset_catalog.py`，把 DATA 维护的 `docs/reference/data-catalog.md` 作为产品交接边界。解析 `READY/NOT_READY/REVIEW_REQUIRED/DEPRECATED` 与 `FILE/DATABASE/API/STREAM`，重复ID、表格结构/状态分区错误、清单缺失/过大等均 fail-closed；不读取 `dataset_registry.json` 的 `current` 来冒充 READY，不扫描数据根寻找替代项。
+- 普通 Chat、标准 MCP 和 `data_review_cli` 接入 `list_data_catalog` / `get_ready_data_source`。模型schema不暴露path/root/approve/execute；host可显式指定catalog路径用于测试/部署。FILE/DATABASE只检查DATA公布路径是否存在可读，返回 `data_correctness_revalidated_by_code=false`、`fallback_performed=false`；API/STREAM只返回DATA公布入口，不由CODE直连第三方供应商。
+- Chat系统边界明确先查DATA清单，再消费READY入口；NOT_READY/REVIEW_REQUIRED/DEPRECATED不作为正式输入。锁定QM50研究规格会话仍过滤这两个通用工具，不因统一清单扩大原规格权限。
+- 新增 `tests/test_data_catalog_tools.py` 7项，覆盖核心解析、非READY/未知/不可读拒绝、无fallback、CLI、Chat权限、MCP进程内+真实stdio及额外参数拒绝。相关回归另确认 `test_data_review_tools` 13项、标准MCP 3项、archived integration 6项、F21工具类7项、原Chat 13项，合计49项明确通过；真实DATA清单smoke可列出当前READY集合并读取`qfq_published_f24`两个已发布路径，CODE未复核其业务正确性。
+- 本轮不修改任何 `/Volumes/Lexar/niuniu-data` 数据、采集/治理脚本或DATA清单内容；`docs/reference/data-catalog.md` 当前由数据侧并行维护，本CODE提交明确不暂存它。现有 `MQCParquetProvider` 等历史业务路径仍有旧qfq硬编码，后续按功能独立迁移并处理每证券`valid_from`，不夹进本次入口提交。
