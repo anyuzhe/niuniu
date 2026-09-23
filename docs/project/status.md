@@ -56,7 +56,7 @@
 
 ### 2026-09-23 数据侧整改：盘点、注册表与捕获包迁移
 
-已完成只读全量盘点；数据根安装了 `catalog/dataset_registry.json`（30 个逻辑数据集）并写入 14 个 `reg_*` catalog 视图。捕获包已复制到 `niuniu-data/lake/_market_data`，工作空间经 `artifacts/_market_data.redirect.json` 改写到数据根，原 `artifacts/_market_data` 保留不动。2026-09-23 参考快照与 7 只新股已补齐；公司行动每日再观察中巨潮已完成，同花顺与 Baostock 分红进行中。产品行情/公司行动读取尚未切换到注册表；qfq 仍截止 2026-09-04，需第三批重建。详见[开发总档案](changelog.md)与[数据与证据说明](../guide/data-and-evidence.md)。
+已完成只读全量盘点；数据根安装了 `catalog/dataset_registry.json`（30 个逻辑数据集）并写入 14 个 `reg_*` catalog 视图。捕获包已复制到 `niuniu-data/lake/_market_data`，工作空间经 `artifacts/_market_data.redirect.json` 改写到数据根，原 `artifacts/_market_data` 保留不动。2026-09-23 参考快照与 7 只新股已补齐；公司行动每日再观察中巨潮已完成，同花顺与 Baostock 分红进行中。产品行情/公司行动读取尚未切换到注册表。第三批：qfq v2 已发布（至 2026-09-22，452 只历史截断，旧 qfq 停用）；新增 17 项公开来源文件数据与 `ResearchDataProvider` 研究查询 API（6 项 READY、资金流待复测），CODE 按 `docs/reference/data-catalog.md` 使用。详见[开发总档案](changelog.md)与[数据与证据说明](../guide/data-and-evidence.md)。
 
 ### 2026-09-17 后台自主候选实测补充
 

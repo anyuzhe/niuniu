@@ -38,6 +38,7 @@
 | `inventory.py` | 只读盘点数据根：文件、行数、列签名、日期范围、指纹 | 报告必须写在数据根外；`--deep-hash` 才算内容 SHA |
 | `migrate_captures.py` | 把工作空间 `_market_data` 捕获包复制到数据根并重定向 | plan→apply→redirect→pointer，每步需计划 SHA；源文件不动 |
 | `registry.py` | 数据集注册表 draft/verify/apply 与 `reg_*` 视图计划 | 写入须带草稿或视图计划的完整 SHA |
+| `public_sources.py` | 17 项公开来源数据（东财/同花顺/巨潮/交易所/中证/申万，a-stock-data 代码） | `list` 看清单；`plan --dataset ...` → `apply --plan ... --approve-sha256 ...`，每项单独批准 |
 
 ## 数据根与注册表
 
@@ -118,6 +119,7 @@ python3 scripts/collect/registry.py views --apply --approve-sha256 <计划SHA>  
 - `corporate_actions_daily.py` 对同花顺分红、巨潮配股按全供应商历史重新观察；Baostock分红默认重查最近3个报告年度并保留更早原始行，`--lookback-years` 可扩大至60（需要更多请求）。结果按字段和行内容做顺序无关、保留重复的摘要比较；不变文件不改字节，新增/修订先备份旧文件及空结果标记再替换，供应商把已有历史整段返回空值时拒绝擦除。每证券持久回执、可续跑，需单独 `--dataset ... --apply --plan ... --approve-sha256 ...`。Baostock超出批准回看窗口的旧年修订**不会自动发现**；仅生成bronze观察版本，不自动裁决事件、重算因子。
 - `baostock_reference_snapshot.py` 按日期建立新不可变快照；没有快照时下游使用旧归档源并在计划中绑定其SHA。优先使用最新不晚于目标日期的完成快照，必须验证manifest与实际证券文件SHA；最新快照损坏或不完整会拒绝而非回退旧版。参考快照中的在市口径可能不同于2026-09-22首采所用旧stock_basic，差异应单列审阅，不得暗改旧验收总体。
 - **频率（2026-09-23 起）**：公司行动历史记录不再每日全量复查。2026-09-23 全量再观察三家合计 6,451 只、真实修订 0 条，详见[再观察结果与采集频率](../../docs/archive/data-evidence/20260923-公司行动再观察结果与采集频率.md)。全量复查只在发布新版 qfq 前做一次（平时最多每季度一次）；每日只采新事件和新上市证券（待实现的子集模式做好前，每周一次）。Baostock 请求间隔不低于 1 秒、单次登录，过密会被封禁。`--resume`（全量首采脚本）仍只跳过已有文件，不等于上述增量命令。
+- **公开来源数据**（`public_sources.py`，2026-09-23 起）：“当天观察”的 9 项（`em_monitor, em_anomaly, index_weights, holder_count, northbound_minute, earnings_forecast, share_buyback, equity_pledge, ipo_calendar`）只能当天采，错过不能回补，北向分钟须收盘后采；`sw_industry_history` 本身是全量变更历史，每周采一次即可；按交易日的 `ths_limit_up, block_trades` 当天收盘后采，`margin_official` 是 T+1，次日采前一交易日；按公告日的 `institution_survey, holder_trades` 当天或次日采，`cninfo_announcements` 次日采前一天（当天晚间仍会新增）；`lockup_expiry` 的未来分区是预告，应每周重采；**脚本目前会跳过已有分区，重采模式尚未实现**，做好之前未来分区保持首采时的观察。每项 `plan` 后单独批准；东财请求间隔不低于 1.5 秒，不并行。
 - 每日真实联网仍须当次授权；未取得当次批准时只允许生成计划，不因调度自动执行。
 
 ## 授权边界

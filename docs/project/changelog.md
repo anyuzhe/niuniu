@@ -1738,3 +1738,13 @@
 
 - 巨潮配股 644/644、同花顺分红 4,478/5,222、Baostock 分红 1,329/5,222，真实修订均为 0；巨潮 43 条 updated 为 NaT 比较 bug 误报（`cdaa2fc` 已修，逐一核对内容相同）。同花顺在用户确认无需继续后停止，回执可续跑；Baostock 因请求间隔被调到 0.3 秒且频繁重新登录，IP 被封禁后中止。
 - 决定：历史记录不再每日全量复查，全量复查只在发布新版 qfq 前做（平时最多每季度一次）；每日只采新事件与新上市证券，`corporate_actions_daily.py` 的子集模式待实现，之前每周一次。Baostock 请求间隔不低于 1 秒、单次登录。详见[再观察结果与采集频率](../archive/data-evidence/20260923-公司行动再观察结果与采集频率.md)。
+
+### 2026-09-23｜[数据侧整改 第三批] qfq v2 发布、公开来源数据 17 项、研究查询 API
+
+- qfq v2（`d1fd5e3`、`4c9212c`）：`scripts/derive/build_qfq.py` 从三家原始公司行动重建复权因子，事件须至少两个可用来源一致才采用（共 54,712 个），TDX 单源事件忽略，无法确认的事件不猜。发布到 `lake/silver/qfq_kline_daily_v2` 与 `qfq_kline_min5_v2`（5,222 只，至 2026-09-22；`date` 为 date32）；452 只只从最后一个未确认事件日起提供，起点见 `_meta/coverage.parquet`。按用户“不管这些历史”的决定，截断部分不补。旧 qfq 两项标为 DEPRECATED。
+- 公开来源采集（`fb8e0ca`）：`scripts/collect/public_sources.py` 按 plan→SHA 批准→apply 的同一合同采集 17 项公开数据（涨停池、交易所融资融券、大宗交易、巨潮公告目录、机构调研、股东增减持、限售解禁、业绩预告、股东户数、回购、质押、新股、指数权重、申万行业历史、东财异动监控/异常波动、北向分钟），首采均已完成，覆盖见数据清单 §3.1。数据源代码取自 a-stock-data（Apache-2.0，commit `2e0ae63`），按用户决定直接引用、未逐行审查，来源与哈希记在 `scripts/collect/vendor/a_stock_data/PROVENANCE.json`。东财串行且间隔不低于 1.5 秒。
+- 采集中修掉的问题：申万站点缺中间证书（固定 GeoTrust 中间证书并加 UA）、上交所融资融券分页上限 2,000（改分页并核对总数）、巨潮 502 与无效栏目循环（重试 4 次、单栏目、核对公告总数）、业绩预告按报告期分别拉取并在 5,000 行上限处报错、回购/新股只返回最新 5,000 条（回执写 `truncated_to_latest`）。
+- 研究查询 API：新增 `quantlab.data.research_provider.ResearchDataProvider`，给 CODE 的按需接口 7 项（问财语义搜索、个股研报、个股新闻、个股公告、三大报表、互动易问答、个股资金流）。出错一律抛异常，不以空结果冒充无数据；按供应商限频；问财密钥只从环境变量或 git 忽略的 `.env` 读取。实网冒烟测试 6 项通过；资金流接口当晚被东财拒绝连接，标为 REVIEW_REQUIRED。
+- 注册表更新为 SHA `41d5887a…`，新增 17 个 `public.*` 条目（`dated_snapshots` 类型，旧版在 `catalog/registry_history/`）。`docs/reference/data-catalog.md` 同步新增 §3.1 文件数据与 §3.2 API。
+- 测试：新增 `tests/test_research_provider.py` 10 项、`tests/test_collect_public_sources.py` 4 项；连同 `test_collect_daily`、`test_build_qfq` 共 43 项通过。
+- 每日增量：2026-09-23 的日 K、5 分钟、日状态 r3 计划已生成（目标日 2026-09-23，各 5,222 个动作），需在 Mac 上单进程运行。
