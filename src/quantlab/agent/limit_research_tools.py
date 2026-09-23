@@ -11,6 +11,7 @@ import re
 
 import polars as pl
 
+from quantlab.data.capture_root import capture_root
 from quantlab.agent.catalog import schema, TEXT, LIMIT, OFFSET, compact
 from quantlab.storage.codec import encode
 
@@ -172,7 +173,7 @@ class LimitResearchAPI:
         return manifest
 
     def _latest_evidence_day(self, source):
-        root = self.output / '_market_data' / 'public_evidence' / source
+        root = capture_root(self.output) / 'public_evidence' / source
         if not root.is_dir():
             return None
         days = sorted((p.name for p in root.iterdir() if p.is_dir() and re.fullmatch(r'\d{4}-\d{2}-\d{2}', p.name) and (p / 'accepted.json').is_file()),
@@ -189,7 +190,7 @@ class LimitResearchAPI:
         events = sorted(self._events().list(), key=lambda r: r.get('created_at', ''), reverse=True)[:5]
         sentiment = sorted(self._sentiment().list(), key=lambda r: r.get('created_at', ''), reverse=True)[:5]
         evidence = {}
-        root = self.output / '_market_data' / 'public_evidence'
+        root = capture_root(self.output) / 'public_evidence'
         if root.is_dir():
             for folder in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith('_')):
                 days = sorted(p.name for p in folder.iterdir() if (p / 'accepted.json').is_file())

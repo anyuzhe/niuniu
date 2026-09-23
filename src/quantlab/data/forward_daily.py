@@ -19,6 +19,7 @@ import re
 
 import polars as pl
 
+from quantlab.data.capture_root import capture_root
 from quantlab.storage.codec import digest, encode
 
 from .daily_market_archive import DailyMarketArchive, DailyMarketArchiveError
@@ -82,10 +83,11 @@ class ForwardReferenceArchive:
             raise ForwardDailyError('INVALID_WORKSPACE', '工作空间不存在。')
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.calendar_lookback_days = calendar_lookback_days
-        self.root = self.output / '_market_data' / 'forward_reference'
+        self.market_root = capture_root(self.output)
+        self.root = self.market_root / 'forward_reference'
 
     def _guard(self):
-        for path in (self.output / '_market_data', self.root):
+        for path in (self.market_root, self.root):
             if path.is_symlink():
                 raise ForwardDailyError('INVALID_WORKSPACE', '前瞻参考目录不能是符号链接。')
 

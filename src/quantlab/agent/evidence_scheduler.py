@@ -17,6 +17,7 @@ import os
 import socket
 import sys
 
+from quantlab.data.capture_root import capture_root
 from quantlab.data.public_evidence import TZ, PublicEvidenceArchive, PublicEvidenceError, capture_timing, next_weekday
 from quantlab.storage.codec import digest, encode
 
@@ -142,10 +143,11 @@ class EvidenceScheduler:
         self.auto_research = auto_research
         self.conclusion_library = conclusion_library
         self.premarket_library = premarket_library
-        self.root = self.output / '_market_data' / 'public_evidence' / '_scheduler'
+        self.market_root = capture_root(self.output)
+        self.root = self.market_root / 'public_evidence' / '_scheduler'
 
     def _paths(self):
-        for path in (self.output / '_market_data', self.output / '_market_data' / 'public_evidence', self.root):
+        for path in (self.market_root, self.market_root / 'public_evidence', self.root):
             if path.is_symlink():
                 raise SchedulerError('INVALID_WORKSPACE', '调度目录不能是符号链接。')
         return self.root / 'control.json', self.root / 'state.json'

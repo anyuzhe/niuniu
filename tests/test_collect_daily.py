@@ -242,6 +242,21 @@ class CorporateDailyTests(DailyFixture):
         self.assertEqual(row["backup"]["sha256"], before)
         self.assertEqual(pd.read_parquet(target)["value"].tolist(), [2.0])
 
+    def test_missing_dates_from_supplier_are_not_a_revision(self):
+        # Regression 2026-09-23: fresh supplier frames carry NaT, the same cells
+        # read back from Parquet are None; that must not count as a revision.
+        target = symbol_file(self.dataset, "sh.600001")
+        fresh = pd.DataFrame({"code": ["sh.600001", "sh.600001"],
+                              "day": pd.to_datetime(["2020-01-02", None]),
+                              "value": [1.0, None]})
+        fresh.to_parquet(target, index=False)
+        self.assertEqual(logical_frame_digest(fresh), logical_frame_digest(pd.read_parquet(target)))
+        plan = self.plan(); before = sha256_file(target)
+        row = corporate.apply_one(plan, plan["actions"][0], lambda _code: fresh.copy(),
+                                  timeout=2, backup_root=self.root / "backups")
+        self.assertEqual(row["status"], "unchanged")
+        self.assertEqual(sha256_file(target), before)
+
     def test_empty_regression_never_erases_existing_events(self):
         target = symbol_file(self.dataset, "sh.600001")
         pd.DataFrame({"code": ["sh.600001"], "value": [1.0]}).to_parquet(target)

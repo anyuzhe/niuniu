@@ -75,7 +75,7 @@ class MarketDataResearchAPI(ThemeResearchAPI):
                 data=control_summary(ControlStore(self.output).get(arguments['watch_id']))
                 refs=[{'kind':'watch','watch_id':arguments['watch_id']}]
             elif name=='list_baostock_imports':
-                rows=[];unreadable=0;root=self.output/'_market_data'/'baostock'
+                rows=[];unreadable=0;from quantlab.data.capture_root import capture_root;root=capture_root(self.output)/'baostock'
                 for path in root.glob('*/manifest.json'):
                     try:
                         _,m=load_import(self.output,path.parent.name)

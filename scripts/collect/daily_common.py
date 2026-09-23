@@ -100,11 +100,15 @@ def validate_observed_state(root: Path, action: dict[str, Any]) -> None:
 def _stable_value(value: Any) -> Any:
     if value is None:
         return None
+    import pandas as pd
+    # NaT must be tested before the datetime branch: pandas.NaT is a datetime
+    # subclass whose isoformat() is "NaT", while the same cell read back from
+    # Parquet is None.  Without this, every file with a missing date would be
+    # reported as a supplier revision on each daily re-observation.
+    if value is pd.NaT or (not isinstance(value, (str, bytes, list, tuple, dict)) and bool(pd.isna(value))):
+        return None
     if isinstance(value, (date, datetime)):
         return value.isoformat()
-    import pandas as pd
-    if bool(pd.isna(value)):
-        return None
     if hasattr(value, "item"):
         value = value.item()
     if isinstance(value, float):
