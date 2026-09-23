@@ -14,6 +14,7 @@ from quantlab.execution.rules import MarketRules
 from quantlab.execution.paper import PaperAccount
 from quantlab.execution.reconcile import reconcile_account
 from quantlab.storage.experiments import load_record
+from _optional import requires_vnpy
 
 
 class PipelineTests(unittest.TestCase):
@@ -63,6 +64,7 @@ class DividendTests(unittest.TestCase):
             r.update(commission_bps=0.,minimum_commission=0.,sell_tax_bps=0.,transfer_bps=0.)
         return market,targets,MarketRules(rules),cfg
 
+    @requires_vnpy
     def test_record_ownership_receivable_payment_native_and_restart(self):
         from quantlab.adapters.vnpy_rules import VnpyRulesBacktester
         from quantlab.adapters.vnpy import compare_backends

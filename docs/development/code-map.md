@@ -2,7 +2,7 @@
 
 [文档导航](../README.md) · [总体架构](../architecture/overview.md) · [开发规范](contributing.md)
 
-清点基线：2026-09-17，`5a381e8`。全部 711 个受 Git 管理的 Python 文件已解析 AST，0 个解析错误；源码共 57,250 行。完整文件、类、函数、行数与指纹见 [代码清单](../_meta/code-inventory.json)。这是一份结构索引，不是对每行业务逻辑的正确性证明。
+包行数表更新于 2026-09-24（`4195ad2` 之后的代码侧修复）：受 Git 管理的 Python 文件 851 个，`src/quantlab` 共 505 个文件、73,251 行，测试模块 293 个。[代码清单](../_meta/code-inventory.json) 仍是 2026-09-17 `5a381e8` 的逐文件/类/函数快照（当时 711 个文件、源码 57,250 行），未随本次重新生成。这是一份结构索引，不是对每行业务逻辑的正确性证明。
 
 ## 建议阅读顺序
 
@@ -14,33 +14,33 @@
 |---|---:|---:|
 | [__init__.py](../../src/quantlab/__init__.py) | 1 | 3 |
 | [_vendor](../../src/quantlab/_vendor) | 48 | 4014 |
-| [adapters](../../src/quantlab/adapters) | 8 | 650 |
-| [agent](../../src/quantlab/agent) | 109 | 11313 |
+| [adapters](../../src/quantlab/adapters) | 8 | 652 |
+| [agent](../../src/quantlab/agent) | 131 | 16573 |
 | [app.py](../../src/quantlab/app.py) | 1 | 74 |
 | [broker](../../src/quantlab/broker) | 5 | 416 |
 | [causal.py](../../src/quantlab/causal.py) | 1 | 29 |
-| [cli.py](../../src/quantlab/cli.py) | 1 | 628 |
+| [cli.py](../../src/quantlab/cli.py) | 1 | 631 |
 | [contracts.py](../../src/quantlab/contracts.py) | 1 | 65 |
-| [data](../../src/quantlab/data) | 36 | 6537 |
-| [desktop](../../src/quantlab/desktop) | 62 | 7274 |
+| [data](../../src/quantlab/data) | 51 | 12818 |
+| [desktop](../../src/quantlab/desktop) | 66 | 9137 |
 | [devstudio](../../src/quantlab/devstudio) | 7 | 1050 |
 | [domain.py](../../src/quantlab/domain.py) | 1 | 159 |
 | [events](../../src/quantlab/events) | 3 | 75 |
-| [execution](../../src/quantlab/execution) | 16 | 2251 |
-| [experiments](../../src/quantlab/experiments) | 24 | 2603 |
+| [execution](../../src/quantlab/execution) | 16 | 2314 |
+| [experiments](../../src/quantlab/experiments) | 25 | 2863 |
 | [factors](../../src/quantlab/factors) | 32 | 2727 |
-| [knowledge](../../src/quantlab/knowledge) | 4 | 1640 |
+| [knowledge](../../src/quantlab/knowledge) | 4 | 1642 |
 | [multitimeframe](../../src/quantlab/multitimeframe) | 5 | 191 |
 | [processing](../../src/quantlab/processing) | 4 | 254 |
 | [progress.py](../../src/quantlab/progress.py) | 1 | 18 |
 | [regime](../../src/quantlab/regime) | 4 | 167 |
 | [sequence](../../src/quantlab/sequence) | 6 | 405 |
 | [statistics](../../src/quantlab/statistics) | 8 | 594 |
-| [storage](../../src/quantlab/storage) | 12 | 2043 |
+| [storage](../../src/quantlab/storage) | 12 | 2079 |
 | [structure](../../src/quantlab/structure) | 3 | 83 |
 | [theory](../../src/quantlab/theory) | 2 | 123 |
-| [trading](../../src/quantlab/trading) | 45 | 10915 |
-| [workbench](../../src/quantlab/workbench) | 5 | 855 |
+| [trading](../../src/quantlab/trading) | 51 | 13127 |
+| [workbench](../../src/quantlab/workbench) | 5 | 874 |
 | [zones](../../src/quantlab/zones) | 2 | 94 |
 
 ## CLI 入口
@@ -83,6 +83,7 @@
 | `niuniu-paper-fill-intent` | [quantlab.agent.paper_fill_intent_cli:main](../../src/quantlab/agent/paper_fill_intent_cli.py) |
 | `niuniu-paper-review` | [quantlab.agent.paper_review_cli:main](../../src/quantlab/agent/paper_review_cli.py) |
 | `niuniu-selection-outcomes` | [quantlab.agent.selection_outcomes_cli:main](../../src/quantlab/agent/selection_outcomes_cli.py) |
+| `niuniu-strategy-package` | [quantlab.agent.strategy_package_cli:main](../../src/quantlab/agent/strategy_package_cli.py) |
 | `niuniu-paper-lifecycle` | [quantlab.agent.paper_lifecycle_cli:main](../../src/quantlab/agent/paper_lifecycle_cli.py) |
 | `niuniu-agent-scorecard` | [quantlab.agent.scorecard_cli:main](../../src/quantlab/agent/scorecard_cli.py) |
 | `niuniu-dev-studio` | [quantlab.agent.dev_studio_cli:main](../../src/quantlab/agent/dev_studio_cli.py) |
@@ -97,7 +98,7 @@
 
 ## 测试与示例
 
-[tests](../../tests) 的 222 个测试模块及 [examples](../../examples) 的全部 Python 文件也包含在 JSON 清单中。历史 verify 脚本可能依赖实际数据、特定实验 ID 或可选组件，不能仅凭名称默认无条件运行。实际测试结果与限制见 [整理验收](documentation-cleanup.md)。
+[tests](../../tests) 的 293 个测试模块（2026-09-24）及 [examples](../../examples) 的全部 Python 文件也包含在 JSON 清单中。历史 verify 脚本可能依赖实际数据、特定实验 ID 或可选组件，不能仅凭名称默认无条件运行。实际测试结果与限制见 [整理验收](documentation-cleanup.md)。
 
 ## 维护
 

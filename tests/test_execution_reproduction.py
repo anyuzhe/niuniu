@@ -14,6 +14,7 @@ from quantlab.storage.codec import digest, encode
 from quantlab.storage.experiments import LocalExperimentStore
 from quantlab.storage.bundle import reproduce_artifact, export_bundle, restore_bundle
 from quantlab.workbench.jobs import prepare
+from _optional import requires_vnpy
 
 
 class ExecutionReproductionTests(unittest.TestCase):
@@ -72,6 +73,7 @@ class ExecutionReproductionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'targets hash'):reproduce_artifact(original.artifact_path,root/'out')
             self.assertFalse((root/'out').exists())
 
+    @requires_vnpy
     def test_native_vnpy_rules_reproduction(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);original=self.original(root/'runs','vnpy_rules')

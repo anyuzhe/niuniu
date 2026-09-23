@@ -51,7 +51,7 @@ Windows PowerShell 用 `.venv\Scripts\Activate.ps1` 激活环境。CLI、数据�
 | 打板与情绪研究 | 涨停事件、市场情绪、题材、公开证据、预测校准、受限自主研究和简报 |
 | 系统与开发 | 数据与 PIT、任务队列、MCP、System Health、隔离 Dev Studio、只读移动入口 |
 
-个股问答已支持**扶摇主源 + 公开网页共识交叉校验/回退**；是否启用扶摇取决于宿主凭证配置。临时报价不是正式 MarketSnapshot，更不自动获得 Strict PIT 或交易权限。详见 [数据与证据说明](docs/guide/data-and-evidence.md)。
+个股问答的实时报价代码已实现（**扶摇主源 + 公开网页共识交叉校验/回退**），但按 DATA → CODE 数据清单，`realtime_quote`、`fuyao_context` 目前为 `REVIEW_REQUIRED`，所以**当前未启用**；DATA 标为 `READY` 后才会开启，届时是否用扶摇还取决于宿主凭证配置。临时报价不是正式 MarketSnapshot，更不自动获得 Strict PIT 或交易权限。详见 [数据与证据说明](docs/guide/data-and-evidence.md)。
 
 ## 目录约定
 

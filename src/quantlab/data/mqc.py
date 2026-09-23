@@ -43,19 +43,32 @@ class MQCParquetProvider:
         resolved = resolve(self.root, name, legacy_default=legacy)
         return resolved.path, resolved.registry_sha256
 
-    def _enforce_qfq_coverage(self, request: DataRequest) -> None:
+    def _enforce_qfq_coverage(self, request: DataRequest) -> dict[str, bool]:
+        """Apply DATA's published qfq boundary; return which symbols have truncated history.
+
+        ``history_truncated=true`` means DATA cut the history at ``valid_from`` (an unconfirmed
+        corporate action), so earlier requests are refused.  ``false`` means ``valid_from`` is
+        simply where the security's history begins (its listing), so an earlier start behaves
+        like raw data: the window is filtered, not refused.  A coverage file without the
+        column keeps the strict behaviour for every symbol.
+        """
         if self.adjustment != 'qfq' or request.timeframe not in (Timeframe.DAILY, Timeframe.MIN5):
-            return
+            return {}
         daily = resolve(self.root, 'bars.daily.qfq', legacy_default='lake/silver/qfq_kline_daily')
         coverage_path = daily.path / '_meta' / 'coverage.parquet'
         if not coverage_path.exists():
             if daily.source == 'registry':
                 raise ValueError('DATA发布的qfq缺少_meta/coverage.parquet；拒绝回退旧qfq')
-            return  # legacy/test roots predate the DATA publication contract
-        coverage = pl.read_parquet(coverage_path, columns=['code', 'valid_from'])
+            return {}  # legacy/test roots predate the DATA publication contract
+        columns = pl.read_parquet_schema(coverage_path)
+        wanted = ['code', 'valid_from'] + (['history_truncated'] if 'history_truncated' in columns else [])
+        coverage = pl.read_parquet(coverage_path, columns=wanted)
         if coverage.select(pl.col('code').is_duplicated().any()).item():
             raise ValueError('DATA qfq coverage存在重复证券')
         valid_from = dict(zip(coverage['code'].to_list(), coverage['valid_from'].to_list()))
+        truncated_flags = (dict(zip(coverage['code'].to_list(), coverage['history_truncated'].to_list()))
+                           if 'history_truncated' in coverage.columns else {})
+        truncated = {}
         for symbol in request.symbols:
             value = valid_from.get(symbol)
             if not isinstance(value, str):
@@ -64,8 +77,13 @@ class MQCParquetProvider:
                 first = date.fromisoformat(value)
             except ValueError as exc:
                 raise ValueError(f'DATA qfq valid_from无效: {symbol}={value!r}') from exc
-            if request.start < first:
+            flag = truncated_flags.get(symbol, True) if truncated_flags else True
+            if type(flag) is not bool:
+                raise ValueError(f'DATA qfq history_truncated无效: {symbol}={flag!r}')
+            truncated[symbol] = flag
+            if flag and request.start < first:
                 raise ValueError(f'DATA未提供 {symbol} 在 {first.isoformat()} 之前的qfq；不会回退旧qfq或用raw补齐')
+        return truncated
 
     def load(self, request: DataRequest) -> DataBatch:
         if request.timeframe in (Timeframe.MIN15,Timeframe.MIN30,Timeframe.MIN60):
@@ -77,7 +95,7 @@ class MQCParquetProvider:
             return DataBatch(bars,DataSnapshot(identity,'mqc_session_resample',self.adjustment,base.snapshot.files))
         suffix = {Timeframe.DAILY: "daily", Timeframe.MIN5: "min5",Timeframe.MIN1:'min1'}[request.timeframe]
         directory, registry_sha256 = self._directory(request.timeframe)
-        self._enforce_qfq_coverage(request)
+        truncated = self._enforce_qfq_coverage(request)
         frames, files, tail_ranges, base_present = [], [], {}, set()
         tail_enabled = (
             self.retro_tail is not None
@@ -110,7 +128,7 @@ class MQCParquetProvider:
                 raise ValueError(f"Symbol mismatch in {path}")
             if self.adjustment == "raw" and frame.filter(pl.col("adjustflag").is_null() | (pl.col("adjustflag") != "3")).height:
                 raise ValueError(f"Expected unadjusted bars in {path}")
-            if self.adjustment == "qfq" and registry_sha256 is not None:
+            if self.adjustment == "qfq" and registry_sha256 is not None and truncated.get(symbol, True):
                 first_available = frame["date"].min()
                 if first_available is None:
                     raise ValueError(f"DATA发布的qfq文件为空: {symbol}")

@@ -65,7 +65,11 @@ class AITeamTests(unittest.TestCase):
     def test_review_api_excludes_all_write_and_proposal_tools(self):
         api=ReviewReadOnlyAPI(self.root,self.root);names={t['name'] for t in api.schemas()}
         self.assertIn('get_experiment',names);self.assertIn('get_research_agenda',names)
-        self.assertFalse(any(name.startswith(('propose_','record_','preview_')) for name in names))
+        # F3b deliberately gives reviewers the two pure-config strategy-package tools; nothing else
+        # that proposes, records or previews may appear.
+        pure_config={'get_strategy_package_contract','preview_strategy_package'}
+        self.assertLessEqual(pure_config,names)
+        self.assertFalse(any(name.startswith(('propose_','record_','preview_')) for name in names-pure_config))
         denied=api.call('propose_experiment',{})
         self.assertFalse(denied['ok']);self.assertEqual(denied['error']['code'],'REVIEW_TOOL_DENIED')
 

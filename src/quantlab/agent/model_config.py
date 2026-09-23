@@ -45,7 +45,7 @@ class ModelConfig:
     max_tool_calls: int = 12
     max_rounds: int = 8
     max_output_tokens: int = 4096
-    max_context_chars: int = 60000
+    max_context_chars: int = 120000
     legacy_agent_compat: bool = True
 
     def __post_init__(self):

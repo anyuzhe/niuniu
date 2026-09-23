@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 import polars as pl
-from quantlab.execution.backtest import OpenExecutionBacktester
+from quantlab.execution.backtest import OpenExecutionBacktester, cost_model_warnings
 from quantlab.execution.portfolio import TargetWeightBuilder, PortfolioConfig
 from quantlab.storage.codec import digest
 from quantlab.storage.experiments import load_record
@@ -95,8 +95,9 @@ class ExecutionStudy:
                 manifest['backend_version']=adapter.diagnostics['vnpy_version']
             manifest.update(source_experiment_id=child.experiment_id,targets_hash=digest(targets.write_json()),
                 data_snapshot=execution_snapshot,universe=source['manifest']['universe'])
-            record.update(status='completed',experiment_id=digest(manifest),execution=summary,
-                fills=fills,rejections=rejections,replay=source['replay'],limitations=[
+            warnings=cost_model_warnings(execution_config,market_rules)
+            record.update(status='completed',experiment_id=digest(manifest),execution=summary,cost_model_warnings=warnings,
+                fills=fills,rejections=rejections,replay=source['replay'],limitations=[*['⚠ '+w for w in warnings],
                 f"信号与K线回放使用 {signal_snapshot['adjustment']}；回测价格使用 {execution_snapshot['adjustment']}。"+('研究价格模式：不重复派息、送股或拆并股，保留交易成本；数量与现金为研究模拟值。' if execution_config.price_mode=='research' else '精细账户模式：使用 raw 价格及显式公司行动记账。'),
                 '仓位/敞口/换手限制作用于目标权重；资格退出优先于换手预算。实际持仓可能因 T+1 或未成交偏离目标。',
                 '独立模拟净值，假设观察到的下一根开盘价可成交；不以当根最终高低价或成交量判断开盘成交。',

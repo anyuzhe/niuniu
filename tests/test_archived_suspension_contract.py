@@ -36,6 +36,7 @@ from quantlab.storage.bundle import reproduce_artifact
 from quantlab.storage.codec import digest
 from quantlab.storage.experiments import LocalExperimentStore
 from quantlab.workbench.jobs import JobQueue, prepare
+from _optional import requires_vnpy
 
 
 class ArchivedSuspensionContractTests(TestCase):
@@ -179,6 +180,7 @@ class ArchivedSuspensionContractTests(TestCase):
         self.assertAlmostEqual(suspended_nav["position_value"], buy["quantity"] * 10.5)
         self.assertEqual(summary["ending_positions"], {})
 
+    @requires_vnpy
     def test_vnpy_open_rejects_preserved_suspension_rows(self):
         self.export_v2()
         bars = ArchivedDailyDatasetProvider(self.destination).load(

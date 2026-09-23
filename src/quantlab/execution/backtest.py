@@ -87,6 +87,26 @@ class ExecutionConfig:
                 raise ValueError('绝对涨跌停价格须使用精细账户模式；研究模式可保留历史费用规则')
 
 
+def cost_model_warnings(config, rules=None):
+    """Plain-language notes when a backtest omits A-share taxes, fees or price limits.
+
+    Informational only: it never changes fills, costs or archived numerical results.
+    """
+    warnings=[]
+    if rules is None and not config.statutory_fees:
+        if config.sell_tax_bps==0:
+            warnings.append('未收卖出印花税：sell_tax_bps=0 且未开启 statutory_fees（按成交日法定税率）。结果会偏乐观。')
+        if config.transfer_bps==0:
+            warnings.append('未收过户费：transfer_bps=0 且未开启 statutory_fees。')
+    if rules is None and config.limit_pct is None:
+        warnings.append('未模拟涨跌停：没有逐时点 market_rules 且未设置 limit_pct，涨停开盘仍可买入、跌停开盘仍可卖出。打板类结果会明显偏乐观。')
+    elif rules is None:
+        warnings.append(f'涨跌停按固定比例 {config.limit_pct:g} 近似，不区分主板/创业板/科创板/北交所及 ST。')
+    elif not any(r.get('limit_up') is not None for r in rules.records):
+        warnings.append('market_rules 未提供任何涨跌停价，未模拟涨跌停。')
+    return warnings
+
+
 def factor_targets(observations,bars,config):
     from quantlab.execution.portfolio import TargetWeightBuilder
     return TargetWeightBuilder().build(observations,bars,top_n=config.top_n,threshold=config.threshold,exposure=config.exposure)[0]

@@ -11,6 +11,7 @@ from quantlab.execution.backtest import OpenExecutionBacktester
 from quantlab.execution.corporate_actions import StockSplits,CashDividends
 from quantlab.execution.paper import PaperAccount
 from quantlab.execution.reconcile import reconcile_account
+from _optional import requires_vnpy
 
 class StockSplitTests(unittest.TestCase):
     def fixture(self,n=2,d=1):
@@ -22,6 +23,7 @@ class StockSplitTests(unittest.TestCase):
             'numerator':n,'denominator':d,'fractional_policy':'reject','source':'synthetic ratio and prices; not official action'}
         return bars,targets,rules,replace(cfg,corporate_actions=None,stock_splits=[split])
 
+    @requires_vnpy
     def test_split_and_reverse_split_native_restore_and_independent_audit(self):
         from quantlab.adapters.vnpy_rules import VnpyRulesBacktester
         from quantlab.adapters.vnpy import compare_backends

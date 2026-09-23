@@ -10,6 +10,7 @@ from quantlab.execution.backtest import OpenExecutionBacktester
 from quantlab.execution.corporate_actions import RightsIssues
 from quantlab.execution.paper import PaperAccount
 from quantlab.execution.reconcile import reconcile_account
+from _optional import requires_vnpy
 
 class RightsIssueTests(unittest.TestCase):
     def fixture(self):
@@ -23,6 +24,7 @@ class RightsIssueTests(unittest.TestCase):
             'numerator':1,'denominator':1,'subscription_price':2.,'subscription_shares':500,'insufficient_cash':'error','fractional_policy':'reject','source':'synthetic explicit instruction'}
         return bars,targets,rules,replace(cfg,corporate_actions=None,rights_issues=[issue])
 
+    @requires_vnpy
     def test_paid_pending_listed_native_and_paper_reconciliation(self):
         from quantlab.adapters.vnpy_rules import VnpyRulesBacktester
         from quantlab.adapters.vnpy import compare_backends

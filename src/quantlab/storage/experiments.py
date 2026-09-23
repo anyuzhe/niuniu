@@ -163,6 +163,7 @@ class LocalExperimentStore:
             return '\n'.join(lines)+ '\n\n## 参数敏感性（描述性）\n\n```json\n'+encode(record['stability'])+'\n```\n'
         if record.get('kind')=='execution' and record['status']=='completed':
             lines=['# 独立成交回测','', '研究信号在可用后下一根开盘参与模拟；本报告与 gross 预测统计分开。','',
+                *(['## ⚠ 成本与交易限制提示','',*[f'- {w}' for w in record['cost_model_warnings']],''] if record.get('cost_model_warnings') else []),
                 '## 净值与费用','', '```json',encode(record['execution']),'```','',
                 '## 成交模型配置','', '```json',encode(record['manifest']['execution']),'```','',
                 '## 组合与目标风控配置','','```json',encode(record['manifest'].get('portfolio',{})),'```','',

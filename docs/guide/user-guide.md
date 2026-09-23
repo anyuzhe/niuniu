@@ -74,8 +74,11 @@ quantlab run \
   --symbols sh.600000 sz.000001 sh.600519 \
   --timeframe 1d --start 2024-01-01 --end 2024-12-31 \
   --factor COMB.SCORE --params-json examples/score.json \
-  --adjustment qfq --backtest --execution-backend open --replay
+  --adjustment qfq --backtest --execution-backend open --replay \
+  --execution-json examples/execution_statutory.json
 ```
+
+[examples/execution_statutory.json](../../examples/execution_statutory.json) 开启 `statutory_fees`，按成交日计卖出印花税和过户费（只支持 2008-09-19 及以后的日期）。不带 `--execution-json` 时引擎默认不收印花税、过户费，也不挡涨跌停；这种情况下回测结果、报告和客户端“模型边界”会以 ⚠ 明确提示，命令行也会在标准错误输出提示。要模拟涨跌停，需提供逐时点 `--market-rules`，或用 `limit_pct` 作固定比例近似。
 
 日期与股票只是参数示例，不能据此假设你的资料齐全。原 `examples/verify_*.py` 等历史验收脚本可能依赖开发机数据、特定实验 ID 或可选组件，不能把它们当作无前置条件的一键演示。
 

@@ -11,6 +11,7 @@ from quantlab.execution.corporate_actions import CashDividends
 from quantlab.execution.backtest import OpenExecutionBacktester
 from quantlab.execution.paper import PaperAccount
 from quantlab.execution.reconcile import reconcile_account
+from _optional import requires_vnpy
 
 
 def overlapping_fixture(include=True, stock=True):
@@ -31,6 +32,7 @@ def overlapping_fixture(include=True, stock=True):
 
 
 class OverlappingActionTests(unittest.TestCase):
+    @requires_vnpy
     def test_stock_entitlement_native_restart_and_no_early_sale(self):
         from quantlab.adapters.vnpy_rules import VnpyRulesBacktester
         from quantlab.adapters.vnpy import compare_backends

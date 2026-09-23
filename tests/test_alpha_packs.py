@@ -6,8 +6,10 @@ import polars as pl
 from polars.testing import assert_frame_equal
 from quantlab.factors.alpha import alpha_packs
 from quantlab.factors.engine import compute_factor
+from _optional import requires_vnpy
 
 class AlphaPackTests(unittest.TestCase):
+    @requires_vnpy
     def test_frozen_formulas_prefix_and_no_future_labels(self):
         rows=[]
         for symbol in ('A','B','C'):

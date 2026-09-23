@@ -9,6 +9,7 @@ from quantlab.execution.backtest import OpenExecutionBacktester
 from quantlab.execution.corporate_actions import CashDividends
 from quantlab.execution.paper import PaperAccount
 from quantlab.execution.reconcile import reconcile_account
+from _optional import requires_vnpy
 
 
 class StockDistributionTests(unittest.TestCase):
@@ -21,6 +22,7 @@ class StockDistributionTests(unittest.TestCase):
         action={**cfg.corporate_actions[0],'cash_per_share':0.,'stock_per_share':1.,'list_at':dates[3].replace(hour=9,minute=30),'fractional_policy':'reject'}
         return market,targets,rules,replace(cfg,corporate_actions=[action])
 
+    @requires_vnpy
     def test_pending_valuation_no_early_sale_native_and_restart(self):
         from quantlab.adapters.vnpy_rules import VnpyRulesBacktester
         from quantlab.adapters.vnpy import compare_backends

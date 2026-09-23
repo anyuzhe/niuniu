@@ -52,12 +52,17 @@ class QFQRegistryConsumerTests(TestCase):
             {**row, "open": 10.0, "high": 11.0, "low": 9.0, "close": 10.5}
             for row in rows
         ]).write_parquet(self.old / "sh_600000.parquet")
-        pl.DataFrame([{
-            "code": self.symbol, "valid_from": self.start.isoformat(),
-            "rows_raw": 3, "rows_qfq": 3, "events_accepted": 1,
-            "events_blocked": 0, "history_truncated": False,
-        }]).write_parquet(self.new / "_meta/coverage.parquet")
+        self.write_coverage(truncated=True)
         self.write_registry()
+
+    def write_coverage(self, *, truncated=True, extra=(), include_flag=True):
+        rows = [{"code": self.symbol, "valid_from": self.start.isoformat(),
+                 "rows_raw": 3, "rows_qfq": 3, "events_accepted": 1,
+                 "events_blocked": 0, "history_truncated": truncated}, *extra]
+        frame = pl.DataFrame(rows)
+        if not include_flag:
+            frame = frame.drop("history_truncated")
+        frame.write_parquet(self.new / "_meta/coverage.parquet")
 
     def write_registry(self, *, daily_path="lake/silver/qfq_kline_daily_v2"):
         catalog = self.root / "catalog"
@@ -98,6 +103,45 @@ class QFQRegistryConsumerTests(TestCase):
             (self.symbol,), Timeframe.MIN5, self.start, self.start + timedelta(days=2))
         with self.assertRaisesRegex(ValueError, "DATA未提供.*不会回退旧qfq"):
             MQCParquetProvider(self.root, "qfq").load(request)
+
+    def test_untruncated_history_starts_at_listing_like_raw(self):
+        # history_truncated=false: valid_from is only where the security's history begins.
+        self.write_coverage(truncated=False)
+        batch = MQCParquetProvider(self.root, "qfq").load(self.request(self.start - timedelta(days=10)))
+        self.assertEqual(batch.bars.height, 3)
+        self.assertEqual(batch.bars["datetime"][0].date(), self.start)
+
+    def test_later_listed_security_does_not_fail_the_whole_request(self):
+        late, listed = "sz.000001", self.start + timedelta(days=1)
+        pl.DataFrame([{
+            "date": listed + timedelta(days=n), "code": late, "open": 5.0, "high": 5.5,
+            "low": 4.5, "close": 5.2, "volume": 100.0, "amount": 500.0, "factor": 1.0,
+        } for n in range(2)]).write_parquet(self.new / "sz_000001.parquet")
+        self.write_coverage(truncated=False, extra=[{
+            "code": late, "valid_from": listed.isoformat(), "rows_raw": 2, "rows_qfq": 2,
+            "events_accepted": 0, "events_blocked": 0, "history_truncated": False}])
+        request = DataRequest((self.symbol, late), Timeframe.DAILY, self.start, self.start + timedelta(days=2))
+        bars = MQCParquetProvider(self.root, "qfq").load(request).bars
+        self.assertEqual(bars.filter(pl.col("symbol") == late).height, 2)
+        self.assertEqual(bars.filter(pl.col("symbol") == self.symbol).height, 3)
+
+    def test_truncated_security_still_blocks_mixed_request(self):
+        late = "sz.000001"
+        pl.DataFrame([{
+            "date": self.start + timedelta(days=1), "code": late, "open": 5.0, "high": 5.5,
+            "low": 4.5, "close": 5.2, "volume": 100.0, "amount": 500.0, "factor": 1.0,
+        }]).write_parquet(self.new / "sz_000001.parquet")
+        self.write_coverage(truncated=False, extra=[{
+            "code": late, "valid_from": (self.start + timedelta(days=1)).isoformat(), "rows_raw": 5,
+            "rows_qfq": 1, "events_accepted": 0, "events_blocked": 1, "history_truncated": True}])
+        request = DataRequest((self.symbol, late), Timeframe.DAILY, self.start, self.start + timedelta(days=2))
+        with self.assertRaisesRegex(ValueError, "DATA未提供 sz.000001.*不会回退旧qfq"):
+            MQCParquetProvider(self.root, "qfq").load(request)
+
+    def test_coverage_without_truncation_flag_stays_strict(self):
+        self.write_coverage(include_flag=False)
+        with self.assertRaisesRegex(ValueError, "DATA未提供.*不会回退旧qfq"):
+            MQCParquetProvider(self.root, "qfq").load(self.request(self.start - timedelta(days=1)))
 
     def test_missing_published_path_does_not_fallback_to_legacy(self):
         self.write_registry(daily_path="lake/silver/qfq_missing")

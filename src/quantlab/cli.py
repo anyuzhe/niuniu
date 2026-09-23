@@ -610,6 +610,9 @@ def main() -> None:
         with redirect_stdout(sys.stderr):
             result = ExecutionStudy(runner).run(config,ExecutionConfig(**json.loads(args.execution_json.read_text()) if args.execution_json else {}),
                 PortfolioConfig(**json.loads(args.portfolio_json.read_text()) if args.portfolio_json else {}),args.execution_backend,rules)
+        from quantlab.storage.experiments import load_record_fields
+        for warning in load_record_fields(result.artifact_path/'experiment.json',{'cost_model_warnings'}).get('cost_model_warnings',[]):
+            print('提示：'+warning,file=sys.stderr)
     elif args.sweep_json is not None:
         grid = ParameterGrid(json.loads(args.sweep_json.read_text(encoding="utf-8")))
         result = SweepRunner(runner).run(config, grid,

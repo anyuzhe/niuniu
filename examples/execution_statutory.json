@@ -1,0 +1,8 @@
+{
+  "initial_cash": 1000000,
+  "top_n": 5,
+  "commission_bps": 3,
+  "minimum_commission": 5,
+  "slippage_bps": 2,
+  "statutory_fees": true
+}

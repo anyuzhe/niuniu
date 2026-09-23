@@ -231,7 +231,7 @@ F22–F26 的数据正确性、完整性、来源/版本、单位、PIT资格、
 
 CODE 已增加统一 DATA catalog 只读消费入口：普通 Chat/MCP/CLI 可用 `list_data_catalog` / `get_ready_data_source` 发现并取得 DATA 标记 `READY` 的 FILE/DATABASE/API/STREAM 入口；非 READY 显式拒绝，不扫描数据根、不自动 fallback、不重新认证数据正确性。锁定 QM50 规格会话继续不获得这两个通用工具。
 
-2026-09-23 晚再次按 DATA 当前交付核对：清单共48项，`READY=29`（23 FILE + 6 API）、`REVIEW_REQUIRED=4`、`NOT_READY=13`、`DEPRECATED=2`。23个READY文件入口均实际存在；CODE已把核心raw/qfq Provider接到DATA维护的`dataset_registry.json`，正式qfq读取v2并执行每证券`valid_from`/实际文件首日边界，不回退旧qfq或raw补齐。6个READY研究API通过DATA原样提供的`ResearchDataProvider`接入普通Chat/MCP和`niuniu-research-data`。17类新增公开来源FILE目前由catalog统一发现，后续产品功能按业务需要逐项消费，不新增任意路径/任意Parquet模型查询能力。
+2026-09-23 晚再次按 DATA 当前交付核对：清单共48项，`READY=29`（23 FILE + 6 API）、`REVIEW_REQUIRED=4`、`NOT_READY=13`、`DEPRECATED=2`。23个READY文件入口均实际存在；CODE已把核心raw/qfq Provider接到DATA维护的`dataset_registry.json`，正式qfq读取v2；DATA标`history_truncated=true`的证券执行`valid_from`/实际文件首日边界，不回退旧qfq或raw补齐，未截断证券的`valid_from`按上市起点处理（2026-09-24修正，见下文）。6个READY研究API通过DATA原样提供的`ResearchDataProvider`接入普通Chat/MCP和`niuniu-research-data`。17类新增公开来源FILE目前由catalog统一发现，后续产品功能按业务需要逐项消费，不新增任意路径/任意Parquet模型查询能力。
 
 四个`REVIEW_REQUIRED`现在全部在CODE侧执行真实gate：`stock_fund_flow_daily`不进入正式工具；`realtime_quote`不触发Chat自动预取；`fuyao_context`不注册扶摇聚合工具；`market_snapshot`令provider readiness保持BLOCKED，并阻断live CLI与Daily Orchestrator联网capture。旧实现/凭证存在不再等价于DATA已交付。真实smoke已确认qfq从v2读取、早于`valid_from`阻断，当前工具面只暴露6个READY研究API。
 
@@ -262,6 +262,10 @@ v1明确只支持research_only，不以新包声明Strict PIT或官方规则已�
 三份本机worker的已发布页已按原结果包/MERGED回执链归并到Mac主数据湖，采集继续保持STOP。主库共有319,961条publication、62,915,859行；`catalog/tdx_page_archive.sqlite3`也有319,961页，按source_id逐条核对family/rows为0缺失、0错配、0额外。`storage-compaction.json`于16:06记录`COMPLETE`，13类`tdx_*`标准查询视图逐类行数与publication求和一致。供应商原始响应和派生Parquet原字节保留在大文件归档库；并不表示全市场全历史完整或Strict PIT合格。
 
 worker页副本的清理与主库可查询是两件事。2026-09-21 19:29前，三份worker均完成完整预检和逐页清理，macbook/homepc/601各自的`retired-to-canonical.json`均为`RETIRED`，进程正常退出；合计涉及241,671条已发布页副本和20,365个checkpoint记录。worker-1/2的虚拟checkpoint witness、各worker队列库及错误记录仍保留。清理后重新只读核对主库：319,961 publication = 319,961 archive页，0缺失/错配；13类`tdx_*`查询共62,915,859行，逐类与publication记录一致。Lexar卷占用从清理前约838 GiB降至约353 GiB，约释放485 GiB；这一容量变化还包含同期其他磁盘活动，不能全部当作精确的本任务回收量。主库已可查询，但仍不表示全市场全历史完整或Strict PIT合格。
+
+### 2026-09-24 代码侧修复（助手预算、qfq后上市证券、回测成本提示）
+
+助手默认上下文预算改为120000，预算不足时在调用模型前明确报错；qfq v2 按DATA的 `history_truncated` 区分“历史被截断”与“上市起点”，不再因一批里有后上市证券整批失败；回测未收印花税/过户费或未模拟涨跌停时在结果、报告和客户端明确提示（引擎默认值与已归档结果不变）。详见[开发总档案](changelog.md)。
 
 ## 4. 真正剩余的工作按门槛处理
 

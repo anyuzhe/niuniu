@@ -9,6 +9,7 @@ from quantlab.execution.paper import PaperAccount
 from quantlab.execution.reconcile import reconcile_account
 from quantlab.adapters.vnpy_rules import VnpyRulesBacktester
 from quantlab.adapters.vnpy import compare_backends
+from _optional import requires_vnpy
 
 class CorporateActionFinalizationTests(unittest.TestCase):
     def account(self,bars,targets,rules,cfg):
@@ -21,6 +22,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
                 check=reconcile_account(p);self.assertEqual(check['status'],'matched',check['errors'])
         return result
 
+    @requires_vnpy
     def test_pending_distribution_split_at_listing(self):
         bars,targets,rules,cfg=test_stock_distributions.StockDistributionTests().account();d=cfg.corporate_actions[0];dates=bars['datetime'].to_list()
         s={'action_id':'pending-split','symbol':d['symbol'],'effective_at':d['list_at'],'available_at':dates[0],
@@ -30,6 +32,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
         self.assertEqual(result[0]['equity'].to_list(),[10000.]*5)
         self.assertEqual(result[3]['split_ledger'][0]['entitlement_conversions'][0]['after_quantity'],1000)
 
+    @requires_vnpy
     def test_rights_conversion_before_payment_and_after_ex(self):
         for day in (2,4):
             bars,targets,rules,cfg=test_rights_issues.RightsIssueTests().fixture();d=cfg.rights_issues[0];dates=bars['datetime'].to_list()
@@ -40,6 +43,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
             self.assertEqual(result[0]['equity'].to_list(),[10000.]*5)
             self.assertEqual(result[3]['rights_ledger'][-1]['shares'],1000)
 
+    @requires_vnpy
     def test_independent_fractional_payment_dates(self):
         bars,targets,rules,cfg=test_stock_distributions.StockDistributionTests().account();dates=bars['datetime'].to_list()
         d={**cfg.corporate_actions[0],'stock_per_share':.001,'fractional_policy':'floor',
@@ -54,6 +58,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
         self.assertEqual(result[0]['equity'].to_list(),[10000.,10000.,9997.,9997.,9997.])
         self.assertEqual(result[3]['split_ledger'][-1]['kind'],'split_cash_payment')
 
+    @requires_vnpy
     def test_oversubscription_allocation_unfilled_refund_and_cancellation(self):
         bars,targets,rules,cfg=test_rights_issues.RightsIssueTests().fixture();dates=bars['datetime'].to_list();r=cfg.rights_issues[0]
         r={**r,'subscription_shares':600,'subscription_fee':10.,'allow_oversubscription':True,
@@ -69,6 +74,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
         self.assertEqual(result[3]['rights_ledger'][-1]['cash_delta'],602.)
         self.assertEqual(result[3]['subscription_receivable'],0.)
 
+    @requires_vnpy
     def test_post_listing_recovery_with_explicit_missing_share_compensation(self):
         bars,targets,rules,cfg=test_rights_issues.RightsIssueTests().fixture();dates=bars['datetime'].to_list();r=cfg.rights_issues[0]
         targets=targets.with_columns(pl.Series('weight',[.5,0.,0.,0.,0.]))
@@ -81,6 +87,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
         self.assertEqual(cancellation['replacement_cash'],500.)
         self.assertEqual(result[3]['rights_ledger'][-1]['cash_delta'],500.)
 
+    @requires_vnpy
     def test_holding_tax_fifo_assessment_payment_and_split_fraction(self):
         import test_pipeline_dividends
         bars,targets,rules,cfg=test_pipeline_dividends.DividendTests().setup_account();dates=bars['datetime'].to_list()
@@ -116,6 +123,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
             self.assertEqual(engine.settle(sale,sale,5.,'sale'),-min(100*rate,5.))
             self.assertEqual(engine.payable,max(100*rate-5.,0.))
 
+    @requires_vnpy
     def test_quoted_rights_delivery_trading_exercise_expiry_and_conversion(self):
         from quantlab.execution.rules import MarketRules
         bars,targets,rules,cfg=test_stock_distributions.StockDistributionTests().account();dates=bars['datetime'].to_list()
@@ -140,6 +148,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
         result=self.account(market,targets,rules,replace(config,stock_splits=[split]))
         self.assertEqual(result[3]['rights_trading_ledger'][2]['shares'],400)
 
+    @requires_vnpy
     def test_zero_allocation_preserves_paid_fee_refund(self):
         bars,targets,rules,cfg=test_rights_issues.RightsIssueTests().fixture();dates=bars['datetime'].to_list();r=cfg.rights_issues[0]
         r={**r,'subscription_fee':10.,'allocation':{'shares':0,'at':r['ex_at'],'available_at':dates[0],
@@ -151,6 +160,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
         self.assertEqual(next(e for e in ledger if e['kind']=='rights_allocation_refund')['cash_delta'],1003.)
         self.assertEqual(ledger[-1]['cash_delta'],7.)
 
+    @requires_vnpy
     def test_explicit_fractional_pending_allocation_and_open_payment(self):
         bars,targets,rules,cfg=test_stock_distributions.StockDistributionTests().account();dates=bars['datetime'].to_list();d=cfg.corporate_actions[0]
         split={'action_id':'pending-floor','symbol':d['symbol'],'effective_at':dates[3].replace(hour=9,minute=30),'available_at':dates[0],
@@ -173,6 +183,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'existing position acquisition'):
             engine.capture(d['record_at'],{d['symbol']:[(d['record_at'].date(),500)]},{d['action_id']:{'quantity':500}})
 
+    @requires_vnpy
     def test_returned_principal_then_allocation_not_refunded_twice(self):
         bars,targets,rules,cfg=test_rights_issues.RightsIssueTests().fixture();dates=bars['datetime'].to_list();r=cfg.rights_issues[0]
         r={**r,'allocation':{'shares':250,'at':r['ex_at'],'available_at':dates[0],'refund_at':dates[4].replace(hour=9,minute=30),'fee_refund':0.,'source':'half allocation after unit conversion'}}
@@ -184,6 +195,7 @@ class CorporateActionFinalizationTests(unittest.TestCase):
         allocation=next(e for e in result[3]['rights_ledger'] if e['kind']=='rights_allocation')
         self.assertEqual(allocation['cost'],450.);self.assertEqual(allocation['refund_amount'],450.);self.assertEqual(allocation['shares'],500)
 
+    @requires_vnpy
     def test_post_listing_recovery_existing_shares_and_unfunded_debt(self):
         bars,targets,rules,cfg=test_rights_issues.RightsIssueTests().fixture();dates=bars['datetime'].to_list();r=cfg.rights_issues[0]
         r={**r,'list_at':r['ex_at'],'cancellation':{'cancel_at':dates[4].replace(hour=9,minute=30),'refund_at':dates[4].replace(hour=9,minute=30),

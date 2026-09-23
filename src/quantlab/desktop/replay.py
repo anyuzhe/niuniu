@@ -134,7 +134,7 @@ class ReplayWidget(QWidget):
             if epoch!=self.epoch:return
             self.busy=False
             if error:self.timer.stop();self.play.setText('播放');self.status.setText(error);return
-            self.chart.candles=data['bars'];self.chart.overlays={k:data[k] for k in ('structures','events','zones','zone_states')};self.chart.update();self.status.setText(f"{data['symbol']} · {data['at']+1}/{data['total_bars']} · 已知信息截至 {data['as_of']} · {self.record.get('manifest',{}).get('signal_data_snapshot',self.record.get('manifest',{}).get('data_snapshot',{})).get('adjustment','未知口径')} · 回测价格 {self.record.get("manifest",{}).get("data_snapshot",{}).get("adjustment","未知")} · 仅诊断叠加")
+            self.chart.candles=data['bars'];self.chart.overlays={k:data[k] for k in ('structures','events','zones','zone_states')};self.chart.update();self.status.setText(f"{data['symbol']} · {data['at']+1}/{data['total_bars']} · 已知信息截至 {data['as_of']} · {self.record.get('manifest',{}).get('signal_data_snapshot',self.record.get('manifest',{}).get('data_snapshot',{})).get('adjustment','未知口径')} · 回测价格 {self.record.get('manifest',{}).get('data_snapshot',{}).get('adjustment','未知')} · 仅诊断叠加")
             from quantlab.storage.codec import encode
             import json
             self.objects.setPlainText(json.dumps(json.loads(encode({k:data[k] for k in ('structures','events','zones','zone_states','overlay_rules')})),ensure_ascii=False,indent=2))

@@ -7,6 +7,7 @@ from test_technical import bars
 from quantlab.execution.backtest import ExecutionConfig, OpenExecutionBacktester
 from quantlab.execution.rules import MarketRules
 from quantlab.execution.paper import PaperAccount
+from _optional import requires_vnpy
 
 
 def fixture():
@@ -39,6 +40,7 @@ class MarketPaperTests(unittest.TestCase):
         changed=market.with_columns((pl.col('high')+100).alias('high'),pl.lit(.1).alias('low'),pl.lit(0.).alias('volume'))
         self.assertEqual(fills,OpenExecutionBacktester(cfg,MarketRules(records)).run(targets,changed)[1])
 
+    @requires_vnpy
     def test_native_rule_aware_cash_positions(self):
         from quantlab.adapters.vnpy_rules import VnpyRulesBacktester
         from quantlab.adapters.vnpy import compare_backends

@@ -309,7 +309,7 @@ DATA 如果新增、移动、替换或停用数据，应先更新数据清单，
 
 DATA 的文件型版本路由另有机器清单 `/Volumes/Lexar/niuniu-data/catalog/dataset_registry.json`。它解决“当前物理版本在哪”，而 `data-catalog.md` 解决“是否已经交付给 CODE 使用”；两者均由 DATA 维护。CODE 不根据目录修改时间找最新版。当前 qfq 已由 DATA 发布为 `qfq_published_f24=READY`，registry 的 `bars.daily.qfq` / `bars.min5.qfq` 指向 `qfq_kline_daily_v2` / `qfq_kline_min5_v2`，因此核心 `MQCParquetProvider` 按 registry 读取 v2。若 registry 存在但 current 条目缺失、路径逃逸/链接、目标不存在或状态不是 current，直接失败，不回退旧目录。
 
-qfq v2 的覆盖不是“所有历史都已裁决”：DATA 对未确认事件不猜，452只证券从最后一个未确认事件之后才提供历史，逐证券起点在日线 v2 的 `_meta/coverage.parquet`。CODE 请求早于 `valid_from`，或5分钟请求早于该证券实际发布文件首日时直接阻断；不得改读旧 qfq、用 raw 伪造前复权或静默只返回后半段。这个行为只执行 DATA 已公布的覆盖边界，不重新判断复权因子是否正确。
+qfq v2 的覆盖不是“所有历史都已裁决”：DATA 对未确认事件不猜，452只证券从最后一个未确认事件之后才提供历史，逐证券起点在日线 v2 的 `_meta/coverage.parquet`。CODE 按 coverage 里 DATA 给出的 `history_truncated` 区分两种情况：为 `true`（历史因未确认事件被截断）时，请求早于 `valid_from`，或5分钟请求早于该证券实际发布文件首日，直接阻断，不得改读旧 qfq、用 raw 伪造前复权或静默只返回后半段；为 `false` 时 `valid_from` 只是该证券历史的起点（上市日），请求起始日更早也和 raw 一样从有数据的日期开始截取，不会因为一批股票里有一只后上市而整批失败。coverage 缺少该列时一律按截断处理。这个行为只执行 DATA 已公布的覆盖字段，不重新判断复权因子是否正确。
 
 DATA 当前还交付6个 `READY` 按需研究API：`research_search`、`stock_research_reports`、`stock_news`、`stock_announcements`、`financial_statements`、`investor_qa`。其统一实现由 DATA 提供的 `quantlab.data.research_provider.ResearchDataProvider` 负责供应商、凭证、限频、字段映射和错误语义；CODE 只通过 `ResearchDataAPI` 暴露给普通 Chat/MCP/CLI。每次调用先查 DATA catalog 的同名项仍为 `READY`，否则在联网前拒绝；供应商错误只报告不可用，不换源。
 

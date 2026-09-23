@@ -16,6 +16,7 @@ from quantlab.execution.paper import PaperAccount
 from quantlab.execution.reconcile import reconcile_account
 from quantlab.adapters.vnpy_rules import VnpyRulesBacktester
 from quantlab.adapters.vnpy import compare_backends
+from _optional import requires_vnpy
 
 
 class CorporateActionLifecycleTests(unittest.TestCase):
@@ -46,6 +47,7 @@ class CorporateActionLifecycleTests(unittest.TestCase):
         targets=targets.with_columns(pl.Series('weight',[.5,0.,0.,0.,0.]))
         return bars,targets,rules,replace(cfg,rights_issues=[r])
 
+    @requires_vnpy
     def test_cancellation_before_on_and_after_ex_refund_and_fees(self):
         for when in (2,3,4):
             with self.subTest(cancel_day=when):
@@ -60,6 +62,7 @@ class CorporateActionLifecycleTests(unittest.TestCase):
                     self.assertEqual(result[0]['pending_stock_value'][when],0.)
                 if when==4:self.assertIn('rights_ex',[r['kind'] for r in ledger])
 
+    @requires_vnpy
     def test_fee_affordability_decline_and_no_future_cancellation(self):
         bars,targets,rules,cfg=self.cancellation_fixture(4);r=cfg.rights_issues[0]
         costly={**r,'subscription_fee':5000.,'insufficient_cash':'skip'}
@@ -77,6 +80,7 @@ class CorporateActionLifecycleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'cancellation-time'):
             OpenExecutionBacktester(replace(cfg,rights_issues=[missing]),rules).run(targets,bars)
 
+    @requires_vnpy
     def test_floor_rights_and_explicit_overlapping_entitlements(self):
         bars,targets,rules,cfg=test_rights_issues.RightsIssueTests().fixture();r=cfg.rights_issues[0];dates=bars['datetime'].to_list()
         r={**r,'denominator':3,'fractional_policy':'floor','subscription_shares':166,'subscription_fee':1.25,'entitlement_quantity':500}
@@ -91,6 +95,7 @@ class CorporateActionLifecycleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'overlapping'):
             replace(cfg,rights_issues=[r],corporate_actions=[{k:v for k,v in dividend.items() if k!='entitlement_quantity'}])
 
+    @requires_vnpy
     def test_fractional_split_cash_tax_fee_and_lot_allocation(self):
         bars,targets,rules,cfg=test_stock_splits.StockSplitTests().fixture(1,3);r=cfg.stock_splits[0]
         r={**r,'fractional_policy':'floor','fractional_settlement':{'price':30.,'tax_rate':.1,'fee':1.}}
@@ -105,6 +110,7 @@ class CorporateActionLifecycleTests(unittest.TestCase):
         self.assertEqual(lots[r['symbol']],[[day-timedelta(days=1),33],[day,66]])
         self.assertEqual(delta,26.)
 
+    @requires_vnpy
     def test_fractional_distribution_cash_uses_declared_payment_time(self):
         bars,targets,rules,cfg=test_stock_distributions.StockDistributionTests().account();r=cfg.corporate_actions[0]
         r={**r,'stock_per_share':.001,'fractional_policy':'floor','fractional_settlement':{'price':10.,'tax_rate':.1,'fee':.50}}
@@ -127,6 +133,7 @@ class CorporateActionLifecycleTests(unittest.TestCase):
             {'cancellation':{**r['cancellation'],'refund_at':r['record_at']}}):
             with self.subTest(change=change),self.assertRaises(ValueError):RightsIssues([{**r,**change}])
 
+    @requires_vnpy
     def test_historical_fee_revision_and_independent_fee_tamper_detection(self):
         from quantlab.execution.rules import MarketRules
         bars,targets,rules,cfg=test_stock_splits.StockSplitTests().fixture()

@@ -61,7 +61,7 @@ class DevStudioSecurityTests(unittest.TestCase):
             finally:service.cleanup(task['task_id'],force=True)
 
     def test_cli_has_merge_but_no_push_action(self):
-        source=Path('src/quantlab/agent/dev_studio_cli.py').read_text()
+        source=(Path(__file__).resolve().parents[1]/'src/quantlab/agent/dev_studio_cli.py').read_text()
         self.assertIn("'merge'",source);self.assertNotIn("'push'",source)
         self.assertIn('Human merge is explicit',source)
 
