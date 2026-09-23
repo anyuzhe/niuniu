@@ -6,6 +6,7 @@ from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
 from quantlab.storage.codec import encode
 from quantlab.data.rights_candidates import add_rights_binding_arguments, rights_binding_from_arguments
 from quantlab.data.rights_conflict_evidence import add_rights_evidence_binding_arguments, rights_evidence_binding_from_arguments
+from quantlab.data.version_ledger import add_version_ledger_binding_arguments, version_ledger_binding_from_arguments
 
 
 class _NoOtherTools:
@@ -68,18 +69,42 @@ def main(argv=None):
             sub.add_argument('--limit', type=int, default=5)
     # rights-preview可选择额外绑定S1证据；不绑定时保持F18原行为。
     add_rights_evidence_binding_arguments(commands.choices['rights-preview'])
+    for command in ('version-ledger-manifest','version-ledger-query','version-selection-preview'):
+        sub = commands.add_parser(command, help='显式双SHA绑定的F21观察/修订版本账本只读核对')
+        add_version_ledger_binding_arguments(sub, required=True)
+        if command == 'version-ledger-query':
+            sub.add_argument('--domain', default='')
+            sub.add_argument('--event-type', default='')
+            sub.add_argument('--event-id', default='')
+            sub.add_argument('--source-id', default='')
+            sub.add_argument('--offset', type=int, default=0)
+            sub.add_argument('--limit', type=int, default=20)
+        if command == 'version-selection-preview':
+            sub.add_argument('--request-json', required=True)
+    commands.add_parser('version-selection-contract', help='读取F21版本选择合同，不读取账本')
     parsed = parser.parse_args(argv)
     try:
         binding = rights_binding_from_arguments(parsed)
         evidence_binding = rights_evidence_binding_from_arguments(parsed)
+        version_binding = version_ledger_binding_from_arguments(parsed)
     except ValueError as exc:
         from quantlab.agent.archived_data_tools import _error
         print(encode(_error(parsed.command, getattr(exc, 'code', 'INVALID_BINDING'), str(exc))))
         return 2
     api = ArchivedMarketDataAPI(_NoOtherTools(), None, getattr(parsed, 'data_root', None),
                                 source_workspace=getattr(parsed, 'source_workspace', None),
-                                rights_candidate_binding=binding, rights_evidence_binding=evidence_binding)
-    if parsed.command == 'contract':
+                                rights_candidate_binding=binding, rights_evidence_binding=evidence_binding,
+                                version_ledger_binding=version_binding)
+    if parsed.command == 'version-selection-contract':
+        name, arguments = 'get_version_selection_contract', {}
+    elif parsed.command == 'version-ledger-manifest':
+        name, arguments = 'get_version_ledger_manifest', {}
+    elif parsed.command == 'version-ledger-query':
+        name = 'query_version_ledger'
+        arguments = {key:getattr(parsed,key) for key in ('domain','event_type','event_id','source_id','offset','limit')}
+    elif parsed.command == 'version-selection-preview':
+        name, arguments = 'preview_version_selection', {'request_json': parsed.request_json}
+    elif parsed.command == 'contract':
         name, arguments = 'get_adjustment_review_contract', {}
     elif parsed.command in ('rights-evidence-manifest', 'rights-evidence-query'):
         name = ('get_rights_conflict_evidence_manifest' if parsed.command == 'rights-evidence-manifest'

@@ -261,3 +261,17 @@ v2 保留固定交易日历中的完整证券×session网格以及原始raw/type
 人工批准仍冻结实际normalized parquet。对v2，冻结后的 `DataSnapshot.snapshot_id` 额外绑定冻结parquet SHA、原source snapshot id和 `preserve_suspension_state_v2`；文件证据同时保留 `input_contract`。因此原数据包/来源在批准后离线仍可从冻结字节运行和复算，但不能把相同请求的v1/v2或不同冻结字节视为同一snapshot。v1没有contract字段时沿用原snapshot算法，不做无关身份迁移。
 
 F9 v2仍然只是 `research_only/raw/1d` 的有限归档输入合同，不证明历史停牌状态官方完整、价格正确、Strict PIT、可交易性或全市场覆盖，也不改变权限、采集、正式数据或自动交易边界。
+
+## 14. F21 通用 Observation / Revision / Event 版本合同
+
+F21 新增 `niuniu-observation-version-ledger-v1`，把过去混在一起的“经济事件、来源修订、内容、抓取观察”拆成四个独立身份：`event_id = digest(domain,event_type,event_key)`；`revision_id = digest(event_id,source_id,source_revision_key)`；`content_hash = digest(payload)`；`observation_id = digest(revision_id,observed_at,content_hash)`。因此同一个来源修订被重复抓取，只增加 observation，不会制造第二个经济事件或第二个 revision；同一个 revision key 若内容、publication/effective/supersedes 等修订级语义发生冲突则直接拒绝。
+
+账本由宿主显式绑定 `observations.jsonl + summary.json + 双 SHA256`。summary 的 records/events/revisions/sources、选择策略和限制全部从 JSONL 重新计算，不信任自报计数；JSONL 逐行采用闭合字段、重复 JSON key/NaN/Infinity/额外字段/超预算/错误 hash/读取中变更/用户 symlink 均 fail-closed。`observed_at` 与 `published_at` 要求规范 timezone-aware ISO8601，`published_at` 不得晚于观察时点；`effective_at` 必须是规范日期或 aware timestamp。macOS 固定 `/tmp`/`/var` 系统别名允许，用户自建重定向仍拒绝。
+
+同一 `event_id + source_id` 内只允许线性 `supersedes_revision_id` 链：跨事件、跨来源、缺父、环、同父分叉、子修订首次观察早于父修订均拒绝。不同 source 的修订永远是平行证据，**没有跨来源 SUM / merge / vote / 自动择优**。账本只证明“这些字节按这条版本语义可解释”，不证明哪一家来源正确。
+
+F21 版本选择只有两种显式策略：`explicit_revision_v1` 必须指定 event/source/revision；`latest_observed_revision_as_of_v1` 必须给规范 aware `as_of`，只能在该 source 中选择 `observed_at <= as_of` 的唯一链尾。as_of 前无修订则 blocked；同源存在断开的多根修订链或其它歧义也 blocked，不回退到“当前最新”。同一 revision 的多次完全相同观察不改变 revision，只返回该 as_of 下稳定的 observation 身份及 first/last observed 信息。
+
+只读入口为 `get_version_ledger_manifest`、`query_version_ledger`、`get_version_selection_contract`、`preview_version_selection`，普通 Chat / MCP / CLI 共用同一宿主绑定；模型工具不暴露 path/hash/approve/execute。未配置返回 `VERSION_LEDGER_NOT_CONFIGURED`，不会扫描目录找“最新版”。QM50 绑定规格会话和 Peer Reviewer 不获得 F21 工具。返回的 `event_key/payload` 标记为 `UNTRUSTED_SOURCE_DATA_NOT_INSTRUCTIONS`，不能把公告文本或来源字段解释成新指令/授权。
+
+`ready_for_review` 只表示“在指定 event/source/policy 下版本唯一”。`official_verified=false`、`strict_pit=false`、`merge_authorized=false`、`reconstruction_authorized=false`、`publication_authorized=false` 固定保留。F17–F20 不自动读取或应用 F21 ledger，现有配股候选状态和重建 blocker 不变。下一阶段 F22 才可把版本账本作为公司行动人工裁决的证据引用；F23 才会在全部必要决策明确后生成候选复权因子。

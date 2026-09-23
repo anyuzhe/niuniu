@@ -1713,3 +1713,12 @@
 - `corporate_actions_daily.py`对同花顺与巨潮每日重新请求全供应商历史、对Baostock分红默认重查近3个报告年（可显式放宽至60），按全字段顺序无关且保留重复的摘要判断unchanged/new/updated/empty/failed。已存在事件不能被供应商临时空响应擦除；变化先备份旧字节和空marker再原子替换，逐证券观察时间、响应摘要及可续跑回执，未变化文件保持原SHA。Baostock超出回看窗口的早年修订仍为已知未覆盖；不在bronze自动裁决、去重或发布。
 - 只读真实扫描发现2026-09-22已完成参考快照的在市总体为**5,222**，较S4所用旧`stock_basic`多7只（均有9月IPO日期）。在新总体下，日K、5分钟及状态各有7只`full`待采，另13只状态证据支持`suspended_tail`；并没有补采或宣称新总体完成。2026-09-23当日参考快照尚未采集，`artifacts/data-collection-plans-20260923-daily/index.json`只给出`reference_required`及参考计划SHA `c1417216e991836b16a5d094c640fc0d94dcd486dcb9c4a02e2eab66becae230`，不联网。
 - 离线采集专项最终58项通过；文档链接检查与Git差异检查以提交前实跑为准。本批不做真实每日运行成功、历史修订检出率、PIT或客户端验收。仅提交`scripts/collect`、三份采集测试和相应文档；并行`src/quantlab`/version_ledger改动不纳入。普通push并核对远端SHA后记录实际状态。
+
+### 2026-09-23｜[F21] 通用 Observation / Revision / Event 版本合同
+
+- 新增 `src/quantlab/data/version_ledger.py` 与 `niuniu-observation-version-ledger-v1`，把经济事件 `event_id`、来源修订 `revision_id`、内容 `content_hash`、抓取观察 `observation_id` 四个身份拆开。重复抓取相同修订只增加 observation；同 revision key 若内容或 publication/effective/supersedes 等修订级元数据不一致直接拒绝，避免把来源修订误计成多个经济事件。
+- 同一 event/source 的 `supersedes_revision_id` 只允许线性链；缺父、跨 event/source、自环/环、同父分叉、子修订首次观察早于父修订均 fail-closed。跨来源始终是平行证据，不自动 merge/SUM/vote/择优。summary 的 records/events/revisions/sources、策略和限制全部从 JSONL 重算，不信任自报统计。
+- 宿主以 JSONL + summary + 双 SHA256 显式绑定。逐行闭合字段、重复 JSON key、NaN/Infinity、超预算、错误 hash、读取中变更和用户 symlink 均拒绝；兼容 macOS 固定 `/tmp`/`/var` 系统别名。`observed_at/published_at` 要求 aware canonical ISO8601，publication 不得晚于 observation，effective 必须为 canonical date/aware timestamp。
+- 版本选择只允许 `explicit_revision_v1` 与 `latest_observed_revision_as_of_v1`。后者必须显式 `as_of`，只在同 source 且 `observed_at <= as_of` 的修订链中选唯一 tail；没有当时版本或存在断开的多根/歧义则 blocked，不回退到当前最新。返回 `ready_for_review` 仅表示该版本唯一，`official_verified/strict_pit/merge/reconstruction/publication` 均固定 false。
+- 接入普通 Chat/MCP/CLI 的 `get_version_ledger_manifest`、`query_version_ledger`、`get_version_selection_contract`、`preview_version_selection`。模型 schema 无 path/hash/approve/execute，未配置不扫描目录；QM50 宿主绑定规格和 Peer Reviewer 不获得 F21 工具。event_key/payload 标记为不可信来源数据，不能作为命令或授权。F17–F20 不自动消费账本，不改变配股状态或重建 blocker。
+- 新增 `tests/test_version_ledger.py` 与 `tests/test_version_ledger_tools.py`，修后专项 23/23 通过（含 direct API、CLI、正式 Chat、MCP in-process + stdio、重复观察、修订链/as_of、跨来源、路径/hash/mutation/预算、QM50/Reviewer 权限）。相关回归另确认旧候选核心29项、相关非stdio/权限链93个真实用例、标准 MCP/归档集成9项；大组里出现的旧 MCP stdio 初始化超时与 AgentMemory Git 状态错误均按单项/小组复核，不作为 F21 功能失败。未访问正式数据、未采集、未执行重建/发布。

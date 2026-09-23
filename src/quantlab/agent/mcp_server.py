@@ -71,13 +71,13 @@ class MCPResearchAPI(MarketDataResearchAPI):
         return result
 
 
-def build_mcp_api(output,data_root=None,*,rights_candidate_binding=None,rights_evidence_binding=None):
+def build_mcp_api(output,data_root=None,*,rights_candidate_binding=None,rights_evidence_binding=None,version_ledger_binding=None):
     from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
     output=resolve_research_output(output)
     # Keep the caller's original root spelling for the archived-data boundary.
     api=ResearchSkillResearchAPI(LimitResearchAPI(MCPResearchAPI(output,data_root),forecaster='ai:mcp'),data_root)
     return ArchivedMarketDataAPI(api,output,data_root,rights_candidate_binding=rights_candidate_binding,
-        rights_evidence_binding=rights_evidence_binding)
+        rights_evidence_binding=rights_evidence_binding,version_ledger_binding=version_ledger_binding)
 
 
 class ContractMCPServer(MCPServer):
@@ -106,10 +106,10 @@ class ContractMCPServer(MCPServer):
         return await super().call_tool(name, arguments, context)
 
 
-def build_mcp_server(output,data_root=None,*,rights_candidate_binding=None,rights_evidence_binding=None):
+def build_mcp_server(output,data_root=None,*,rights_candidate_binding=None,rights_evidence_binding=None,version_ledger_binding=None):
     output=resolve_research_output(output)
     api=build_mcp_api(output,data_root,rights_candidate_binding=rights_candidate_binding,
-        rights_evidence_binding=rights_evidence_binding)
+        rights_evidence_binding=rights_evidence_binding,version_ledger_binding=version_ledger_binding)
     definitions=api.schemas()
     server=ContractMCPServer('niuniu-research',version='0.1.0',tool_contracts=definitions,
         description='牛牛个人量化研究工作台的标准MCP接口',
@@ -129,11 +129,11 @@ def _loopback(host):
     return host in ('127.0.0.1','::1','localhost')
 
 
-def run_mcp(output,data_root=None,transport='stdio',host='127.0.0.1',port=8766,*,rights_candidate_binding=None,rights_evidence_binding=None):
+def run_mcp(output,data_root=None,transport='stdio',host='127.0.0.1',port=8766,*,rights_candidate_binding=None,rights_evidence_binding=None,version_ledger_binding=None):
     if transport not in ('stdio','streamable-http'):raise ValueError('MCP仅支持stdio或streamable-http')
     if type(port) is not int or not 1<=port<=65535:raise ValueError('MCP端口无效')
     server=build_mcp_server(output,data_root,rights_candidate_binding=rights_candidate_binding,
-        rights_evidence_binding=rights_evidence_binding)
+        rights_evidence_binding=rights_evidence_binding,version_ledger_binding=version_ledger_binding)
     if transport=='stdio':return server.run('stdio')
     if not _loopback(host):
         raise ValueError('Streamable HTTP仅允许回环监听；跨机器请使用SSH隧道或受认证反向代理')
@@ -151,14 +151,17 @@ def main():
     add_rights_binding_arguments(parser)
     from quantlab.data.rights_conflict_evidence import add_rights_evidence_binding_arguments, rights_evidence_binding_from_arguments
     add_rights_evidence_binding_arguments(parser)
+    from quantlab.data.version_ledger import add_version_ledger_binding_arguments, version_ledger_binding_from_arguments
+    add_version_ledger_binding_arguments(parser)
     args=parser.parse_args()
     try:
         binding=rights_binding_from_arguments(args)
         evidence_binding=rights_evidence_binding_from_arguments(args)
+        version_binding=version_ledger_binding_from_arguments(args)
     except ValueError as exc:
         parser.error(str(exc))
     run_mcp(args.output,args.data_root,args.transport,args.host,args.port,rights_candidate_binding=binding,
-        rights_evidence_binding=evidence_binding)
+        rights_evidence_binding=evidence_binding,version_ledger_binding=version_binding)
 
 
 if __name__=='__main__':main()

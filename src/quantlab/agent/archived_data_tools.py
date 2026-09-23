@@ -47,6 +47,14 @@ TOOLS = [
     schema('get_rights_rebuild_contract', '读取配股候选预览的闭合合同、来源映射和限制；不读行情、不产生执行或发布权限。', {}),
     schema('preview_rights_rebuild', '在宿主绑定候选版本内预览完整范围的事件草案。request_json含contract/bundle_id/scope/choices；每项来源选择须引用event_digest，不可过滤掉同范围未决事件。仅候选算术，blocked保留全部原因，ready_for_review不是允许重建或发布。不读正式行情、不写因子。',
            {'request_json': {'type': 'string', 'maxLength': 32768}}),
+    schema('get_version_ledger_manifest', '只读验证宿主显式双文件/双SHA绑定的F21版本账本；重算event/revision/content/observation身份和修订链。只描述观察版本，不认证官方真值、不合并来源、不授权重建发布。', {}),
+    schema('query_version_ledger', '在已绑定F21账本内分页查询观察/修订记录；domain/event_type/event_id/source_id均为显式过滤，空字符串表示不过滤。不会隐式选择最新版本，空结果不证明无经济事件。',
+           {'domain': TEXT, 'event_type': TEXT, 'event_id': TEXT, 'source_id': TEXT,
+            'offset': {'type':'integer','minimum':0,'maximum':5000},
+            'limit': {'type':'integer','minimum':1,'maximum':20}}),
+    schema('get_version_selection_contract', '读取F21版本选择合同；仅允许显式revision或显式as_of策略，跨来源合并/求和固定禁止。', {}),
+    schema('preview_version_selection', '在宿主绑定F21账本内预览一个event_id+source_id的版本选择。request_json必须显式policy；ready_for_review只表示版本唯一，不代表来源正确、PIT、重建或发布许可。',
+           {'request_json': {'type':'string','maxLength':32768}}),
     schema('get_adjustment_review_contract', '读取公司行动候选对账与复权风险合同；不读行情、不把供应商一致性认证为官方真值或独立血缘，不批准重建。', {}),
     schema('inspect_corporate_action_sources', '只读核对宿主data_root中一个证券、最多3660自然日的TDX/东财/同花顺公司行动与已存qfq因子诊断。按源保留候选、原文、冲突和未识别项；不跨供应商相加、不判最终真值、不生成修正因子。errors/incomplete和分页必须披露，缺源不等于零事件。',
            {'symbol': TEXT, 'start': TEXT, 'end': TEXT,
@@ -211,13 +219,14 @@ def _tdx_read(data_root, args):
 
 
 class ArchivedMarketDataAPI:
-    def __init__(self, inner, output, data_root=None, *, source_workspace=None, rights_candidate_binding=None, rights_evidence_binding=None):
+    def __init__(self, inner, output, data_root=None, *, source_workspace=None, rights_candidate_binding=None, rights_evidence_binding=None, version_ledger_binding=None):
         self.inner = inner
         self.output = output
         self.data_root = data_root
         self.source_workspace = source_workspace if source_workspace is not None else output
         self.rights_candidate_binding = rights_candidate_binding
         self.rights_evidence_binding = rights_evidence_binding
+        self.version_ledger_binding = version_ledger_binding
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
@@ -248,6 +257,10 @@ class ArchivedMarketDataAPI:
                 'rights_conflict_evidence_write_authorized': False,
                 'rights_rebuild_preview_available': True,
                 'rights_rebuild_execution_available': False,
+                'version_ledger_available': True,
+                'version_ledger_configured': self.version_ledger_binding is not None,
+                'version_ledger_write_authorized': False,
+                'version_cross_source_merge_authorized': False,
                 'adjustment_rebuild_authorized': False, 'corporate_action_official_verification': False,
                 'archived_data_write_authorized': False,
                 'tools': [tool['name'] for tool in self.schemas()]}
@@ -315,6 +328,18 @@ class ArchivedMarketDataAPI:
                 from quantlab.data.rights_rebuild_preview import preview_rights_rebuild
                 data = preview_rights_rebuild(self.rights_candidate_binding, evidence_binding=self.rights_evidence_binding, **args)
                 evidence = data['evidence']
+            elif name in ('get_version_ledger_manifest', 'query_version_ledger'):
+                from quantlab.data.version_ledger import get_version_ledger_manifest, query_version_ledger
+                reader = get_version_ledger_manifest if name == 'get_version_ledger_manifest' else query_version_ledger
+                data = reader(self.version_ledger_binding, **args)
+                evidence = data.get('evidence', [])
+            elif name == 'get_version_selection_contract':
+                from quantlab.data.version_ledger import get_version_selection_contract
+                data = get_version_selection_contract()
+            elif name == 'preview_version_selection':
+                from quantlab.data.version_ledger import preview_version_selection
+                data = preview_version_selection(self.version_ledger_binding, **args)
+                evidence = data.get('evidence', [])
             elif name == 'get_adjustment_review_contract':
                 from quantlab.data.corporate_action_review import get_adjustment_review_contract
                 data = get_adjustment_review_contract()
