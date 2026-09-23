@@ -19,27 +19,6 @@
     "vendor floor 2020-01-02"
    ]
   },
-  "bars.daily.qfq": {
-   "status": "current",
-   "kind": "per_symbol_parquet",
-   "path": "lake/silver/qfq_kline_daily",
-   "qualification": "research_only",
-   "producer": "legacy MQC build_qfq (script not in repository; see temp/build_qfq2.log)",
-   "known_issues": [
-    "built 2026-09-07 from eastmoney dividends; ends 2026-09-04 while raw daily ends 2026-09-22",
-    "producer not reproducible from repository; stage 4 rebuild pending"
-   ]
-  },
-  "bars.min5.qfq": {
-   "status": "current",
-   "kind": "per_symbol_parquet",
-   "path": "lake/silver/qfq_kline_min5",
-   "qualification": "research_only",
-   "producer": "legacy MQC build_qfq (script not in repository)",
-   "known_issues": [
-    "ends 2026-09-04; stage 4 rebuild pending"
-   ]
-  },
   "status.daily.baostock": {
    "status": "current",
    "kind": "per_symbol_parquet",
@@ -270,6 +249,59 @@
    "qualification": "research_only",
    "producer": "src/quantlab/data/baostock_ingest.py",
    "notes": "migrated 2026-09-23 from /Volumes/Lexar/niuniu/artifacts/_market_data (source kept); workspace redirected via artifacts/_market_data.redirect.json"
+  },
+  "bars.daily.qfq": {
+   "status": "current",
+   "kind": "per_symbol_parquet",
+   "path": "lake/silver/qfq_kline_daily_v2",
+   "qualification": "research_only",
+   "producer": "scripts/derive/build_qfq.py (plan 15978a444cfd8865…, policy qfq-events-two-source-v1)",
+   "superseded": [
+    "lake/silver/qfq_kline_daily"
+   ],
+   "notes": "published 2026-09-23 as qfq_published_f24; per-symbol start in _meta/coverage.parquet (452 symbols start after their latest unconfirmed event)"
+  },
+  "bars.min5.qfq": {
+   "status": "current",
+   "kind": "per_symbol_parquet",
+   "path": "lake/silver/qfq_kline_min5_v2",
+   "qualification": "research_only",
+   "producer": "scripts/derive/build_qfq.py apply-min5 (same plan)",
+   "superseded": [
+    "lake/silver/qfq_kline_min5"
+   ],
+   "notes": "daily v2 factor applied by date; rows only where daily v2 exists"
+  },
+  "adjustments.factors_v2": {
+   "status": "current",
+   "kind": "per_symbol_parquet",
+   "path": "lake/silver/adjustment_factors_v2",
+   "qualification": "research_only",
+   "producer": "scripts/derive/build_qfq.py",
+   "notes": "per-event audit record (accepted/blocked/ignored); DATA internal, not a CODE interface"
+  },
+  "bars.daily.qfq.legacy": {
+   "status": "superseded",
+   "kind": "per_symbol_parquet",
+   "path": "lake/silver/qfq_kline_daily",
+   "qualification": "research_only",
+   "producer": "legacy MQC build_qfq (script not in repository; see temp/build_qfq2.log)",
+   "known_issues": [
+    "built 2026-09-07 from eastmoney dividends; ends 2026-09-04 while raw daily ends 2026-09-22",
+    "producer not reproducible from repository; stage 4 rebuild pending"
+   ],
+   "superseded_by": "bars.daily.qfq"
+  },
+  "bars.min5.qfq.legacy": {
+   "status": "superseded",
+   "kind": "per_symbol_parquet",
+   "path": "lake/silver/qfq_kline_min5",
+   "qualification": "research_only",
+   "producer": "legacy MQC build_qfq (script not in repository)",
+   "known_issues": [
+    "ends 2026-09-04; stage 4 rebuild pending"
+   ],
+   "superseded_by": "bars.min5.qfq"
   }
  }
 }

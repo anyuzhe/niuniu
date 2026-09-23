@@ -446,7 +446,8 @@ def build_symbol(code: str, dirs: dict[str, Path], s1_blocked, tdx_rows=()) -> t
     for col in ("open", "high", "low", "close"):
         out[col] = out[col].astype("float64") * out["factor"]
     out = out[out["date"] >= valid_from].reset_index(drop=True)
-    out["date"] = out["date"].map(lambda d: d.isoformat())
+    # keep ``date`` as a real date (Parquet date32), the same type as the raw
+    # bars and the legacy qfq, so existing readers work unchanged
     summary["rows_qfq"] = int(len(out))
     return ev, out, summary
 
@@ -610,7 +611,8 @@ def apply_min5(plan: dict, approve: str, *, max_seconds: float = 1e9) -> dict:
                 raise ValueError(f"qfq daily output changed: {code}")
             factors = pd.read_parquet(qfq_path, columns=["date", "factor"])
             m5 = pd.read_parquet(raw_path)
-            m5["date"] = m5["date"].map(lambda d: _day(d).isoformat())
+            m5["date"] = m5["date"].map(_day)
+            factors["date"] = factors["date"].map(_day)
             out = m5.merge(factors, on="date", how="inner")
             out = out[["date", "time", "code", "open", "high", "low", "close", "volume", "amount", "factor"]]
             for col in ("open", "high", "low", "close"):
@@ -642,7 +644,8 @@ def report(plan: dict) -> dict:
         if new_path.is_file() and old_path.is_file():
             new = pd.read_parquet(new_path, columns=["date", "close", "factor"])
             old = pd.read_parquet(old_path, columns=["date", "close", "factor"])
-            old["date"] = old["date"].map(lambda d: _day(d).isoformat())
+            old["date"] = old["date"].map(_day)
+            new["date"] = new["date"].map(_day)
             m = new.merge(old, on="date", suffixes=("_new", "_old"))
             if len(m):
                 # both series anchor at their own last bar; compare the shape by
@@ -667,6 +670,22 @@ def report(plan: dict) -> dict:
     return {"summary": summary, "per_symbol": frame}
 
 
+def write_coverage(plan: dict) -> Path:
+    """Per-symbol coverage of the v2 qfq for consumers: where each series starts."""
+    import pandas as pd
+    data_root = Path(plan["data_root"])
+    daily = _load_receipt(_receipt_path(data_root, plan, "daily"), plan)
+    if not daily.get("complete"):
+        raise ValueError("daily build is not complete")
+    rows = [{"code": code, "valid_from": info["valid_from"], "rows_raw": info["rows_raw"],
+             "rows_qfq": info.get("rows_qfq", 0), "events_accepted": info["events_accepted"],
+             "events_blocked": info["events_blocked"], "history_truncated": info.get("rows_qfq", 0) < info["rows_raw"]}
+            for code, info in sorted(daily["results"].items())]
+    out = data_root / OUT["daily"] / "_meta" / "coverage.parquet"
+    _atomic_parquet(pd.DataFrame(rows), out)
+    return out
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data-root", default=str(paths.DATA_ROOT))
@@ -680,6 +699,8 @@ def main(argv=None) -> int:
         s.add_argument("--plan", required=True)
         s.add_argument("--approve-sha256", required=True)
         s.add_argument("--max-seconds", type=float, default=1e9)
+    cv = sub.add_parser("coverage")
+    cv.add_argument("--plan", required=True)
     r = sub.add_parser("report")
     r.add_argument("--plan", required=True)
     r.add_argument("--out", required=True)
@@ -694,6 +715,8 @@ def main(argv=None) -> int:
         print(json.dumps(apply_daily(plan, args.approve_sha256, max_seconds=args.max_seconds)))
     elif args.command == "apply-min5":
         print(json.dumps(apply_min5(plan, args.approve_sha256, max_seconds=args.max_seconds)))
+    elif args.command == "coverage":
+        print(json.dumps({"coverage": str(write_coverage(plan))}))
     else:
         result = report(plan)
         out = Path(args.out)

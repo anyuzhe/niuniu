@@ -97,6 +97,9 @@ class BuildQfqTest(unittest.TestCase):
         self.run_all()
         q = pd.read_parquet(self.root / bq.OUT["daily"] / bq.symbol_file(CODE))
         self.assertEqual(q["factor"].round(10).tolist(), [0.9, 0.9, 1.0, 1.0])
+        import pyarrow.parquet as pq
+        self.assertEqual(str(pq.read_schema(self.root / bq.OUT["daily"] / bq.symbol_file(CODE)).field("date").type), "date32[day]")
+        self.assertEqual(str(pq.read_schema(self.root / bq.OUT["min5"] / bq.symbol_file(CODE)).field("date").type), "date32[day]")
         self.assertAlmostEqual(q["close"].iloc[0], 9.0)
         self.assertEqual(q["volume"].tolist(), [100] * 4)
         m5 = pd.read_parquet(self.root / bq.OUT["min5"] / bq.symbol_file(CODE))
@@ -111,7 +114,7 @@ class BuildQfqTest(unittest.TestCase):
         b.to_parquet(self.dirs["baostock"] / f)
         self.run_all()
         q = pd.read_parquet(self.root / bq.OUT["daily"] / f)
-        self.assertEqual(q["date"].tolist(), ["2024-01-04", "2024-01-05"])  # nothing before the blocked ex-date
+        self.assertEqual([d.isoformat() for d in q["date"]], ["2024-01-04", "2024-01-05"])  # nothing before the blocked ex-date
         ev = pd.read_parquet(self.root / bq.OUT["factors"] / f)
         self.assertEqual(ev["status"].tolist(), ["blocked"])
         self.assertIn("sources_disagree", ev["blockers"].iloc[0])
