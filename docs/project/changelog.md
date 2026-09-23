@@ -1723,3 +1723,13 @@
 - `reg_*` catalog 视图生成器只 CREATE OR REPLACE `reg_` 前缀视图，拒绝与表同名，写前记录原 `reg_` 视图。14 个视图的 SQL 已在内存 DuckDB 中对真实数据逐一建视图并计数，行数与盘点一致；**尚未写入 `catalog/mqc.duckdb`**，需确认并行会话不在读取 catalog 后再按计划 SHA 应用。
 - 路径统一：新增 `scripts/collect/paths.py`，全部采集脚本经它取数据根（`NIUNIU_DATA_ROOT` 或历史默认路径），脚本中不再出现硬编码数据根。`ths_dividend.py`、`cninfo_allotment.py` 取消指向 v1 旧目录的默认 `--dest`，必须显式给出。偏离方案之处：未设环境变量时仍回退到历史路径而非报错，原因是每日脚本在导入时绑定路径常量且既有 58 项测试依赖此行为；强制显式数据根留待后续。
 - 测试：新增 `tests/test_collect_inventory.py` 5 项、`tests/test_dataset_registry.py` 12 项；与既有采集测试合计 75 项全部通过（Linux VM，Python 3.10，离线临时目录）。未运行全仓回归，因为本批未修改被其他产品模块导入的代码。
+
+### 2026-09-23｜[数据侧整改 第二批] catalog 视图、当日增量、捕获包迁入数据根
+
+- catalog：14 个 `reg_*` 视图已按计划 SHA `8785586044e0…` 写入 `catalog/mqc.duckdb`，只新增 `reg_` 前缀视图，未改表和原有视图；逐个核对行数与盘点一致。写入须在 Mac 路径下进行（DuckDB 创建视图时即解析文件路径），本次在 Linux 工作区用用户命名空间把数据根挂到 `/Volumes/Lexar/niuniu-data` 后执行。
+- 当日增量（用户已批准）：2026-09-23 参考快照 7/7 文件完成，在市 A 股 5,222 只。`daily_plan.py` 重新生成计划（`artifacts/data-collection-plans-20260923-daily-r2/`），7 只新股的日 K、5 分钟、日状态全部 ok（计划 SHA `b96b0d8d…`、`e2ab6c47…`、`16fd0e77…`）。日 K/5 分钟目标日仍为 2026-09-22（北京时间 18:00 前）。
+- 公司行动每日再观察：巨潮配股 644/644 完成（601 unchanged、43 updated、0 failed）。**这 43 条 updated 全部是误报**：`daily_common._stable_value` 把供应商返回的 `pandas.NaT` 记为字符串 `"NaT"`，而同一单元格从 Parquet 读回是 `None`，导致内容未变的文件被判为修订并重写。已修复（`cdaa2fc`，NA 先于日期分支判断）并补回归测试；43 个被重写文件与备份的逻辑内容逐一核对相同，更正记录在 `artifacts/data-remediation-20260923/stage3-cninfo-false-revision-audit.json`，原回执不改写，备份保留在 `backups/corporate-daily-e043b14436741eb5/`。修复后的 401 只没有再出现误报。
+- 捕获包迁移（阶段 2）：新增 `src/quantlab/data/capture_root.py` 与 `scripts/collect/migrate_captures.py`。`artifacts/_market_data` 的 1,800 个文件（673,750,558 字节）按计划 SHA `36fa879d…` 先整体核对、再复制到 `/Volumes/Lexar/niuniu-data/lake/_market_data` 并逐文件核对，源文件一个未动。随后写入 `artifacts/_market_data.redirect.json`（capture_root_id `66a590b0…`），所有捕获读写模块（回溯日线、DailyMarket、公开证据、前瞻参考、Baostock 导入/series、证据调度、打板研究工具、行情工具）改为经 `capture_root()` 定位；无重定向时行为不变，重定向无效时报错。`catalog/retro_daily_tail.json` 改指迁移后的 capture，pack index digest 不变，旧指针备份在 `catalog/retro_daily_tail.history/`。真实数据上已验证：工作空间解析到新根、回溯尾部读取 sh.600000 2026-09-07..15 共 7 行成功。
+- 新目录名为 `lake/_market_data` 而非方案中的 `captures/`，因为 `baostock_series`、`retro_tail` 的校验按目录名 `_market_data` 判断。
+- 注册表更新为 SHA `807ddb62f592…`，新增 `capture_tree` 类型及 5 个 `captures.*` 条目（旧版在 `catalog/registry_history/`）。
+- 测试：新增 8 项（capture root/迁移）与 1 项（NaT 回归）。在 Python 3.11 隔离环境中跑通受影响模块：采集 76 项及 retro_daily、retro_pack、retro_tail 三组、daily_market_archive、public_evidence、forward_daily、baostock_series、baostock_data、evidence_scheduler、limit_research_tools、archived_daily_dataset、archived_data_tools、archived_dataset_lifecycle、archived_research_check 全部通过；`archived_suspension_contract` 中依赖 vnpy 的 1 项因未安装 vnpy 未运行，其余 7 项通过。未跑桌面（PyQt）测试。

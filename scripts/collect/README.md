@@ -36,6 +36,7 @@
 | `status_incremental.py` | Baostock交易/ST状态缺整只和尾部增量 | 状态表单独更新，历史内部洞仅报告 |
 | `corporate_actions_daily.py` | 同花顺/巨潮/Baostock分红每日再观察 | 内容SHA比较，变更备份、逐证券回执 |
 | `inventory.py` | 只读盘点数据根：文件、行数、列签名、日期范围、指纹 | 报告必须写在数据根外；`--deep-hash` 才算内容 SHA |
+| `migrate_captures.py` | 把工作空间 `_market_data` 捕获包复制到数据根并重定向 | plan→apply→redirect→pointer，每步需计划 SHA；源文件不动 |
 | `registry.py` | 数据集注册表 draft/verify/apply 与 `reg_*` 视图计划 | 写入须带草稿或视图计划的完整 SHA |
 
 ## 数据根与注册表

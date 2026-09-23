@@ -280,3 +280,17 @@ F9 v2仍然只是 `research_only/raw/1d` 的有限归档输入合同，不证明
 - 可选 `version_ledger` 字段只引用 F21 观察/修订账本及其 SHA；注册表不判断事件修订，F21 也不决定当前目录。
 
 维护命令见 [采集脚本说明](../../scripts/collect/README.md)。截至 2026-09-23，产品各读取模块仍使用原写死的相对路径，按数据集分批切换到 `resolve`。
+
+## 15. 捕获包位置（整改阶段 2）
+
+回溯日线、DailyMarket、公开证据、前瞻参考、Baostock 导入与 series 这些“捕获包”原先写在工作空间 `artifacts/_market_data/`。2026-09-23 起它们在数据根 `lake/_market_data/`，工作空间通过重定向文件指过去：
+
+```text
+artifacts/_market_data.redirect.json   → /Volumes/Lexar/niuniu-data/lake/_market_data
+niuniu-data/lake/_market_data/CAPTURE_ROOT.json   同一 capture_root_id
+```
+
+- 所有捕获读写都经 [capture_root.py](../../src/quantlab/data/capture_root.py) 定位。没有重定向文件时仍是 `<工作空间>/_market_data`；重定向文件存在但格式不对、目标缺失、目标 marker 的 id 不一致或路径经过符号链接时直接报错，不回退。
+- 原 `artifacts/_market_data` 原样保留：历史实验、冻结清单和回执里记录的旧绝对路径仍然可读。它不再接收新写入。
+- `catalog/retro_daily_tail.json` 已改指 `lake/_market_data/retro_daily/<capture_id>`，pack index digest 与原来相同；迁移后的 capture 所在的 `lake` 目录本身就可当作未重定向的工作空间读取。
+- 迁移本身不改变任何资格：捕获包仍是 research_only / 回顾性参考，与迁移前一样。
