@@ -175,13 +175,25 @@ def list_data_catalog(catalog_path=None, *, status="READY", delivery="ALL", offs
     }
 
 
-def get_ready_data_source(catalog_path=None, *, dataset_id: str) -> dict:
+def get_data_catalog_entry(catalog_path=None, *, dataset_id: str) -> dict:
     if not isinstance(dataset_id, str) or not dataset_id or len(dataset_id) > 128:
         raise DataCatalogError("INVALID_ARGUMENT", "invalid dataset_id")
     catalog = read_data_catalog(catalog_path)
     row = next((item for item in catalog["entries"] if item["dataset_id"] == dataset_id), None)
     if row is None:
         raise DataCatalogError("DATASET_NOT_LISTED", "DATA has not listed this dataset")
+    return dict(row)
+
+
+def is_data_ready(catalog_path=None, *, dataset_id: str) -> bool:
+    try:
+        return get_data_catalog_entry(catalog_path, dataset_id=dataset_id)["status"] == "READY"
+    except DataCatalogError:
+        return False
+
+
+def get_ready_data_source(catalog_path=None, *, dataset_id: str) -> dict:
+    row = get_data_catalog_entry(catalog_path, dataset_id=dataset_id)
     if row["status"] != "READY":
         raise DataCatalogError("DATASET_NOT_READY", "DATA has not marked this dataset READY: " + row["status"])
     addresses = _ABS_PATH.findall(row["address"])
@@ -210,5 +222,5 @@ def get_ready_data_source(catalog_path=None, *, dataset_id: str) -> dict:
 __all__ = [
     "CATALOG_FORMAT", "STATUSES", "DELIVERIES", "LEGACY_DELIVERY", "DataCatalogError",
     "default_data_catalog_path", "read_data_catalog", "list_data_catalog",
-    "get_ready_data_source",
+    "get_data_catalog_entry", "is_data_ready", "get_ready_data_source",
 ]

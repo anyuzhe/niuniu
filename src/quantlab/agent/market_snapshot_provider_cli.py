@@ -6,8 +6,10 @@ from quantlab.trading.market_snapshot_provider import MarketSnapshotProviderRead
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description='牛牛 MarketSnapshot Provider readiness；只读，不联网抓行情')
-    parser.parse_args(argv)
-    data=MarketSnapshotProviderReadiness().build()
+    parser.add_argument('--data-catalog-path')
+    args=parser.parse_args(argv)
+    from quantlab.trading.market_snapshot_provider import MarketSnapshotProviderRegistry
+    data=MarketSnapshotProviderReadiness(MarketSnapshotProviderRegistry(data_catalog_path=args.data_catalog_path)).build()
     print(encode({'ok':True,'data':data}));return 0
 
 

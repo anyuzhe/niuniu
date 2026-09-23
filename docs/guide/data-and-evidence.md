@@ -304,3 +304,15 @@ CODE 的读取规则也保持简单：只使用清单中明确标为 `READY` 的
 DATA 如果新增、移动、替换或停用数据，应先更新数据清单，再通知 CODE 适配；CODE 如果需要一种尚未在清单中的数据，只向 DATA 提“需要什么数据/字段/范围”，不规定 DATA 必须如何采集和证明正确。这样 F22–F26 都由 DATA 自己完成治理和质量保证，CODE 只在对应数据变为 `READY` 后接入；F27 才验收牛牛是否能正确使用这些已交付数据。
 
 代码侧已经实现统一读取层：`list_data_catalog` 分页读取 DATA 清单，`get_ready_data_source` 按 `dataset_id` 取得 `READY` 的 FILE/DATABASE/API/STREAM 入口；普通 Chat、标准 MCP 和只读 CLI 共用该边界。CODE 仅对 FILE/DATABASE 做“路径实际存在且可读”这一技术检查，明确返回 `data_correctness_revalidated_by_code=false` 与 `fallback_performed=false`；`NOT_READY`、`REVIEW_REQUIRED`、`DEPRECATED`、未登记数据均不会自动换源。锁定研究规格会话不新增这两个通用入口。
+
+### 15.2 当前 DATA 交付的机器消费边界（2026-09-23 晚）
+
+DATA 的文件型版本路由另有机器清单 `/Volumes/Lexar/niuniu-data/catalog/dataset_registry.json`。它解决“当前物理版本在哪”，而 `data-catalog.md` 解决“是否已经交付给 CODE 使用”；两者均由 DATA 维护。CODE 不根据目录修改时间找最新版。当前 qfq 已由 DATA 发布为 `qfq_published_f24=READY`，registry 的 `bars.daily.qfq` / `bars.min5.qfq` 指向 `qfq_kline_daily_v2` / `qfq_kline_min5_v2`，因此核心 `MQCParquetProvider` 按 registry 读取 v2。若 registry 存在但 current 条目缺失、路径逃逸/链接、目标不存在或状态不是 current，直接失败，不回退旧目录。
+
+qfq v2 的覆盖不是“所有历史都已裁决”：DATA 对未确认事件不猜，452只证券从最后一个未确认事件之后才提供历史，逐证券起点在日线 v2 的 `_meta/coverage.parquet`。CODE 请求早于 `valid_from`，或5分钟请求早于该证券实际发布文件首日时直接阻断；不得改读旧 qfq、用 raw 伪造前复权或静默只返回后半段。这个行为只执行 DATA 已公布的覆盖边界，不重新判断复权因子是否正确。
+
+DATA 当前还交付6个 `READY` 按需研究API：`research_search`、`stock_research_reports`、`stock_news`、`stock_announcements`、`financial_statements`、`investor_qa`。其统一实现由 DATA 提供的 `quantlab.data.research_provider.ResearchDataProvider` 负责供应商、凭证、限频、字段映射和错误语义；CODE 只通过 `ResearchDataAPI` 暴露给普通 Chat/MCP/CLI。每次调用先查 DATA catalog 的同名项仍为 `READY`，否则在联网前拒绝；供应商错误只报告不可用，不换源。
+
+`stock_fund_flow_daily`、`realtime_quote`、`market_snapshot`、`fuyao_context` 当前均为 `REVIEW_REQUIRED`。这一状态现在不仅体现在新统一工具里，也已经约束旧入口：普通 Chat 不注册 Fuyao 聚合工具、不做自动实时报价预取；MarketSnapshot readiness/live CLI/Daily Orchestrator 不允许公开网页实时 capture。即使旧 provider 类、网络代码或凭证仍存在，也不能绕开 DATA 状态。DATA 日后把对应项改为 `READY` 后，这些 gate 才允许 CODE 使用；CODE 不自行改变状态。
+
+其余17类新增公开来源文件数据已经由 DATA 标 `READY` 并可通过 catalog 发现。它们的 schema/日期语义差异较大，CODE 不建立“任意 dataset_id + 任意列/SQL”的模型工具；后续只有具体产品功能需要时，才按清单的字段和覆盖合同增加有界 reader。这样既能消费 DATA 现有资产，也不会把数据湖浏览权限重新交给模型。

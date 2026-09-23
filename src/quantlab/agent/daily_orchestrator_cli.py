@@ -17,12 +17,13 @@ def main(argv=None):
     parser.add_argument('--as-of-session');parser.add_argument('--definition-id');parser.add_argument('--target-streak',type=int)
     parser.add_argument('--universe-snapshot',help='目标交易日已验证 PIT Universe v1 snapshot SHA256')
     parser.add_argument('--allow-daily-market-capture',action='store_true')
-    parser.add_argument('--allow-market-snapshot-capture',action='store_true',help='显式允许腾讯+东财+新浪三源实时MarketSnapshot抓取')
+    parser.add_argument('--allow-market-snapshot-capture',action='store_true',help='仅当DATA清单把market_snapshot标为READY时允许实时MarketSnapshot抓取')
+    parser.add_argument('--data-catalog-path')
     parser.add_argument('--bridge-to-trading-desk',action='store_true')
     parser.add_argument('--poll-seconds',type=int,default=60)
     args=parser.parse_args(argv)
     try:
-        service=DailyPlaybookOrchestrator(Path(args.output),Path(args.data_root))
+        service=DailyPlaybookOrchestrator(Path(args.output),Path(args.data_root),data_catalog_path=args.data_catalog_path)
         if args.init:
             if not args.as_of_session or not args.definition_id:parser.error('--init 需要 --as-of-session 与 --definition-id')
             result=service.create_plan(args.trading_day,args.as_of_session,args.definition_id,

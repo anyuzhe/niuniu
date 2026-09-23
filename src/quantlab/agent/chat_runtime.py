@@ -52,7 +52,7 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 
 
 class ChatRuntime:
-    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None,rights_candidate_binding=None,rights_evidence_binding=None,version_ledger_binding=None,data_catalog_path=None):
+    def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None,rights_candidate_binding=None,rights_evidence_binding=None,version_ledger_binding=None,data_catalog_path=None,research_data_provider=None):
         output=resolve_research_output(output)
         if research_spec:local_data_only=True
         self.research_spec=research_spec
@@ -67,17 +67,24 @@ class ChatRuntime:
         from quantlab.agent.fuyao_tools import FuyaoResearchAPI
         from quantlab.agent.limit_research_tools import LimitResearchAPI
         from quantlab.trading.fuyao_market_snapshot import build_live_quote_provider
+        from quantlab.data.dataset_catalog import is_data_ready
         research=ResearchSkillResearchAPI(LimitResearchAPI(PeerReviewResearchAPI(output,data_root)),data_root)
         base_api=ResearchSessionGrantAPI(research,output,data_root,queue_factory)
-        self.fuyao=(FuyaoMCPClient(api_key='') if local_data_only else
-            fuyao_client if fuyao_client is not None else FuyaoMCPClient())
-        self.api=base_api if local_data_only else FuyaoResearchAPI(base_api,self.fuyao)
-        self.live_quotes=None if local_data_only else (LiveStockQuoteService(data_root,provider=build_live_quote_provider(self.fuyao))
+        fuyao_ready=(not local_data_only and is_data_ready(data_catalog_path,dataset_id='fuyao_context'))
+        realtime_ready=(not local_data_only and is_data_ready(data_catalog_path,dataset_id='realtime_quote'))
+        self.fuyao=(fuyao_client if fuyao_ready and fuyao_client is not None else
+            FuyaoMCPClient() if fuyao_ready else FuyaoMCPClient(api_key=''))
+        self.api=FuyaoResearchAPI(base_api,self.fuyao) if fuyao_ready else base_api
+        self.live_quotes=(None if not realtime_ready else
+            LiveStockQuoteService(data_root,provider=build_live_quote_provider(self.fuyao))
             if live_quote_service is None else live_quote_service)
         from quantlab.agent.archived_data_tools import ArchivedMarketDataAPI
         self.api=ArchivedMarketDataAPI(self.api,output,data_root,rights_candidate_binding=rights_candidate_binding,
             rights_evidence_binding=rights_evidence_binding,version_ledger_binding=version_ledger_binding,
             data_catalog_path=data_catalog_path)
+        if not local_data_only:
+            from quantlab.agent.research_data_tools import ResearchDataAPI
+            self.api=ResearchDataAPI(self.api,provider=research_data_provider,data_catalog_path=data_catalog_path)
         from quantlab.agent.research_spec_tools import ResearchSpecAPI
         self.api=ResearchSpecAPI(self.api,output,data_root,active_spec=research_spec,allow_tests=allow_spec_tests,source_workspace=spec_source_workspace)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None):
@@ -99,6 +106,8 @@ class ChatRuntime:
         base_system+='\n本地数据检查使用list_local_market_data/inspect_local_market_data；宿主已授权自主选择范围时，在真实目录/Grant内选取，不要求用户提供因子答案。研究前先记录可证伪假设，研究后检查真实证据并保存结论草稿。'
         if not self.research_spec:
             base_system+='\n产品需要数据时先用list_data_catalog查看DATA清单，使用get_ready_data_source取得明确READY入口。DATA对正确性、来源、版本、单位、覆盖和PIT资格负责；不要重新裁决或重算验证。NOT_READY/REVIEW_REQUIRED/DEPRECATED不作为正式输入，不扫描数据根找替代项，也不自己直连第三方数据API顶上。'
+        if not self.research_spec and not self.local_data_only:
+            base_system+='\n按需研究接口只在DATA清单标为READY时使用：research_search、stock_research_reports、stock_news、stock_announcements、financial_statements、investor_qa。它们统一经ResearchDataProvider联网查询；若DATA未READY或调用失败，只报告数据暂不可用，不换供应商。结果是research_only，不是Strict PIT、正式MarketSnapshot或交易授权。realtime_quote、fuyao_context也必须由DATA标READY后宿主才会启用；旧实现或凭证存在本身不构成可用授权。'
         if not self.research_spec:
             base_system+='\n已有回溯日线先用list_archived_daily_sources发现宿主工作空间中的capture，再用list_archived_daily_symbols分页、inspect_archived_daily核验原始与typed字段。TDX已存资料用get_tdx_data_status/read_tdx_data读取明确family；这些是不同来源，不因MQC目录缺字段就断言整个项目没有数据。目录元信息不等于原始字节核验，原始记录可读也不等于通用策略Provider已接入；保留单位、observed_at、缺失和未核验标记。工具不下载、标准化、选择供应商版本或自动创建研究。'
         if not self.research_spec:

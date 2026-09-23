@@ -47,6 +47,14 @@ class LiveQuoteStub:
 
 
 class LiveStockQuoteTests(unittest.TestCase):
+    def catalog(self,tmp,status):
+        path=Path(tmp)/('data-catalog-'+status+'.md')
+        path.write_text('# DATA → CODE 数据清单\n\n## 3. 可供 CODE 使用的数据（READY）\n\n'
+            '| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |\n'
+            '|---|---|---|---|---|---|---|---|\n'
+            f'| `realtime_quote` | API | quote | `LiveStockQuoteService` | call | research_only | `{status}` | gated |\n',encoding='utf-8')
+        return path
+
     def data_root(self,tmp):
         root=Path(tmp);path=root/'lake/bronze/provider=baostock/stock_basic/stock_basic.parquet'
         path.parent.mkdir(parents=True)
@@ -93,7 +101,8 @@ class LiveStockQuoteTests(unittest.TestCase):
                 'agreement_sources':['tencent','sina']}],
             'limitations':['not stored']}
         with tempfile.TemporaryDirectory() as tmp:
-            stub=LiveQuoteStub(value);runtime=ChatRuntime(tmp,tmp,live_quote_service=stub)
+            stub=LiveQuoteStub(value);runtime=ChatRuntime(
+                tmp,tmp,live_quote_service=stub,data_catalog_path=self.catalog(tmp,'READY'))
             cid=runtime.store.create();model=CapturingModel();events=[]
             result=runtime.send(cid,'宏景科技现在怎么样？',ModelConfig(),allow_send=True,
                 provider=model,emit=lambda kind,payload:events.append((kind,payload)))
@@ -107,6 +116,16 @@ class LiveStockQuoteTests(unittest.TestCase):
             self.assertFalse((Path(tmp)/'_trading/market_snapshots.sqlite3').exists())
             persisted=json.dumps(runtime.store.events(cid),ensure_ascii=False)
             self.assertIn('get_live_stock_quote',persisted);self.assertIn('sz.301396',persisted)
+
+    def test_chat_does_not_prefetch_when_data_catalog_is_review_required(self):
+        value={'format':FORMAT,'status':'OK','requested_symbols':['sz.301396'],'quotes':[]}
+        with tempfile.TemporaryDirectory() as tmp:
+            stub=LiveQuoteStub(value);runtime=ChatRuntime(
+                tmp,tmp,live_quote_service=stub,data_catalog_path=self.catalog(tmp,'REVIEW_REQUIRED'))
+            model=CapturingModel();result=runtime.send(
+                runtime.store.create(),'宏景科技现在怎么样？',ModelConfig(),allow_send=True,provider=model)
+            self.assertEqual(stub.queries,[]);self.assertEqual(result['host_live_quote_queries'],0)
+            self.assertNotIn('HOST_LIVE_QUOTE_CONTEXT',model.messages[-1]['content'])
 
     def test_single_stock_followup_reuses_conversation_scope_but_ambiguous_scope_does_not_query(self):
         with tempfile.TemporaryDirectory() as tmp:

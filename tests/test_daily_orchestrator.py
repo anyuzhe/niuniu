@@ -61,8 +61,18 @@ class DailyOrchestratorTests(unittest.TestCase):
             'eligibility':{'target':'2_to_3'},'selection':{'rule':'active'},'veto':{},'entry':{},'confirm':{},
             'invalidation':{},'hold':{},'add':{},'reduce':{},'exit':{},'notes':''})
         self.market_rows=[daily_row('2026-09-11','sh.600001',12.1,11.0)]
+        self.market_catalog=self.catalog('READY');self.review_catalog=self.catalog('REVIEW_REQUIRED')
 
-    def service(self,now):return DailyPlaybookOrchestrator(self.output,self.data,now_fn=lambda:now)
+    def catalog(self,status):
+        path=self.root/('data-catalog-'+status+'.md')
+        path.write_text('# DATA → CODE 数据清单\n\n## 3. 可供 CODE 使用的数据（READY）\n\n'
+            '| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |\n'
+            '|---|---|---|---|---|---|---|---|\n'
+            f'| `market_snapshot` | API | snapshot | `Provider` | call | research_only | `{status}` | gated |\n',encoding='utf-8')
+        return path
+
+    def service(self,now,catalog=None):return DailyPlaybookOrchestrator(
+        self.output,self.data,now_fn=lambda:now,data_catalog_path=catalog or self.market_catalog)
 
     def test_verified_rule_snapshot_is_loaded_relative_to_data_root_for_prep(self):
         from quantlab.trading.prep_scanner import PrepScanError
@@ -138,6 +148,16 @@ class DailyOrchestratorTests(unittest.TestCase):
             self.service(now).create_plan('2026-09-15','2026-09-14',self.definition['definition_id'],
                 target_streak=2,universe_snapshot=snapshot)
         self.assertEqual(ctx.exception.code,'PIT_UNIVERSE_INVALID')
+
+    def test_review_required_market_snapshot_is_blocked_before_plan_network_permission(self):
+        now=datetime.fromisoformat('2026-09-13T19:00:00+08:00')
+        with patch('quantlab.trading.public_web_market_snapshot.PublicWebConsensusProvider.capture',
+                side_effect=AssertionError('must not network')):
+            with self.assertRaises(DailyOrchestratorError) as ctx:
+                self.service(now,self.review_catalog).create_plan(
+                    '2026-09-14','2026-09-11',self.definition['definition_id'],
+                    target_streak=2,allow_market_snapshot_capture=True)
+        self.assertEqual(ctx.exception.code,'MARKET_SNAPSHOT_DATA_NOT_READY')
 
     def test_plan_defaults_to_no_network_and_waits_for_daily_market(self):
         now=datetime.fromisoformat('2026-09-13T19:00:00+08:00');state=self.init(now,allow=False)

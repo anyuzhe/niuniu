@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from quantlab.agent.fuyao_mcp import ENV_KEY, FuyaoMCPClient, FuyaoMCPError, load_api_key
@@ -156,16 +157,26 @@ class FuyaoIntegrationTests(unittest.TestCase):
         self.assertTrue(results["get_fuyao_short_term_context"]["data"]["dragon_tiger"]["target_records"])
         self.assertFalse(api.call("get_capabilities", {})["data"]["fuyao"]["strict_pit_source_verified"])
 
-    def test_chat_runtime_registers_only_aggregate_fuyao_surface(self):
+    def test_chat_runtime_registers_fuyao_only_when_data_catalog_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime = ChatRuntime(tmp, tmp, fuyao_client=FakeFuyaoClient())
+            def catalog(status):
+                path=Path(tmp)/('data-catalog-'+status+'.md')
+                path.write_text('# DATA → CODE 数据清单\n\n## 3. 可供 CODE 使用的数据（READY）\n\n'
+                    '| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |\n'
+                    '|---|---|---|---|---|---|---|---|\n'
+                    f'| `fuyao_context` | API | context | `FuyaoContextService` | call | research_only | `{status}` | gated |\n',encoding='utf-8')
+                return path
+            runtime = ChatRuntime(tmp, tmp, fuyao_client=FakeFuyaoClient(),data_catalog_path=catalog('READY'))
             names = {item["name"] for item in runtime.api.schemas()}
-            self.assertTrue({"resolve_fuyao_security", "get_fuyao_stock_context",
+            fuyao_names={"resolve_fuyao_security", "get_fuyao_stock_context",
                 "get_fuyao_sector_context", "get_fuyao_short_term_context",
-                "get_fuyao_fundamental_context"}.issubset(names))
+                "get_fuyao_fundamental_context"}
+            self.assertTrue(fuyao_names.issubset(names))
             self.assertNotIn("get_a_share_prices_snapshot", names)
             self.assertTrue(hasattr(runtime.api, "proposals"))
             self.assertIn("不可调用宿主未注册的其他 MCP", SYSTEM)
+            blocked=ChatRuntime(tmp, tmp, fuyao_client=FakeFuyaoClient(),data_catalog_path=catalog('REVIEW_REQUIRED'))
+            self.assertTrue(fuyao_names.isdisjoint({item["name"] for item in blocked.api.schemas()}))
 
     def test_quote_provider_maps_fuyao_and_marks_cross_source_mismatch(self):
         client = FakeFuyaoClient()

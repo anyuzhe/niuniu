@@ -25,7 +25,16 @@ def fixture_http(url,encoding,headers):
 class PublicWebMarketSnapshotTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
-        self.output=Path(self.temp.name)/'artifacts';self.output.mkdir()
+        self.root=Path(self.temp.name);self.output=self.root/'artifacts';self.output.mkdir()
+        self.ready_catalog=self.catalog('READY');self.review_catalog=self.catalog('REVIEW_REQUIRED')
+
+    def catalog(self,status):
+        path=self.root/('data-catalog-'+status+'.md')
+        path.write_text('# DATA → CODE 数据清单\n\n## 3. 可供 CODE 使用的数据（READY）\n\n'
+            '| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |\n'
+            '|---|---|---|---|---|---|---|---|\n'
+            f'| `market_snapshot` | API | snapshot | `Provider` | call | research_only | `{status}` | gated |\n',encoding='utf-8')
+        return path
 
     def test_three_source_consensus_prefers_tencent_and_keeps_public_source_non_strict(self):
         value=PublicWebConsensusProvider(http_get=fixture_http).capture('2026-09-15','R1',['sh.600000'])
@@ -92,10 +101,17 @@ class PublicWebMarketSnapshotTests(unittest.TestCase):
         content=PublicWebConsensusProvider(http_get=fixture_http,now_fn=lambda:datetime.fromisoformat('2026-09-15T09:31:00+08:00')).capture('2026-09-15','R1',['sh.600000'])
         stream=StringIO()
         with patch('quantlab.agent.market_snapshot_live_cli.PublicWebConsensusProvider.capture',return_value=content):
-            with redirect_stdout(stream):code=live_cli(['--output',str(self.output),'--trading-day','2026-09-15','--frame','R1','--symbols','sh.600000','--confirm-network','--store'])
+            with redirect_stdout(stream):code=live_cli(['--output',str(self.output),'--trading-day','2026-09-15','--frame','R1','--symbols','sh.600000','--data-catalog-path',str(self.ready_catalog),'--confirm-network','--store'])
         result=json.loads(stream.getvalue());self.assertEqual(code,0);self.assertTrue(result['ok'])
         self.assertEqual(result['data']['provider'],'public-web-consensus-v1');self.assertFalse(result['data']['strict_pit_eligible'])
         self.assertEqual(MarketSnapshotStore(self.output).overview()['snapshots'],1)
+
+    def test_review_required_catalog_blocks_before_network(self):
+        stream=StringIO()
+        with patch('quantlab.agent.market_snapshot_live_cli.PublicWebConsensusProvider.capture',side_effect=AssertionError('must not network')):
+            with redirect_stdout(stream):code=live_cli(['--output',str(self.output),'--trading-day','2026-09-15','--frame','R1','--symbols','sh.600000','--data-catalog-path',str(self.review_catalog),'--confirm-network'])
+        self.assertEqual(code,2);self.assertFalse(json.loads(stream.getvalue())['ok'])
+        self.assertFalse((self.output/'_trading/market_snapshots.sqlite3').exists())
 
 
 if __name__=='__main__':unittest.main()

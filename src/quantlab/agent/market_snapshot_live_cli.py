@@ -19,11 +19,14 @@ def main(argv=None):
     parser.add_argument('--output',required=True);parser.add_argument('--trading-day',required=True)
     parser.add_argument('--frame',required=True,choices=('AUCTION','R1','R2','R3'))
     parser.add_argument('--symbols',required=True,help='逗号分隔 sh.600000,sz.000001')
+    parser.add_argument('--data-catalog-path')
     parser.add_argument('--confirm-network',action='store_true',help='明确允许访问三家公开网页行情接口')
     parser.add_argument('--store',action='store_true',help='通过MarketSnapshotStore冻结本次结果')
     args=parser.parse_args(argv)
     try:
         if args.confirm_network is not True:raise ValueError('抓取实时行情需要 --confirm-network 明确授权联网')
+        from quantlab.data.dataset_catalog import get_ready_data_source
+        get_ready_data_source(args.data_catalog_path,dataset_id='market_snapshot')
         content=PublicWebConsensusProvider().capture(args.trading_day,args.frame,_symbols(args.symbols))
         data=content
         if args.store:

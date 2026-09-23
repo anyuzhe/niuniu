@@ -220,16 +220,20 @@ AI产业雷达以 `ai_industry_radar` Research Skill 入库（PUBLIC_METHOD）�
 | F19 未决配股补充证据消费 | S1 JSONL+summary 双SHA绑定父F17 conflict全集；Chat/MCP/CLI查询并可选附加到F18 | 已完成；修后联合回归19模块209项全部通过，真实S1只读smoke为19/19 UNRESOLVED。独立复核发现的diagnostics布尔计数与非规范日期两项已修并补回归；S1不解除EVENT_REQUIRES_SEPARATE_ADJUDICATION，不产生计算/裁决/重建/发布权限，未绑定S1时F18保持原结构。 |
 | F20 F9停牌状态输入合同v2 | 保留tradestatus=0完整session，OHLC不填充；研究排除、成交禁止、估值mark与冻结身份显式分层 | 已完成；提交后按不重复测试用例统计有161项明确PASS，新增9项。第2组中47项直接PASS、唯一旧v1冻结生命周期因组合压力等待超时后单独PASS；另有1个既有“父研究全后代+训练管线”重型单测单独运行超过300秒被超时终止、无断言失败，不计入通过数。v1仍默认拒绝停牌；v2合同进入包/preview/dataset/冻结snapshot身份。停牌目标不fill、持仓沿最后真实close估值；无历史mark才用vendor_previous_close且绝非成交价。Reviewer发现的停牌除权重复估值风险已改为开/收盘生效均fail-closed，v2冻结snapshot绑定冻结SHA/source snapshot/contract；不改正式数据、采集或权限。 |
 | F21 通用事件/修订/观察版本合同 | event/revision/content/observation 四身份；同来源线性修订链；显式revision或as_of选择；跨来源不合并 | 已完成；新增23项专项全部通过，并完成旧候选核心29项、相关非stdio/权限链93个真实用例及标准MCP/归档集成9项复核。账本宿主双文件/双SHA绑定，summary重算，路径/时间/修订链/重复观察/歧义严格fail-closed；模型不能传path/hash，QM50绑定规格与Reviewer不扩权。`ready_for_review`只表示指定source内版本唯一，official/PIT/merge/rebuild/publication均保持false；F17–F20不自动消费，不裁决来源、不改正式数据。 |
-| F22 公司行动正式人工决策包（DATA主责） | DATA完成来源/版本/证据与人工治理，输出其认可的正式决策数据 | 待开始。19条`conflicts/NEEDS_DECISION`仍19/19 UNRESOLVED；88条继续由DATA按父治理语义处理。CODE只在DATA把决策数据登记为`READY`后读取，不参与正确性判断。 |
-| F23 candidate factor / qfq 重建（DATA主责） | DATA依据F22结果完成factor/qfq重建和自身质量检查，输出可供CODE使用的数据路径 | 待F22及必要证据闭合。CODE不运行重建、不审核因子正确性，只消费DATA清单中`READY`的数据。 |
-| F24 影响审计 + publish gate + rollback（DATA主责） | DATA自行完成影响审计、发布、正式版本选择和rollback，并在数据清单更新当前可用数据 | 待F23。CODE不承担publish/rollback gate，只根据DATA公布的正式`READY`路径切换读取。 |
-| F25 Auction版本/单位治理接入（DATA主责） | DATA治理Auction版本/单位并输出统一数据 | 待F24。CODE按数据清单读取，不猜单位、不复核来源正确性。 |
+| F22 公司行动正式人工决策包（DATA主责） | DATA完成来源/版本/证据与人工治理，输出其认可的正式决策数据 | 正式`company_action_decisions_f22`仍`NOT_READY`；旧19条冲突未因后续qfq发布而被视为已裁决。CODE只在DATA把决策数据登记为`READY`后读取，不参与正确性判断。 |
+| F23 candidate factor / qfq 重建（DATA主责） | DATA完成factor/qfq重建和自身质量检查，输出可供CODE使用的数据路径 | DATA已对**有足够来源证据的覆盖范围**完成qfq v2：54,712个事件按其发布政策采用；未确认事件不猜，452只证券从最后未确认事件之后才提供历史。该截断不等于F22人工裁决完成。 |
+| F24 影响审计 + publish gate + rollback（DATA主责） | DATA自行完成影响审计、发布、正式版本选择和rollback，并在数据清单更新当前可用数据 | DATA已把`qfq_published_f24`标为`READY`，日线/5分钟发布到v2并将旧qfq标`DEPRECATED`，机器registry的`bars.daily.qfq`/`bars.min5.qfq`已切到v2。CODE只消费这一发布结论；rollback仍完全由DATA负责。 |
+| F25 Auction版本/单位治理接入（DATA主责） | DATA治理Auction版本/单位并输出统一数据 | 当前下一数据阶段；`auction_tdx_raw` 与 `auction_governed_f25` 仍为 `NOT_READY`。CODE不猜单位、不直读未治理Auction，等DATA清单改为`READY`再接入。 |
 | F26 Strict PIT Universe/状态/规则正式化（DATA主责） | DATA负责Strict PIT正确性和coverage并输出正式数据 | 待F25。CODE只读取DATA明确标为strict-ready的数据。 |
 | F27 治理后真实AI自主研究最终验收（CODE/AI主责） | DATA维持最终`READY`数据清单；牛牛使用这些数据完成自主研究闭环 | 最终阶段。F27验收CODE/AI如何使用数据，不重新审计DATA正确性，也不以收益/Alpha作为通过条件。 |
 
 F22–F26 的数据正确性、完整性、来源/版本、单位、PIT资格、重建和发布全部由 DATA 负责；CODE 的唯一数据接口是 [DATA → CODE 数据清单](../reference/data-catalog.md)，只关心“有什么、在哪里、是否`READY`”。详细边界见 [数据与证据指南](../guide/data-and-evidence.md#15-f22f27-数据治理--产品代码双轨路线)。
 
-CODE 已增加统一 DATA catalog 只读消费入口：普通 Chat/MCP/CLI 可用 `list_data_catalog` / `get_ready_data_source` 发现并取得 DATA 标记 `READY` 的 FILE/DATABASE/API/STREAM 入口；非 READY 显式拒绝，不扫描数据根、不自动 fallback、不重新认证数据正确性。锁定 QM50 规格会话继续不获得这两个通用工具。现有业务模块中仍有历史硬编码数据路径，后续按功能逐个迁移，不在本次统一入口提交中顺手切换。
+CODE 已增加统一 DATA catalog 只读消费入口：普通 Chat/MCP/CLI 可用 `list_data_catalog` / `get_ready_data_source` 发现并取得 DATA 标记 `READY` 的 FILE/DATABASE/API/STREAM 入口；非 READY 显式拒绝，不扫描数据根、不自动 fallback、不重新认证数据正确性。锁定 QM50 规格会话继续不获得这两个通用工具。
+
+2026-09-23 晚再次按 DATA 当前交付核对：清单共48项，`READY=29`（23 FILE + 6 API）、`REVIEW_REQUIRED=4`、`NOT_READY=13`、`DEPRECATED=2`。23个READY文件入口均实际存在；CODE已把核心raw/qfq Provider接到DATA维护的`dataset_registry.json`，正式qfq读取v2并执行每证券`valid_from`/实际文件首日边界，不回退旧qfq或raw补齐。6个READY研究API通过DATA原样提供的`ResearchDataProvider`接入普通Chat/MCP和`niuniu-research-data`。17类新增公开来源FILE目前由catalog统一发现，后续产品功能按业务需要逐项消费，不新增任意路径/任意Parquet模型查询能力。
+
+四个`REVIEW_REQUIRED`现在全部在CODE侧执行真实gate：`stock_fund_flow_daily`不进入正式工具；`realtime_quote`不触发Chat自动预取；`fuyao_context`不注册扶摇聚合工具；`market_snapshot`令provider readiness保持BLOCKED，并阻断live CLI与Daily Orchestrator联网capture。旧实现/凭证存在不再等价于DATA已交付。真实smoke已确认qfq从v2读取、早于`valid_from`阻断，当前工具面只暴露6个READY研究API。
 
 本轮证据保存于 `artifacts/functional-lifecycle-20260921/`；独立只读复核未发现本轮4个产品文件的权限、版本或接线缺陷（不等于全仓正确性证明）。跨层测试以脚本化Provider驱动正式接口，只证明工程链路，不冒充真实模型自主研究。只触及功能代码、测试和文档，不改TDX、正式数据、部署或用户授权。
 

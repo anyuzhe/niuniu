@@ -4,7 +4,7 @@
 
 本文件是 **DATA → CODE 的唯一日常数据交接入口**。DATA 负责数据本身；CODE 只负责使用 DATA 已交付的数据。
 
-最近一次 DATA 审查：2026-09-23（数据侧整改分支 `data-remediation`）。机器可读的同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §14](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
+最近一次 DATA 审查：2026-09-23 晚（数据侧整改分支 `data-remediation`，第 3 批：新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §14](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
 
 ## 1. 责任边界
 
@@ -12,60 +12,152 @@
 
 **CODE 不负责：** 判断哪家供应商正确、重新裁决公司行动、比较多个来源选赢家、重算 factor/qfq 验证 DATA、重新认证 PIT、替 DATA 判断数据是否完整。CODE 不遍历数据根寻找“最新”或备用数据。
 
-**CODE 只负责：** 根据本文件给出的绝对路径读取 `READY` 数据并实现产品功能。如果路径不存在、权限不足、文件损坏到无法解析或格式与 reader 不兼容，应明确报技术错误；不能自动换其它来源或自行修数据。
+**CODE 只负责：** 按本表给出的路径或接口读取 `READY` 数据并实现产品功能。如果路径不存在、权限不足、文件损坏到无法解析、接口调用失败或格式与 reader 不兼容，应明确报技术错误；不能自动换其它来源或自行修数据。
 
-## 2. 状态定义
+### 1.1 外部数据接口也归 DATA
+
+判断标准只有一条：**一个外部接口的主要用途是给牛牛提供市场、证券、公司、宏观等数据，就归 DATA 维护。** 腾讯/新浪/东财行情、东财板块和龙虎榜、Baostock、TDX、巨潮、同花顺、扶摇都属于这一类。
+
+```text
+外部供应商 API → DATA Provider / Gateway → 统一内部数据接口 → CODE
+```
+
+DATA 负责接口地址与参数、字段映射、密钥或登录方式、限频/重试/超时、来源优先级与切换、是否允许 fallback、单位和精度、schema 变化、返回数据的正确性和实时性。CODE 只调用 DATA 在本表公布的接口，**不直接绑定任何第三方数据供应商 API**；背后用的是哪家，CODE 不关心。
+
+不属于数据源的外部接口不归 DATA：大模型 API、邮件与通知、支付、券商账户与下单等产品功能接口，由 CODE 维护。
+
+## 2. 状态与交付方式
+
+状态：
 
 - `READY`：DATA 已确认该数据可供 CODE 按本表说明使用；数据正确性和适用范围由 DATA 负责。
 - `NOT_READY`：DATA 明确尚不可供 CODE 使用；对应产品能力应保持未就绪/blocked。
-- `REVIEW_REQUIRED`：当前已发现数据或路径，但 DATA 尚未完成本清单审查；**等同于不可供 CODE 正式使用**。
+- `REVIEW_REQUIRED`：当前已发现数据、路径或接口，但 DATA 尚未完成审查；**等同于不可供 CODE 正式使用**。
 - `DEPRECATED`：DATA 已停止该数据；CODE 应迁移到 DATA 指定的替代项，不自行选择替代路径。
+
+交付方式：
+
+- `FILE`：数据根里的文件或目录，按“地址”一列的绝对路径读取。
+- `DATABASE`：数据库里的表或视图，“地址”写库文件和表/视图名。
+- `API`：DATA 维护的 Python Provider 或服务接口，“地址”写入口（模块与类/函数），CODE 只通过它调用。
+- `STREAM`：DATA 提供的实时推送流。目前没有。
 
 `READY` 只表示“可按本表说明使用”，**不等于 Strict PIT**。每项的资格写在“覆盖 / 用途”一列；除非明确写出 Strict PIT，一律是 `research_only` 或回顾性参考。
 
 ## 3. 可供 CODE 使用的数据（READY）
 
-| 数据 ID | 数据内容 | 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
-|---|---|---|---|---|---|---|
-| `bars_daily_baostock_raw` | Baostock 日K，不复权 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/stock_kline_daily` | 每只证券一个 `<sh_600000>.parquet`；列 `date, code, open, high, low, close, volume, amount, adjustflag(=3), fetch_ts`；主键 `(code, date)` | 5,222 只在市 A 股（2026-09-23 参考快照 `type=1, status=1`），1990-12-19 至 **2026-09-22**，约 1,714 万行，单一 schema、0 重复。research_only | `READY` | 直接读取。是否可交易必须连接 `security_status_baostock_v2`，不能把“有K线行”当作可交易 |
-| `bars_min5_baostock_raw` | Baostock 5分钟，不复权 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/stock_kline_min5` | 每只证券一个 parquet；列同日K另加 `time`（`YYYYMMDDHHMMSSmmm`）；主键 `(code, date, time)`；交易日每只 48 根 | 5,222 只，**2020-01-02**（供应商下限）至 2026-09-22，约 3.63 亿行。research_only | `READY` | 直接读取；2020 年前没有 5 分钟数据，不要从日K推算 |
-| `security_status_baostock_v2` | 日状态：交易/停牌、ST | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/daily_status_v2` | 每只证券一个 parquet；列 `date, code, tradestatus, isST`；`tradestatus=0` 为停牌（保留，不删行）；主键 `(code, date)` | 5,222 只，1990-12-19 至 2026-09-22，约 1,714 万行。供应商回顾性状态，**不是 Strict PIT** | `READY` | 用于停牌/ST 判断与研究过滤；需要 Strict PIT 时用 `strict_pit_security_status_f26`（未就绪） |
-| `reference_snapshot_baostock_20260923` | 2026-09-23 参考快照：交易日历、证券基础信息、行业、全市场列表、上证50/沪深300/中证500成分 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/reference_snapshots/snapshot=2026-09-23` | 7 个 parquet（`trade_calendar, stock_basic, industry, all_stock, sz50, hs300, zz500`）+ `manifest.json`（逐文件 SHA256） | 观察日 2026-09-23；在市 A 股 5,222 只；交易日历至 2026-09-23。行业与成分是**观察日当时的快照，不能回填历史**。retrospective_reference | `READY` | 按本表写明的这一个快照日期读取；DATA 发布新快照时会在这里改日期，CODE 不自行找“最新快照” |
-| `capture_root` | 捕获包根目录：回溯日线、DailyMarket、公开证据（涨跌停池、龙虎榜、板块、人气）、前瞻参考、Baostock 导入 | `/Volumes/Lexar/niuniu-data/lake/_market_data` | 各子目录格式不变（`retro_daily/<capture_id>/`、`daily_market/<日期>/`、`public_evidence/<来源>/<日期>/` 等），根目录有 `CAPTURE_ROOT.json` | 2026-09-23 从 `artifacts/_market_data` 复制迁入（1,800 文件逐一核 SHA）；工作空间经 `artifacts/_market_data.redirect.json` 指向这里。research_only | `READY` | 继续通过产品已有的 `capture_root()`/各 Store 读取；不要直接读 `artifacts/_market_data`（已冻结，只为历史路径保留） |
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `bars_daily_baostock_raw` | FILE | Baostock 日K，不复权 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/stock_kline_daily` | 每只证券一个 `<sh_600000>.parquet`；列 `date, code, open, high, low, close, volume, amount, adjustflag(=3), fetch_ts`；主键 `(code, date)` | 5,222 只在市 A 股（2026-09-23 参考快照 `type=1, status=1`），1990-12-19 至 **2026-09-22**，约 1,714 万行，单一 schema、0 重复。research_only | `READY` | 直接读取。是否可交易必须连接 `security_status_baostock_v2`，不能把“有K线行”当作可交易 |
+| `bars_min5_baostock_raw` | FILE | Baostock 5分钟，不复权 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/stock_kline_min5` | 每只证券一个 parquet；列同日K另加 `time`（`YYYYMMDDHHMMSSmmm`）；主键 `(code, date, time)`；交易日每只 48 根 | 5,222 只，**2020-01-02**（供应商下限）至 2026-09-22，约 3.63 亿行。research_only | `READY` | 直接读取；2020 年前没有 5 分钟数据，不要从日K推算 |
+| `security_status_baostock_v2` | FILE | 日状态：交易/停牌、ST | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/daily_status_v2` | 每只证券一个 parquet；列 `date, code, tradestatus, isST`；`tradestatus=0` 为停牌（保留，不删行）；主键 `(code, date)` | 5,222 只，1990-12-19 至 2026-09-22，约 1,714 万行。供应商回顾性状态，**不是 Strict PIT** | `READY` | 用于停牌/ST 判断与研究过滤；需要 Strict PIT 时用 `strict_pit_security_status_f26`（未就绪） |
+| `reference_snapshot_baostock_20260923` | FILE | 2026-09-23 参考快照：交易日历、证券基础信息、行业、全市场列表、上证50/沪深300/中证500成分 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/reference_snapshots/snapshot=2026-09-23` | 7 个 parquet（`trade_calendar, stock_basic, industry, all_stock, sz50, hs300, zz500`）+ `manifest.json`（逐文件 SHA256） | 观察日 2026-09-23；在市 A 股 5,222 只；交易日历至 2026-09-23。行业与成分是**观察日当时的快照，不能回填历史**。retrospective_reference | `READY` | 按本表写明的这一个快照日期读取；DATA 发布新快照时会在这里改日期，CODE 不自行找“最新快照” |
+| `qfq_published_f24` | FILE | 前复权日线与 5 分钟（正式发布） | 日线 `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_daily_v2`；5 分钟 `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_min5_v2` | 每只证券一个 parquet，列与旧 qfq 相同：`date(date32), code, open, high, low, close, volume, amount, factor`（5 分钟另有 `time`）；价格 = 原始价 × factor，最后一根 factor=1；volume/amount 为原始值 | 5,222 只至 2026-09-22；5 分钟 2020-01-02 起。除权事件须至少两个独立来源一致才采用（共 54,712 个），无法确认的事件不猜：452 只股票只从最后一个未确认事件日起提供，每只的起点见日线目录下 `_meta/coverage.parquet`。research_only | `READY` | 直接读取。请求早于该股 `valid_from` 的日期时报“DATA 未提供该段 qfq”，不要改读旧 qfq 或自己用原始价补 |
+| `capture_root` | FILE | 捕获包根目录：回溯日线、DailyMarket、公开证据（涨跌停池、龙虎榜、板块、人气）、前瞻参考、Baostock 导入 | `/Volumes/Lexar/niuniu-data/lake/_market_data` | 各子目录格式不变（`retro_daily/<capture_id>/`、`daily_market/<日期>/`、`public_evidence/<来源>/<日期>/` 等），根目录有 `CAPTURE_ROOT.json` | 2026-09-23 从 `artifacts/_market_data` 复制迁入（1,800 文件逐一核 SHA）；工作空间经 `artifacts/_market_data.redirect.json` 指向这里。research_only | `READY` | 继续通过产品已有的 `capture_root()`/各 Store 读取；不要直接读 `artifacts/_market_data`（已冻结，只为历史路径保留） |
 
-## 4. 尚不可用或只供 DATA 内部使用
+### 3.1 公开来源数据（按日分区，2026-09-23 首采）
 
-| 数据 ID | 数据内容 | 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
-|---|---|---|---|---|---|---|
-| `qfq_daily_existing` | 旧前复权日线（旧 MQC 构建） | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_daily` | 每只证券一个 parquet；`date, code, open, high, low, close, volume, amount, factor` | 截止 **2026-09-04**（比原始日K落后 12 个交易日）；来源为东财旧分红，构建脚本不在仓库、不可复现；漏掉早年配股和部分特别分红 | `DEPRECATED` | 替代项为 `qfq_published_f24`。在它 `READY` 之前，现有产品默认 qfq 仍读此目录，但只作过渡，不得作为新功能的正式输入 |
-| `qfq_min5_existing` | 旧前复权 5 分钟 | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_min5` | 同上加 `time` | 截止 2026-09-04；问题同上 | `DEPRECATED` | 同上 |
-| `qfq_daily_v2` | qfq 重建候选（F23） | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_daily_v2` | 列同旧 qfq；`factor` 以最后一根为 1 | 5,222 只至 2026-09-22；54,712 个事件经双源确认；4,588 只与旧版逐日一致；452 只存在无法双源确认的事件，只从最后一个未确认事件日起给出历史 | `NOT_READY` | 不读取。DATA 审完差异报告、确定单源事件处理规则后，以 `qfq_published_f24` 发布 |
-| `qfq_min5_v2` | qfq 5 分钟重建候选（F23） | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_min5_v2` | 同上加 `time` | 构建中 | `NOT_READY` | 不读取 |
-| `adjustment_factors_v2` | 逐事件复权因子与来源裁决记录 | `/Volumes/Lexar/niuniu-data/lake/silver/adjustment_factors_v2` | 每只证券一个 parquet；每行一个除权日：现金/送股/转增/配股、来源组合、`factor`、`status`（accepted/blocked/ignored）、`blockers` | F23 内部产物 | `NOT_READY` | 不读取；它是 DATA 的审计记录，不是产品接口 |
-| `corporate_actions_allotment_cninfo_v2` | 巨潮配股（原始） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=cninfo/corporate_actions_allotment_v2` | 供应商全列，文件间列签名不统一 | 644 只（TDX 历史配股 ∩ 在市）；2026-09-23 已每日再观察 | `NOT_READY` | DATA 内部治理输入，不对 CODE 发布；CODE 需要公司行动时使用 `company_action_decisions_f22` |
-| `corporate_actions_dividend_ths_v2` | 同花顺分红（原始） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/corporate_actions_dividend_v2` | 供应商全列，含方案原文 | 5,222 只 | `NOT_READY` | 同上 |
-| `corporate_actions_dividend_baostock_v2` | Baostock 分红（原始） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/corporate_actions_dividend_v2` | 供应商全列，保留 83 条供应商重复 | 5,222 只，2004 年起 | `NOT_READY` | 同上 |
-| `tdx_capital_changes` | TDX 股本变动/除权除息（原始） | 通过 `/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb` 视图 `tdx_capital_changes` 读取（`lake/bronze/provider=tdx/capital_changes` 只剩 schema，页数据在 `catalog/tdx_page_archive.sqlite3`） | 每行一条供应商记录，字段在 `record_json` | 个人研究采集，`vendor_observation_personal_research_not_pit` | `NOT_READY` | 同上 |
-| `auction_tdx_raw` | TDX 集合竞价（原始） | 通过 `catalog/mqc.duckdb` 视图 `tdx_auction` 读取 | 同一事件多个观察版本，单位未统一 | 沪深采集调度下界 2025-07-22；未治理 | `NOT_READY` | F25 之前不作为 Auction 输入 |
-| `company_action_decisions_f22` | 最终公司行动决策数据 | **由 DATA 填写** | 由 DATA 定义 | F23 输入 | `NOT_READY` | 仅变为 `READY` 后读取 |
-| `qfq_published_f24` | 正式发布的 qfq（日线、5分钟） | **由 DATA 填写**（预计为 `qfq_kline_daily_v2` / `qfq_kline_min5_v2` 审定后的路径） | 由 DATA 定义 | 正式研究/回测输入 | `NOT_READY` | 仅变为 `READY` 后读取 |
-| `auction_governed_f25` | 统一版本/单位后的 Auction | **由 DATA 填写** | 由 DATA 定义 | Auction 产品/研究输入 | `NOT_READY` | 仅变为 `READY` 后读取 |
-| `strict_pit_universe_f26` | Strict PIT Universe | **由 DATA 填写** | 由 DATA 定义 | 严格历史资格 | `NOT_READY` | 仅变为 `READY` 后读取 |
-| `strict_pit_security_status_f26` | Strict PIT Security Status | **由 DATA 填写** | 由 DATA 定义 | ST/停牌/上市状态 | `NOT_READY` | 仅变为 `READY` 后读取 |
-| `strict_pit_market_rules_f26` | Strict PIT Market Rules | **由 DATA 填写** | 由 DATA 定义 | 涨跌停/特殊制度等 | `NOT_READY` | 仅变为 `READY` 后读取 |
+下面 17 项来自东财、同花顺、巨潮、交易所、中证指数、申万的公开网页接口，都是 **research_only**，不是 Strict PIT。统一约定：
+
+- 每项是一个目录，目录下每个分区一个 `YYYY-MM-DD.parquet`。“按交易日”“按公告日”分区的文件名是业务日期；“当天观察”的文件名是观察日，内容是那一天供应商给出的当前状态。
+- `_empty/YYYY-MM-DD.json` 表示 DATA 已确认该分区供应商没有数据；分区既没有 parquet 也没有 `_empty` 标记，表示 DATA 还没采，不能当作“没有数据”。
+- 每个文件都有 `_observed_at`（UTC 采集时间）。有几项保留了供应商原样的列名（东财大写列名），表里已注明；CODE 在产品层自行重命名即可，不要改文件。
+- “当天观察”的数据**不能回补**：错过的日子就是没有，CODE 不要用相邻日期冒充。
+- 截止日期随每日采集推进，DATA 在这里更新。
+
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `limit_up_pool_ths` | FILE | 同花顺涨停池 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/limit_up_pool` | 按交易日；列 `date, code, name, price, pct, reason, board_type, seal_rate, break_times, seal_amount, high_days, first_limit_up_ts, last_limit_up_ts, is_again`，另有 `raw_json` | 2026-09-01 至 09-23，17 个交易日，1,011 行 | `READY` | 涨停原因、连板天数、封板时间研究；更早日期可回补（需 DATA 另行批准采集） |
+| `margin_detail_exchange` | FILE | 沪深交易所官方融资融券明细 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=exchange/margin_trading` | 按交易日；列 `date, code, name, exchange, margin_balance, margin_buy, short_balance, short_volume, short_sell_volume, source, source_url`；金额单位元、数量单位股 | 2026-09-01 至 09-22，16 个交易日，65,676 行。**T+1 发布**：某交易日的数据次日才有 | `READY` | 按 `date` 读；当天没有文件是正常的 |
+| `block_trades_em` | FILE | 大宗交易明细 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/block_trades` | 按交易日；东财原列名，主要列 `SECURITY_CODE, TRADE_DATE, DEAL_PRICE, DEAL_VOLUME, DEAL_AMT, PREMIUM_RATIO, BUYER_NAME, SELLER_NAME, CLOSE_PRICE` | 2026-09-01 至 09-23，2,158 行 | `READY` | 直接读取 |
+| `announcements_cninfo` | FILE | 巨潮全市场公告目录（标题、类型、PDF 地址） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=cninfo/announcements` | 按公告日（自然日）；列 `date, code, name, org_id, announcement_id, title, type, announcement_time_ms, adjunct_url, adjunct_type`，另有 `raw_json`；PDF 地址 = `https://static.cninfo.com.cn/` + `adjunct_url` | 2026-09-17 至 09-22，5,512 行；09-20 为确认空日。**当天分区当天不采**（晚间还会新增），次日补采 | `READY` | 只有目录，不含正文；单只股票的最新公告用 API `stock_announcements` |
+| `institution_survey_em` | FILE | 机构调研明细 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/institution_survey` | 按公告日；每行一家机构：`code, name, notice_date, survey_date, org_count, survey_way, place, receptionist, org_name, org_type, investigators` | 2026-09-01 至 09-23，22,394 行 | `READY` | 直接读取 |
+| `holder_trades_em` | FILE | 股东增减持 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/holder_trades` | 按公告日；`code, name, holder, direction, change_shares_10k, change_pct_total, change_pct_float, after_*, avg_price, channel, start_date, end_date, notice_date`；股数单位万股 | 2026-09-01 至 09-23，408 行，另有 3 个确认空日 | `READY` | 直接读取 |
+| `lockup_expiry_em` | FILE | 限售解禁 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/lockup_expiry` | 按解禁日；东财原列名，主要列 `SECURITY_CODE, FREE_DATE, FREE_SHARES_TYPE, CURRENT_FREE_SHARES, LIFT_MARKET_CAP, FREE_RATIO, TOTAL_RATIO` | 2026-09-02 至 12-22，559 行，另有 39 个确认空日。**观察日以后的分区是预告**，会随公告变化；DATA 的重采模式尚未做好，目前未来分区保持 2026-09-23 的观察，用 `_observed_at` 判断新旧 | `READY` | 未来日期只能当“计划解禁”，不能当已发生的事实 |
+| `earnings_forecast_em` | FILE | 业绩预告 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/earnings_forecast` | 当天观察；`code, name, notice_date, report_date, indicator, forecast_type, amount_lower, amount_upper, change_pct_lower, change_pct_upper, prior_year_amount, content, reason` | 2026-09-23 观察，报告期 2026-06-30 与 2026-09-30，5,030 行 | `READY` | 按 `notice_date` 判断披露时间 |
+| `holder_count_em` | FILE | 股东户数（每股最新一期） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/holder_count_latest` | 当天观察；东财原列名，主要列 `SECURITY_CODE, HOLDER_NUM, PRE_HOLDER_NUM, HOLDER_NUM_RATIO, END_DATE, HOLD_NOTICE_DATE, AVG_HOLD_NUM` | 2026-09-23 观察，5,564 只 | `READY` | 只有每只股票最近一期；历史各期不在这里 |
+| `share_buyback_em` | FILE | 股份回购 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/share_buyback` | 当天观察；`code, name, progress, plan_start, plan_end, price_cap, amount_lower, amount_upper, done_shares, done_amount, latest_notice, objective` | 2026-09-23 观察。**只有按最新公告排序的前 5,000 条**（供应商分页上限），更早的回购不在里面 | `READY` | 用于近期回购；不能据此断言“某股从未回购” |
+| `equity_pledge_em` | FILE | 股权质押比例 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/equity_pledge` | 当天观察；`date, code, name, industry, pledge_ratio_pct, pledged_shares_10k, pledged_mktcap_10k, pledge_count` | 2026-09-23 观察，2,212 只（只含有质押的股票） | `READY` | 不在表里 = 当日无质押记录 |
+| `ipo_calendar_em` | FILE | 新股申购与上市 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/ipo_calendar` | 当天观察；`code, name, apply_code, exchange, board, apply_date, ballot_date, listing_date, issue_price, issue_pe, win_rate_pct, first_close` | 2026-09-23 观察，最新 5,000 条 | `READY` | 直接读取 |
+| `index_weights_csindex` | FILE | 指数成分权重（沪深300、中证500、中证1000、上证50、科创50、中证A500、中证2000、创业板指） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=csindex/index_weights` | 当天观察；`date, index_code, code, name, exchange, weight_percent, source_url`；`date` 是指数公司权重文件的日期 | 2026-09-23 观察，4,500 行 | `READY` | 成分与权重以 `date` 为准；历史成分变更不在这里 |
+| `sw_industry_history` | FILE | 申万行业分类变更历史 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=swsresearch/industry_classification_history` | 当天观察的全量表；`code, start_date, industry_code, update_date, l1_code, l2_code` | 12,920 行，每行是一次行业归属的起点 | `READY` | 取某日行业：该股 `start_date <= 该日` 的最后一行 |
+| `monitor_pool_em` | FILE | 东财异动监控名单 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/monitor_pool` | 当天观察；`code, name, market, start, end, link, observed_date` | 2026-09-23 观察，16 只 | `READY` | 只能当天观察，不能回补 |
+| `price_anomaly_em` | FILE | 股价异常波动（交易所规则触发） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/price_anomaly_pool` | 当天观察；`code, name, change_pct, deviation, days, board, rule_code, rule, is_today, observed_date` | 2026-09-23 观察，11 只 | `READY` | 同上 |
+| `northbound_minute_ths` | FILE | 北向资金分钟净流入 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/northbound_minute` | 当天观察；`date, time, hgt_yi, sgt_yi`（沪股通/深股通，亿元） | 2026-09-23，262 个分钟点 | `READY` | 只能当天收盘后采，不能回补 |
+
+### 3.2 研究查询接口（API）
+
+入口统一是 `quantlab.data.research_provider.ResearchDataProvider`。这些是**按需实时查询**：每次调用直接问供应商，结果不落盘、不缓存，适合问答和研究上下文；不是正式 MarketSnapshot，不是 Strict PIT，也不授权交易。
+
+调用方式：
+
+```python
+from quantlab.data.research_provider import (
+    ResearchDataProvider, DataProviderError, InvalidRequest, ProviderNotConfigured)
+
+provider = ResearchDataProvider.from_env()   # 进程内建一个，复用
+result = provider.financial_statements("300750", statement="income", periods=4)
+result.status      # "ok" 或 "empty"（供应商正常回答、确实没有数据）
+result.rows        # tuple[dict]，各项字段见下表
+result.total       # 供应商报告的总条数（没有则为 None）
+result.truncated   # True 表示只返回了一部分
+result.fetched_at  # UTC 时间
+result.to_dict()   # 可直接 JSON 序列化
+```
+
+- 证券代码接受 `300750`、`SZ300750`、`300750.SZ`，只支持 A 股。
+- 出错一律抛异常，**不会用空结果冒充“没有数据”**：`InvalidRequest`（参数不对、代码不存在、交易所不支持）、`ProviderNotConfigured`（缺密钥）、`DataProviderError`（网络、HTTP、返回格式不对）。CODE 捕获后告诉用户“数据暂不可用”即可，**不要换别的来源重试**。
+- 接口内已做限频（东财每次至少间隔 1.5 秒，其他 1 秒，同一实例串行）。CODE 不要并发调用、不要循环扫全市场；批量需求请 DATA 做成文件数据。
+- 问财密钥由 DATA 配置在项目根目录 `.env`（`IWENCAI_API_KEY`、`IWENCAI_BASE_URL`，已被 git 忽略），启动脚本会自动载入。CODE 不读、不打印、不记录密钥。
+- 背后用哪家供应商由 DATA 决定，可能调整；CODE 只依赖方法名、参数和下表字段。
+
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `research_search` | API | 研报 / 新闻 / 公告语义搜索 | `ResearchDataProvider.research_search(query, channel="report"\|"news"\|"announcement", size=1..50)` | 每行 `channel, title, summary, url, publish_time, source, author, rating, score, doc_id`；`summary` 是正文节选 | 问财语义搜索（需密钥），按相关度排序，单次最多 50 条；研报行常没有 `publish_time` | `READY` | 用自然语言找资料；按 `score`、`publish_time` 决定展示 |
+| `stock_research_reports` | API | 单只股票的券商研报列表 | `ResearchDataProvider.stock_research_reports(code, limit=1..500)` | 每行 `publish_date, title, org, authors, rating, last_rating, eps_this_year, eps_next_year, eps_next_two_year, pe_this_year, industry, info_code, pdf_url` | 东财研报库，最新在前；`total` 为该股研报总数 | `READY` | 评级、盈利预测、研报 PDF 链接 |
+| `stock_news` | API | 单只股票相关新闻 | `ResearchDataProvider.stock_news(code, limit=1..100)` | 每行 `publish_time, title, snippet, media, url` | 东财资讯，**按代码关键词检索**，偶尔混入只是提到该代码的综合新闻 | `READY` | 展示前可按标题含股票名再过滤 |
+| `stock_announcements` | API | 单只股票公告 | `ResearchDataProvider.stock_announcements(code, start=None, end=None, limit=1..300)`，日期 `YYYY-MM-DD` | 每行 `publish_date, publish_time, title, announcement_id, pdf_url, detail_url`（北京时间） | 巨潮，最新在前，含当天刚发布的公告 | `READY` | 单股最新公告；全市场按日目录用文件 `announcements_cninfo` |
+| `financial_statements` | API | 三大报表 | `ResearchDataProvider.financial_statements(code, statement="income"\|"balance"\|"cashflow", periods=1..40)` | 长表，每行一个科目：`report_date, publish_date, statement, report_type, audited, currency, item_field, item_title, value, yoy`；金额单位元，`yoy` 为小数（0.05 = 5%） | 新浪财报，合并报表；`publish_date` 是披露日，研究时按它判断“当时能否知道” | `READY` | 按 `item_field`（稳定英文键）取科目，`item_title` 只用于展示 |
+| `investor_qa` | API | 投资者互动问答 | `ResearchDataProvider.investor_qa(code, limit=1..100)` | 每行 `ask_time, question, answer, answer_time, answerer, answered` | 巨潮互动易，**只支持深市公司**；沪市、北交所代码会抛 `InvalidRequest` | `READY` | 沪市公司提示“暂不支持” |
+| `stock_fund_flow_daily` | API | 个股日级资金流（按单笔大小） | `ResearchDataProvider.stock_fund_flow_daily(code, days=1..120)` | 每行 `date, main_net, small_net, mid_net, large_net, super_net`（元）、`*_pct`（%）、`close, pct_change`；当天一行在收盘前是盘中值 | 东财，最近 120 个交易日 | `REVIEW_REQUIRED` | 暂不使用：接口已写好，但 2026-09-23 晚间复测时东财该服务拒绝了测试出口的连接；DATA 复测通过后改为 `READY` |
+
+## 4. 尚不可用、待审查或只供 DATA 内部使用
+
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `qfq_daily_existing` | FILE | 旧前复权日线（旧 MQC 构建） | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_daily` | 每只证券一个 parquet；`date, code, open, high, low, close, volume, amount, factor` | 截止 **2026-09-04**（比原始日K落后 12 个交易日）；来源为东财旧分红，构建脚本不在仓库、不可复现；漏掉早年配股和部分特别分红 | `DEPRECATED` | 替代项为 `qfq_published_f24`（已 READY）。CODE 应把 qfq 读取路径改到替代项；旧目录保留只为历史复算 |
+| `qfq_min5_existing` | FILE | 旧前复权 5 分钟 | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_min5` | 同上加 `time` | 截止 2026-09-04；问题同上 | `DEPRECATED` | 同上 |
+| `adjustment_factors_v2` | FILE | 逐事件复权因子与来源裁决记录 | `/Volumes/Lexar/niuniu-data/lake/silver/adjustment_factors_v2` | 每只证券一个 parquet；每行一个除权日：现金/送股/转增/配股、来源组合、`factor`、`status`（accepted/blocked/ignored）、`blockers` | `qfq_published_f24` 的审计记录 | `NOT_READY` | 不读取；它是 DATA 的审计记录，不是产品接口 |
+| `corporate_actions_allotment_cninfo_v2` | FILE | 巨潮配股（原始） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=cninfo/corporate_actions_allotment_v2` | 供应商全列，文件间列签名不统一 | 644 只（TDX 历史配股 ∩ 在市） | `NOT_READY` | DATA 内部治理输入，不对 CODE 发布；CODE 需要公司行动时使用 `company_action_decisions_f22` |
+| `corporate_actions_dividend_ths_v2` | FILE | 同花顺分红（原始） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/corporate_actions_dividend_v2` | 供应商全列，含方案原文 | 5,222 只 | `NOT_READY` | 同上 |
+| `corporate_actions_dividend_baostock_v2` | FILE | Baostock 分红（原始） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/corporate_actions_dividend_v2` | 供应商全列，保留 83 条供应商重复 | 5,222 只，2004 年起 | `NOT_READY` | 同上 |
+| `tdx_capital_changes` | DATABASE | TDX 股本变动/除权除息（原始） | `/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb` 视图 `tdx_capital_changes` | 每行一条供应商记录，字段在 `record_json` | 个人研究采集，`vendor_observation_personal_research_not_pit` | `NOT_READY` | 同上 |
+| `tdx_archive` | DATABASE | TDX 其余 12 类原始数据（K线、逐笔、竞价、五档、财务、题材、涨停梯队等） | `/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb` 视图 `tdx_*` | 每行一条供应商记录；不同观察版本未合并 | 个人研究采集；全市场全历史未完成 | `NOT_READY` | DATA 内部输入 |
+| `auction_tdx_raw` | DATABASE | TDX 集合竞价（原始） | `/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb` 视图 `tdx_auction` | 同一事件多个观察版本，单位未统一 | 沪深采集调度下界 2025-07-22；未治理 | `NOT_READY` | F25 之前不作为 Auction 输入 |
+| `realtime_quote` | API | 个股实时报价（问答用） | `quantlab.agent.live_stock_quote.LiveStockQuoteService`，背后是 `quantlab.trading.fuyao_market_snapshot.build_live_quote_provider`（扶摇为主）与 `quantlab.trading.public_web_market_snapshot.PublicWebConsensusProvider`（腾讯/东财/新浪共识） | 单次有界查询，不持久化；返回价格、时间、来源一致性（冲突保留 `PARTIAL`） | 仅问答临时报价；不是正式 MarketSnapshot，不授权交易。现有实现可用，DATA 尚未完成接口审查 | `REVIEW_REQUIRED` | 产品现有问答入口继续调用这一个服务；不要在别处直接请求腾讯/东财/新浪/扶摇 |
+| `market_snapshot` | API | 正式盘中 MarketSnapshot（Daily Orchestrator 各时段） | `quantlab.trading.market_snapshot_provider.MarketSnapshotProviderRegistry`（`public-web-consensus-v1` 与 `manual-import-v1`） | 按交易日 × 时段（AUCTION/R1/R2/R3）× 证券抓取，保留来源哈希 | 公开网页行情，无交易所级 SLA、非 Strict PIT。DATA 尚未完成接口审查 | `REVIEW_REQUIRED` | 通过 Registry 调用；不直接调用底层网页接口 |
+| `fuyao_context` | API | 扶摇个股/板块/短线/基本面聚合查询 | `quantlab.agent.fuyao_tools.FuyaoContextService`（MCP 客户端 `quantlab.agent.fuyao_mcp`） | 按调用返回；需宿主凭证 | 研究问答上下文；无凭证时不可用。DATA 尚未完成接口审查 | `REVIEW_REQUIRED` | 通过该服务调用 |
+| `company_action_decisions_f22` | FILE | 最终公司行动决策数据 | **由 DATA 填写** | 由 DATA 定义 | F23 输入 | `NOT_READY` | 仅变为 `READY` 后读取 |
+| `auction_governed_f25` | FILE | 统一版本/单位后的 Auction | **由 DATA 填写** | 由 DATA 定义 | Auction 产品/研究输入 | `NOT_READY` | 仅变为 `READY` 后读取 |
+| `strict_pit_universe_f26` | FILE | Strict PIT Universe | **由 DATA 填写** | 由 DATA 定义 | 严格历史资格 | `NOT_READY` | 仅变为 `READY` 后读取 |
+| `strict_pit_security_status_f26` | FILE | Strict PIT Security Status | **由 DATA 填写** | 由 DATA 定义 | ST/停牌/上市状态 | `NOT_READY` | 仅变为 `READY` 后读取 |
+| `strict_pit_market_rules_f26` | FILE | Strict PIT Market Rules | **由 DATA 填写** | 由 DATA 定义 | 涨跌停/特殊制度等 | `NOT_READY` | 仅变为 `READY` 后读取 |
+| `live_ticks` | STREAM | 实时逐笔/行情推送 | 无 | — | 未规划 | `NOT_READY` | 无 |
 
 旧的零散数据（东财 1 分钟 5 只、新浪/腾讯日K各 14 只、同花顺/巨潮/Baostock 分红的 v1 与试采目录、东财旧分红）已在注册表中标为 superseded 或 legacy，不对 CODE 发布，这里不再列出。
 
+采集侧的外部接口（Baostock、巨潮、同花顺、TDX、东财公开证据、`scripts/collect/public_sources.py` 用到的各公开网页接口，以及其中引用的 a-stock-data 代码）是 DATA 的内部实现，产出落到上面的文件或数据库，不作为 API 对 CODE 发布。对 CODE 发布的 API 只有第 3.2 节和本节列出的入口。
+
 ## 5. DATA 更新规则
 
-DATA 新增或修改可供 CODE 使用的数据时，只需要更新对应表项：数据 ID、内容、绝对路径、格式/粒度、覆盖范围、状态和必要使用说明。路径变更、版本替换、停用旧数据也在这里改；不要求 CODE 了解 DATA 内部采集脚本、bronze/silver 分层、证据目录或治理过程。
+DATA 新增或修改可供 CODE 使用的数据时，只需要更新对应表项：数据 ID、交付方式、内容、地址、格式/粒度、覆盖范围、状态和必要使用说明。路径或接口变更、版本替换、停用旧数据也在这里改；不要求 CODE 了解 DATA 内部采集脚本、bronze/silver 分层、证据目录或治理过程。
 
-如果同一种业务数据存在多个内部来源或多个历史版本，DATA 应在完成治理后只向 CODE 指定**当前应该使用的那一项**；CODE 不自行在多个目录中选择。需要保留历史版本时可以在 DATA 内部保留，但只有本表明确标为 `READY` 的路径属于 CODE 的正式数据接口。
+如果同一种业务数据存在多个内部来源或多个历史版本，DATA 应在完成治理后只向 CODE 指定**当前应该使用的那一项**；CODE 不自行在多个目录或接口中选择。需要保留历史版本时可以在 DATA 内部保留，但只有本表明确标为 `READY` 的项属于 CODE 的正式数据接口。
 
 每日增量采集会让 `READY` 数据的“覆盖”末端向后推进；DATA 在每次获批采集完成后更新本表的截止日期。
 
 ## 6. CODE 使用规则
 
-CODE 开发或运行前先查本表。需要的数据为 `READY` 时按指定路径读取；为 `NOT_READY` / `REVIEW_REQUIRED` / 未登记时，直接报告“数据侧尚未交付该数据”，不要扫描数据湖补找来源。
+CODE 开发或运行前先查本表。需要的数据为 `READY` 时按指定路径或接口读取；为 `NOT_READY` / `REVIEW_REQUIRED` / 未登记时，直接报告“数据侧尚未交付该数据”，不要扫描数据湖补找来源，也不要自己接一个供应商 API 顶上。
 
-CODE 可以为稳定读取实现 reader、缓存和产品层格式转换，但这些只属于消费逻辑；不能因此修改 DATA 状态，也不能把 reader 测试通过写成“数据已验证正确”。如果 CODE 发现实际文件与本表描述无法读取，应把问题反馈给 DATA，由 DATA 决定修数据、改路径还是更新本表。
+CODE 可以为稳定读取实现 reader、缓存和产品层格式转换，但这些只属于消费逻辑；不能因此修改 DATA 状态，也不能把 reader 测试通过写成“数据已验证正确”。如果 CODE 发现实际文件或接口与本表描述不符，应把问题反馈给 DATA，由 DATA 决定修数据、改路径还是更新本表。

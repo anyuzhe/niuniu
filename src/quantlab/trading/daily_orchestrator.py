@@ -53,8 +53,9 @@ def _snapshot_request(content):
 
 
 class DailyPlaybookOrchestrator:
-    def __init__(self,output,data_root,now_fn=None):
+    def __init__(self,output,data_root,now_fn=None,*,data_catalog_path=None):
         self.output=Path(output).resolve();self.data_root=Path(data_root).resolve()
+        self.data_catalog_path=data_catalog_path
         self.now_fn=now_fn or (lambda:datetime.now().astimezone())
         if not self.output.is_dir():raise DailyOrchestratorError('INVALID_WORKSPACE','产物目录不存在。')
         if not self.data_root.is_dir():raise DailyOrchestratorError('INVALID_DATA_ROOT','行情目录不存在。')
@@ -113,6 +114,12 @@ class DailyPlaybookOrchestrator:
                 raise DailyOrchestratorError('PIT_UNIVERSE_INVALID','目标交易日 PIT Universe snapshot 无效：'+str(exc)) from None
         if any(type(v) is not bool for v in (allow_daily_market_capture,allow_market_snapshot_capture,bridge_to_trading_desk)):
             raise DailyOrchestratorError('INVALID_ARGUMENT','capture/bridge 开关必须是布尔值。')
+        if allow_market_snapshot_capture:
+            from quantlab.data.dataset_catalog import DataCatalogError,get_ready_data_source
+            try:get_ready_data_source(self.data_catalog_path,dataset_id='market_snapshot')
+            except (DataCatalogError,OSError,TypeError,ValueError) as exc:
+                raise DailyOrchestratorError('MARKET_SNAPSHOT_DATA_NOT_READY',
+                    'DATA尚未把market_snapshot标记为READY：'+str(exc)[:240]) from None
         spec={'trading_day':trading_day,'as_of_session':as_of_session,'definition_id':definition_id,
             'target_streak':target_streak,'allow_daily_market_capture':allow_daily_market_capture,
             'allow_market_snapshot_capture':allow_market_snapshot_capture,
@@ -232,6 +239,10 @@ class DailyPlaybookOrchestrator:
     def _capture_live_snapshot(self,state,stage_name,frame,stamp):
         if not state.get('allow_market_snapshot_capture',False):return None
         stage=state[stage_name];capture=stage.setdefault('market_capture',{'attempts':0,'last_attempt_at':None,'last_error':None,'snapshot_id':None})
+        from quantlab.data.dataset_catalog import DataCatalogError,get_ready_data_source
+        try:get_ready_data_source(self.data_catalog_path,dataset_id='market_snapshot')
+        except (DataCatalogError,OSError,TypeError,ValueError) as exc:
+            capture['last_error']='DATA market_snapshot not READY: '+str(exc)[:240];return None
         last=capture.get('last_attempt_at')
         if last and stamp-datetime.fromisoformat(last).astimezone(TZ)<MARKET_CAPTURE_COOLDOWN:return None
         if capture['attempts']>=MAX_MARKET_CAPTURE_ATTEMPTS:return None

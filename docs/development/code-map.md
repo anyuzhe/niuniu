@@ -91,6 +91,7 @@
 | `niuniu-broker-shadow` | [quantlab.agent.broker_shadow_cli:main](../../src/quantlab/agent/broker_shadow_cli.py) |
 | `niuniu-real-trade-readiness` | [quantlab.agent.real_trade_readiness_cli:main](../../src/quantlab/agent/real_trade_readiness_cli.py) |
 | `niuniu-research-session-grant` | [quantlab.agent.research_session_grant_cli:main](../../src/quantlab/agent/research_session_grant_cli.py) |
+| `niuniu-research-data` | [quantlab.agent.research_data_cli:main](../../src/quantlab/agent/research_data_cli.py) |
 | `niuniu-paper-rebalance` | [quantlab.agent.paper_rebalance_cli:main](../../src/quantlab/agent/paper_rebalance_cli.py) |
 | `niuniu-paper-rebalance-outcome` | [quantlab.agent.paper_rebalance_outcome_cli:main](../../src/quantlab/agent/paper_rebalance_outcome_cli.py) |
 
