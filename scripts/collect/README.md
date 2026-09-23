@@ -35,6 +35,24 @@
 | `daily_plan.py` | 每日只读计划包，参考快照先行、其余计划随后 | 各计划分别批准，不能一键自动采集 |
 | `status_incremental.py` | Baostock交易/ST状态缺整只和尾部增量 | 状态表单独更新，历史内部洞仅报告 |
 | `corporate_actions_daily.py` | 同花顺/巨潮/Baostock分红每日再观察 | 内容SHA比较，变更备份、逐证券回执 |
+| `inventory.py` | 只读盘点数据根：文件、行数、列签名、日期范围、指纹 | 报告必须写在数据根外；`--deep-hash` 才算内容 SHA |
+| `registry.py` | 数据集注册表 draft/verify/apply 与 `reg_*` 视图计划 | 写入须带草稿或视图计划的完整 SHA |
+
+## 数据根与注册表
+
+- **数据根**：所有脚本经 `paths.py` 取数据根。设置 `NIUNIU_DATA_ROOT`（绝对路径）可改到隔离目录；不设时使用历史路径 `/Volumes/Lexar/niuniu-data`。脚本里不再写死数据根，测试会检查这一点。
+- **全量公司行动采集必须显式 `--dest`**：`ths_dividend.py` 与 `cninfo_allotment.py` 不再默认指向已被替代的 v1 目录。当前目录以注册表为准（同花顺 `corporate_actions_dividend_v2`、巨潮 `corporate_actions_allotment_v2`）。
+- **注册表**：`catalog/dataset_registry.json` 声明每个逻辑数据集的当前目录，映射清单是人工审阅的 `registry_spec.json`。更新流程：
+
+```bash
+python3 scripts/collect/registry.py draft --out <数据根外>/registry-draft.json   # 只读，打印草稿 SHA
+python3 scripts/collect/registry.py apply --draft <草稿> --approve-sha256 <草稿SHA>
+python3 scripts/collect/registry.py verify                                      # 只读，报告目录漂移
+python3 scripts/collect/registry.py views                                       # 只读，打印 reg_* 视图计划 SHA
+python3 scripts/collect/registry.py views --apply --approve-sha256 <计划SHA>   # 写 catalog，需先确认无其他进程在用
+```
+
+草稿之后目录若有变化，apply 会拒绝，需要重新 draft。旧注册表先复制到 `catalog/registry_history/` 再替换。`views` 只创建或替换 `reg_` 前缀视图，不碰表和其他视图。
 
 ## 采集信封（`envelope.py`）
 

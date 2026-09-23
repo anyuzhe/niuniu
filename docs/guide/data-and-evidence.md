@@ -261,3 +261,22 @@ v2 保留固定交易日历中的完整证券×session网格以及原始raw/type
 人工批准仍冻结实际normalized parquet。对v2，冻结后的 `DataSnapshot.snapshot_id` 额外绑定冻结parquet SHA、原source snapshot id和 `preserve_suspension_state_v2`；文件证据同时保留 `input_contract`。因此原数据包/来源在批准后离线仍可从冻结字节运行和复算，但不能把相同请求的v1/v2或不同冻结字节视为同一snapshot。v1没有contract字段时沿用原snapshot算法，不做无关身份迁移。
 
 F9 v2仍然只是 `research_only/raw/1d` 的有限归档输入合同，不证明历史停牌状态官方完整、价格正确、Strict PIT、可交易性或全市场覆盖，也不改变权限、采集、正式数据或自动交易边界。
+
+## 14. 数据集注册表（整改阶段1）
+
+`catalog/dataset_registry.json` 声明每个逻辑数据集当前使用哪个物理目录，以及它替代了哪些旧目录；旧目录一律原地保留。读取入口是 [dataset_registry.py](../../src/quantlab/data/dataset_registry.py) 的 `resolve(data_root, name, legacy_default=...)`。
+
+| 状态 | 含义 |
+|---|---|
+| `current` | 该逻辑数据集的当前目录；`resolve` 只返回这一种 |
+| `superseded` | 已被新版本替代，保留供追溯；`resolve` 拒绝 |
+| `legacy` | 没有维护中的采集器的遗留数据；`resolve` 拒绝 |
+| `quarantine` | 已知有问题、隔离待处理；`resolve` 拒绝 |
+
+- 注册表不存在时，`resolve` 返回调用方给的原默认路径（`source=legacy_default`），行为与整改前一致。
+- 注册表存在即为权威：格式错误、未知字段、路径越出数据根或经过符号链接、current 目录缺失、名称未注册或不是 current，全部报错，不回退。
+- `listing_fingerprint` 是草稿时的“路径+大小+mtime”摘要，只用于发现目录变化；之后获批采集造成的漂移是预期的，由 `registry.py verify` 报告，不阻断读取。`content_manifest_sha256` 才固定字节，目前为空，由需要固定输入的阶段（如 qfq 重建）填写。
+- 注册表不改变任何数据资格：`research_only` 仍是 `research_only`，TDX 仍是 `vendor_observation_personal_research_not_pit`。
+- 可选 `version_ledger` 字段只引用 F21 观察/修订账本及其 SHA；注册表不判断事件修订，F21 也不决定当前目录。
+
+维护命令见 [采集脚本说明](../../scripts/collect/README.md)。截至 2026-09-23，产品各读取模块仍使用原写死的相对路径，按数据集分批切换到 `resolve`。

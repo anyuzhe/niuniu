@@ -9,8 +9,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
-DATA_ROOT = Path("/Volumes/Lexar/niuniu-data")
-LAKE = DATA_ROOT / "lake" / "bronze"
+from collect.paths import DATA_ROOT, LAKE  # noqa: E402  single data-root source
 CALENDAR = LAKE / "provider=baostock" / "trade_calendar" / "calendar.parquet"
 STOCK_BASIC = LAKE / "provider=baostock" / "stock_basic" / "stock_basic.parquet"
 

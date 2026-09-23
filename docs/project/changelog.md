@@ -1713,3 +1713,13 @@
 - `corporate_actions_daily.py`对同花顺与巨潮每日重新请求全供应商历史、对Baostock分红默认重查近3个报告年（可显式放宽至60），按全字段顺序无关且保留重复的摘要判断unchanged/new/updated/empty/failed。已存在事件不能被供应商临时空响应擦除；变化先备份旧字节和空marker再原子替换，逐证券观察时间、响应摘要及可续跑回执，未变化文件保持原SHA。Baostock超出回看窗口的早年修订仍为已知未覆盖；不在bronze自动裁决、去重或发布。
 - 只读真实扫描发现2026-09-22已完成参考快照的在市总体为**5,222**，较S4所用旧`stock_basic`多7只（均有9月IPO日期）。在新总体下，日K、5分钟及状态各有7只`full`待采，另13只状态证据支持`suspended_tail`；并没有补采或宣称新总体完成。2026-09-23当日参考快照尚未采集，`artifacts/data-collection-plans-20260923-daily/index.json`只给出`reference_required`及参考计划SHA `c1417216e991836b16a5d094c640fc0d94dcd486dcb9c4a02e2eab66becae230`，不联网。
 - 离线采集专项最终58项通过；文档链接检查与Git差异检查以提交前实跑为准。本批不做真实每日运行成功、历史修订检出率、PIT或客户端验收。仅提交`scripts/collect`、三份采集测试和相应文档；并行`src/quantlab`/version_ledger改动不纳入。普通push并核对远端SHA后记录实际状态。
+
+### 2026-09-23｜[数据侧整改 第一批] 阶段0只读盘点与阶段1数据集注册表
+
+- 按用户批准的《牛牛数据侧整改方案》（D1–D7 全部按建议采纳）开始第一批。工作在独立 git worktree `.worktrees/data-remediation`（分支 `data-remediation`）进行，未触碰另一会话中未提交的 F21 版本账本文件。
+- 阶段0：新增只读 `scripts/collect/inventory.py`，按数据集目录输出文件数、字节、Parquet 行数、列签名分组、页脚统计日期范围、空结果标记、回执与 listing fingerprint；`--deep-hash` 才计算逐文件内容清单。报告只能写在数据根外。真实盘点结果在 `artifacts/data-remediation-20260923/stage0-inventory.json`（分段运行后合并），0 个不可读文件。主要发现：silver qfq 日/5 分钟截止 2026-09-04 而 raw 截止 2026-09-22；巨潮配股 v2 有 67 种供应商列签名、同花顺 v2 有 4 种；`src/quantlab/data/dividends.py` 仍读仅 3 只证券的 Baostock 旧分红目录，`corporate_action_review.py` 仍读同花顺 v1 与东财旧分红；12 个 silver 目录中 9 个为空；`backups/` 约 30.8 GB。
+- 阶段1：新增 `src/quantlab/data/dataset_registry.py`（`catalog/dataset_registry.json` 的读取、校验与 `resolve`）。注册表缺失时保持调用方原默认路径；存在时即为权威，格式错误、未知字段、越出数据根、符号链接路径、current 目录缺失、未注册或非 current 名称均报错，不静默回退。listing fingerprint 漂移只由 `verify` 报告，不阻断 resolve；注册表不提升任何数据资格。可选 `version_ledger` 字段只引用 F21 账本，二者职责分开。
+- 新增 `scripts/collect/registry.py`（draft/verify/apply/views）与人工审阅的 `registry_spec.json`（25 个逻辑数据集：15 current、6 superseded、4 legacy）。apply 必须给出草稿完整 SHA，且草稿后目录未漂移；旧注册表先复制到 `catalog/registry_history/`。已在真实数据根安装注册表，SHA `98a227f94b3fbd409c143b84d31d8afaf888d5168e462c82d1bdaa23f1b1daa8`；产品代码暂未改为按注册表读取，行为不变。
+- `reg_*` catalog 视图生成器只 CREATE OR REPLACE `reg_` 前缀视图，拒绝与表同名，写前记录原 `reg_` 视图。14 个视图的 SQL 已在内存 DuckDB 中对真实数据逐一建视图并计数，行数与盘点一致；**尚未写入 `catalog/mqc.duckdb`**，需确认并行会话不在读取 catalog 后再按计划 SHA 应用。
+- 路径统一：新增 `scripts/collect/paths.py`，全部采集脚本经它取数据根（`NIUNIU_DATA_ROOT` 或历史默认路径），脚本中不再出现硬编码数据根。`ths_dividend.py`、`cninfo_allotment.py` 取消指向 v1 旧目录的默认 `--dest`，必须显式给出。偏离方案之处：未设环境变量时仍回退到历史路径而非报错，原因是每日脚本在导入时绑定路径常量且既有 58 项测试依赖此行为；强制显式数据根留待后续。
+- 测试：新增 `tests/test_collect_inventory.py` 5 项、`tests/test_dataset_registry.py` 12 项；与既有采集测试合计 75 项全部通过（Linux VM，Python 3.10，离线临时目录）。未运行全仓回归，因为本批未修改被其他产品模块导入的代码。

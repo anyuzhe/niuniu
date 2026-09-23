@@ -28,7 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collect import universe as uni
 from collect.envelope import Envelope, build_parser, main_guard, read_universe_file
 
-DEFAULT_DEST = '/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/corporate_actions_dividend'
+# No default destination: the old v1 directory (whitelisted columns) is superseded
+# and the current v2 directory must be named explicitly (remediation P5).
+DEFAULT_DEST = None
 SOURCE = 'akshare.stock_fhps_detail_ths'
 REQUIRED = ['报告期', '实施公告日', '分红方案说明', 'A股股权登记日', 'A股除权除息日', '方案进度']
 
