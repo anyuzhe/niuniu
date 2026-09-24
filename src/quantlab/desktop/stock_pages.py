@@ -1,6 +1,7 @@
 """个股报告 / 我的股票 pages."""
 from PyQt6 import sip
-from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLineEdit
+from PyQt6.QtCore import Qt, QStringListModel
+from PyQt6.QtWidgets import QComboBox, QCompleter, QDoubleSpinBox, QLineEdit
 
 from quantlab.trading.judgments import HORIZONS, SOURCES, STANCES, load_judgments, save_judgment
 from quantlab.trading.market_overview import latest_stocks
@@ -18,6 +19,35 @@ def _p(value, signed=True):
 
 def _alive(widget):
     return widget is not None and not sip.isdeleted(widget)
+
+
+class _SuggestionLineEdit(QLineEdit):
+    """Make popup selection deterministic even when the platform cannot grab keys."""
+    def keyPressEvent(self, event):
+        completer = self.completer()
+        popup = completer.popup() if completer is not None else None
+        if popup is not None and popup.isVisible() and event.key() in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+            if completer.completionCount():
+                row = popup.currentIndex().row()
+                delta = 1 if event.key() == Qt.Key.Key_Down else -1
+                completer.setCurrentRow((row + delta) % completer.completionCount())
+                popup.setCurrentIndex(completer.currentIndex())
+            event.accept()
+            return
+        if popup is not None and popup.isVisible() and event.key() == Qt.Key.Key_Escape:
+            popup.hide()
+            event.accept()
+            return
+        if popup is not None and popup.isVisible() and event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return):
+            if completer.completionCount():
+                row = popup.currentIndex().row()
+                if row < 0:
+                    row = 0
+                completer.setCurrentRow(row)
+                completer.activated.emit(completer.currentCompletion())
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 def stock_page(window):
@@ -205,9 +235,80 @@ def _add(window, text, status, weight=None, cost=None):
 
 def mine_page(window):
     box = window.page('我的股票', '我的自选和持仓每天怎么样：逐只状态、需要留意的事项，以及整体集中度。')
-    query = QLineEdit()
+    query = _SuggestionLineEdit()
     query.setPlaceholderText('代码或名称')
     query.setAccessibleName('添加股票')
+    completer = QCompleter(query)
+    completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+    completer.setFilterMode(Qt.MatchFlag.MatchContains)
+    completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+    query.setCompleter(completer)
+    suggestion_codes = {}
+
+    def update_suggestions(text):
+        # QCompleter may temporarily put the selected display string into the
+        # edit before emitting activated; preserve its label->code mapping.
+        if text in suggestion_codes:
+            return
+        try:
+            needle = (text or '').strip().casefold()
+            if not needle:
+                suggestion_codes.clear()
+                completer.setModel(QStringListModel([]))
+                completer.popup().hide()
+                return
+            _, frame = latest_stocks(window.output)
+            if frame is None:
+                raise ValueError('股票快照不可用')
+            records = frame.select(['code', 'name']).unique().to_dicts()
+            matches = []
+            for item in records:
+                code, name = str(item['code']), str(item['name'] or '')
+                folded_code, folded_name = code.casefold(), name.casefold()
+                if needle in folded_code or needle in folded_name:
+                    rank = (0 if folded_code.startswith(needle) else 1 if folded_name.startswith(needle) else 2,
+                            folded_name, folded_code)
+                    matches.append((rank, name, code))
+            matches.sort(key=lambda item: item[0])
+            suggestion_codes.clear()
+            labels = []
+            for _, name, code in matches[:12]:
+                display = f'{name}  {code}'
+                labels.append(display)
+                suggestion_codes[display] = code
+            completer.setModel(QStringListModel(labels))
+            # The model already contains the locally filtered candidates. Filtering it
+            # again by the typed prefix hides rows whose display includes name + code.
+            completer.setCompletionPrefix('')
+            if labels:
+                completer.complete()
+            else:
+                completer.popup().hide()
+        except Exception:
+            suggestion_codes.clear()
+            # Clear completion state as well as the model: Qt can leave an already
+            # opened popup visible after a model reset unless its active prefix is
+            # invalidated before explicitly closing it.
+            completer.setModel(QStringListModel([]))
+            completer.setCompletionPrefix('')
+            popup = completer.popup()
+            popup.hide()
+            popup.close()
+
+    query.textChanged.connect(update_suggestions)
+    def select_suggestion(text):
+        # Qt may insert the display label before activation and emit textChanged,
+        # rebuilding this mapping. Recover the code from the completer's current row.
+        code = suggestion_codes.get(text)
+        if code is None:
+            index = completer.currentIndex()
+            code = index.data() if index.isValid() else None
+            if code:
+                code = suggestion_codes.get(code)
+        if code:
+            query.setText(code)
+
+    completer.activated.connect(select_suggestion)
     weight = QDoubleSpinBox()
     weight.setRange(0, 100)
     weight.setSuffix(' % 仓位（可不填）')

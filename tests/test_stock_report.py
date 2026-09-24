@@ -109,6 +109,15 @@ class StockReportTests(unittest.TestCase):
     def test_my_stocks_add_inspect_remove(self):
         add_stock(self.f.out, '600001', weight=0.3, cost=10)
         add_stock(self.f.out, 'sz.000004', weight=0.2)
+        saved = {item['code']: item for item in load_my_stocks(self.f.out)}
+        self.assertEqual(saved['sh.600001']['weight'], 0.3)
+        self.assertEqual(saved['sh.600001']['cost'], 10)
+        with self.assertRaisesRegex(ValueError, '无效'):
+            add_stock(self.f.out, 'bad-code')
+        with self.assertRaisesRegex(ValueError, '成本价'):
+            add_stock(self.f.out, '600003', cost=0)
+        with self.assertRaisesRegex(ValueError, '仓位比例'):
+            add_stock(self.f.out, '600003', weight=1.1)
         with self.assertRaisesRegex(ValueError, '超过'):
             add_stock(self.f.out, '600002', weight=0.6)
         result = inspect_my_stocks(self.f.out, self.f.catalog)
@@ -119,6 +128,19 @@ class StockReportTests(unittest.TestCase):
         self.assertIn('丁股份', my_stocks_prompt(result))
         remove_stock(self.f.out, '600001')
         self.assertEqual([i['code'] for i in load_my_stocks(self.f.out)], ['sz.000004'])
+
+    def test_my_stocks_duplicate_update_and_capacity(self):
+        add_stock(self.f.out, '600001', weight=0.3, cost=10)
+        add_stock(self.f.out, 'sz.000004', weight=0.2)
+        add_stock(self.f.out, '600001', weight=0.25, cost=11)
+        saved = {item['code']: item for item in load_my_stocks(self.f.out)}
+        self.assertEqual(saved['sh.600001']['weight'], 0.25)
+        self.assertEqual(saved['sh.600001']['cost'], 11)
+        for index in range(48):
+            # Synthetic codes obey the existing six-digit Shanghai format.
+            add_stock(self.f.out, f'{index + 600100:06d}')
+        with self.assertRaisesRegex(ValueError, r'最多\s*50\s*只'):
+            add_stock(self.f.out, 'sh.600099')
 
 
 class EverydayProfileTests(unittest.TestCase):
@@ -189,6 +211,100 @@ class StockPagesDesktopTests(unittest.TestCase):
             QTest.qWait(20)
             if not window.callbacks:
                 break
+
+    def test_my_stocks_local_suggestions_keyboard_and_explicit_add(self):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QLineEdit, QPushButton
+        from quantlab.desktop.app import MainWindow
+        window = MainWindow(self.f.out)
+        window.data_catalog_path = self.f.catalog
+        window.show()
+        window.navigate_page('mine')
+        query = next(q for q in window.scroll.widget().findChildren(QLineEdit)
+                     if q.accessibleName() == '添加股票')
+        query.setFocus()
+        completer = query.completer()
+        query.setText('not-a-security')
+        self.assertFalse(completer.popup().isVisible())
+        query.setText('')
+        self.assertFalse(completer.popup().isVisible())
+        # QTest.keyClicks routes through Qt's ASCII-only key synthesizer; setting
+        # text exercises the real textChanged/completion path without that assert.
+        query.setText(' 丁 ')
+        QTest.qWait(100)
+        completer = query.completer()
+        self.assertTrue(completer.popup().isVisible())
+        self.assertEqual(completer.completionCount(), 1)
+        self.assertIn('丁股份', completer.currentCompletion())
+        QTest.keyClick(query, Qt.Key.Key_Down)
+        QTest.keyClick(query, Qt.Key.Key_Up)
+        QTest.keyClick(query, Qt.Key.Key_Down)
+        QTest.keyClick(query, Qt.Key.Key_Enter)
+        self.assertEqual(query.text(), 'sz.000004')
+        self.assertEqual(load_my_stocks(self.f.out), [])
+        add_button = next(b for b in window.scroll.widget().findChildren(QPushButton) if b.text() == '添加')
+        QTest.mouseClick(add_button, Qt.MouseButton.LeftButton)
+        self.assertEqual(load_my_stocks(self.f.out)[0]['code'], 'sz.000004')
+        window.close()
+
+    def test_suggestion_matching_sort_limit_mouse_escape_and_snapshot_error(self):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QLineEdit
+        from quantlab.desktop.app import MainWindow
+        from unittest.mock import patch
+        records = [{'code': f'sz.{i:06d}', 'name': f'Alpha{i:02d}'} for i in range(20)]
+        records += [{'code': 'sh.600321', 'name': '宁波银行'}, {'code': 'sz.000004', 'name': '丁股份'}]
+        frame = pl.DataFrame(records)
+        window = MainWindow(self.f.out)
+        window.data_catalog_path = self.f.catalog
+        window.show()
+        window.navigate_page('mine')
+        query = next(q for q in window.scroll.widget().findChildren(QLineEdit)
+                     if q.accessibleName() == '添加股票')
+        popup = query.completer().popup()
+        with patch('quantlab.desktop.stock_pages.latest_stocks', return_value=(None, frame)):
+            query.setText(' alpha ')
+            QTest.qWait(80)
+            self.assertEqual(query.completer().completionCount(), 12)
+            labels = [query.completer().completionModel().index(i, 0).data() for i in range(12)]
+            self.assertEqual(labels, sorted(labels, key=lambda x: x.casefold()))
+            query.setText('ALPHA0')
+            self.assertTrue(popup.isVisible())
+            query.setText('sh.600')
+            self.assertIn('sh.600321', query.completer().currentCompletion())
+            query.setText('321')
+            self.assertIn('sh.600321', query.completer().currentCompletion())
+            query.setText('股份')
+            self.assertIn('丁股份', query.completer().currentCompletion())
+            query.setText('alpha')
+            QTest.qWait(80)
+            index = query.completer().completionModel().index(0, 0)
+            popup.setCurrentIndex(index)
+            rect = popup.visualRect(index)
+            QTest.mouseClick(popup.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
+            self.assertEqual(query.text(), 'sz.000000')
+            self.assertEqual(load_my_stocks(self.f.out), [])
+            query.setText('alpha')
+            QTest.qWait(80)
+            QTest.keyClick(query, Qt.Key.Key_Escape)
+            self.assertFalse(popup.isVisible())
+            query.setText('alpha')
+            QTest.qWait(80)
+            query.clear()
+            self.assertFalse(popup.isVisible())
+            query.setText('alpha')
+            QTest.qWait(80)
+            query.setText('no-such-stock')
+            self.assertFalse(popup.isVisible())
+            query.setText('alpha')
+            QTest.qWait(80)
+        with patch('quantlab.desktop.stock_pages.latest_stocks', side_effect=RuntimeError('broken')):
+            query.setText('failure')
+            self.assertFalse(popup.isVisible())
+            self.assertEqual(query.completer().completionCount(), 0)
+        window.close()
 
     def test_report_page_my_stocks_and_ai_prefill(self):
         from PyQt6.QtWidgets import QLabel, QTableWidget
