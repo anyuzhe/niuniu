@@ -20,6 +20,11 @@ from quantlab.data.sector_intraday import niuniu_symbol
 
 TZ = ZoneInfo("Asia/Shanghai")
 SNAPSHOT_TIMES = ("09:25", "10:00", "11:30", "14:00", "14:57", "15:00")
+# A slot is taken 30 s after its time and only until the market has moved on, so a late capture never
+# carries the slot's label: the opening-auction result until continuous trading starts, the morning
+# close until the afternoon opens, the pre-close price until the closing auction ends.
+SNAPSHOT_DEADLINES = {"09:25": "09:30", "10:00": "10:05", "11:30": "13:00", "14:00": "14:05", "14:57": "15:00",
+                      "15:00": "15:20"}
 BATCH = 300
 SAMPLE = 200
 
@@ -99,4 +104,4 @@ def capture(client, symbols: list[str], *, public_loader=None, sleep=time.sleep,
     return rows, meta
 
 
-__all__ = ["SNAPSHOT_TIMES", "capture", "universe"]
+__all__ = ["SNAPSHOT_DEADLINES", "SNAPSHOT_TIMES", "capture", "universe"]

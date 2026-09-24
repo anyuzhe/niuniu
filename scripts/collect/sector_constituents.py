@@ -60,10 +60,18 @@ def run(data_root: Path, *, max_seconds: float, client=None, today: str | None =
     partial = base / "_partial" / f"{today}.jsonl"
     receipt_path = base / "_receipts" / f"{today}.json"
     done: dict[str, dict] = {}
+    skipped = 0
     if partial.is_file():
-        for line in partial.read_text(encoding="utf-8").splitlines():
-            row = json.loads(line)
-            done[row["board_code"]] = row
+        text = partial.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            try:
+                row = json.loads(line)
+                done[row["board_code"]] = row
+            except (ValueError, KeyError, TypeError):
+                skipped += 1  # cut short by a killed process or an unplugged disk: that board is fetched again
+        if text and not text.endswith("\n"):
+            with partial.open("a", encoding="utf-8") as sink:
+                sink.write("\n")  # new rows start on their own line
     catalog = []
     for kind, tag in TAGS.items():
         call = client.call("a-share-index", "get_a_share_index_catalog_ths_index_list", {"tag": tag})
@@ -74,12 +82,14 @@ def run(data_root: Path, *, max_seconds: float, client=None, today: str | None =
     if len(catalog) < 500:
         raise RuntimeError(f"board catalog looks incomplete: {len(catalog)} boards")
     start = time.monotonic()
+    timed_out = False
     partial.parent.mkdir(parents=True, exist_ok=True)
     with partial.open("a", encoding="utf-8") as sink:
         for code, name, kind in catalog:
             if code in done and done[code]["status"] in ("ok", "empty"):
                 continue
             if time.monotonic() - start > max_seconds:
+                timed_out = True
                 break
             observed = datetime.now(timezone.utc).isoformat()
             try:
@@ -100,7 +110,9 @@ def run(data_root: Path, *, max_seconds: float, client=None, today: str | None =
     for row in done.values():
         counts[row["status"]] = counts.get(row["status"], 0) + 1
     complete = all(code in done and done[code]["status"] in ("ok", "empty") for code, _, _ in catalog)
-    result = {"date": today, "boards": len(catalog), **counts, "complete": complete}
+    result = {"date": today, "boards": len(catalog), **counts, "complete": complete, "timed_out": timed_out}
+    if skipped:
+        result["skipped_partial_lines"] = skipped
     if complete:
         records = [{"board_code": r["board_code"], "board_name": r["board_name"], "board_type": r["board_type"],
                     "symbol": m["symbol"], "name": m["name"], "observed_at": r["observed_at"]}

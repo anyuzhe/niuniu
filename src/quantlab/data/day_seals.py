@@ -168,6 +168,16 @@ def manifest_path(data_root: Path, day: str) -> Path:
     return data_root / SEALS / f"{day}.json"
 
 
+def last_revision(data_root: Path, day: str) -> int:
+    """Highest revision ever written for ``day`` (``_history`` keeps every one, revoked ones too)."""
+    revisions = []
+    for path in (data_root / SEALS / "_history").glob(f"{day}.r*.json"):
+        suffix = path.name[len(day) + 2:-len(".json")]
+        if suffix.isdigit():
+            revisions.append(int(suffix))
+    return max(revisions, default=0)
+
+
 def load_manifest(data_root: Path, day: str) -> dict | None:
     path = manifest_path(data_root, day)
     if not path.is_file():
@@ -198,6 +208,7 @@ def plan(data_root: Path, day: str, *, trading_day: bool = True, today: str | No
     day = _check_date(day)
     today = today or datetime.now(TZ).date().isoformat()
     current = load_manifest(data_root, day)
+    base_revision = current["revision"] if current else last_revision(data_root, day)
     already = {e["dataset_id"] for e in current.get("entries", [])} if current else set()
     seal_now, pending, missing, sealed = [], [], [], []
     for dataset_id, (directory, _layout, kind, _src) in SEALABLE.items():
@@ -217,16 +228,18 @@ def plan(data_root: Path, day: str, *, trading_day: bool = True, today: str | No
             pending.append({"dataset_id": dataset_id, "reason": "次日发布，补采后再封存"})
         else:
             pending.append({"dataset_id": dataset_id, "reason": "还没采，可补采后再封存"})
-    return {"date": day, "revision": (current or {}).get("revision", 0) + (1 if seal_now else 0),
+    return {"date": day, "revision": base_revision + (1 if seal_now else 0),
             "seal_now": seal_now, "already_sealed": sealed, "pending": pending, "missing": missing}
 
 
 def seal(data_root: Path, day: str, *, trading_day: bool = True, log=print) -> dict:
     day = _check_date(day)
     preview = plan(data_root, day, trading_day=trading_day)
-    current = load_manifest(data_root, day) or {"format": FORMAT, "date": day, "revision": 0,
-                                                "created_at": _now(), "entries": []}
-    if not preview["seal_now"] and current.get("revision"):
+    existing = load_manifest(data_root, day)
+    # after a revoke the numbering continues, so _history never overwrites an earlier revision
+    current = existing or {"format": FORMAT, "date": day, "revision": last_revision(data_root, day),
+                           "created_at": _now(), "entries": []}
+    if not preview["seal_now"] and existing is not None:
         log(f"{day} 没有新的数据需要封存")
     stamp = _now()
     for item in preview["seal_now"]:
@@ -240,7 +253,7 @@ def seal(data_root: Path, day: str, *, trading_day: bool = True, log=print) -> d
                                    "observed_at": observed_at, "receipt": receipt, "sealed_at": stamp,
                                    "files": files})
         log(f"封存 {dataset_id}：{len(files)} 个文件，{sum(f['rows'] or 0 for f in files)} 行")
-    if preview["seal_now"] or not current.get("revision"):
+    if preview["seal_now"] or existing is None:
         current["revision"] = current.get("revision", 0) + 1
     current.update(updated_at=stamp, pending=preview["pending"], missing=preview["missing"],
                    not_in_scope=NOT_IN_SCOPE)
@@ -302,6 +315,9 @@ def revoke(data_root: Path, day: str, reason: str, *, log=print) -> dict:
               "moved_files": len(moved)}
     _atomic_json(dest / "manifest.json", manifest)
     _atomic_json(dest / "revocation.json", record)
+    check = data_root / SEALS / "_verify" / f"{day}.json"
+    if check.is_file():  # the result belongs to the revoked revision
+        os.replace(check, dest / "verify.json")
     os.replace(manifest_path(data_root, day), dest / "manifest.current.json")
     log(f"已撤销 {day} 的封存（第 {manifest['revision']} 版），{len(moved)} 个文件移到 {dest.relative_to(data_root)}")
     return record
@@ -346,5 +362,5 @@ def sealed_through(data_root: Path, dataset_id: str) -> str | None:
     return None
 
 
-__all__ = ["SEALABLE", "SealError", "day_files", "is_sealed", "is_sealed_path", "load_manifest", "plan", "recent",
-           "revoke", "seal", "sealed_through", "verify"]
+__all__ = ["SEALABLE", "SealError", "day_files", "is_sealed", "is_sealed_path", "last_revision", "load_manifest", "plan",
+           "recent", "revoke", "seal", "sealed_through", "verify"]

@@ -20,12 +20,14 @@ import hashlib
 import json
 import math
 import os
+import re
 import signal
 import subprocess
 import sys
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -122,6 +124,7 @@ class _Calendar:
     def __init__(self, data_root: Path):
         self.days: list[str] = []
         self.end = None
+        self.snapshot = None  # date of the reference snapshot the calendar was read from
         base = data_root / "lake/bronze/provider=baostock/reference_snapshots"
         try:
             snaps = sorted(p for p in base.glob("snapshot=*") if (p / "trade_calendar.parquet").is_file())
@@ -131,11 +134,16 @@ class _Calendar:
                 mask = cal["is_trading_day"].astype(str).isin({"1", "1.0", "True", "true"})
                 self.days = sorted(str(v)[:10] for v in cal.loc[mask, "calendar_date"])
                 self.end = max(str(v)[:10] for v in cal["calendar_date"])
+                self.snapshot = snaps[-1].name.split("=", 1)[1]
         except Exception:
             self.days = []
         if not self.days:
-            self.end = None
+            self.end = self.snapshot = None
         self._set = set(self.days)
+
+    def snapshot_covering(self, day: str) -> str | None:
+        """The snapshot whose trade calendar reaches ``day`` (collectors read that exact file)."""
+        return self.snapshot if self.end and day <= self.end else None
 
     def is_trading(self, day: str) -> tuple[bool, bool]:
         """(is_trading_day, inferred): beyond the calendar, weekdays are assumed trading."""
@@ -326,6 +334,26 @@ COLUMN_NOTES = {
 CODE_COLUMNS = ("code", "symbol", "SECURITY_CODE")
 
 
+def _preview_code(value) -> str:
+    """``600519`` / ``sh600519`` / ``sh.600519`` -> ``sh.600519``; anything else is rejected."""
+    match = re.fullmatch(r"(?:(sh|sz|bj)[._]?)?(\d{6})", str(value).strip().lower())
+    if not match:
+        raise InvalidRequest("code 应为 6 位代码，可带 sh/sz/bj 前缀，例如 600519 或 sz.300750")
+    exchange, code = match.groups()
+    if exchange is None:
+        # 920xxx and 4xxxxx/8xxxxx are Beijing; 6xxxxx and 900xxx B shares Shanghai; the rest Shenzhen
+        exchange = "bj" if code.startswith(("920", "4", "8")) else "sh" if code.startswith(("6", "9")) else "sz"
+    return f"{exchange}.{code}"
+
+
+def _inside(path: Path, base: Path) -> Path:
+    try:
+        path.resolve().relative_to(base.resolve())
+    except ValueError:
+        raise InvalidRequest("过滤条件指向数据集目录之外") from None
+    return path
+
+
 def _type_name(dtype) -> str:
     text = str(dtype)
     if "int" in text:
@@ -370,10 +398,17 @@ class DataPreviewService:
             raise InvalidRequest(f"{dataset_id} 由产品已有的 Store 读取，DATA 不提供逐文件预览")
         if not isinstance(limit, int) or not 1 <= limit <= self.MAX_LIMIT:
             raise InvalidRequest("limit 须为 1–200 的整数")
-        filters = dict(filters or {})
+        filters = {k: v for k, v in dict(filters or {}).items() if v not in (None, "")}
         unknown = set(filters) - {"code", "date"}
         if unknown:
             raise InvalidRequest(f"不支持的过滤条件：{sorted(unknown)}；允许 code、date")
+        if "date" in filters:
+            try:
+                filters["date"] = date.fromisoformat(str(filters["date"]).strip()).isoformat()
+            except ValueError:
+                raise InvalidRequest("date 格式应为 YYYY-MM-DD") from None
+        if "code" in filters:
+            filters["code"] = _preview_code(filters["code"])
         rel, kind, _ = layout
         base = self.data_root / rel
         if not base.is_dir():
@@ -381,10 +416,8 @@ class DataPreviewService:
         allowed = [{"name": "code", "type": "string", "example": "600519"},
                    {"name": "date", "type": "date", "example": "2026-09-24"}]
         if kind == "per_symbol":
-            code = str(filters.get("code") or "sh.600000").lower()
-            if "." not in code:
-                code = ("sh." if code.startswith(("6", "9")) else "bj." if code.startswith(("8", "4", "920")) else "sz.") + code
-            path = base / (code.replace(".", "_", 1) + ".parquet")
+            code = filters.get("code") or "sh.600000"
+            path = _inside(base / (code.replace(".", "_", 1) + ".parquet"), base)
             if not path.is_file():
                 raise InvalidRequest(f"{dataset_id} 没有 {code} 的文件")
             paths, code_filter = [path], None
@@ -406,9 +439,9 @@ class DataPreviewService:
                 latest, _ = _latest_partition(base, kind)
                 snap = base / f"snapshot={day or latest}"
                 paths = [snap / "stock_basic.parquet"]
-            paths = [p for p in paths if p.is_file()]
+            paths = [p for p in paths if _inside(p, base).is_file()]
             if not paths:
-                empty = base / "_empty" / f"{day}.json"
+                empty = _inside(base / "_empty" / f"{day}.json", base)
                 if empty.is_file():
                     return {"dataset_id": dataset_id, "columns": [], "rows": [], "total_rows": 0, "truncated": False,
                             "filters_allowed": allowed, "note": f"{day} 供应商确认无数据"}
@@ -419,14 +452,13 @@ class DataPreviewService:
             column = next((c for c in CODE_COLUMNS if c in frame.columns), None)
             if column is None:
                 raise InvalidRequest(f"{dataset_id} 没有证券代码列，不能按 code 过滤")
-            wanted = str(code_filter).lower().split(".")[-1]
+            wanted = code_filter.split(".")[-1]
             frame = frame[frame[column].astype(str).str.lower().str[-6:] == wanted]
         if kind == "per_symbol" and filters.get("date") and "date" in frame.columns:
-            frame = frame[frame["date"].astype(str).str[:10] == str(filters["date"])]
-        if kind == "per_symbol":
-            frame = frame.tail(limit).iloc[::-1] if not filters.get("date") else frame
+            frame = frame[frame["date"].astype(str).str[:10] == filters["date"]]
         total = int(len(frame))
-        view = frame.head(limit)
+        # per-symbol files without a date: the latest rows first; total_rows still counts the whole file
+        view = frame.tail(limit).iloc[::-1] if kind == "per_symbol" and not filters.get("date") else frame.head(limit)
         columns = [{"name": str(c), "type": _type_name(view[c].dtype), "description": COLUMN_NOTES.get(str(c), "")}
                    for c in view.columns]
         rows = [_jsonable(r) for r in view.to_dict(orient="records")]
@@ -589,7 +621,8 @@ JOBS_SPEC = [
     {"job_id": "sector_recorder_stop", "name": "停止盘中记录器", "description": "停止正在运行的盘中记录器。",
      "params": [], "estimated_seconds": 30, "needs_data_disk": True, "uses_network": False, "writes": []},
     {"job_id": "backfill_day", "name": "补某一天",
-     "description": "补这一天缺的按日期分区的公开数据（涨停池、大宗交易、机构调研、股东增减持、公告目录、融资融券），已有的跳过。"
+     "description": "按收盘后日常更新在这一天的范围补缺的按日期分区公开数据（涨停池、大宗交易、机构调研、股东增减持，"
+                    "上一交易日到前一天的公告目录，前一交易日的融资融券），已有的跳过。"
                     "只能当天观察的数据过后补不回来；日K/5 分钟/日状态的中间缺口不在此任务内。",
      "params": [{"name": "date", "type": "date", "required": True, "description": "要补的日期"}],
      "estimated_seconds": 600, "needs_data_disk": True, "uses_network": True,
@@ -612,14 +645,97 @@ JOBS_SPEC = [
 ]
 
 
-def _date_param(params, name, *, required, default_today=False) -> str | None:
+LIVE = ("queued", "running")
+QUEUED_WITHOUT_PROCESS = timedelta(minutes=5)
+JOBS_LOCK = ".lock"            # under catalog/jobs: serialises "is it running?" + starting a run
+RUNNER_LOCK = "runner.lock"    # in a run directory: held by job_runner.py for as long as it lives
+
+
+def _write_json(path: Path, body) -> None:
+    """Atomic replace; the temporary name is per writer, so concurrent writers never share one."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}-{uuid.uuid4().hex[:8]}.tmp")
+    tmp.write_text(json.dumps(body, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+@contextmanager
+def _exclusive(path: Path):
+    """Exclusive advisory lock for the ``with`` body (the job system itself is POSIX-only)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None
+    with open(path, "a+") as handle:
+        if fcntl is not None:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
+def pid_alive(pid) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def runner_alive(run_dir: Path, state: dict) -> bool:
+    """Whether the runner of this run is still running.
+
+    A running runner holds ``runner.lock``, so a free lock means it is gone even when the
+    system has since given its pid to another process (after a restart).  Queued runs, whose
+    runner has not taken the lock yet, and runs from before the lock fall back to the pid.
+    """
+    lock = run_dir / RUNNER_LOCK
+    if state.get("state") != "running" or not lock.is_file():
+        return pid_alive(state.get("pid"))
+    try:
+        import fcntl
+    except ImportError:
+        return pid_alive(state.get("pid"))
+    try:
+        with open(lock, "a+") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            return False
+    except OSError:
+        return pid_alive(state.get("pid"))
+
+
+def signal_runner(run_dir: Path, state: dict, sig=signal.SIGTERM) -> bool:
+    """Signal a live runner's process group; a pid that no longer belongs to the runner is left alone."""
+    pid = state.get("pid")
+    if not pid or not runner_alive(run_dir, state):
+        return False
+    try:
+        os.killpg(int(pid), sig)  # the runner leads its own session (start_new_session)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _days_between(start: str, end: str) -> list[str]:
+    """Calendar days strictly after ``start`` and strictly before ``end``."""
+    first, last = date.fromisoformat(start), date.fromisoformat(end)
+    return [(first + timedelta(days=i)).isoformat() for i in range(1, (last - first).days)]
+
+
+def _date_param(params, name, *, required, default_today=False, today: str | None = None) -> str | None:
     value = params.get(name)
-    if value in (None, "", "today"):
+    today = today or _now().date().isoformat()
+    if value == "today":
+        return today
+    if value in (None, ""):
         if required and not default_today:
             raise InvalidRequest(f"缺少参数 {name}")
-        return _now().date().isoformat() if default_today or value == "today" else None
+        return today if default_today else None
     try:
-        return date.fromisoformat(str(value)).isoformat()
+        return date.fromisoformat(str(value).strip()).isoformat()
     except ValueError:
         raise InvalidRequest(f"{name} 格式应为 YYYY-MM-DD") from None
 
@@ -653,27 +769,24 @@ class DataUpdateJobs:
                 continue
         return sorted(rows, key=lambda r: r.get("created_at") or "", reverse=True)
 
-    @staticmethod
-    def _alive(pid) -> bool:
-        if not pid:
-            return False
-        try:
-            os.kill(int(pid), 0)
-            return True
-        except (OSError, ValueError):
-            return False
-
     def _refresh(self, state: dict, path: Path) -> dict:
-        if state.get("state") in ("running", "queued") and state.get("pid") and not self._alive(state["pid"]):
+        if state.get("state") not in LIVE:
+            return state
+        if state.get("pid"):
+            gone = not runner_alive(path.parent, state)
+        else:  # run() records the pid right after starting the process; without one the start was cut short
+            try:
+                gone = self.now_fn() - datetime.fromisoformat(state["created_at"]) > QUEUED_WITHOUT_PROCESS
+            except (KeyError, TypeError, ValueError):
+                gone = False
+        if gone:
             state.update(state="interrupted", finished_at=state.get("finished_at") or self.now_fn().isoformat(),
                          error=state.get("error") or "后台进程已不在（关机、拔盘或被强制结束）")
-            tmp = path.with_name("state.json.tmp")
-            tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-            os.replace(tmp, path)
+            _write_json(path, state)
         return state
 
     def _running(self, job_ids) -> dict | None:
-        return next((r for r in self._runs() if r["job_id"] in job_ids and r["state"] in ("queued", "running")), None)
+        return next((r for r in self._runs() if r["job_id"] in job_ids and r["state"] in LIVE), None)
 
     def _partition_present(self, dataset_id: str, day: str) -> bool:
         rel = day_seals.SEALABLE[dataset_id][0]
@@ -710,8 +823,8 @@ class DataUpdateJobs:
         body["plan_id"] = hashlib.sha256(json.dumps(body, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:32]
         folder = self.base / "plans"
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / f"{body['plan_id']}.json").write_text(json.dumps(body, ensure_ascii=False, indent=1) + "\n",
-                                                        encoding="utf-8")
+        # atomic: two launchers planning in the same second get the same plan_id and file name
+        _write_json(folder / f"{body['plan_id']}.json", body)
         return {k: v for k, v in body.items() if k != "data_root"}
 
     @staticmethod
@@ -719,8 +832,13 @@ class DataUpdateJobs:
         return {"name": name, "action": action, "datasets": datasets, "dates": dates, "overwrites": overwrites,
                 "note": note, "kind": kind, "weight": weight, **extra}
 
-    def _public_steps(self, day, today, calendar, *, only_missing_dated=True):
-        """(steps, warnings) for public-source partitions of ``day``."""
+    def _public_steps(self, day, today, calendar, *, calendar_snapshot):
+        """(steps, warnings) for public-source partitions of ``day``.
+
+        ``calendar_snapshot`` names the reference snapshot whose trade calendar the collectors
+        read.  On a trading day the announcement-dated sources also cover the calendar days since
+        the previous trading day, because nobody runs the close update on weekends and holidays.
+        """
         steps, warnings = [], []
         if day == today:
             import importlib.util
@@ -731,37 +849,42 @@ class DataUpdateJobs:
             skip = [n for n in SAME_DAY_PUBLIC if n not in fetch]
             if fetch:
                 steps.append(self._step("当天观察的公开数据", "fetch", [PUBLIC_IDS[n] for n in fetch], [day], "public",
-                                        public=[[n, PUBLIC_IDS[n], None, None] for n in fetch], calendar=day, weight=3,
-                                        note="只能当天采集"))
+                                        public=[[n, PUBLIC_IDS[n], None, None] for n in fetch],
+                                        calendar=calendar_snapshot, weight=3, note="只能当天采集"))
             if skip:
                 steps.append(self._step("当天观察的公开数据（已有）", "skip_existing", [PUBLIC_IDS[n] for n in skip],
                                         [day], "public", note="今天已采"))
         else:
             warnings.append("异动监控、回购、质押等只能当天观察的数据，不是当天执行就采不到，本次不采。")
         trading = calendar.is_trading(day)[0]
+        prev_trading = calendar.previous(day)
         dated = []
         if trading:
+            gap = _days_between(prev_trading, day)  # weekends and holidays before this trading day
             dated += [[n, PUBLIC_IDS[n], day, day] for n in DATED_PUBLIC]
+            dated += [[n, PUBLIC_IDS[n], d, d] for d in gap for n in ("institution_survey", "holder_trades")]
+            announcement_days = [prev_trading, *gap]
         else:
             dated += [[n, PUBLIC_IDS[n], day, day] for n in ("institution_survey", "holder_trades")]
-        prev_calendar = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
-        dated.append(["cninfo_announcements", "announcements_cninfo", prev_calendar, prev_calendar])
-        prev_trading = calendar.previous(day)
+            announcement_days = [(date.fromisoformat(day) - timedelta(days=1)).isoformat()]
+        dated += [["cninfo_announcements", "announcements_cninfo", d, d] for d in announcement_days]
         dated.append(["margin_official", "margin_detail_exchange", prev_trading, prev_trading])
         fetch = [d for d in dated if not self._partition_present(d[1], d[2])
                  and not day_seals.is_sealed(self.data_root, d[1], d[2])]
         skip = [d for d in dated if d not in fetch]
         if fetch:
-            steps.append(self._step("按日期的公开数据", "fetch", [d[1] for d in fetch], sorted({d[2] for d in fetch}),
-                                    "public", public=fetch, calendar=day, weight=2,
-                                    note="公告目录补前一天、融资融券补前一交易日（都是次日发布）"))
+            steps.append(self._step("按日期的公开数据", "fetch", list(dict.fromkeys(d[1] for d in fetch)),
+                                    sorted({d[2] for d in fetch}), "public", public=fetch,
+                                    calendar=calendar_snapshot, weight=2,
+                                    note="公告目录补上一交易日到前一天的每个自然日（含周末、节假日），"
+                                         "融资融券补前一交易日（都是次日发布）"))
         if skip:
-            steps.append(self._step("按日期的公开数据（已有或已封存）", "skip_existing", [d[1] for d in skip],
-                                    sorted({d[2] for d in skip}), "public"))
+            steps.append(self._step("按日期的公开数据（已有或已封存）", "skip_existing",
+                                    list(dict.fromkeys(d[1] for d in skip)), sorted({d[2] for d in skip}), "public"))
         return steps, warnings
 
     def _plan_daily_close_update(self, params, today, calendar, warnings):
-        day = _date_param(params, "date", required=False, default_today=True)
+        day = _date_param(params, "date", required=False, default_today=True, today=today)
         params = {"date": day}
         trading, inferred = calendar.is_trading(day)
         if inferred:
@@ -778,7 +901,8 @@ class DataUpdateJobs:
         ref = self.data_root / f"lake/bronze/provider=baostock/reference_snapshots/snapshot={day}/manifest.json"
         steps.append(self._step("参考快照", "skip_existing" if ref.is_file() else "fetch",
                                 ["reference_snapshot_baostock"], [day], "reference"))
-        public, notes = self._public_steps(day, today, calendar)
+        # step 1 takes (or already has) this day's reference snapshot, so the collectors read its calendar
+        public, notes = self._public_steps(day, today, calendar, calendar_snapshot=day)
         steps += public
         warnings += notes
         if day == today:
@@ -818,11 +942,15 @@ class DataUpdateJobs:
                            target_run=running["run_id"])], warnings, None, {}
 
     def _plan_backfill_day(self, params, today, calendar, warnings):
-        day = _date_param(params, "date", required=True)
+        day = _date_param(params, "date", required=True, today=today)
         params = {"date": day}
         if day > today:
             return [], warnings, "不能补未来的日期", params
-        steps, notes = self._public_steps(day, today, calendar)
+        snapshot = calendar.snapshot_covering(day)
+        if snapshot is None:
+            return [], warnings, (f"没有覆盖 {day} 的交易日历（最新参考快照只到 {calendar.end or '—'}），"
+                                  "先执行“收盘后日常更新”取得参考快照"), params
+        steps, notes = self._public_steps(day, today, calendar, calendar_snapshot=snapshot)
         steps = [s for s in steps if s["kind"] == "public"]
         warnings += notes + ["日K、5 分钟、日状态的中间缺口不在此任务内；尾部缺口由收盘后日常更新补齐。"]
         if not any(s["action"] == "fetch" for s in steps):
@@ -831,7 +959,7 @@ class DataUpdateJobs:
         return steps, warnings, None, params
 
     def _plan_seal_day(self, params, today, calendar, warnings):
-        day = _date_param(params, "date", required=True)
+        day = _date_param(params, "date", required=True, today=today)
         params = {"date": day}
         trading, _ = calendar.is_trading(day)
         preview = day_seals.plan(self.data_root, day, trading_day=trading, today=today)
@@ -848,8 +976,8 @@ class DataUpdateJobs:
             warnings, None, params
 
     def _plan_verify_seal(self, params, today, calendar, warnings):
-        start = _date_param(params, "date", required=True)
-        end = _date_param(params, "end", required=False) or start
+        start = _date_param(params, "date", required=True, today=today)
+        end = _date_param(params, "end", required=False, today=today) or start
         if end < start:
             raise InvalidRequest("end 不能早于 date")
         days, cursor = [], date.fromisoformat(start)
@@ -863,7 +991,7 @@ class DataUpdateJobs:
         return [self._step("核对封存", "verify", ["*"], days, "verify")], warnings, None, params
 
     def _plan_revoke_seal(self, params, today, calendar, warnings):
-        day = _date_param(params, "date", required=True)
+        day = _date_param(params, "date", required=True, today=today)
         reason = str(params.get("reason") or "").strip()
         params = {"date": day, "reason": reason}
         if not reason:
@@ -877,6 +1005,8 @@ class DataUpdateJobs:
             warnings, None, params
 
     def run(self, plan_id: str, *, trigger: str = "user") -> dict:
+        if not re.fullmatch(r"[0-9a-f]{32}", str(plan_id or "")):
+            raise InvalidRequest("plan_id 无效")
         path = self.base / "plans" / f"{plan_id}.json"
         if not path.is_file():
             raise InvalidRequest("找不到这个计划，请重新生成")
@@ -885,30 +1015,39 @@ class DataUpdateJobs:
             raise InvalidRequest("计划被阻止：" + plan["blocked_reason"])
         if datetime.fromisoformat(plan["expires_at"]) < self.now_fn():
             raise InvalidRequest("计划已过期，请重新生成")
-        running = self._running({plan["job_id"]})
-        if running:
-            raise InvalidRequest(f"同一任务正在运行（{running['run_id']}）")
-        run_id = self.now_fn().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
-        run_dir = self.base / "runs" / run_id
-        run_dir.mkdir(parents=True)
-        (run_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-        state = {"run_id": run_id, "job_id": plan["job_id"], "plan_id": plan_id, "params": plan["params"],
-                 "trigger": trigger, "state": "queued", "progress": 0.0, "step": None,
-                 "created_at": self.now_fn().isoformat(),
-                 "started_at": None, "finished_at": None,
-                 "result": {"datasets": [], "seal": None}, "error": None, "pid": None}
-        (run_dir / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-        log = (run_dir / "log.txt").open("a", encoding="utf-8")
-        proc = subprocess.Popen([self.python, str(REPO / "scripts/collect/job_runner.py"), "--run-dir", str(run_dir)],
-                                cwd=str(REPO), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                start_new_session=True,
-                                env={**os.environ, "NIUNIU_DATA_ROOT": str(self.data_root)})
-        state["pid"] = proc.pid
-        current = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
-        if current.get("pid") is None:
-            current["pid"] = proc.pid
-            (run_dir / "state.json").write_text(json.dumps(current, ensure_ascii=False, indent=1) + "\n",
-                                                encoding="utf-8")
+        # the "already running" check and the new run's state file are one step for every process
+        # (the desktop page, and autostart from both launchers opened at once)
+        with _exclusive(self.base / JOBS_LOCK):
+            running = self._running({plan["job_id"]})
+            if running:
+                raise InvalidRequest(f"同一任务正在运行（{running['run_id']}）")
+            run_id = self.now_fn().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+            run_dir = self.base / "runs" / run_id
+            run_dir.mkdir(parents=True)
+            (run_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1) + "\n",
+                                               encoding="utf-8")
+            state = {"run_id": run_id, "job_id": plan["job_id"], "plan_id": plan_id, "params": plan["params"],
+                     "trigger": trigger, "state": "queued", "progress": 0.0, "step": None,
+                     "created_at": self.now_fn().isoformat(),
+                     "started_at": None, "finished_at": None,
+                     "result": {"datasets": [], "seal": None}, "error": None, "pid": None}
+            _write_json(run_dir / "state.json", state)
+            try:
+                with (run_dir / "log.txt").open("a", encoding="utf-8") as log:
+                    proc = subprocess.Popen([self.python, str(REPO / "scripts/collect/job_runner.py"),
+                                             "--run-dir", str(run_dir)],
+                                            cwd=str(REPO), stdout=log, stderr=subprocess.STDOUT,
+                                            stdin=subprocess.DEVNULL, start_new_session=True,
+                                            env={**os.environ, "NIUNIU_DATA_ROOT": str(self.data_root)})
+            except OSError as error:  # a queued run without a process would block this job for good
+                state.update(state="failed", finished_at=self.now_fn().isoformat(),
+                             error=f"后台进程没有启动：{type(error).__name__}: {error}"[:500])
+                _write_json(run_dir / "state.json", state)
+                raise DataProviderError("data_update_jobs", state["error"]) from error
+            current = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+            if current.get("pid") is None:
+                current["pid"] = proc.pid
+                _write_json(run_dir / "state.json", current)
         return {"run_id": run_id}
 
     # Jobs the user has authorised to start by themselves when niuniu opens (2026-09-25).
@@ -933,7 +1072,10 @@ class DataUpdateJobs:
         plan = self.plan(job_id, {})
         if plan["blocked_reason"]:
             return {"started": False, "job_id": job_id, "reason": plan["blocked_reason"], "run_id": None}
-        run = self.run(plan["plan_id"], trigger="autostart")
+        try:
+            run = self.run(plan["plan_id"], trigger="autostart")
+        except InvalidRequest as error:  # e.g. the other launcher started it a moment ago
+            return {"started": False, "job_id": job_id, "reason": str(error), "run_id": None}
         return {"started": True, "job_id": job_id, "reason": None, "run_id": run["run_id"]}
 
     def _state_path(self, run_id: str) -> Path:
@@ -957,26 +1099,22 @@ class DataUpdateJobs:
         return {"lines": chunk, "next_offset": offset + len(chunk)}
 
     def cancel(self, run_id: str) -> dict:
+        """Stop a queued or running run; returns the state the run actually ended in."""
         path = self._state_path(run_id)
         state = self._refresh(json.loads(path.read_text(encoding="utf-8")), path)
-        if state["state"] not in ("queued", "running"):
+        if state["state"] not in LIVE:
             return {"state": state["state"]}
-        pid = state.get("pid")
-        try:
-            os.killpg(int(pid), signal.SIGTERM)
-        except (OSError, TypeError, ValueError):
-            try:
-                os.kill(int(pid), signal.SIGTERM)
-            except (OSError, TypeError, ValueError):
-                pass
+        signal_runner(path.parent, state)
         for _ in range(20):
             state = json.loads(path.read_text(encoding="utf-8"))
-            if state["state"] not in ("queued", "running"):
-                break
+            if state["state"] not in LIVE:
+                return {"state": state["state"]}  # the runner wrote how it ended
+            if state.get("pid") and not runner_alive(path.parent, state):
+                break  # stopped before it could write its own final state
             time.sleep(0.5)
-        if state["state"] in ("queued", "running"):
-            state.update(state="cancelled", finished_at=self.now_fn().isoformat())
-            path.write_text(json.dumps(state, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        # a runner still busy checks for cancellation between steps; the request is recorded now
+        state.update(state="cancelled", finished_at=self.now_fn().isoformat())
+        _write_json(path, state)
         return {"state": "cancelled"}
 
     def list_runs(self, limit: int = 20) -> dict:
@@ -985,4 +1123,5 @@ class DataUpdateJobs:
         return {"runs": [{k: v for k, v in r.items() if k != "pid"} for r in self._runs()[:limit]]}
 
 
-__all__ = ["DataPreviewService", "DataStatusService", "DataUpdateJobs", "JOBS_SPEC", "refresh_status_index"]
+__all__ = ["DataPreviewService", "DataStatusService", "DataUpdateJobs", "JOBS_SPEC", "RUNNER_LOCK", "pid_alive",
+           "refresh_status_index", "runner_alive", "signal_runner"]

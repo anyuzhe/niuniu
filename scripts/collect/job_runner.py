@@ -51,6 +51,7 @@ class Runner:
         self.log_file = (run_dir / "log.txt").open("a", encoding="utf-8")
         self.child = None
         self.cancelled = False
+        self.deferred_errors: list[str] = []   # the remaining steps still run; the run ends as failed
         self.env = {**os.environ, "NIUNIU_DATA_ROOT": str(self.data_root), "PYTHONUNBUFFERED": "1",
                     "PYTHONPATH": os.pathsep.join([str(REPO / "src"), str(HERE.parent)])}
         signal.signal(signal.SIGTERM, self._on_term)
@@ -171,7 +172,13 @@ class Runner:
         from collect.sector_constituents import run as snapshot
         for _ in range(6):
             self.check()
-            result = snapshot(self.data_root, max_seconds=300)
+            try:
+                result = snapshot(self.data_root, max_seconds=300)
+            except Exception as error:  # boards keep yesterday's counts; bars, qfq and the seal still run
+                self.log(f"成分快照失败：{type(error).__name__}: {error}")
+                self.result_dataset("sector_board_constituents",
+                                    failures=[f"成分快照失败：{type(error).__name__}: {error}"[:200]])
+                return
             self.log(json.dumps({k: v for k, v in result.items() if k != "empty_boards"}, ensure_ascii=False))
             if result.get("complete") or result.get("status") == "already_complete":
                 self.result_dataset("sector_board_constituents", through=step["dates"][0],
@@ -213,12 +220,20 @@ class Runner:
                                        "--tdx-snapshot", str(plans / "qfq-tdx-snapshot.parquet"),
                                        "--out", str(plans / "qfq-plan.json")]))
         sha = info["plan_sha256"]
-        for mode in ("apply", "apply-min5"):
+        for mode, label in (("apply", "日线"), ("apply-min5", "5 分钟")):
+            result = {}
             for _ in range(200):
                 result = self.last_json(self.sh(["scripts/derive/build_qfq.py", mode, "--plan", str(plans / "qfq-plan.json"),
                                                  "--approve-sha256", sha, "--max-seconds", "600"]))
                 if result.get("complete"):
                     break
+            if not result.get("complete"):
+                message = (f"前复权{label}没有完成：{result.get('total_done', '?')}/{result.get('codes', '?')} 只，"
+                           "下次同一计划会接着做")
+                self.log(message)
+                self.result_dataset("qfq_published_f24", failures=[message])
+                self.deferred_errors.append(message)
+                return
         self.sh(["scripts/derive/build_qfq.py", "coverage", "--plan", str(plans / "qfq-plan.json")])
         self.result_dataset("qfq_published_f24", through=step["dates"][0], files_written=info.get("codes", 0))
 
@@ -256,16 +271,15 @@ class Runner:
         self.sh(["scripts/collect/sector_intraday_recorder.py", "--data-root", str(self.data_root)], keep_awake=True)
 
     def step_stop(self, step, share):
+        from quantlab.data.data_services import runner_alive, signal_runner
         target = self.data_root / "catalog/jobs/runs" / step["target_run"] / "state.json"
         state = json.loads(target.read_text(encoding="utf-8"))
-        pid = state.get("pid")
-        if pid:
-            try:
-                os.killpg(pid, signal.SIGTERM)
-            except OSError:
-                os.kill(pid, signal.SIGTERM)
+        if not signal_runner(target.parent, state):
+            self.log(f"运行 {step['target_run']} 已不在，不需要停止")
+            return
         for _ in range(30):
-            if json.loads(target.read_text(encoding="utf-8")).get("state") != "running":
+            state = json.loads(target.read_text(encoding="utf-8"))
+            if state.get("state") not in ("queued", "running") or not runner_alive(target.parent, state):
                 break
             time.sleep(1)
         self.log(f"已停止运行 {step['target_run']}")
@@ -275,10 +289,26 @@ class Runner:
         refresh_status_index(self.data_root, log=self.log)
 
     # ------------------------------------------------------------ main loop
+    def hold_lock(self) -> None:
+        """Hold runner.lock for the whole life of this process: readers take a free lock to mean the
+        runner is gone, which stays true even when the system later reuses this pid."""
+        from quantlab.data.data_services import RUNNER_LOCK
+        self.lock_handle = (self.run_dir / RUNNER_LOCK).open("a+")
+        try:
+            import fcntl
+        except ImportError:
+            return
+        fcntl.flock(self.lock_handle, fcntl.LOCK_EX)
+
     def run(self) -> int:
         steps = self.plan["steps"]
         weights = [max(1.0, float(s.get("weight", 1))) for s in steps]
         total = sum(weights)
+        self.hold_lock()
+        current = json.loads(self.state_path.read_text(encoding="utf-8"))
+        if current.get("state") not in ("queued", "running"):  # cancelled before this process got going
+            self.log(f"运行已是 {current.get('state')}，不再执行")
+            return 1
         self.save(state="running", pid=os.getpid(), started_at=now(), progress=0.0)
         self.log(f"开始 {self.plan['job_id']}，计划 {self.plan['plan_id'][:12]}")
         done = 0.0
@@ -293,6 +323,11 @@ class Runner:
                     self.log(f"== {step['name']}")
                     getattr(self, "step_" + step["kind"])(step, share)
                 done += weight
+            if self.deferred_errors:
+                self.save(state="failed", progress=1.0, finished_at=now(), step=None,
+                          error="；".join(self.deferred_errors)[:500])
+                self.log("结束，但有未完成的步骤：" + "；".join(self.deferred_errors))
+                return 1
             self.save(state="succeeded", progress=1.0, finished_at=now(), step=None)
             self.log("完成")
             return 0

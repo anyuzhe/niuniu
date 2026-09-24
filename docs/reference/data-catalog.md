@@ -164,7 +164,7 @@ result.to_dict()   # 可直接 JSON 序列化
 - 停牌或当日零成交的股票标 `no_trade_today`。
 
 **涨跌停：**
-- 由 DATA 自己推算：涨跌停价 = 昨收 ×（1 ± 比例），四舍五入到分。比例为主板 10%、主板 ST 5%、创业板和科创板 20%、北交所 30%；上市前 5 个交易日不设涨跌停，标 `no_limit_new_listing`。
+- 由 DATA 自己推算：涨跌停价 = 昨收 ×（1 ± 比例），四舍五入到分。比例按当天取自规则表 `quantlab.trading.price_limit_regime`：主板 10%（主板 ST 2026-07-06 前 5%、之后 10%）、创业板（300/301/302）和科创板 20%、北交所 30%；上市前 5 个交易日不设涨跌停，标 `no_limit_new_listing`；规则表没有覆盖的板块不推算，`limit_check=rule_not_modelled`。2026-09-25 修正：此前主板 ST 一律按 5%、302 开头按 10%，涨跌 5%–10% 的 ST 股和涨跌 10%–20% 的 302 股会被误标涨停/跌停。
 - `limit_status` 取值：`limit_up`（封涨停）、`limit_down`（封跌停）、`limit_break`（盘中碰过涨停价但现价低于涨停价，即炸板）。
 - 推算结果与扶摇的涨停池、跌停池、炸板池对照，结果写在 `limit_check`：`agree`（一致）、`computed_only`（只有推算认定，例如扶摇池不含的 ST 股）、`vendor_only`（只有扶摇池里有）、`differs`（两边不同）。
 
@@ -189,8 +189,8 @@ result.to_dict()   # 可直接 JSON 序列化
 |---|---|---|---|---|---|---|---|
 | `sector_board_snapshot` | API | 同花顺概念、行业板块行情榜 | `SectorIntradayProvider.board_snapshot(types=["concept","industry"])`；采样走势用 `board_series(code)` | 每个板块：`code, name, type(concept/industry), last, change, change_pct, amount, volume, previous_close, open, high, low, as_of, constituent_count, board_class, label_reason`，按涨跌幅从高到低；整体：`as_of, age_seconds, market_status, completeness, missing, counts, cache, stale, constituent_counts_date, board_class_version` | 盘中看盘与 AI 解读。`market_status` 取值：`PREOPEN / OPENING_AUCTION / TRADING / MIDDAY_BREAK / CLOSING_AUCTION / CLOSED / NON_TRADING_DAY`。盘中延迟未实测，见上 | `READY` | 10 秒刷新；显示 `as_of`、`age_seconds`，`stale=true` 时标明是旧数据 |
 | `sector_board_members` | API | 单个板块的当前成分股行情 | `SectorIntradayProvider.board_members(code)`，`code` 取自板块榜 | 每只：`symbol, name, last, change_pct, amount, volume, previous_close, open, high, low, as_of, status(trading/no_trade_today/withheld_source_mismatch), limit_status, limit_up_price, limit_down_price, limit_check, cross_check`；整体同上，另有 `counts`（涨停/跌停/炸板/暂不输出只数） | 当前成分，不代表历史成分。盘中延迟未实测，见上 | `READY` | 只刷新用户打开的那个板块，5 秒刷新；`withheld_source_mismatch` 的股票不显示价格 |
-| `sector_board_constituents` | FILE | 同花顺概念、行业板块的每日成分快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_constituents/date=YYYY-MM-DD.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每行一个（板块, 股票）：`board_code, board_name, board_type, symbol, name, observed_at` | 当天的当前成分，不代表历史成分。2026-09-24 起，710 个板块、80,701 行。由盘中记录器开盘前自动刷新，记录器没运行的日子沿用上一天 | `READY` | 要查“某只股票属于哪些板块”时读这里；板块成分行情仍用 `sector_board_members` |
-| `sector_board_intraday` | FILE | 盘中每分钟的全部板块行情记录 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_intraday/date=YYYY-MM-DD/HHMMSS.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每个文件是一分钟的全部板块，列同 `sector_board_snapshot` 的板块行，另有 `market_status, snapshot_as_of, stale` | 需要 Mac 在交易时间运行记录器（`artifacts/run-sector-recorder.command`），没运行的时段没有数据，也不能补 | `NOT_READY` | 有了首日数据并核对后改 `READY` |
+| `sector_board_constituents` | FILE | 同花顺概念、行业板块的每日成分快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_constituents/date=YYYY-MM-DD.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每行一个（板块, 股票）：`board_code, board_name, board_type, symbol, name, observed_at` | 当天的当前成分，不代表历史成分。2026-09-24 起，710 个板块、80,701 行。由盘中记录器在开盘前、午休和每分钟的空闲时间分段刷新（不耽误板块记录），收盘后日常更新也会补做当天的；两者都没运行的日子沿用上一天 | `READY` | 要查“某只股票属于哪些板块”时读这里；板块成分行情仍用 `sector_board_members` |
+| `sector_board_intraday` | FILE | 盘中每分钟的全部板块行情记录 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_intraday/date=YYYY-MM-DD/HHMMSS.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每个文件是一分钟的全部板块，列同 `sector_board_snapshot` 的板块行，另有 `market_status, snapshot_as_of, stale` | 需要 Mac 在交易时间运行记录器（`artifacts/run-sector-recorder.command`），没运行的时段没有数据，也不能补；同一时间只允许一个记录器（`catalog/jobs/sector_recorder.lock`），第二个会直接退出 | `NOT_READY` | 有了首日数据并核对后改 `READY` |
 
 ### 3.5 数据中心接口（API，2026-09-25 开放）
 
@@ -211,6 +211,9 @@ result.to_dict()   # 可直接 JSON 序列化
 - 任务：`daily_close_update`、`sector_recorder_start`、`sector_recorder_stop`、`backfill_day`、`seal_day`、`verify_seal`、`revoke_seal`（撤销封存，必须填 `reason`）。
 - `plan` 只读、秒级返回；计划 30 分钟后过期。`steps[]` 按需求字段，另有 `kind`、`weight`（进度权重）。已封存、数据盘未连接、同一任务在跑、非交易日、未收盘等情况给 `blocked_reason`。
 - `run` 用牛牛当前的 Python 在后台起独立进程（`scripts/collect/job_runner.py`），关掉牛牛不中断；运行记录在数据根 `catalog/jobs/runs/<run_id>/`（`plan.json`、`state.json`、`log.txt`）。后台进程不在了而状态还是运行中时，`status` 返回 `interrupted`。`cancel` 会停止当前子任务，已写完的分区保留、有回执，下次计划会跳过它们。
+- 同一任务“是否在运行”的判断和启动在 `catalog/jobs/.lock` 下串行，两个启动脚本同时打开也只起一个记录器。运行中的后台进程一直持有运行目录里的 `runner.lock`，判断进程还在不再只看 pid（重启后 pid 被别的进程占用时不会误判、也不会误发停止信号）；进程没能启动时运行直接记 `failed`。`cancel` 返回这次运行实际的结束状态。
+- `backfill_day` 使用覆盖该日的最新参考快照日历；没有覆盖该日的快照时，计划直接给出 `blocked_reason`（此前计划显示可执行、执行时找不到当日快照而失败）。`daily_close_update` 和 `backfill_day` 在交易日补采上一交易日到前一天的每个自然日的公告目录，以及其中周末、节假日的机构调研和股东增减持（此前只补前一个自然日，每周五、周六的公告目录会漏采）；周末、节假日补到的分区不自动封存，可用 `seal_day` 手动封存。
+- 前复权重建在 200 轮内没有完成时，封存和状态刷新照常执行，运行最后记 `failed` 并写明进度；板块成分快照失败只记失败项，不中断收盘后日常更新。
 - 用户确认的任务计划就是批准：任务内部各采集脚本的计划 SHA 由任务自己生成并写进日志。
 - **自动启动（用户 2026-09-25 授权，仅限盘中记录器）**：两个启动脚本在打开牛牛时调用 `scripts/collect/autostart.py` → `DataUpdateJobs.autostart()`。今天是交易日、还没到 15:25、记录器没在跑、今天也没被手动停止过或已正常结束时，才在后台启动 `sector_recorder_start`，运行记录的 `trigger` 为 `autostart`；否则什么都不做，结果写到 `artifacts/autostart.log`。开盘前打开也可以，记录器会等到 09:15 才开始。记录器和 5 分钟更新运行时会阻止 Mac 睡眠。其他任务仍然必须先显示计划、由用户确认。
 - 已实测：`seal_day`（2026-09-24，24 个文件，核对无误）、`verify_seal`、各任务的 `plan`。`daily_close_update` 和盘中记录器还没有完整跑过一次（前者约 6 小时，后者要等交易日），第一次运行时 DATA 会跟进。
@@ -220,7 +223,7 @@ result.to_dict()   # 可直接 JSON 序列化
 - 封存范围：按日期分区的数据——§3.1 的公开数据、热度榜、盘中板块记录、全市场个股盘中快照、板块成分快照、参考快照。日K、5 分钟、日状态、前复权按证券存放、逐日追加，不在封存范围，它们可以由供应商重取、由 DATA 重建。
 - 封存后采集脚本对这一天的这些数据只读不写。数据盘是 exFAT，不能设只读权限，靠核对发现改动。
 - 次日才发布的数据（公告目录、融资融券）和还能补采的按日期数据，在封存清单里标“待封存”；补采后再对同一天执行一次 `seal_day`，就会以新版本加进去，已封存的条目不改。只能当天观察的数据当天没采到，标“无法补回”。
-- 撤销：`revoke_seal` 把这一天的封存清单和已封存的文件整份移到 `catalog/seals/_revoked/<日期>-<时间>/`，不删除；之后可以重采、再封存成新的一版。每一版都留在 `catalog/seals/_history/`。
+- 撤销：`revoke_seal` 把这一天的封存清单和已封存的文件整份移到 `catalog/seals/_revoked/<日期>-<时间>/`，不删除；之后可以重采、再封存成新的一版，版本号接着撤销前的最大版本往下编，每一版都留在 `catalog/seals/_history/`；撤销时这一天的核对结果一并移到撤销目录（此前重封会从第 1 版重新编号并覆盖历史版本）。
 - `daily_close_update` 最后一步自动封存当天，并补封前一交易日待封存的数据。
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
@@ -231,7 +234,7 @@ result.to_dict()   # 可直接 JSON 序列化
 | `day_seals` | FILE | 每天的封存清单 | `/Volumes/Lexar/niuniu-data/catalog/seals/YYYY-MM-DD.json`，核对结果在 `_verify/`，历次版本在 `_history/`，撤销的在 `_revoked/` | 每个条目：`dataset_id, dir, source, observed_at, receipt, sealed_at, files[path, bytes, sha256, rows]`；另有 `pending, missing, not_in_scope, totals, revision` | 2026-09-24 起 | `READY` | 复现某一天时按清单取文件并核对校验码 |
 | `hot_rank_ths` | FILE | 同花顺个股人气榜（日榜前 100） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/hot_rank_day` | 当天观察；`rank, code, name, heat, change_pct, rank_change, concept_tags(JSON), popularity_tag, analyse_title, analyse` | 2026-09-25 起，由 `daily_close_update` 当天采集，不能回补 | `READY` | 上榜原因是供应商 AI 摘要原文 |
 | `hot_rank_em` | FILE | 东财人气榜前 100 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/hot_rank` | 当天观察；`rank, code, market, rank_change, rank_change_history` | 同上 | `READY` | 只有排名，名称和价格请连日K或实时报价 |
-| `stock_intraday_snapshot` | FILE | 全市场个股盘中快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/stock_intraday_snapshot/date=YYYY-MM-DD/HHMM.parquet`，回执 `_receipts/YYYY-MM-DD.json` | 每个时点一个文件（09:25、10:00、11:30、14:00、14:57、15:00，各在时点后约 30 秒取）；每只：`symbol, last, change, change_pct, previous_close, open, high, low, volume(股), amount(元), as_of, status, slot` | 在市 A 股加北交所约 5,570 只，一次约 10 秒；每次抽 200 只用腾讯核对，结果写在回执。由盘中记录器采集，记录器没开的时点没有数据 | `NOT_READY` | 首个交易日（2026-09-28）有数据并核对后改 `READY` |
+| `stock_intraday_snapshot` | FILE | 全市场个股盘中快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/stock_intraday_snapshot/date=YYYY-MM-DD/HHMM.parquet`，回执 `_receipts/YYYY-MM-DD.json` | 每个时点一个文件（09:25、10:00、11:30、14:00、14:57、15:00，各在时点后约 30 秒取，最晚到仍能代表该时点的截止：09:25→09:30、10:00→10:05、11:30→13:00、14:00→14:05、14:57→15:00、15:00→15:20；过了截止没取到的在回执记 `missed`，不再以该时点补取；回执另有 `due_at`、`delay_seconds`）；每只：`symbol, last, change, change_pct, previous_close, open, high, low, volume(股), amount(元), as_of, status, slot` | 在市 A 股加北交所约 5,570 只，一次约 10 秒；每次抽 200 只用腾讯核对，结果写在回执。由盘中记录器采集，记录器没开的时点没有数据 | `NOT_READY` | 首个交易日（2026-09-28）有数据并核对后改 `READY` |
 
 ## 4. 尚不可用、待审查或只供 DATA 内部使用
 

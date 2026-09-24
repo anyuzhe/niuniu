@@ -23,7 +23,6 @@ import os
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
-from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -60,10 +59,6 @@ def _positive(value):
     return number if number is not None and number > 0 else None
 
 
-def _round_price(value: float) -> float:
-    return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-
-
 def niuniu_symbol(thscode: str) -> str:
     code, _, exchange = str(thscode).upper().partition(".")
     if exchange not in ("SH", "SZ", "BJ") or len(code) != 6 or not code.isdigit():
@@ -91,21 +86,25 @@ def market_status(now: datetime, trading_day: bool) -> str:
     return "CLOSED"
 
 
-def limit_ratio(symbol: str, name: str) -> float:
-    """Daily price-limit ratio by board; ST on the main board is 5 %."""
-    code = symbol.split(".")[-1]
-    if symbol.startswith("bj."):
-        return 0.30
-    if code.startswith(("300", "301", "688", "689")):
-        return 0.20
-    if "ST" in str(name).upper().replace(" ", ""):
-        return 0.05
-    return 0.10
+def limit_ratio(symbol: str, name: str, session: date | None = None) -> float | None:
+    """Daily price-limit ratio on ``session`` (default: today, Beijing), from the date-aware rule table
+    ``quantlab.trading.price_limit_regime``: main board 10 % (risk-warning ST 5 % before 2026-07-06,
+    10 % from then), ChiNext 300/301/302 and STAR 20 %, BSE 30 %.  ``None`` for a board the table
+    does not model."""
+    from quantlab.trading.price_limit_regime import NORMAL, limit_rule
+    session = session or datetime.now(TZ).date()
+    rule = limit_rule(symbol, session, is_st="ST" in str(name).upper().replace(" ", ""))
+    return rule["rate"] if rule["status"] == NORMAL else None
 
 
-def limit_prices(symbol: str, name: str, previous_close: float) -> tuple[float, float]:
-    ratio = limit_ratio(symbol, name)
-    return _round_price(previous_close * (1 + ratio)), _round_price(previous_close * (1 - ratio))
+def limit_prices(symbol: str, name: str, previous_close: float,
+                 session: date | None = None) -> tuple[float, float] | None:
+    """Limit-up / limit-down prices (half-up to 0.01 yuan), or ``None`` when the rule is not modelled."""
+    from quantlab.trading import price_limit_regime
+    ratio = limit_ratio(symbol, name, session)
+    if ratio is None:
+        return None
+    return price_limit_regime.limit_prices(float(previous_close), ratio)
 
 
 # ------------------------------------------------------------------ board classification
@@ -534,8 +533,9 @@ class SectorIntradayProvider:
                 row.update(status="no_trade_today", last=None, change_pct=None)
             # price limits
             new_listing = self.reference.no_limit_new_listing(symbol, today)
-            if prev and new_listing is False:
-                up, down = limit_prices(symbol, name, prev)
+            limits = limit_prices(symbol, name, prev, date.fromisoformat(today)) if prev and new_listing is False else None
+            if limits:
+                up, down = limits
                 row.update(limit_up_price=up, limit_down_price=down)
                 computed = None
                 if last is not None:
@@ -554,6 +554,8 @@ class SectorIntradayProvider:
                     row["limit_check"] = None
             elif new_listing:
                 row["limit_status"] = "no_limit_new_listing"
+            elif prev and new_listing is False:
+                row["limit_check"] = "rule_not_modelled"
             else:
                 row["limit_check"] = "listing_date_unknown"
             # public cross-check (same moment only when the check was refreshed in this call)
@@ -582,7 +584,8 @@ class SectorIntradayProvider:
                            "limit_down": sum(r["limit_status"] == "limit_down" for r in rows),
                            "limit_break": sum(r["limit_status"] == "limit_break" for r in rows)},
                 "units": {"amount": "yuan", "volume": "shares", "change_pct": "percent", "symbol": "sh.600000"},
-                "rules": {"limit_ratio": "main 10%, main-board ST 5%, ChiNext/STAR 20%, BSE 30%, "
+                "rules": {"limit_ratio": "quantlab.trading.price_limit_regime by session: main 10% (main-board ST 5% "
+                                         "before 2026-07-06, 10% from then), ChiNext 300/301/302 and STAR 20%, BSE 30%; "
                                          "no limit in the first 5 trading days after listing",
                           "cross_check": f"Tencent+Sina, each stock at most every {self.cross_check_interval:.0f}s and "
                                          f"at most {CROSS_CHECK_MAX} stocks per call; a price that disagrees at "

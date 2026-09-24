@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from quantlab.data.research_provider import DataProviderError, InvalidRequest
@@ -76,8 +76,12 @@ class SectorIntradayTests(unittest.TestCase):
         self.assertEqual(niuniu_symbol("885431.TI"), "")
         self.assertEqual(limit_prices("sh.600000", "浦发银行", 9.0), (9.9, 8.1))
         self.assertEqual(limit_prices("sz.300750", "宁德时代", 290.0), (348.0, 232.0))
-        self.assertEqual(limit_prices("sz.000016", "*ST康佳A", 2.46), (2.58, 2.34))
+        # main-board ST: 5 % until 2026-07-03, 10 % from 2026-07-06 (trading/price_limit_regime.py)
+        self.assertEqual(limit_prices("sz.000016", "*ST康佳A", 2.46, date(2026, 7, 3)), (2.58, 2.34))
+        self.assertEqual(limit_prices("sz.000016", "*ST康佳A", 2.46, date(2026, 7, 6)), (2.71, 2.21))
+        self.assertEqual(limit_prices("sz.302132", "中航成飞", 50.0), (60.0, 40.0))  # ChiNext 302 is 20 %
         self.assertEqual(limit_prices("bj.920982", "锦波生物", 100.0), (130.0, 70.0))
+        self.assertIsNone(limit_prices("sh.900901", "云赛B股", 1.0))  # a board the rule table does not model
         self.assertEqual(market_status(NOW, True), "TRADING")
         self.assertEqual(market_status(NOW.replace(hour=9, minute=20), True), "OPENING_AUCTION")
         self.assertEqual(market_status(NOW.replace(hour=12), True), "MIDDAY_BREAK")
@@ -116,6 +120,22 @@ class SectorIntradayTests(unittest.TestCase):
         self.assertEqual(value["completeness"], "PARTIAL")
         self.assertEqual(value["counts"]["withheld"], 1)
         self.assertTrue(value["membership_is_current_not_historical"])
+
+    def test_members_use_the_limit_rule_of_the_session(self):
+        class STUpSeven(FakeClient):
+            def call(self, service, tool, args):
+                value = super().call(service, tool, args)
+                if tool == "get_a_share_prices_snapshot":
+                    for item in value["data"]["item"]:
+                        if item["thscode"] == "000016.SZ":  # main-board ST up 6.9 % on 2026-09-25
+                            item.update(last_price=2.63, high_price=2.63, volume=100, turnover=263,
+                                        price_change_ratio_pct=6.91)
+                return value
+
+        rows = {r["symbol"]: r for r in provider(STUpSeven()).board_members("885431.TI")["members"]}
+        st = rows["sz.000016"]
+        self.assertEqual((st["limit_up_price"], st["limit_down_price"]), (2.71, 2.21))
+        self.assertIsNone(st["limit_status"])  # not limit-up under the 10 % rule
 
     def test_failure_returns_stale_cache_or_raises(self):
         client = FakeClient()

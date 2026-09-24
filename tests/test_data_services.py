@@ -1,18 +1,25 @@
 import json
+import os
+import signal
+import subprocess
+import sys
 import tempfile
+import threading
 import time
 import unittest
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from quantlab.data import day_seals
-from quantlab.data.data_services import DataStatusService, DataUpdateJobs
-from quantlab.data.research_provider import InvalidRequest
+from quantlab.data.data_services import DataPreviewService, DataStatusService, DataUpdateJobs, runner_alive
+from quantlab.data.research_provider import DataProviderError, InvalidRequest
 
 TZ = ZoneInfo("Asia/Shanghai")
+REPO = Path(__file__).resolve().parents[1]
 
 
 def write_parquet(path: Path, rows: int = 3):
@@ -75,6 +82,22 @@ class SealTests(unittest.TestCase):
         recent = day_seals.recent(self.root)
         self.assertEqual(recent[0]["verify_status"], "mismatch")
 
+    def test_revoke_then_seal_again_keeps_every_revision(self):
+        quiet = lambda *_: None  # noqa: E731
+        day_seals.seal(self.root, "2026-09-24", log=quiet)
+        day_seals.verify(self.root, "2026-09-24", log=quiet)
+        first = (self.root / "catalog/seals/_history/2026-09-24.r1.json").read_bytes()
+        day_seals.revoke(self.root, "2026-09-24", "重采涨停池", log=quiet)
+        write_parquet(self.root / "lake/bronze/provider=ths/limit_up_pool/2026-09-24.parquet", 5)
+        again = day_seals.seal(self.root, "2026-09-24", log=quiet)
+        # numbering continues after a revoke, so the revoked revision stays in _history untouched
+        self.assertEqual(again["revision"], 2)
+        self.assertEqual((self.root / "catalog/seals/_history/2026-09-24.r1.json").read_bytes(), first)
+        # the old verification went with the revoked seal; the new one has not been verified yet
+        self.assertEqual(day_seals.recent(self.root)[0]["verify_status"], "never")
+        self.assertTrue(any((self.root / "catalog/seals/_revoked").glob("2026-09-24-*/verify.json")))
+        self.assertEqual(day_seals.plan(self.root, "2026-09-24", today="2026-09-25")["revision"], 2)
+
     def test_revoke_moves_files(self):
         day_seals.seal(self.root, "2026-09-24", log=lambda *_: None)
         with self.assertRaises(day_seals.SealError):
@@ -122,6 +145,14 @@ class JobsTests(unittest.TestCase):
         stop = self.jobs.plan("sector_recorder_stop", {})
         self.assertEqual(stop["blocked_reason"], "盘中记录器没有在运行")
 
+    def test_today_is_accepted_for_a_required_date(self):
+        from quantlab.data.data_services import _date_param
+        self.assertEqual(_date_param({"date": "today"}, "date", required=True, today="2026-09-24"), "2026-09-24")
+        with self.assertRaises(InvalidRequest):
+            _date_param({}, "date", required=True, today="2026-09-24")
+        with self.assertRaises(InvalidRequest):
+            self.jobs.run("../plans/x")
+
     def test_disk_missing_blocks(self):
         jobs = DataUpdateJobs(self.root / "nope", now_fn=lambda: self.now)
         self.assertIn("数据盘未连接", jobs.plan("seal_day", {"date": "2026-09-24"})["blocked_reason"])
@@ -143,6 +174,192 @@ class JobsTests(unittest.TestCase):
         self.assertIn("已封存", again["blocked_reason"])
         seals = DataStatusService(self.root, now_fn=lambda: self.now).list_status()["seals"]
         self.assertEqual(seals[0]["verify_status"], "ok")
+
+
+class CalendarLake:
+    """Reference snapshot of 2026-09-24 whose trade calendar runs 2026-09-14..09-25 (weekends closed)."""
+
+    def __init__(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "catalog").mkdir()
+        (self.root / "catalog/dataset_registry.json").write_text("{}")
+        snap = self.root / "lake/bronze/provider=baostock/reference_snapshots/snapshot=2026-09-24"
+        snap.mkdir(parents=True)
+        days = [date(2026, 9, 14) + timedelta(days=i) for i in range(12)]
+        pd.DataFrame({"calendar_date": [d.isoformat() for d in days],
+                      "is_trading_day": ["1" if d.weekday() < 5 else "0" for d in days]}).to_parquet(
+            snap / "trade_calendar.parquet")
+        (snap / "manifest.json").write_text("{}")
+
+
+class PublicStepsTests(unittest.TestCase):
+    def setUp(self):
+        self.lake = CalendarLake()
+        self.root = self.lake.root
+
+    def tearDown(self):
+        self.lake.tmp.cleanup()
+
+    def plan(self, now, job_id, params):
+        return DataUpdateJobs(self.root, now_fn=lambda: now.replace(tzinfo=TZ)).plan(job_id, params)
+
+    @staticmethod
+    def fetched(plan, dataset_id):
+        return sorted(p[2] for s in plan["steps"] if s["action"] == "fetch"
+                      for p in s.get("public") or [] if p[1] == dataset_id)
+
+    def test_backfill_hands_the_collectors_a_calendar_that_covers_the_day(self):
+        # the only snapshot is 09-24's; the collectors used to be told to read snapshot=2026-09-21
+        plan = self.plan(datetime(2026, 9, 24, 20), "backfill_day", {"date": "2026-09-21"})
+        self.assertIsNone(plan["blocked_reason"])
+        step = next(s for s in plan["steps"] if s["action"] == "fetch")
+        self.assertEqual(step["calendar"], "2026-09-24")
+        out = self.root / "ths-plan.json"
+        proc = subprocess.run([sys.executable, str(REPO / "scripts/collect/public_sources.py"), "--data-root",
+                               str(self.root), "plan", "--dataset", "ths_limit_up", "--out", str(out),
+                               "--today", "2026-09-21", "--calendar-snapshot", step["calendar"],
+                               "--start", "2026-09-21", "--end", "2026-09-21"],
+                              capture_output=True, text=True, cwd=REPO)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-400:])
+        self.assertEqual(json.loads(out.read_text())["partitions"], ["2026-09-21"])
+        late = self.plan(datetime(2026, 9, 27, 20), "backfill_day", {"date": "2026-09-26"})
+        self.assertIn("没有覆盖 2026-09-26 的交易日历", late["blocked_reason"])
+
+    def test_close_update_covers_the_days_nobody_ran_it(self):
+        monday = self.plan(datetime(2026, 9, 21, 20), "daily_close_update", {"date": "2026-09-21"})
+        self.assertIsNone(monday["blocked_reason"])
+        self.assertEqual(self.fetched(monday, "announcements_cninfo"), ["2026-09-18", "2026-09-19", "2026-09-20"])
+        self.assertEqual(self.fetched(monday, "institution_survey_em"), ["2026-09-19", "2026-09-20", "2026-09-21"])
+        self.assertEqual(self.fetched(monday, "holder_trades_em"), ["2026-09-19", "2026-09-20", "2026-09-21"])
+        self.assertEqual(self.fetched(monday, "margin_detail_exchange"), ["2026-09-18"])
+        self.assertEqual(self.fetched(monday, "limit_up_pool_ths"), ["2026-09-21"])
+        public = [s for s in monday["steps"] if s["kind"] == "public" and s["action"] == "fetch"]
+        self.assertTrue(public and all(s["calendar"] == "2026-09-21" for s in public))
+        tuesday = self.plan(datetime(2026, 9, 22, 20), "daily_close_update", {"date": "2026-09-22"})
+        self.assertEqual(self.fetched(tuesday, "announcements_cninfo"), ["2026-09-21"])
+        self.assertEqual(self.fetched(tuesday, "institution_survey_em"), ["2026-09-22"])
+
+
+class JobProcessTests(unittest.TestCase):
+    RUN = "20260924-090000-abcdef"
+
+    def setUp(self):
+        self.lake = Lake()
+        self.root = self.lake.root
+        self.now = datetime(2026, 9, 24, 9, 0, tzinfo=TZ)
+        self.fake_python = self.root / "fake_python.sh"
+        self.fake_python.write_text("#!/bin/sh\nsleep 2\n")
+        self.fake_python.chmod(0o755)
+
+    def tearDown(self):
+        self.lake.tmp.cleanup()
+
+    def jobs(self, root=None, python=None):
+        return DataUpdateJobs(root or self.root, python=python or str(self.fake_python), now_fn=lambda: self.now)
+
+    def running_run(self, pid, *, hold_lock):
+        import fcntl
+        run_dir = self.root / "catalog/jobs/runs" / self.RUN
+        run_dir.mkdir(parents=True)
+        (run_dir / "state.json").write_text(json.dumps({
+            "run_id": self.RUN, "job_id": "sector_recorder_start", "state": "running", "pid": pid,
+            "created_at": "2026-09-24T09:00:00+08:00", "result": {"datasets": [], "seal": None}}))
+        handle = (run_dir / "runner.lock").open("a+")
+        self.addCleanup(handle.close)
+        if hold_lock:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        return run_dir
+
+    def test_two_launchers_start_the_recorder_once(self):
+        for _ in range(5):
+            lake = Lake()
+            try:
+                barrier, results = threading.Barrier(2), []
+
+                def launcher():
+                    jobs = self.jobs(lake.root)
+                    barrier.wait()
+                    results.append(jobs.autostart())
+
+                threads = [threading.Thread(target=launcher) for _ in range(2)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(30)
+                self.assertEqual(sorted(r["started"] for r in results), [False, True])
+                self.assertEqual(len(list((lake.root / "catalog/jobs/runs").glob("*/state.json"))), 1)
+            finally:
+                lake.tmp.cleanup()
+
+    def test_a_reused_pid_is_not_taken_for_the_runner(self):
+        # after a restart the old pid belongs to another live process, but the runner's lock is free
+        self.running_run(os.getpid(), hold_lock=False)
+        jobs = self.jobs()
+        with mock.patch("os.killpg") as killpg, mock.patch("os.kill", wraps=os.kill) as kill:
+            self.assertEqual(jobs.cancel(self.RUN)["state"], "interrupted")
+        killpg.assert_not_called()
+        self.assertFalse([c for c in kill.call_args_list if c.args[1:] == (signal.SIGTERM,)])
+        self.assertIsNone(jobs.plan("sector_recorder_start", {})["blocked_reason"])
+
+    def test_cancel_signals_a_live_runner_and_reports_how_it_ended(self):
+        run_dir = self.running_run(999_999, hold_lock=True)
+        self.assertTrue(runner_alive(run_dir, json.loads((run_dir / "state.json").read_text())))
+
+        def runner_finishes(pid, sig):  # the runner writes its own final state when signalled
+            state = json.loads((run_dir / "state.json").read_text())
+            state["state"] = "succeeded"
+            (run_dir / "state.json").write_text(json.dumps(state))
+
+        with mock.patch("os.killpg", side_effect=runner_finishes) as killpg:
+            self.assertEqual(self.jobs().cancel(self.RUN)["state"], "succeeded")
+        killpg.assert_called_once_with(999_999, signal.SIGTERM)
+
+    def test_a_start_that_fails_does_not_block_the_job(self):
+        jobs = self.jobs(python=str(self.root / "no-such-python"))
+        plan = jobs.plan("seal_day", {"date": "2026-09-24"})
+        with self.assertRaises(DataProviderError):
+            jobs.run(plan["plan_id"])
+        self.assertEqual(jobs.list_runs()["runs"][0]["state"], "failed")
+        self.assertIsNone(jobs.plan("seal_day", {"date": "2026-09-24"})["blocked_reason"])
+
+
+class PreviewTests(unittest.TestCase):
+    def setUp(self):
+        self.lake = Lake()
+        self.root = self.lake.root
+        daily = self.root / "lake/bronze/provider=baostock/stock_kline_daily"
+        daily.mkdir(parents=True)
+        pd.DataFrame({"date": [f"2026-09-{d:02d}" for d in range(1, 25)], "code": "sh.600000",
+                      "close": [float(d) for d in range(24)]}).to_parquet(daily / "sh_600000.parquet")
+        entries = [{"dataset_id": d, "status": "READY", "delivery": "FILE"}
+                   for d in ("bars_daily_baostock_raw", "limit_up_pool_ths")]
+        patcher = mock.patch("quantlab.data.data_services._catalog_entries", return_value=entries)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.service = DataPreviewService(self.root)
+
+    def tearDown(self):
+        self.lake.tmp.cleanup()
+
+    def test_per_symbol_preview_counts_the_whole_file(self):
+        value = self.service.preview("bars_daily_baostock_raw", limit=5)
+        self.assertEqual((value["total_rows"], value["truncated"], len(value["rows"])), (24, True, 5))
+        self.assertEqual(value["rows"][0]["date"], "2026-09-24")
+        one = self.service.preview("bars_daily_baostock_raw", limit=5, filters={"date": "2026-09-10"})
+        self.assertEqual((one["total_rows"], one["truncated"]), (1, False))
+
+    def test_filters_are_validated_and_codes_normalised(self):
+        from quantlab.data.data_services import _preview_code
+        for filters in ({"date": "../../../../../outside"}, {"date": "2026/09/24"}, {"code": "../../x"},
+                        {"code": "60051"}):
+            with self.assertRaises(InvalidRequest, msg=str(filters)):
+                self.service.preview("limit_up_pool_ths", filters=filters)
+        self.assertEqual([_preview_code(c) for c in ("920001", "430047", "600519", "900901", "000001", "SZ300750",
+                                                     "sh.600000")],
+                         ["bj.920001", "bj.430047", "sh.600519", "sh.900901", "sz.000001", "sz.300750", "sh.600000"])
+        value = self.service.preview("limit_up_pool_ths", filters={"code": "sh.600001", "date": "2026-09-24"})
+        self.assertEqual(value["total_rows"], 1)
 
 
 class AutostartTests(unittest.TestCase):
