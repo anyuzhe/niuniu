@@ -175,8 +175,15 @@ class FuyaoIntegrationTests(unittest.TestCase):
             self.assertNotIn("get_a_share_prices_snapshot", names)
             self.assertTrue(hasattr(runtime.api, "proposals"))
             self.assertIn("不可调用宿主未注册的其他 MCP", SYSTEM)
+            everyday = ChatRuntime(tmp, tmp, fuyao_client=FakeFuyaoClient(), data_catalog_path=catalog('READY'),
+                                   tool_profile='everyday')
+            self.assertTrue(fuyao_names.issubset({item["name"] for item in everyday.api.schemas()}))
+            self.assertTrue(everyday.api.call("resolve_fuyao_security", {"query": "宏景科技", "asset_type": "a-share", "limit": 3})["ok"])
             blocked=ChatRuntime(tmp, tmp, fuyao_client=FakeFuyaoClient(),data_catalog_path=catalog('REVIEW_REQUIRED'))
             self.assertTrue(fuyao_names.isdisjoint({item["name"] for item in blocked.api.schemas()}))
+            blocked_everyday=ChatRuntime(tmp, tmp, fuyao_client=FakeFuyaoClient(),
+                                         data_catalog_path=catalog('REVIEW_REQUIRED'), tool_profile='everyday')
+            self.assertTrue(fuyao_names.isdisjoint({item["name"] for item in blocked_everyday.api.schemas()}))
 
     def test_quote_provider_maps_fuyao_and_marks_cross_source_mismatch(self):
         client = FakeFuyaoClient()

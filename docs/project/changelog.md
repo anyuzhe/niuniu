@@ -1859,3 +1859,11 @@
 - 数据清单：`realtime_quote`、`market_snapshot` 改为 `READY`（新 §3.3，写明单位、一致规则、停牌与除权语义、限制）；盘中（竞价、连续竞价、涨跌停封单）待下一交易日开盘补测。`fuyao_context` 维持 `REVIEW_REQUIRED`：DATA 环境无扶摇凭证无法实测；它未开放前，`chat_runtime` 的实时报价只走公开网页三源共识。
 - 测试：`test_public_web_market_snapshot` 新增 3 项（东财批量解析与北交所前缀、批量请求数、停牌原因），相关 12 + 5（live quote）+ market snapshot/orchestrator/fuyao 共 57 项通过。
 - 同日续：用户提供扶摇凭证（写入 git 忽略的项目 `.env`，`HITHINK_FINANCE_API_KEY`）。实测扶摇报价与五个聚合查询（证券解析、个股快照+日K、板块、短线、基本面）：成交量为股、现价/昨收与三家公开行情一致，日K成交量与 09-23 入库日K一致；成交额只有约 8 位有效数字。修复 `FuyaoAugmentedQuoteProvider`：与公开行情不一致的扶摇报价不再输出（全部不一致时报错）；通过校验时补上扶摇缺的证券名称、改用公开行情的精确成交额和盘口画像；停牌股标 `no_trade_today`。`fuyao_context` 改为 `READY`（清单写明板块为当前成分、K线为扶摇自有复权不可用于回测）。更新 `test_fuyao_integration` 的不一致用例；`test_market_snapshot_provider` 两项改为固定测试用清单，不再依赖线上清单状态。相关 50 个测试模块中仅 3 项 stdio 子进程用例因本地环境缺包失败，与本次改动无关。
+
+### 2026-09-24｜[CODE] 日常模式接入扶摇与实时报价
+
+- 数据侧开放 `realtime_quote`、`market_snapshot`（6693fea）和 `fuyao_context`（666d26a）。对话本来就按清单开关：问到具体股票时宿主自动附上实时报价（扶摇为主、公开行情校验，对不上的不输出），研究模式出现5个扶摇工具；扶摇不在清单 READY 时两者都不启用。
+- AI 助手“日常”模式的工具白名单加入5个扶摇工具（清单未开放或无密钥时不会出现）；日常系统说明补充用法和口径：板块成分是当前成分，扶摇K线不用于统计/回测，与牛牛数据有出入时说明两边口径，引用实时报价写明时间。
+- `test_market_snapshot_provider` 两项原先读取仓库真实清单、假定盘中快照未开放，改为固定一份“待审查”清单（9a40b7b；数据侧随后在 setUp 做了同样处理，两者兼容）。
+- 验证：本机VM用项目 `.env` 的扶摇密钥连通，证券消歧“贵州茅台”返回 600519.SH；未在Mac真实窗口里跑完整对话。测试：扶摇集成测试增加日常模式开放/未开放两种情况；全量回归见本节末。
+- 全量回归（云端副本，Python 3.12、离屏Qt）：2,062项通过；数据侧 `test_research_provider` 仍因缺 pytest 未运行。
