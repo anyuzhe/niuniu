@@ -33,6 +33,9 @@ class ChatDesktopTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             window=MainWindow(tmp);self.addCleanup(lambda:self.cleanup_window(window))
             window.research_chat();dialog=window._research_chat_dialog;self.assertIsInstance(dialog,ResearchChatDialog)
+            # Research tools live in the 研究 profile; the everyday default only answers market/stock questions.
+            self.assertEqual(dialog.runtime.tool_profile,'everyday')
+            dialog.profile.setCurrentIndex(dialog.profile.findData('research'));self.assertEqual(dialog.runtime.tool_profile,'research')
             self.assertFalse(dialog.consent.isChecked())
             provider=FakeProvider([('describe_factor',{'factor_id':'BASE.MOMENTUM','version':'1.0.0'})],text='verified fixture')
             with patch('quantlab.agent.chat_runtime.make_provider',return_value=provider):

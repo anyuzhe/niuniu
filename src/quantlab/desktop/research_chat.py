@@ -19,13 +19,21 @@ class ChatSignals(QObject):
 
 
 class ResearchChatDialog(QDialog):
+    DEFAULT_PROFILE=None  # None: 日常 unless the main window is in 专业模式
+
     def __init__(self,window):
         super().__init__(window);self.window=window;self.output=window.output;self.data_root=window.data_root
-        self.runtime=ChatRuntime(self.output,self.data_root,getattr(window,'get_research_queue',None));self.busy=False;self.close_requested=False
+        profile=self.DEFAULT_PROFILE or ('research' if getattr(window,'pro_mode',False) else 'everyday')
+        self.runtime=self.make_runtime(profile);self.busy=False;self.close_requested=False
         self.stop_event=Event();self.references={};self.session_id=None
         self.setWindowTitle('牛牛 · AI 研究助手');self.resize(1180,900)
         box=QVBoxLayout(self)
-        box.addWidget(label('模型负责讨论与提案；真实状态和证据来自工具。研究仍须在宿主界面批准。','note',True))
+        self.profile=QComboBox();self.profile.setAccessibleName('助手模式')
+        self.profile.addItem('日常：问市场、个股、我的股票','everyday');self.profile.addItem('研究：因子、实验、提案与数据治理工具','research')
+        self.profile.setCurrentIndex(self.profile.findData(profile));self.profile.currentIndexChanged.connect(self.change_profile)
+        self.profile.setVisible(self.DEFAULT_PROFILE is None)
+        box.addWidget(row(label('助手模式'),self.profile))
+        box.addWidget(label('回答里的数字都来自工具查询；研究结论不是买卖指令。研究提案仍须在宿主界面批准。','note',True))
         self.sessions=QComboBox();self.new_button=button('新会话',self.new_session)
         self.save_button=button('保存模型配置',self.save_settings)
         self.probe_button=button('测试连接／刷新模型',self.probe)
@@ -42,7 +50,8 @@ class ResearchChatDialog(QDialog):
         self.transcript=QPlainTextEdit();self.transcript.setReadOnly(True)
         self.transcript.setAccessibleName('研究助手对话');left_box.addWidget(self.transcript,1)
         self.input=QPlainTextEdit();self.input.setMaximumHeight(110)
-        self.input.setPlaceholderText('例如：查询已有动量因子，然后为三只股票拟定一份研究提案。')
+        self.input.setPlaceholderText('例如：今天市场怎么样？帮我看看 600519。我的股票有什么要注意的？' if profile=='everyday'
+            else '例如：查询已有动量因子，然后为三只股票拟定一份研究提案。')
         self.input.setAccessibleName('研究问题');left_box.addWidget(self.input)
         self.send_button=button('发送研究问题',self.send,True)
         self.stop_button=button('停止助手（不取消研究）',self.stop);self.stop_button.setEnabled(False)
@@ -63,6 +72,20 @@ class ResearchChatDialog(QDialog):
         if not records:self.new_session()
         else:self.refresh_sessions(records[0]['id'])
 
+    def make_runtime(self,profile):
+        return ChatRuntime(self.output,self.data_root,getattr(self.window,'get_research_queue',None),tool_profile=profile)
+
+    def change_profile(self):
+        if self.busy:return
+        self.runtime=self.make_runtime(self.profile.currentData())
+        self.input.setPlaceholderText('例如：今天市场怎么样？帮我看看 600519。我的股票有什么要注意的？'
+            if self.profile.currentData()=='everyday' else '例如：查询已有动量因子，然后为三只股票拟定一份研究提案。')
+
+    def prefill(self,text):
+        """Put page context into the input; the user reviews it and presses send."""
+        if self.busy:return False
+        self.input.setPlainText(text);self.input.setFocus();return True
+
     def config_changed(self):
         self.consent.setChecked(False)
         target='Codex CLI 的 ChatGPT 登录服务' if self.settings.provider.currentData()=='codex_cli' else self.settings.fields['base_url'].text()
@@ -70,7 +93,7 @@ class ResearchChatDialog(QDialog):
 
     def set_busy(self,busy):
         self.busy=busy
-        for control in (self.sessions,self.new_button,self.save_button,self.probe_button,self.group,
+        for control in (self.profile,self.sessions,self.new_button,self.save_button,self.probe_button,self.group,
             self.consent,self.input,self.send_button,self.open_button,self.approvals_button,self.grant_button):control.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
 

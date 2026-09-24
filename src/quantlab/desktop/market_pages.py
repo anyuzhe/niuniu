@@ -21,6 +21,16 @@ def _rank(value):
     return '' if value is None else f'近一年 {value * 100:.0f}% 分位'
 
 
+def market_prompt(overview):
+    lines = [f"请帮我解读 {overview['trading_day']} 收盘的A股市场。", *overview['summary']]
+    if overview['industries']:
+        lines.append('领涨行业：' + '、'.join(f"{r['industry']}（中位 {_pct(r['median_pct'])}）" for r in overview['industries'][:5]))
+    if overview['reasons']:
+        lines.append('涨停原因集中：' + '、'.join(f"{r['reason']} {r['limit_ups']} 家" for r in overview['reasons'][:6]))
+    lines.append('请说明市场处于什么状态、哪些方向在走强、明天需要观察什么；不要给出确定的买卖指令。')
+    return '\n'.join(lines)
+
+
 def _tall(widget, rows):
     widget.setMinimumHeight(min(60 + 39 * max(rows, 1), 60 + 39 * 12))
     return widget
@@ -80,7 +90,7 @@ def _header(window, box, overview, *, auto=True):
         text += ' · 正在用最新数据更新（约 1–2 分钟）…'
     widgets = [label(text, 'muted', True), button('立即更新', lambda: (_start_build(window, force=True),
                                                                    window.navigate_root(window.root_current))),
-               button('问 AI 解读', window.research_chat)]
+               button('问 AI 解读', lambda: window.ask_ai(market_prompt(overview)) if overview else window.research_chat())]
     header = row(*widgets)
     header.layout().setStretch(0, 1)
     box.addWidget(header)
@@ -118,7 +128,7 @@ def market_page(window):
     card = Card('连板梯队（双击查看个股）')
     card.add(_tall(table(['股票', '代码', '连板', '今日涨幅', '涨停原因'],
                    [[r['name'], r['code'], r['streak'], _pct(r['pct']), r.get('reason') or '—'] for r in ladder],
-                   lambda i: window.open_stock_dossier(ladder[i]['code']) if ladder else None), len(ladder)))
+                   lambda i: window.open_stock_report(ladder[i]['code']) if ladder else None), len(ladder)))
     box.addWidget(card)
     box.addWidget(label('说明：\n' + '\n'.join('· ' + c for c in overview['caveats']), 'muted', True))
 

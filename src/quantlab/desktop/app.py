@@ -501,6 +501,16 @@ class MainWindow(QMainWindow):
             dialog=ResearchChatDialog(self);self._research_chat_dialog=dialog;self.show_dialog(dialog)
         except Exception as error:self.status.setText('研究助手未打开：'+str(error))
 
+    def ask_ai(self,prompt):
+        """Open the assistant with page context pre-filled; the user reviews and sends."""
+        self.research_chat()
+        dialog=getattr(self,'_research_chat_dialog',None)
+        if dialog is not None and hasattr(dialog,'prefill') and not dialog.prefill(prompt):
+            self.status.setText('助手正在回答上一个问题，稍后再试。')
+
+    def open_stock_report(self,code):
+        self.pending_stock=code;self.navigate_page('stock')
+
     def research_tools(self):
         from .research_tools import ResearchToolsDialog
         self.show_dialog(ResearchToolsDialog(self))

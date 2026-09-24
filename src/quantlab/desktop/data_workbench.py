@@ -94,6 +94,8 @@ def _assert_no_durable_input_work(output):
 
 
 class DataResearchChatDialog(ResearchChatDialog):
+    DEFAULT_PROFILE='research'
+
     def __init__(self,window):
         super().__init__(window)
         self.runtime.api=DataWorkbenchReadAPI(self.runtime.api,window.output,window.data_root)

@@ -133,7 +133,7 @@ TDX固定分片合同：[tdx_sharding.py](../../src/quantlab/data/tdx_sharding.p
 
 ## 产品化改造：日常工作台（2026-09-24）
 
-桌面导航改为 [app.py](../../src/quantlab/desktop/app.py) 中的 `PAGES`（key、标题、图标、是否专业模式），`navigate_page(key)` 按 key 跳转；日常页面在 [home_pages.py](../../src/quantlab/desktop/home_pages.py) 与 [market_pages.py](../../src/quantlab/desktop/market_pages.py)，专业模式开关存于 [ui_settings.py](../../src/quantlab/desktop/ui_settings.py)。今日市场/主线方向的计算在 [market_overview.py](../../src/quantlab/trading/market_overview.py)，只经数据清单读取 READY 文件；测试见 [test_market_overview.py](../../tests/test_market_overview.py)。
+桌面导航改为 [app.py](../../src/quantlab/desktop/app.py) 中的 `PAGES`（key、标题、图标、是否专业模式），`navigate_page(key)` 按 key 跳转；日常页面在 [home_pages.py](../../src/quantlab/desktop/home_pages.py) 与 [market_pages.py](../../src/quantlab/desktop/market_pages.py)，专业模式开关存于 [ui_settings.py](../../src/quantlab/desktop/ui_settings.py)。今日市场/主线方向的计算在 [market_overview.py](../../src/quantlab/trading/market_overview.py)，只经数据清单读取 READY 文件；测试见 [test_market_overview.py](../../tests/test_market_overview.py)。个股报告与我的股票见 [stock_report.py](../../src/quantlab/trading/stock_report.py)、[my_stocks.py](../../src/quantlab/trading/my_stocks.py)、[stock_pages.py](../../src/quantlab/desktop/stock_pages.py)；助手日常模式与页面只读工具见 [home_tools.py](../../src/quantlab/agent/home_tools.py)。
 
 ## 数据侧整改（2026-09-23）
 

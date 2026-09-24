@@ -272,6 +272,41 @@ def _industries(panel: pl.DataFrame, reference: Path, sessions: list[date]) -> l
     return result
 
 
+STOCK_COLUMNS = ['code', 'name', 'industry', 'close', 'pct', 'ret5', 'ret20', 'ret60', 'ma20_gap', 'ma60_gap',
+                 'high60_gap', 'amount', 'amount_ratio', 'vol20', 'streak', 'limit_ups_10d', 'is_st', 'tradable',
+                 'rank20', 'industry_rank20', 'industry_size']
+
+
+def _stock_snapshot(panel: pl.DataFrame, reference: Path, day: date) -> pl.DataFrame:
+    """Per-stock facts for one session, so stock pages need no full-market scan."""
+    industry = pl.read_parquet(reference / 'industry.parquet').select(
+        'code', pl.col('industry').map_elements(_industry_name, return_dtype=pl.String).alias('industry'))
+    close = pl.col('close')
+    frame = panel.sort('code', 'date').with_columns(
+        *[(close / close.shift(n).over('code') - 1).alias(f'ret{n}') for n in (5, 20, 60)],
+        (close / close.rolling_mean(20).over('code') - 1).alias('ma20_gap'),
+        (close / close.rolling_mean(60).over('code') - 1).alias('ma60_gap'),
+        (close / pl.col('high').rolling_max(60).over('code') - 1).alias('high60_gap'),
+        (pl.col('amount') / pl.col('amount').rolling_mean(20).shift(1).over('code')).alias('amount_ratio'),
+        pl.col('pct').rolling_std(20).over('code').alias('vol20'),
+        pl.col('is_limit_up_close').fill_null(False).cast(pl.Int64).rolling_sum(10, min_samples=1)
+        .over('code').alias('limit_ups_10d'),
+    ).filter(pl.col('date') == day).join(industry, on='code', how='left')
+    live = pl.col('tradable') & pl.col('ret20').is_not_null()
+    frame = frame.with_columns(
+        pl.when(live).then(pl.col('ret20').rank('average') / pl.col('ret20').filter(live).count())
+        .otherwise(None).alias('rank20'),
+        pl.col('limit_up_streak').fill_null(0).alias('streak'),
+        pl.col('raw_close').alias('close_raw'),
+    )
+    frame = frame.with_columns(
+        pl.when(live).then(pl.col('ret20').rank('average').over('industry') / pl.col('ret20').count().over('industry'))
+        .otherwise(None).alias('industry_rank20'),
+        pl.len().over('industry').alias('industry_size'),
+    )
+    return frame.select(*[pl.col('close_raw').alias('close') if c == 'close' else pl.col(c) for c in STOCK_COLUMNS])
+
+
 def _pct_text(value):
     return '—' if value is None else f'{value * 100:+.2f}%'
 
@@ -351,6 +386,7 @@ def build_market_overview(catalog_path=None, trading_day: str | None = None,
                      'limit_down': r['limit_down'], 'max_streak': r['max_streak'], 'amount': _num(r['amount'], 0)}
                     for r in rows[-60:]],
         'industries': _industries(panel, sources.reference, [d for d in sessions if d <= end]),
+        '_stocks': _stock_snapshot(panel, sources.reference, end),
         'reasons': _reasons(pools, end, names),
         'sources': {
             'daily': 'qfq_published_f24（前复权日线，涨跌按复权计算）',
@@ -379,10 +415,29 @@ def save_overview(output, overview: dict) -> Path:
         raise MarketOverviewError('输出目录不能是符号链接')
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{overview['trading_day']}.json"
+    stocks = overview.get('_stocks')
+    if stocks is not None:
+        # Written first: a JSON on disk always has its stock snapshot next to it.
+        target = root / f"{overview['trading_day']}.stocks.parquet"
+        partial = root / f"{overview['trading_day']}.stocks.tmp"
+        stocks.write_parquet(partial)
+        partial.replace(target)
     temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(overview, ensure_ascii=False, indent=1), encoding='utf-8')
+    temporary.write_text(json.dumps({k: v for k, v in overview.items() if k != '_stocks'},
+                                    ensure_ascii=False, indent=1), encoding='utf-8')
     temporary.replace(path)
     return path
+
+
+def latest_stocks(output):
+    """Per-stock snapshot of the newest overview, or None."""
+    overview = latest_overview(output)
+    if overview is None:
+        return None, None
+    path = overview_root(output) / f"{overview['trading_day']}.stocks.parquet"
+    if not path.is_file():
+        return overview, None
+    return overview, pl.read_parquet(path)
 
 
 def latest_overview(output) -> dict | None:
@@ -401,4 +456,4 @@ def latest_overview(output) -> dict | None:
 
 
 __all__ = ['FORMAT', 'MarketOverviewError', 'build_market_overview', 'save_overview', 'latest_overview',
-           'resolve_sources', 'overview_root']
+           'latest_stocks', 'resolve_sources', 'overview_root', 'STOCK_COLUMNS']

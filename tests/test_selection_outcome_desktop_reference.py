@@ -36,8 +36,8 @@ class SelectionOutcomeDesktopReferenceTests(unittest.TestCase):
         self.fixture.service().build(self.selection['selection_id'], [1])
         self.host = _Host(self.fixture.output)
         with patch('quantlab.desktop.research_chat.ChatRuntime',
-                   side_effect=lambda output, data_root, queue_factory: ChatRuntime(
-                       output, data_root, queue_factory, local_data_only=True)):
+                   side_effect=lambda output, data_root, queue_factory, **kwargs: ChatRuntime(
+                       output, data_root, queue_factory, local_data_only=True, **kwargs)):
             self.dialog = ResearchChatDialog(self.host)
         self.addCleanup(self._close)
         ref = {'kind': 'playbook_selection', 'selection_id': self.selection['selection_id']}
