@@ -4,7 +4,7 @@
 
 本文件是 **DATA → CODE 的唯一日常数据交接入口**。DATA 负责数据本身；CODE 只负责使用 DATA 已交付的数据。
 
-最近一次 DATA 审查：2026-09-24（开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
+最近一次 DATA 审查：2026-09-25（开放数据中心三个接口与封存；此前 2026-09-24：开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
 
 ## 1. 责任边界
 
@@ -191,6 +191,46 @@ result.to_dict()   # 可直接 JSON 序列化
 | `sector_board_members` | API | 单个板块的当前成分股行情 | `SectorIntradayProvider.board_members(code)`，`code` 取自板块榜 | 每只：`symbol, name, last, change_pct, amount, volume, previous_close, open, high, low, as_of, status(trading/no_trade_today/withheld_source_mismatch), limit_status, limit_up_price, limit_down_price, limit_check, cross_check`；整体同上，另有 `counts`（涨停/跌停/炸板/暂不输出只数） | 当前成分，不代表历史成分。盘中延迟未实测，见上 | `READY` | 只刷新用户打开的那个板块，5 秒刷新；`withheld_source_mismatch` 的股票不显示价格 |
 | `sector_board_constituents` | FILE | 同花顺概念、行业板块的每日成分快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_constituents/date=YYYY-MM-DD.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每行一个（板块, 股票）：`board_code, board_name, board_type, symbol, name, observed_at` | 当天的当前成分，不代表历史成分。2026-09-24 起，710 个板块、80,701 行。由盘中记录器开盘前自动刷新，记录器没运行的日子沿用上一天 | `READY` | 要查“某只股票属于哪些板块”时读这里；板块成分行情仍用 `sector_board_members` |
 | `sector_board_intraday` | FILE | 盘中每分钟的全部板块行情记录 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_intraday/date=YYYY-MM-DD/HHMMSS.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每个文件是一分钟的全部板块，列同 `sector_board_snapshot` 的板块行，另有 `market_status, snapshot_as_of, stale` | 需要 Mac 在交易时间运行记录器（`artifacts/run-sector-recorder.command`），没运行的时段没有数据，也不能补 | `NOT_READY` | 有了首日数据并核对后改 `READY` |
+
+### 3.5 数据中心接口（API，2026-09-25 开放）
+
+对应 CODE 需求《数据中心的状态、预览、更新与封存接口》第 2 版。模块 `quantlab.data.data_services`，三个类都用 `data_root` 构造（默认 `NIUNIU_DATA_ROOT`，否则 `/Volumes/Lexar/niuniu-data`）。字段名、返回结构和取值都按需求文档第 3 节，下面只写 DATA 的补充和差异。出错一律抛 `InvalidRequest`（参数错）或 `DataProviderError`（其他），消息是中文。
+
+**接口 A `DataStatusService.list_status()`：**
+- 只读状态索引 `catalog/dataset_status.json`、封存清单和当天记录器回执，实测 0.4 秒返回。状态索引由每次更新任务最后一步刷新，所以 `rows`、`files` 是上一次任务结束时的数；还没刷新过的数据集 `health=unknown`。
+- 按需求多返回几项：`catalog_status`（清单里的状态）、`status_index_built_at`、`calendar_through`（交易日历覆盖到哪天）；盘中记录器那两行另有 `last_record_at`、`records_today`、`failures_today`。
+- `expected_today` 表示今天是不是该更新的日子（交易日为 true）；`health=lagging` 按每类数据的节奏判断：日K等收盘数据 18:00 后应到当天，融资融券应到前一交易日，公告目录应到前一自然日，盘中记录 09:30 后应到当天。
+- 交易日历来自最新参考快照，只到快照当天；之后的日子按工作日推断（节假日可能误判），`health_reason` 会注明。
+- `seals` 为最近 30 天的封存记录，另有 `revision`（第几版）和 `pending`（待封存的数据集）。
+
+**接口 B `DataPreviewService`：**
+- `preview` 只对清单里 `READY` 的 FILE 数据集开放，`filters` 只支持 `code` 和 `date`：按证券存放的数据（日K、5分钟、日状态、前复权）默认取 `sh.600000` 最近几行；按日期分区的默认取最新一天。`capture_root` 由产品已有的 Store 读取，不提供预览。多返回 `source_files`。
+- `query_schema` / `query` 开放这些查询接口：`research_search, stock_research_reports, stock_news, stock_announcements, financial_statements, investor_qa, realtime_quote, sector_board_snapshot, sector_board_members`。`market_snapshot`、`fuyao_context`、`stock_fund_flow_daily` 不提供页面试查。同一实例串行，至少间隔 1 秒。
+
+**接口 C `DataUpdateJobs`：**
+- 任务：`daily_close_update`、`sector_recorder_start`、`sector_recorder_stop`、`backfill_day`、`seal_day`、`verify_seal`、`revoke_seal`（撤销封存，必须填 `reason`）。
+- `plan` 只读、秒级返回；计划 30 分钟后过期。`steps[]` 按需求字段，另有 `kind`、`weight`（进度权重）。已封存、数据盘未连接、同一任务在跑、非交易日、未收盘等情况给 `blocked_reason`。
+- `run` 用牛牛当前的 Python 在后台起独立进程（`scripts/collect/job_runner.py`），关掉牛牛不中断；运行记录在数据根 `catalog/jobs/runs/<run_id>/`（`plan.json`、`state.json`、`log.txt`）。后台进程不在了而状态还是运行中时，`status` 返回 `interrupted`。`cancel` 会停止当前子任务，已写完的分区保留、有回执，下次计划会跳过它们。
+- 用户确认的任务计划就是批准：任务内部各采集脚本的计划 SHA 由任务自己生成并写进日志。
+- 已实测：`seal_day`（2026-09-24，24 个文件，核对无误）、`verify_seal`、各任务的 `plan`。`daily_close_update` 和盘中记录器还没有完整跑过一次（前者约 6 小时，后者要等交易日），第一次运行时 DATA 会跟进。
+- `daily_close_update` 里的“指数权重”需要 Python 包 `openpyxl` 和 `xlrd`，牛牛当前环境没装时计划里会提示，装法：`/Volumes/Lexar/niuniu/.venv/bin/pip install openpyxl xlrd`。
+
+**封存规则（DATA 定）：**
+- 封存范围：按日期分区的数据——§3.1 的公开数据、热度榜、盘中板块记录、全市场个股盘中快照、板块成分快照、参考快照。日K、5 分钟、日状态、前复权按证券存放、逐日追加，不在封存范围，它们可以由供应商重取、由 DATA 重建。
+- 封存后采集脚本对这一天的这些数据只读不写。数据盘是 exFAT，不能设只读权限，靠核对发现改动。
+- 次日才发布的数据（公告目录、融资融券）和还能补采的按日期数据，在封存清单里标“待封存”；补采后再对同一天执行一次 `seal_day`，就会以新版本加进去，已封存的条目不改。只能当天观察的数据当天没采到，标“无法补回”。
+- 撤销：`revoke_seal` 把这一天的封存清单和已封存的文件整份移到 `catalog/seals/_revoked/<日期>-<时间>/`，不删除；之后可以重采、再封存成新的一版。每一版都留在 `catalog/seals/_history/`。
+- `daily_close_update` 最后一步自动封存当天，并补封前一交易日待封存的数据。
+
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `data_status_service` | API | 各数据集更新状态与封存记录 | `quantlab.data.data_services.DataStatusService(data_root).list_status()` | 见需求文档接口 A 及上方补充 | 数据中心“更新状态” | `READY` | 直接调用；秒级返回，可随页面刷新 |
+| `data_preview_service` | API | 文件数据预览与查询接口试查 | `quantlab.data.data_services.DataPreviewService(data_root)`：`preview / query_schema / query` | 见需求文档接口 B 及上方补充 | 数据中心“预览与试查询” | `READY` | 试查会真实联网，按一次一查使用 |
+| `data_update_jobs` | API | 更新与封存任务 | `quantlab.data.data_services.DataUpdateJobs(data_root)`：`list_jobs / plan / run / status / log / cancel / list_runs` | 见需求文档接口 C 及上方补充 | 数据中心“更新与封存” | `READY` | 一律先显示 `plan()`、用户确认后 `run()`；不自动触发 |
+| `day_seals` | FILE | 每天的封存清单 | `/Volumes/Lexar/niuniu-data/catalog/seals/YYYY-MM-DD.json`，核对结果在 `_verify/`，历次版本在 `_history/`，撤销的在 `_revoked/` | 每个条目：`dataset_id, dir, source, observed_at, receipt, sealed_at, files[path, bytes, sha256, rows]`；另有 `pending, missing, not_in_scope, totals, revision` | 2026-09-24 起 | `READY` | 复现某一天时按清单取文件并核对校验码 |
+| `hot_rank_ths` | FILE | 同花顺个股人气榜（日榜前 100） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/hot_rank_day` | 当天观察；`rank, code, name, heat, change_pct, rank_change, concept_tags(JSON), popularity_tag, analyse_title, analyse` | 2026-09-25 起，由 `daily_close_update` 当天采集，不能回补 | `READY` | 上榜原因是供应商 AI 摘要原文 |
+| `hot_rank_em` | FILE | 东财人气榜前 100 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/hot_rank` | 当天观察；`rank, code, market, rank_change, rank_change_history` | 同上 | `READY` | 只有排名，名称和价格请连日K或实时报价 |
+| `stock_intraday_snapshot` | FILE | 全市场个股盘中快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/stock_intraday_snapshot/date=YYYY-MM-DD/HHMM.parquet`，回执 `_receipts/YYYY-MM-DD.json` | 每个时点一个文件（09:25、10:00、11:30、14:00、14:57、15:00，各在时点后约 30 秒取）；每只：`symbol, last, change, change_pct, previous_close, open, high, low, volume(股), amount(元), as_of, status, slot` | 在市 A 股加北交所约 5,570 只，一次约 10 秒；每次抽 200 只用腾讯核对，结果写在回执。由盘中记录器采集，记录器没开的时点没有数据 | `NOT_READY` | 首个交易日（2026-09-28）有数据并核对后改 `READY` |
 
 ## 4. 尚不可用、待审查或只供 DATA 内部使用
 

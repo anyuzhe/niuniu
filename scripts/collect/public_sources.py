@@ -43,6 +43,13 @@ CSI_INDICES = ("000300", "000905", "000852", "000016", "000688", "000510", "9320
 CNI_INDICES = ("399006",)
 
 
+def seal_blocks(data_root: Path, target: Path, part: str) -> bool:
+    """True when ``part`` of this dataset directory is sealed (see quantlab.data.day_seals)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+    from quantlab.data.day_seals import is_sealed_path
+    return is_sealed_path(data_root, target, part)
+
+
 def core():
     from collect.vendor.a_stock_data import core as c
     c.EM_MIN_INTERVAL = max(getattr(c, "EM_MIN_INTERVAL", 1.0), 1.5)
@@ -306,6 +313,44 @@ def fetch_ipo_calendar(day: date):
     return df, meta
 
 
+def fetch_ths_hot_rank(day: date):
+    """同花顺个股人气榜（日榜前 100）：排名、人气值、涨跌幅、概念标签、上榜原因（AI 摘要原文）。"""
+    import requests
+    r = requests.get("https://dq.10jqka.com.cn/fuyao/hot_list_data/out/hot_list/v1/stock",
+                     params={"stock_type": "a", "type": "day", "list_type": "normal"},
+                     headers={"User-Agent": UA}, timeout=20)
+    r.raise_for_status()
+    body = r.json()
+    if body.get("status_code") != 0:
+        raise RuntimeError(f"ths hot list status {body.get('status_code')}")
+    items = (body.get("data") or {}).get("stock_list")
+    if not isinstance(items, list):
+        raise RuntimeError("ths hot list without stock_list")
+    rows = [{"rank": it.get("order"), "code": it.get("code"), "name": it.get("name"),
+             "heat": it.get("rate"), "change_pct": it.get("rise_and_fall"), "rank_change": it.get("hot_rank_chg"),
+             "concept_tags": json.dumps((it.get("tag") or {}).get("concept_tag") or [], ensure_ascii=False),
+             "popularity_tag": (it.get("tag") or {}).get("popularity_tag"),
+             "analyse_title": it.get("analyse_title"), "analyse": it.get("analyse"),
+             "observed_date": day} for it in items]
+    return _frame(rows), {"source_url": "dq.10jqka.com.cn hot_list v1 (day)", "rows_reported": len(items)}
+
+
+def fetch_em_hot_rank(day: date):
+    """东财人气榜前 100：排名、排名变化（sc 带市场前缀）。"""
+    import requests
+    r = requests.post("https://emappdata.eastmoney.com/stockrank/getAllCurrentList",
+                      json={"appId": "appId01", "globalId": "786e4c21-70dc-435a-93bb-38", "marketType": "",
+                            "pageNo": 1, "pageSize": 100}, headers={"User-Agent": UA}, timeout=20)
+    r.raise_for_status()
+    body = r.json()
+    if body.get("code") != 0 or not isinstance(body.get("data"), list):
+        raise RuntimeError(f"eastmoney hot rank code {body.get('code')}")
+    rows = [{"rank": it.get("rk"), "code": str(it.get("sc", ""))[2:], "market": str(it.get("sc", ""))[:2],
+             "rank_change": it.get("rc"), "rank_change_history": it.get("hisRc"), "observed_date": day}
+            for it in body["data"]]
+    return _frame(rows), {"source_url": "emappdata.eastmoney.com stockrank", "rows_reported": len(rows)}
+
+
 def fetch_cninfo_announcements(day: date):
     """巨潮全市场公告：按公告日期逐页取全，保留 announcementTime（毫秒时间戳）作为发布时点证据。"""
     import requests
@@ -373,6 +418,8 @@ DATASETS = {
     "share_buyback": ("eastmoney", "share_buyback", "snapshot", fetch_share_buyback),
     "equity_pledge": ("eastmoney", "equity_pledge", "snapshot", fetch_equity_pledge),
     "ipo_calendar": ("eastmoney", "ipo_calendar", "snapshot", fetch_ipo_calendar),
+    "ths_hot_rank": ("ths", "hot_rank_day", "snapshot", fetch_ths_hot_rank),
+    "em_hot_rank": ("eastmoney", "hot_rank", "snapshot", fetch_em_hot_rank),
 }
 
 
@@ -460,6 +507,9 @@ def apply(plan: dict, approve: str, *, max_seconds: float, throttle: float) -> d
             continue
         if time.monotonic() - start > max_seconds:
             break
+        if seal_blocks(Path(plan["data_root"]), Path(plan["target"]), part):
+            receipt["results"][part] = {"status": "failed", "error": "sealed: 这一天已封存，采集只读"}
+            continue
         observed_at = datetime.now(timezone.utc).isoformat()
         try:
             df, meta = fetch(date.fromisoformat(part))
