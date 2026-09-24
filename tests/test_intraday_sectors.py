@@ -57,6 +57,31 @@ class SummaryTests(Base):
         self.assertIn('涨停 1', prompt)
 
 
+class FilterTests(unittest.TestCase):
+    def snapshot(self, counts=None):
+        names = ['融资融券', '沪股通', '同花顺漂亮100', '2026中报预增', '科创次新股', '林业', '风电设备', '机器人概念']
+        boards = [{'code': f'88{i:04d}.TI', 'name': n, 'type': 'concept', 'change_pct': 5.0 - i, 'amount': 1e10 * (9 - i)}
+                  for i, n in enumerate(names)]
+        for board in boards:
+            if counts is not None:
+                board['constituent_count'] = counts.get(board['name'], 50)
+        return {'boards': boards}
+
+    def test_market_labels_hidden_and_switch_off(self):
+        snap = self.snapshot()
+        self.assertEqual([b['name'] for b in sectors.pick_boards(snap)], ['林业', '风电设备', '机器人概念'])
+        self.assertEqual(len(sectors.pick_boards(snap, filtered=False)), 8)
+        self.assertEqual(sectors.pick_boards(snap, order='amount')[0]['name'], '林业')
+        note = sectors.filter_note(snap)
+        self.assertIn('已隐藏 5 个全市场标签', note)
+        self.assertIn('还没有提供成分股数量', note)
+
+    def test_small_boards_hidden_when_counts_are_provided(self):
+        snap = self.snapshot({'林业': 5})
+        self.assertEqual([b['name'] for b in sectors.pick_boards(snap)], ['风电设备', '机器人概念'])
+        self.assertIn('1 个成分股少于 10 只', sectors.filter_note(snap))
+
+
 class ToolTests(Base):
     def test_tool_only_after_ready(self):
         blocked = ChatRuntime(self.root, self.root, data_catalog_path=self.review, tool_profile='everyday')
@@ -121,6 +146,12 @@ class PageTests(Base):
         states = {members.item(i, 1).text(): members.item(i, 5).text() for i in range(4)}
         self.assertEqual(states['sh.600000'], '涨停')
         self.assertEqual(window.sector_page_state['board']['code'], '885431.TI')
+        from PyQt6.QtWidgets import QCheckBox
+        tidy = window.scroll.widget().findChild(QCheckBox)
+        self.assertTrue(tidy.isChecked())
+        tidy.setChecked(False)
+        self.assertEqual(boards.rowCount(), 3)
+        self.assertFalse(window.sector_filter)
         window.close()
 
     def test_provider_failure_stays_on_the_page(self):

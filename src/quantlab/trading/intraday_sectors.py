@@ -9,6 +9,7 @@ cross-checks and price-limit status. This module only
 """
 from __future__ import annotations
 
+import re
 import threading
 
 from quantlab.data.dataset_catalog import DataCatalogError, get_data_catalog_entry
@@ -23,6 +24,16 @@ MEMBER_STATUS = {
     'limit_up': '涨停', 'limit_down': '跌停', 'limit_break': '炸板', 'no_limit_new_listing': '新股无涨跌幅限制',
 }
 TYPE_NAMES = {'concept': '概念', 'industry': '行业'}
+
+# Concept lists also carry market-wide tags that are not themes (trading eligibility, holder
+# lists, vendor indices, listing status, earnings seasons). They top the turnover ranking
+# and say nothing about which direction is strong, so the page hides them by default.
+MARKET_LABELS = {
+    '融资融券', '沪股通', '深股通', '证金持股', '国家大基金持股', '高股息精选', '中国AI50',
+    'ST板块', '摘帽', '新股与次新股', '注册制次新股', '科创次新股',
+}
+MARKET_LABEL_PATTERNS = (re.compile(r'^同花顺'), re.compile(r'^\d{4}.*(预增|预减|预亏|扭亏)$'))
+MIN_MEMBERS = 10
 
 _lock = threading.Lock()
 _provider = None
@@ -93,13 +104,39 @@ def freshness(value: dict) -> str:
     return ' · '.join(p for p in parts if p)
 
 
-def pick_boards(snapshot: dict, kind='all', order='up', limit=60) -> list[dict]:
-    boards = [b for b in snapshot.get('boards', []) if kind == 'all' or b['type'] == kind]
+def is_market_label(name: str) -> bool:
+    return name in MARKET_LABELS or any(p.search(name) for p in MARKET_LABEL_PATTERNS)
+
+
+def _hidden(board: dict) -> str | None:
+    if is_market_label(board['name']):
+        return 'label'
+    count = board.get('constituent_count')
+    if count is not None and count < MIN_MEMBERS:
+        return 'small'
+    return None
+
+
+def pick_boards(snapshot: dict, kind='all', order='up', limit=60, filtered=True) -> list[dict]:
+    boards = [b for b in snapshot.get('boards', []) if (kind == 'all' or b['type'] == kind)
+              and not (filtered and _hidden(b))]
     if order == 'amount':
         boards = sorted(boards, key=lambda b: -(b.get('amount') or 0))
     elif order == 'down':
         boards = sorted(boards, key=lambda b: (b.get('change_pct') is None, b.get('change_pct') or 0))
     return boards[:limit]
+
+
+def filter_note(snapshot: dict) -> str:
+    boards = snapshot.get('boards', [])
+    labels = [b['name'] for b in boards if _hidden(b) == 'label']
+    small = sum(_hidden(b) == 'small' for b in boards)
+    text = f"已隐藏 {len(labels)} 个全市场标签（{'、'.join(labels[:6])}{'等' if len(labels) > 6 else ''}）"
+    if any(b.get('constituent_count') is not None for b in boards):
+        text += f"和 {small} 个成分股少于 {MIN_MEMBERS} 只的板块"
+    else:
+        text += f"；成分股少于 {MIN_MEMBERS} 只的板块暂不能隐藏：数据侧的板块榜还没有提供成分股数量"
+    return text + '。取消勾选可显示全部。'
 
 
 def member_state(row: dict) -> str:
@@ -116,7 +153,7 @@ def _pct(value):
 
 def boards_summary(snapshot: dict, top=10) -> dict:
     up = pick_boards(snapshot, 'all', 'up', top)
-    down = pick_boards(snapshot, 'all', 'down', 5)
+    down = pick_boards(snapshot, 'all', 'down', 5)  # market-wide tags and tiny boards are left out
     return {'as_of': snapshot.get('as_of'), 'market_status': MARKET_STATUS.get(snapshot.get('market_status')),
             'stale': bool(snapshot.get('stale')), 'completeness': snapshot.get('completeness'),
             'strongest': [{'code': b['code'], 'name': b['name'], 'type': TYPE_NAMES[b['type']],
@@ -152,6 +189,6 @@ def sector_prompt(snapshot: dict, board: dict | None = None, members: dict | Non
     return '\n'.join(lines)
 
 
-__all__ = ['catalog_status', 'is_ready', 'not_ready_text', 'shared_provider', 'reset_shared_provider', 'error_text',
+__all__ = ['is_market_label', 'filter_note', 'MARKET_LABELS', 'MIN_MEMBERS', 'catalog_status', 'is_ready', 'not_ready_text', 'shared_provider', 'reset_shared_provider', 'error_text',
            'freshness', 'pick_boards', 'member_state', 'boards_summary', 'members_summary', 'sector_prompt',
            'LIVE_STATUSES', 'MARKET_STATUS', 'TYPE_NAMES']

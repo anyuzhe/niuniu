@@ -6,10 +6,11 @@ market is in session; the provider's own caches enforce DATA's minimum intervals
 """
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QComboBox, QTableWidgetItem
+from PyQt6.QtWidgets import QCheckBox, QComboBox, QTableWidgetItem
 from PyQt6.QtGui import QColor
 
-from quantlab.trading.intraday_sectors import (LIVE_STATUSES, TYPE_NAMES, error_text, freshness, is_ready, member_state,
+from quantlab.trading.intraday_sectors import (LIVE_STATUSES, TYPE_NAMES, error_text, filter_note, freshness, is_ready,
+                                               member_state,
                                                not_ready_text, pick_boards, sector_prompt, shared_provider)
 from .widgets import Card, Chart, button, label, row, table
 
@@ -69,13 +70,18 @@ def sectors_page(window):
     for key, text in (('up', '涨幅榜'), ('down', '跌幅榜'), ('amount', '成交额')):
         order.addItem(text, key)
     order.setAccessibleName('排序')
+    tidy = QCheckBox('过滤全市场标签和小板块')
+    tidy.setChecked(getattr(window, 'sector_filter', True))
+    tidy.setToolTip('隐藏融资融券、沪股通、同花顺指数、次新股等不代表题材的标签，以及成分股少于 10 只的板块')
     ask = button('问 AI 解读', lambda: window.ask_ai(sector_prompt(state['snapshot'], state['board'], state['members']))
                  if state['snapshot'] else None, True)
-    head = row(status, kind, order, button('立即刷新', lambda: refresh(force=True)), ask)
+    head = row(status, kind, order, tidy, button('立即刷新', lambda: refresh(force=True)), ask)
     head.layout().setStretch(0, 1)
     box.addWidget(head)
 
     boards_card = Card('板块排行（单击查看成分股）')
+    filter_label = label('', 'muted', True)
+    boards_card.add(filter_label)
     boards_grid = table(['板块', '类型', '涨跌幅', '成交额（亿）', '指数'], [])
     boards_grid.setMinimumHeight(520)
     boards_card.add(boards_grid)
@@ -107,7 +113,8 @@ def sectors_page(window):
         if snapshot is None or not _alive(boards_grid):
             return
         status.setText(freshness(snapshot) + f" · 共 {snapshot['counts']['returned']} 个板块")
-        view = pick_boards(snapshot, kind.currentData(), order.currentData())
+        view = pick_boards(snapshot, kind.currentData(), order.currentData(), filtered=tidy.isChecked())
+        filter_label.setText(filter_note(snapshot) if tidy.isChecked() else '显示全部板块（含全市场标签和小板块）。')
         state['boards_view'] = view
         _fill(boards_grid, [[b['name'], TYPE_NAMES[b['type']], _pct(b['change_pct']), _yi(b['amount']),
                              f"{b['last']:,.2f}"] for b in view],
@@ -207,6 +214,7 @@ def sectors_page(window):
     boards_grid.cellClicked.connect(select)
     kind.currentIndexChanged.connect(lambda _: show_boards())
     order.currentIndexChanged.connect(lambda _: show_boards())
+    tidy.toggled.connect(lambda on: (setattr(window, 'sector_filter', on), show_boards()))
     timer = QTimer(status)  # dies with the page
     timer.timeout.connect(tick)
     timer.start(TICK_MS)
