@@ -8,6 +8,7 @@ from .market_pages import market_page, themes_page  # noqa: F401  (re-exported)
 from .stock_pages import stock_page, mine_page  # noqa: F401  (re-exported)
 from .market_pages import candidates_page  # noqa: F401  (re-exported)
 from .kol_pages import kol_page  # noqa: F401  (re-exported)
+from .sector_pages import sectors_page  # noqa: F401  (re-exported)
 
 
 def _coming(window, box, what, today):
