@@ -97,6 +97,7 @@ class DesktopTest(unittest.TestCase):
         self.assertTrue(self.window.isVisible())
 
     def test_navigation_registry_filter_search_and_detail(self):
+        self.window.pro_toggle.setChecked(True);self.wait()
         for index in range(len(NAV)):
             QTest.mouseClick(self.window.nav[index],Qt.MouseButton.LeftButton);self.wait()
             self.assertTrue(self.window.nav[index].isChecked())

@@ -32,7 +32,7 @@ class StrategyIntentDesktopTests(unittest.TestCase):
         bad=self.editor('R1','OPEN','不能直接跳到开仓');bad.confirm_trigger.setText('测试');bad.hold_reason.setText('测试');bad.save();QTest.qWait(10)
         self.assertIn('INVALID_TRANSITION',bad.status.text())
         self.assertEqual(DecisionStore(self.root).list(symbol='sh.600000')['total'],1)
-        self.window.navigate_root(3);QTest.qWait(20)
+        self.window.navigate_page('intent');QTest.qWait(20)
         tables=self.window.scroll.widget().findChildren(QTableWidget)
         board=next(t for t in tables if t.columnCount()==9)
         self.assertEqual(board.item(0,3).text(),'WATCH');self.assertIn('READY',board.item(0,4).text())

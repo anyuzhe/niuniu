@@ -62,6 +62,7 @@ niuniu-research-session-grant = "quantlab.agent.research_session_grant_cli:main"
 niuniu-research-data = "quantlab.agent.research_data_cli:main"
 niuniu-paper-rebalance = "quantlab.agent.paper_rebalance_cli:main"
 niuniu-paper-rebalance-outcome = "quantlab.agent.paper_rebalance_outcome_cli:main"
+niuniu-market-overview = "quantlab.agent.market_overview_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

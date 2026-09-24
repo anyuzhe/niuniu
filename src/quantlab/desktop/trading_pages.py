@@ -14,19 +14,19 @@ def _decisions(window, history=False, limit=200):
 
 
 def today_page(window):
-    box=window.page('今日交易','A 股个人交易研究驾驶舱 · 市场事实、主线、股票状态、AI结论、风险、Agenda 与 Watch。')
+    box=window.page('交易台','A 股个人交易研究驾驶舱 · 市场事实、主线、股票状态、AI结论、风险、Agenda 与 Watch。')
     from .trading_cockpit import TradingCockpitWidget
     box.addWidget(TradingCockpitWidget(window),1)
 
 
 def theme_page(window):
-    box=window.page('主线市场','A 股主题 × 明确日期 × Decision Frame · Market Facts / Machine Rule / AI / Risk 分层。')
+    box=window.page('主题矩阵','A 股主题 × 明确日期 × Decision Frame · Market Facts / Machine Rule / AI / Risk 分层。')
     from .theme_matrix import ThemeMatrixWidget
     box.addWidget(ThemeMatrixWidget(window),1)
 
 
 def stock_page(window):
-    box=window.page('股票中心','Stock Dossier 入口 · 先按证券聚合 Decision；P3 再接实验、Watch 与完整股票档案。')
+    box=window.page('股票决策档案','Stock Dossier 入口 · 先按证券聚合 Decision；P3 再接实验、Watch 与完整股票档案。')
     latest=_store(window).latest_by_symbol()
     rows=[[d['symbol'],d.get('theme',''),d.get('theme_role',''),d['trading_day'],d['frame'],d['action'],d.get('ai_thesis','')[:80]] for d in latest]
     card=Card('股票档案');box.addWidget(row(button('＋ 新增 Decision',window.new_decision,True),label('双击证券可查看 Decision 时间线。','muted')))
@@ -45,7 +45,7 @@ def position_page(window):
 
 
 def review_page(window):
-    box=window.page('复盘中心','Decision Ledger · 原判、修订、后续结果分开保留，不用后来行情覆盖当时判断。')
+    box=window.page('决策复盘','Decision Ledger · 原判、修订、后续结果分开保留，不用后来行情覆盖当时判断。')
     records=_decisions(window,history=True)
     rows=[[d.get('submitted_local',d['submitted_at']).replace('T',' ')[:19],d['trading_day'],d['symbol'],d['frame'],d['action'],d.get('submission_status','legacy'),d.get('revision_of')[:8] if d.get('revision_of') else '—',d.get('outcome','')[:70]] for d in records]
     def compare():

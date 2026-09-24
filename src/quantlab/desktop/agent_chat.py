@@ -143,7 +143,7 @@ class AgentChatDialog(QDialog):
         elif ref['kind']=='watch':self.window.factor_watches(ref['watch_id'])
         elif ref['kind']=='memory':self.window.research_memory(ref['memory_id'])
         elif ref['kind']=='job':self.window.show_jobs()
-        elif ref['kind']=='peer_review':self.window.navigate_root(5)
+        elif ref['kind']=='peer_review':self.window.navigate_page('ai_team')
         elif ref['kind']=='research_session_grant':self.open_session_grant()
         elif ref['kind'] in ('research_skill','research_skill_item','research_skill_resource'):
             self.window.research_skill_library(ref.get('skill_key'),ref.get('package_snapshot'))

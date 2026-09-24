@@ -84,6 +84,7 @@
 | `niuniu-paper-review` | [quantlab.agent.paper_review_cli:main](../../src/quantlab/agent/paper_review_cli.py) |
 | `niuniu-selection-outcomes` | [quantlab.agent.selection_outcomes_cli:main](../../src/quantlab/agent/selection_outcomes_cli.py) |
 | `niuniu-strategy-package` | [quantlab.agent.strategy_package_cli:main](../../src/quantlab/agent/strategy_package_cli.py) |
+| `niuniu-market-overview` | [quantlab.agent.market_overview_cli:main](../../src/quantlab/agent/market_overview_cli.py) |
 | `niuniu-paper-lifecycle` | [quantlab.agent.paper_lifecycle_cli:main](../../src/quantlab/agent/paper_lifecycle_cli.py) |
 | `niuniu-agent-scorecard` | [quantlab.agent.scorecard_cli:main](../../src/quantlab/agent/scorecard_cli.py) |
 | `niuniu-dev-studio` | [quantlab.agent.dev_studio_cli:main](../../src/quantlab/agent/dev_studio_cli.py) |
@@ -129,3 +130,7 @@ TDX固定分片合同：[tdx_sharding.py](../../src/quantlab/data/tdx_sharding.p
 ## 版本化市场数据采集（2026-09-22/23）
 
 入口统一在 [`scripts/collect/`](../../scripts/collect/README.md)：`scan_gaps.py` 只读生成行情缺口计划，`bars_incremental.py` 只消费绑定SHA的已批准计划；`ths_dividend.py`、`cninfo_allotment.py`、`baostock_dividend.py`、`baostock_daily_status.py` 和 `baostock_reference_snapshot.py` 分别采集独立bronze批次。`envelope.py` 提供默认仅审阅、显式apply、原子文件、逐证券回执、空结果marker和schema稽核；`migrate_empty_parquet.py` 仅迁移已由来源回执证明的零行占位文件。对应离线测试为 [`test_collect_envelope.py`](../../tests/test_collect_envelope.py) 和 [`test_collect_gaps.py`](../../tests/test_collect_gaps.py)，真实全量结果见[2026-09-22/23全量交验](../archive/data-evidence/20260923-全量数据采集与交验.md)。代码存在不等于已更新catalog或已获未来联网授权。每日只读审阅入口 [`daily_plan.py`](../../scripts/collect/daily_plan.py) 先固定参考快照计划，获单独批准且快照完成后再产生行情/状态/公司行动的独立计划；[`status_incremental.py`](../../scripts/collect/status_incremental.py) 和 [`corporate_actions_daily.py`](../../scripts/collect/corporate_actions_daily.py) 分别处理状态尾部和公司行动内容变化，公共SHA/备份辅助见 [`daily_common.py`](../../scripts/collect/daily_common.py)。新增离线回归在 [`test_collect_daily.py`](../../tests/test_collect_daily.py)。
+
+## 产品化改造：日常工作台（2026-09-24）
+
+桌面导航改为 [app.py](../../src/quantlab/desktop/app.py) 中的 `PAGES`（key、标题、图标、是否专业模式），`navigate_page(key)` 按 key 跳转；日常页面在 [home_pages.py](../../src/quantlab/desktop/home_pages.py) 与 [market_pages.py](../../src/quantlab/desktop/market_pages.py)，专业模式开关存于 [ui_settings.py](../../src/quantlab/desktop/ui_settings.py)。今日市场/主线方向的计算在 [market_overview.py](../../src/quantlab/trading/market_overview.py)，只经数据清单读取 READY 文件；测试见 [test_market_overview.py](../../tests/test_market_overview.py)。

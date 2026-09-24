@@ -29,7 +29,7 @@ class ThemeMatrixDesktopTests(unittest.TestCase):
         self.assertFalse(self.window.callbacks)
 
     def test_decision_axis_without_snapshot_remains_unknown_then_snapshot_changes_cell(self):
-        self.window.navigate_root(1);QTest.qWait(30);widget=self.window.scroll.widget().findChild(ThemeMatrixWidget);self.assertIsNotNone(widget)
+        self.window.navigate_page('theme_matrix');QTest.qWait(30);widget=self.window.scroll.widget().findChild(ThemeMatrixWidget);self.assertIsNotNone(widget)
         table=widget.findChild(QTableWidget);self.assertEqual(table.rowCount(),1);self.assertEqual(table.item(0,0).text(),'软件AI')
         self.assertIn('未知',table.item(0,1).text());self.assertFalse((self.root/'_jobs').exists())
         saved=ThemeStore(self.root).create(str(uuid4()),{'theme':'软件AI','trading_day':'2026-09-11','frame':'R1','machine_state':'START','ai_state':'PREHEAT','ai_thesis':'开始转强','risk_review':'仍缺盘中事实','source':'test'})

@@ -19,7 +19,7 @@ class AITeamDesktopTests(unittest.TestCase):
     def tearDown(self):self.window.close();QTest.qWait(10);self.temp.cleanup()
 
     def widget(self):
-        self.window.navigate_root(5);QTest.qWait(20);return self.window.findChild(AITeamWidget)
+        self.window.navigate_page('ai_team');QTest.qWait(20);return self.window.findChild(AITeamWidget)
 
     def test_ai_team_page_is_real_and_read_only_on_open(self):
         widget=self.widget();self.assertIsNotNone(widget);self.assertFalse((self.root/'_jobs').exists())

@@ -31,7 +31,7 @@ class DecisionFrameDesktopTests(unittest.TestCase):
     def test_review_page_and_cross_round_dialog_show_submission_status(self):
         self.create('2026-09-11T02:00:00+00:00',frame='R1',action='WATCH',ai_thesis='R1')
         self.create('2026-09-11T06:00:00+00:00',frame='R2',action='READY',ai_thesis='R2')
-        self.window.navigate_root(4);QTest.qWait(20)
+        self.window.navigate_page('decision_review');QTest.qWait(20)
         tables=self.window.scroll.widget().findChildren(QTableWidget)
         self.assertTrue(any(any(t.item(r,c) and t.item(r,c).text()=='ON_TIME' for r in range(t.rowCount()) for c in range(t.columnCount())) for t in tables))
         dialog=FrameComparisonDialog(self.window,'sh.600000','2026-09-11');self.window.show_dialog(dialog);QTest.qWait(20)

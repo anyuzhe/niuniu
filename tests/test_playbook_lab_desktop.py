@@ -27,7 +27,7 @@ class PlaybookLabDesktopTests(unittest.TestCase):
         self.window.close();QTest.qWait(10);self.temp.cleanup()
 
     def test_research_lab_has_playbook_entry_and_dialog_is_read_only_on_open(self):
-        self.window.navigate_root(6);QTest.qWait(20)
+        self.window.navigate_page('lab');QTest.qWait(20)
         buttons=self.window.scroll.widget().findChildren(QPushButton)
         entry=next(b for b in buttons if b.text()=='交易知识 / Playbook Lab')
         entry.click();QTest.qWait(30)

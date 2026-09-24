@@ -279,4 +279,5 @@ class Chart(QWidget):
                 point=QPointF(rect.left()+i*rect.width()/max(1,len(self.values)-1),y(value))
                 path.moveTo(point) if i==0 else path.lineTo(point)
             p.setPen(QPen(QColor('#f6b72f'),2));p.drawPath(path)
-        p.setPen(QColor('#8fa4b7'));p.drawText(QRectF(14,self.height()-25,self.width()-30,22),'归档顺序  →    '+('K 线（红涨绿跌）' if self.candles else '净值 · 原始口径'))
+        caption=getattr(self,'caption',None) or ('归档顺序  →    '+('K 线（红涨绿跌）' if self.candles else '净值 · 原始口径'))
+        p.setPen(QColor('#8fa4b7'));p.drawText(QRectF(14,self.height()-25,self.width()-30,22),caption)

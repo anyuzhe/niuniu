@@ -25,8 +25,18 @@ from .business_view import BusinessDetails
 
 LEGACY_NAV = ['研究工作台','数据中心','因子库','市场状态','结构与事件','序列构建器',
        '理论实验室','实验中心','组合与模型','策略回测','结果对比','系统设置']
-NAV = ['今日交易','主线市场','股票中心','持仓计划','复盘中心','AI 团队','研究实验室','开发工作台','系统中心']
-ICONS = ['⌂','▦','◎','◉','↺','✦','▤','⌘','⚙']
+# (key, title, icon, pro). Everyday workbenches first; research/governance/dev tools only in 专业模式.
+PAGES = [
+    ('market','今日市场','⌂',False),('themes','主线方向','▦',False),('candidates','今日候选','★',False),
+    ('stock','个股报告','◎',False),('mine','我的股票','◉',False),('review','复盘验证','↺',False),
+    ('assistant','AI 助手','✦',False),
+    ('desk','交易台','▣',True),('theme_matrix','主题矩阵','▥',True),('dossiers','股票决策档案','◍',True),
+    ('intent','持仓计划','◈',True),('decision_review','决策复盘','↻',True),('ai_team','AI 团队','✧',True),
+    ('lab','研究实验室','▤',True),('dev','开发工作台','⌘',True),('system','系统中心','⚙',True),
+]
+NAV = [title for _,title,_,_ in PAGES]
+ICONS = [icon for _,_,icon,_ in PAGES]
+PAGE_KEYS = [key for key,_,_,_ in PAGES]
 KINDS = {'campaign':'固定研究包','alpha_factory':'Alpha Factory','factor':'因子实验','execution':'独立成交回测','ablation':'消融研究',
     'holdout':'样本外验证','walkforward':'滚动验证','sweep':'参数扫描','theory_study':'理论全流程','trial_registry':'跨实验登记检验族','return_family':'固定净收益检验族','return_increment':'净收益增量比较','stability':'参数与子样本比较','residual_alpha':'残差研究','correlation':'因子相关与去重','correlation_holdout':'样本外相关性','correlation_walkforward':'滚动相关性'}
 MODES = [('single','单因子 / 条件 / 组合'),('holdout','固定样本外'),('walkforward','滚动验证'),
@@ -65,12 +75,19 @@ class MainWindow(QMainWindow):
         logo=label();logo.setPixmap(QPixmap(str(ASSETS/'niuniu_logo_icon.png')).scaled(58,58,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
         brand=QWidget();brand.setObjectName('transparent');bl=QVBoxLayout(brand);bl.setContentsMargins(0,0,0,0);bl.addWidget(label('牛牛 AI','brand'));bl.addWidget(label('个人 A 股交易研究助手','muted'))
         sidebox.addWidget(row(logo,brand));sidebox.addSpacing(22);self.nav=[]
+        from .ui_settings import load_ui_settings
+        self.pro_mode=load_ui_settings(self.output)['pro_mode']
+        self.pro_heading=label('专业模式','muted');self.pro_heading.setContentsMargins(8,10,0,2)
         for index,title in enumerate(NAV):
-            b=button(f'{ICONS[index]}   {title}',lambda:None);b.setObjectName('nav');b.setCheckable(True);b.setAutoExclusive(True);b.setMinimumHeight(49);sidebox.addWidget(b);self.nav.append(b)
+            if index==next(i for i,p in enumerate(PAGES) if p[3]):sidebox.addWidget(self.pro_heading)
+            b=button(f'{ICONS[index]}   {title}',lambda:None);b.setObjectName('nav');b.setCheckable(True);b.setAutoExclusive(True);b.setMinimumHeight(40 if PAGES[index][3] else 49);sidebox.addWidget(b);self.nav.append(b)
             # AX changes checked state without emitting clicked. Defer page
             # destruction until the native accessibility action has returned.
             b.toggled.connect(lambda checked,i=index:QTimer.singleShot(0,lambda:self.navigate_root(i) if self.nav[i].isChecked() else None) if checked else None)
-        sidebox.addStretch();sidebox.addWidget(label('用数据发现规律\n用逻辑创造价值\n让交易更科学','muted'))
+        sidebox.addStretch()
+        self.pro_toggle=QCheckBox('专业模式（研究、治理与开发工具）');self.pro_toggle.setAccessibleName('专业模式')
+        self.pro_toggle.setChecked(self.pro_mode);self.pro_toggle.toggled.connect(self.set_pro_mode);sidebox.addWidget(self.pro_toggle)
+        sidebox.addWidget(label('用数据发现规律\n用逻辑创造价值\n让交易更科学','muted'))
         motto=label('D I S C I P L I N E   C R E A T E S   A L P H A','gold');motto.setStyleSheet('font-size:9px;');sidebox.addWidget(motto)
         outer.addWidget(side)
         workspace=QWidget();wb=QVBoxLayout(workspace);wb.setContentsMargins(0,0,0,0);wb.setSpacing(0);outer.addWidget(workspace,1)
@@ -80,15 +97,33 @@ class MainWindow(QMainWindow):
         self.boss_button=button('老板键 F12',self.boss_key.hide)
         self.boss_button.setToolTip(self.boss_key.help_text)
         self.boss_button.setAccessibleDescription(self.boss_key.help_text)
-        search_row=row(self.search,button('搜索',self.global_search),self.boss_button,label('●  本地研究员','muted'))
+        search_row=row(self.search,button('搜索',self.global_search),button('问 AI',self.research_chat,True),self.boss_button)
         search_row.layout().setStretch(0,1);tb.addWidget(search_row)
-        actions=row(button('研究议程',self.research_agenda),button('AI 研究接口',self.agent_catalog),button('研究记忆',self.research_memory),button('运行任务',self.show_jobs),button('新建实验',self.new_experiment),button('＋ Decision',self.new_decision,True))
-        actions.layout().insertStretch(3,1);tb.addWidget(actions);wb.addWidget(top)
+        self.pro_actions=row(button('研究议程',self.research_agenda),button('AI 研究接口',self.agent_catalog),button('研究记忆',self.research_memory),button('运行任务',self.show_jobs),button('新建实验',self.new_experiment),button('＋ Decision',self.new_decision,True))
+        self.pro_actions.layout().insertStretch(3,1);tb.addWidget(self.pro_actions);wb.addWidget(top)
         self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);wb.addWidget(self.scroll,1)
-        self.status=label('牛牛 AI · Trading Desk + Research Lab · Evidence First · Reproducible Research','muted');self.status.setContentsMargins(24,8,24,8);wb.addWidget(self.status)
+        self.status=label('牛牛 AI · 研究结论不构成投资建议','muted');self.status.setContentsMargins(24,8,24,8);wb.addWidget(self.status)
         QShortcut(QKeySequence.StandardKey.Find,self,activated=self.search.setFocus)
         self.shutdown_timer=QTimer(self);self.shutdown_timer.setInterval(250);self.shutdown_timer.timeout.connect(self.close)
+        self.apply_pro_mode()
         self.navigate_root(0)
+
+    def apply_pro_mode(self):
+        self.pro_heading.setVisible(self.pro_mode);self.pro_actions.setVisible(self.pro_mode)
+        for button_,(_,_,_,pro) in zip(self.nav,PAGES):button_.setVisible(self.pro_mode or not pro)
+
+    def set_pro_mode(self,enabled):
+        from .ui_settings import save_ui_settings
+        self.pro_mode=bool(enabled)
+        try:save_ui_settings(self.output,pro_mode=self.pro_mode)
+        except (OSError,ValueError) as exc:self.status.setText('界面设置未保存：'+str(exc))
+        self.apply_pro_mode()
+        if not self.pro_mode and PAGES[self.root_current][3]:self.navigate_root(0)
+
+    def navigate_page(self,key):
+        index=PAGE_KEYS.index(key)
+        if PAGES[index][3] and not self.pro_mode:self.pro_toggle.setChecked(True)
+        self.navigate_root(index)
 
     def research_agenda(self):
         from .research_agenda import ResearchAgendaDialog
@@ -129,7 +164,7 @@ class MainWindow(QMainWindow):
     def new_decision(self, source=None):
         from .decision_ledger import DecisionEditor
         dialog=DecisionEditor(self,source)
-        dialog.accepted.connect(lambda:self.navigate_root(self.root_current) if self.root_current<=4 else None)
+        dialog.accepted.connect(lambda:self.navigate_root(self.root_current) if PAGE_KEYS[self.root_current] in ('review','desk','theme_matrix','dossiers','intent','decision_review') else None)
         self.show_dialog(dialog)
 
     def open_decision(self, decision):
@@ -193,10 +228,13 @@ class MainWindow(QMainWindow):
         self.root_current=index
         for i,b in enumerate(self.nav):
             b.blockSignals(True);b.setChecked(i==index);b.blockSignals(False)
-        from .trading_pages import (today_page,theme_page,stock_page,position_page,review_page,
-            ai_team_page,research_lab_page,dev_studio_page,system_center_page)
-        handlers=[today_page,theme_page,stock_page,position_page,review_page,ai_team_page,research_lab_page,dev_studio_page,system_center_page]
-        handlers[index](self)
+        from . import home_pages, trading_pages
+        handlers={'market':home_pages.market_page,'themes':home_pages.themes_page,'candidates':home_pages.candidates_page,
+            'stock':home_pages.stock_page,'mine':home_pages.mine_page,'review':home_pages.review_page,'assistant':home_pages.assistant_page,
+            'desk':trading_pages.today_page,'theme_matrix':trading_pages.theme_page,'dossiers':trading_pages.stock_page,
+            'intent':trading_pages.position_page,'decision_review':trading_pages.review_page,'ai_team':trading_pages.ai_team_page,
+            'lab':trading_pages.research_lab_page,'dev':trading_pages.dev_studio_page,'system':trading_pages.system_center_page}
+        handlers[PAGE_KEYS[index]](self)
 
     def navigate(self,index):
         """Compatibility route for the original 12 research pages."""

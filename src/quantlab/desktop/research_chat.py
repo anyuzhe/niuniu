@@ -230,7 +230,7 @@ class ResearchChatDialog(QDialog):
             elif ref['kind']=='watch':self.window.factor_watches(ref['watch_id'])
             elif ref['kind']=='job':self.hide();self.window.show_jobs()
             elif ref['kind']=='research_session_grant':self.open_session_grant()
-            elif ref['kind']=='theme_snapshot':self.hide();self.window.navigate_root(1)
+            elif ref['kind']=='theme_snapshot':self.hide();self.window.navigate_page('theme_matrix')
             elif ref['kind'] in ('research_skill','research_skill_item','research_skill_resource'):
                 self.open_research_skill_reference(ref)
             elif ref['kind'] in ('strategy_source','playbook_definition','playbook_case','playbook_validation',

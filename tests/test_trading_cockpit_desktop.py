@@ -28,6 +28,8 @@ class TradingCockpitDesktopTests(unittest.TestCase):
         service.transition(str(uuid4()),{'symbol':'sh.600000','trading_day':'2026-09-11','frame':'R1','action':'WATCH','role_id':'human','theme':'银行','ai_thesis':'等待确认','source':'ui-test'})
         ThemeStore(self.root).create(str(uuid4()),{'theme':'银行','trading_day':'2026-09-11','frame':'R1','machine_state':'START','ai_state':'PREHEAT','source':'ui-test'})
         self.window=MainWindow(self.root);self.window.show();self.wait()
+        # The cockpit moved from the home page into 专业模式 as 交易台.
+        self.window.navigate_page('desk');self.wait()
 
     def wait(self):
         QTest.qWait(30);end=30
