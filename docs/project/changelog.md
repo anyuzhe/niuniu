@@ -1921,3 +1921,4 @@
 - 数据清单新增 §3.5：三个接口 `READY`，另有 `day_seals`、`hot_rank_ths`、`hot_rank_em`（READY）与 `stock_intraday_snapshot`（首个交易日有数据后改 READY）。
 - **事故与修复**：状态索引首版有变量重名 bug，逐证券统计时把索引 JSON 写进了 4 个数据文件（日状态 sz.301699、日K与 5 分钟 sz.301686、前复权日线 sz.302132）。发现后立即修复代码并加回归测试；4 个文件逐个从更新前备份恢复、用 Baostock 重取缺的日子（日K/5 分钟补 09-23、日状态补 09-24），前复权按原计划单独重建；被覆盖的内容与修复记录留在 `artifacts/data-remediation-20260924/overwritten-files/`。复查五个目录全部文件头正常。受影响的是用户正在运行的 09-24 增量：日K不受影响（开跑前已校验），5 分钟原计划记录的是旧校验码会拒绝执行，已生成替换计划 `0d079771…` 和 `run-20260924-min5-r2.command`。
 - 测试：`tests/test_data_services.py` 7 项（封存/待封存/核对/篡改/撤销、计划与阻止条件、后台运行、状态索引不写数据文件）。
+- 同日续：经用户授权，盘中记录器改为打开牛牛时自动启动（`DataUpdateJobs.autostart`，只允许这一个任务；非交易日、已收盘、已在运行、今天手动停止过或已结束时不启动）。两个启动脚本增加一行后台调用 `scripts/collect/autostart.py`，日志写 `artifacts/autostart.log`。后台任务的记录器和 5 分钟更新用 `caffeinate` 防止 Mac 睡眠。测试新增 1 项，共 8 项。

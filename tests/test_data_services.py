@@ -145,6 +145,26 @@ class JobsTests(unittest.TestCase):
         self.assertEqual(seals[0]["verify_status"], "ok")
 
 
+class AutostartTests(unittest.TestCase):
+    def test_autostart_only_whitelisted_and_respects_blocks(self):
+        lake = Lake()
+        try:
+            jobs = DataUpdateJobs(lake.root, now_fn=lambda: datetime(2026, 9, 24, 8, 30, tzinfo=TZ))
+            started = []
+            jobs.run = lambda plan_id, trigger="user": started.append((plan_id, trigger)) or {"run_id": "r1"}
+            with self.assertRaises(InvalidRequest):
+                jobs.autostart("daily_close_update")
+            result = jobs.autostart()
+            self.assertTrue(result["started"])
+            self.assertEqual(started[0][1], "autostart")
+            holiday = DataUpdateJobs(lake.root, now_fn=lambda: datetime(2026, 9, 25, 8, 30, tzinfo=TZ))
+            self.assertEqual(holiday.autostart()["reason"], "今天不是交易日")
+            late = DataUpdateJobs(lake.root, now_fn=lambda: datetime(2026, 9, 24, 16, 0, tzinfo=TZ))
+            self.assertEqual(late.autostart()["reason"], "今天已收盘")
+        finally:
+            lake.tmp.cleanup()
+
+
 class StatusIndexTests(unittest.TestCase):
     def test_index_never_writes_into_data_files(self):
         from quantlab.data.data_services import refresh_status_index

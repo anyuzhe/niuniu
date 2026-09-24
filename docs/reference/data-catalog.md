@@ -212,6 +212,7 @@ result.to_dict()   # 可直接 JSON 序列化
 - `plan` 只读、秒级返回；计划 30 分钟后过期。`steps[]` 按需求字段，另有 `kind`、`weight`（进度权重）。已封存、数据盘未连接、同一任务在跑、非交易日、未收盘等情况给 `blocked_reason`。
 - `run` 用牛牛当前的 Python 在后台起独立进程（`scripts/collect/job_runner.py`），关掉牛牛不中断；运行记录在数据根 `catalog/jobs/runs/<run_id>/`（`plan.json`、`state.json`、`log.txt`）。后台进程不在了而状态还是运行中时，`status` 返回 `interrupted`。`cancel` 会停止当前子任务，已写完的分区保留、有回执，下次计划会跳过它们。
 - 用户确认的任务计划就是批准：任务内部各采集脚本的计划 SHA 由任务自己生成并写进日志。
+- **自动启动（用户 2026-09-25 授权，仅限盘中记录器）**：两个启动脚本在打开牛牛时调用 `scripts/collect/autostart.py` → `DataUpdateJobs.autostart()`。今天是交易日、还没到 15:25、记录器没在跑、今天也没被手动停止过或已正常结束时，才在后台启动 `sector_recorder_start`，运行记录的 `trigger` 为 `autostart`；否则什么都不做，结果写到 `artifacts/autostart.log`。开盘前打开也可以，记录器会等到 09:15 才开始。记录器和 5 分钟更新运行时会阻止 Mac 睡眠。其他任务仍然必须先显示计划、由用户确认。
 - 已实测：`seal_day`（2026-09-24，24 个文件，核对无误）、`verify_seal`、各任务的 `plan`。`daily_close_update` 和盘中记录器还没有完整跑过一次（前者约 6 小时，后者要等交易日），第一次运行时 DATA 会跟进。
 - `daily_close_update` 里的“指数权重”需要 Python 包 `openpyxl` 和 `xlrd`，牛牛当前环境没装时计划里会提示，装法：`/Volumes/Lexar/niuniu/.venv/bin/pip install openpyxl xlrd`。
 

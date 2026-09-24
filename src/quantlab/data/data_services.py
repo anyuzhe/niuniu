@@ -876,7 +876,7 @@ class DataUpdateJobs:
         return [self._step("撤销封存", "seal", ["*"], [day], "revoke", overwrites=False, note=reason)], \
             warnings, None, params
 
-    def run(self, plan_id: str) -> dict:
+    def run(self, plan_id: str, *, trigger: str = "user") -> dict:
         path = self.base / "plans" / f"{plan_id}.json"
         if not path.is_file():
             raise InvalidRequest("找不到这个计划，请重新生成")
@@ -893,7 +893,8 @@ class DataUpdateJobs:
         run_dir.mkdir(parents=True)
         (run_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         state = {"run_id": run_id, "job_id": plan["job_id"], "plan_id": plan_id, "params": plan["params"],
-                 "state": "queued", "progress": 0.0, "step": None, "created_at": self.now_fn().isoformat(),
+                 "trigger": trigger, "state": "queued", "progress": 0.0, "step": None,
+                 "created_at": self.now_fn().isoformat(),
                  "started_at": None, "finished_at": None,
                  "result": {"datasets": [], "seal": None}, "error": None, "pid": None}
         (run_dir / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
@@ -909,6 +910,31 @@ class DataUpdateJobs:
             (run_dir / "state.json").write_text(json.dumps(current, ensure_ascii=False, indent=1) + "\n",
                                                 encoding="utf-8")
         return {"run_id": run_id}
+
+    # Jobs the user has authorised to start by themselves when niuniu opens (2026-09-25).
+    AUTOSTART = ("sector_recorder_start",)
+
+    def autostart(self, job_id: str = "sector_recorder_start") -> dict:
+        """Start ``job_id`` without a confirmation step when its plan is not blocked.
+
+        Only jobs in ``AUTOSTART`` may be started this way (the user authorised the
+        intraday recorder to start whenever niuniu opens).  A blocked plan (non-trading
+        day, after the close, already running, sealed, data disk missing) is not an
+        error: nothing is started and the reason is returned.
+        """
+        if job_id not in self.AUTOSTART:
+            raise InvalidRequest(f"{job_id} 不允许自动启动")
+        today = self.now_fn().date().isoformat()
+        earlier = [r for r in self._runs() if r["job_id"] == job_id and str(r.get("created_at", ""))[:10] == today]
+        if earlier and earlier[0]["state"] in ("succeeded", "cancelled"):
+            reason = ("今天已手动停止过，不再自动启动" if earlier[0]["state"] == "cancelled"
+                      else "今天已运行结束，不再自动启动")
+            return {"started": False, "job_id": job_id, "reason": reason, "run_id": None}
+        plan = self.plan(job_id, {})
+        if plan["blocked_reason"]:
+            return {"started": False, "job_id": job_id, "reason": plan["blocked_reason"], "run_id": None}
+        run = self.run(plan["plan_id"], trigger="autostart")
+        return {"started": True, "job_id": job_id, "reason": None, "run_id": run["run_id"]}
 
     def _state_path(self, run_id: str) -> Path:
         if not run_id or "/" in run_id or ".." in run_id:

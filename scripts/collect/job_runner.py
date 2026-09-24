@@ -79,10 +79,12 @@ class Runner:
         if self.cancelled:
             raise Cancelled()
 
-    def sh(self, args: list[str], *, step_share: tuple[float, float] | None = None) -> str:
+    def sh(self, args: list[str], *, step_share: tuple[float, float] | None = None, keep_awake: bool = False) -> str:
         """Run a child process, stream its output into the log, return the output."""
         self.check()
         cmd = [sys.executable, *args]
+        if keep_awake and sys.platform == "darwin" and os.path.exists("/usr/bin/caffeinate"):
+            cmd = ["/usr/bin/caffeinate", "-i", *cmd]   # keep the Mac awake for long runs
         self.log("$ " + " ".join(a if len(a) < 90 else a[:40] + "…" + a[-40:] for a in args))
         self.child = subprocess.Popen(cmd, cwd=str(REPO), env=self.env, stdout=subprocess.PIPE,
                                       stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -201,7 +203,7 @@ class Runner:
                 self.sh(["scripts/collect/bars_incremental.py", "--plan", str(path), "--apply",
                          "--approve-sha256", body["plan_sha256"],
                          "--receipt", str(receipts / f"{self.state['run_id']}-{dataset}.json")],
-                        step_share=(share[0] + third * index, third))
+                        step_share=(share[0] + third * index, third), keep_awake=True)
             self.result_dataset(dataset_id, through=day, files_written=len(body.get("actions", [])))
 
     def step_qfq(self, step, share):
@@ -251,7 +253,7 @@ class Runner:
         self.save()
 
     def step_recorder(self, step, share):
-        self.sh(["scripts/collect/sector_intraday_recorder.py", "--data-root", str(self.data_root)])
+        self.sh(["scripts/collect/sector_intraday_recorder.py", "--data-root", str(self.data_root)], keep_awake=True)
 
     def step_stop(self, step, share):
         target = self.data_root / "catalog/jobs/runs" / step["target_run"] / "state.json"
