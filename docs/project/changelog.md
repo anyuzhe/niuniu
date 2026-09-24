@@ -1859,3 +1859,11 @@
 - 数据清单：`realtime_quote`、`market_snapshot` 改为 `READY`（新 §3.3，写明单位、一致规则、停牌与除权语义、限制）；盘中（竞价、连续竞价、涨跌停封单）待下一交易日开盘补测。`fuyao_context` 维持 `REVIEW_REQUIRED`：DATA 环境无扶摇凭证无法实测；它未开放前，`chat_runtime` 的实时报价只走公开网页三源共识。
 - 测试：`test_public_web_market_snapshot` 新增 3 项（东财批量解析与北交所前缀、批量请求数、停牌原因），相关 12 + 5（live quote）+ market snapshot/orchestrator/fuyao 共 57 项通过。
 - 同日续：用户提供扶摇凭证（写入 git 忽略的项目 `.env`，`HITHINK_FINANCE_API_KEY`）。实测扶摇报价与五个聚合查询（证券解析、个股快照+日K、板块、短线、基本面）：成交量为股、现价/昨收与三家公开行情一致，日K成交量与 09-23 入库日K一致；成交额只有约 8 位有效数字。修复 `FuyaoAugmentedQuoteProvider`：与公开行情不一致的扶摇报价不再输出（全部不一致时报错）；通过校验时补上扶摇缺的证券名称、改用公开行情的精确成交额和盘口画像；停牌股标 `no_trade_today`。`fuyao_context` 改为 `READY`（清单写明板块为当前成分、K线为扶摇自有复权不可用于回测）。更新 `test_fuyao_integration` 的不一致用例；`test_market_snapshot_provider` 两项改为固定测试用清单，不再依赖线上清单状态。相关 50 个测试模块中仅 3 项 stdio 子进程用例因本地环境缺包失败，与本次改动无关。
+
+### 2026-09-24｜[DATA] 盘中板块接口（响应 CODE 需求“盘中板块榜与板块成分行情”）
+
+- 评估刷新频率：CODE 原提 60 秒，看盘偏慢。实测扶摇：710 个概念/行业板块 3 次批量请求约 3–4 秒；1,065 只成分股 4 次批量约 2 秒；15 秒内约 40 次请求后出现一次网络错误，歇 20 秒恢复。经用户确认：板块榜 10 秒、打开的板块成分股 5 秒。
+- 新增 `src/quantlab/data/sector_intraday.py`（`SectorIntradayProvider.board_snapshot / board_members / board_series`）：最小间隔内返回缓存（带年龄），失败重试一次、再失败返回上次结果标 `stale`；成分股用腾讯+新浪轮流核对（每只 ≤30 秒一次、每次 ≤300 只），核对时不一致的不输出价格；涨跌停/炸板由 DATA 按板块规则推算并与扶摇涨停/跌停/炸板池对照；上市前 5 个交易日标无涨跌停。
+- 新增 `scripts/collect/sector_intraday_recorder.py` 与 `artifacts/run-sector-recorder.command`：交易时间每分钟把全部板块写入 `lake/bronze/provider=fuyao/sector_board_intraday/`。
+- 收盘后实测：710 个板块全部返回；新能源汽车 1,065 只首次 7 秒、之后 2–5 秒，1,061 只与公开行情一致、4 只零成交；涨停/炸板与扶摇池一致。数据清单新增 §3.4，两个接口先标 `REVIEW_REQUIRED`，2026-09-25 盘中实测后开放；记录器数据集 `NOT_READY`。
+- 测试：`tests/test_sector_intraday.py` 5 项。

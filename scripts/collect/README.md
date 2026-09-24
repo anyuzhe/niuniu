@@ -39,6 +39,7 @@
 | `migrate_captures.py` | 把工作空间 `_market_data` 捕获包复制到数据根并重定向 | plan→apply→redirect→pointer，每步需计划 SHA；源文件不动 |
 | `registry.py` | 数据集注册表 draft/verify/apply 与 `reg_*` 视图计划 | 写入须带草稿或视图计划的完整 SHA |
 | `public_sources.py` | 17 项公开来源数据（东财/同花顺/巨潮/交易所/中证/申万，a-stock-data 代码） | `list` 看清单；`plan --dataset ...` → `apply --plan ... --approve-sha256 ...`，每项单独批准 |
+| `sector_intraday_recorder.py` | 盘中每分钟记录全部同花顺概念/行业板块行情（经 `SectorIntradayProvider`，扶摇） | 交易日由 `artifacts/run-sector-recorder.command` 在 Mac 上单进程运行，09:15–15:01，失败写回执不写数据 |
 
 ## 数据根与注册表
 
