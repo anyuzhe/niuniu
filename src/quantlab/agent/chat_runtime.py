@@ -40,6 +40,9 @@ Agent Scorecard 只能作为只读运行纪律与证据覆盖观测：可用get_
 
 
 def provider_for(config,key=''):
+    if config.provider=='pi_sdk':
+        from quantlab.devstudio.pi_provider import PiProvider
+        return PiProvider(config)
     if config.provider=='codex_cli':
         from quantlab.agent.codex_provider import CodexProvider
         return CodexProvider(config)

@@ -1967,3 +1967,10 @@
 - 最终回归：先在独立提交 `58a1a30` 完成 10 模块 70 项，再基于并行任务已推送的 `origin/main=46b2539` 整合为 `4db5572`，同样 10 模块 **70 项全部通过，0 失败、0 错误、0 跳过**（旧 Dev Studio 14、六职责后端 23、离屏界面 8、HTTP/Codex 协议 15、聊天预算 2、研究 AI Team 8）。所有 Python/Agent Memory 指纹在回归期间稳定，127 份文档/654 个本地链接检查通过，`git diff --check` 通过。另在实际 Lexar 卷创建临时 Git 仓库，四实施域、真实测试进程、独立 QA 到本地合并的整条路径通过；临时样本已清理，未触正式数据。
 - 并行整合：只在独立工作区处理 `status.md` / `changelog.md` 两处追加位置冲突，双方章节完整保留；其他 DATA/CODE 修复按其原提交继承，本补丁未再次修改其数据口径。主目录当时有两份未跟踪的缺陷修复文档/测试，经逐字节 SHA 校验与远端已提交版本完全一致；同步前须再次核对无独有内容，保留原字节与回执后才允许快进，不 reset、不 force push。
 - 可复核证据位于 `artifacts/devstudio-six-roles-20260925/`：`precommit-results.json`、`final-results.json`、`integrated-results.json`、逐模块日志、`lexar-smoke.json`。功能代码以 `4db5572` 为标识；最终主分支同步/推送的 SHA 以本轮工具回执和交付回复为准，不将测试通过冒充远端推送成功。
+
+### 2026-09-25｜[CODE] 六角色本地 Pi 模型接入
+
+- 用户要求六角色统一使用本地 Pi 的 GPT-6 Luna，并明确授权真实用户端操作及模型调用。在独立 worktree 增量增加 `pi_sdk`、自定义 `provider/model` 和 `pi_path`，配置页新增复制当前配置到全部角色。
+- 新 `devstudio/pi_provider.py` 与打包的 `pi_bridge.mjs` 经 Node 调用本机已安装 Pi ModelRuntime，复用 Pi 登录，不提取/展示密钥；不启动 Pi AgentSession、不加载插件、skills、项目指令或内置读写/shell。精确模型身份、工具白名单、调用/轮次/上下文/超时与停止受宿主约束，无自动模型回退。
+- 本机 Pi 0.85.1 已发现 `openai-codex/gpt-6-luna` 且可用，真实一次宿主工具调用往返成功（返回指定 nonce）。离线回归 10 模块75项通过（新Pi协议/配置13项、原开发工作台与六职责45项、HTTP/Codex15项、聊天预算2项）。真实传输与日志在 `artifacts/pi-luna-validation/`，不是股票功能验收。
+- 真实牛牛窗口已打开；原生辅助功能操作被macOS以未授权拒绝，已告知用户开启WebCodex/Runner辅助功能。未用其他渠道绕过OS界面控制权限，后续先通过同源正式工作台服务继续验证。搜索功能将由正式六职责流程实际模型实施，不由宿主代写。

@@ -47,16 +47,19 @@ class ModelConfig:
     max_output_tokens: int = 4096
     max_context_chars: int = 120000
     legacy_agent_compat: bool = True
+    pi_path: str = ''
 
     def __post_init__(self):
-        if self.provider not in ('codex_cli','responses','chat_completions'):
+        if self.provider not in ('codex_cli','responses','chat_completions','pi_sdk'):
             raise ValueError('不支持的模型协议')
-        for field in ('model','effort','codex_path','base_url','api_key_env'):
+        for field in ('model','effort','codex_path','base_url','api_key_env','pi_path'):
             value = getattr(self,field)
             if not isinstance(value,str) or len(value)>2048 or any(ord(c)<32 for c in value):
                 raise ValueError('模型配置字段无效：'+field)
         if len(self.model)>200 or (self.provider!='codex_cli' and not self.model.strip()):
             raise ValueError('API 模型需填写实际模型 ID')
+        if self.provider == 'pi_sdk' and not re.fullmatch(r'[A-Za-z0-9._-]+/[^\s\x00-\x1f]+', self.model):
+            raise ValueError('Pi 模型请填写 provider/model，例如 openai-codex/gpt-6-luna')
         if self.effort not in ('','none','minimal','low','medium','high','xhigh'):
             raise ValueError('无效推理强度；留空使用服务默认值')
         if not re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*',self.api_key_env):

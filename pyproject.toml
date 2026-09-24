@@ -69,6 +69,7 @@ niuniu-market-overview = "quantlab.agent.market_overview_cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"quantlab.devstudio" = ["pi_bridge.mjs"]
 "quantlab.factors" = ["alpha_expressions.json", "ALPHA_PROVENANCE.md", "ALPHA_LICENSE"]
 "quantlab._vendor.chanpy" = ["LICENSE", "PROVENANCE.json"]
 "quantlab.desktop" = ["assets/*.png"]

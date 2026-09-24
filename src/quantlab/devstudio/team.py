@@ -160,6 +160,9 @@ def save_team_models(output, value):
 
 
 def make_provider(config):
+    if config.provider == 'pi_sdk':
+        from .pi_provider import PiProvider
+        return PiProvider(config)
     if config.provider == 'codex_cli':
         from quantlab.agent.codex_provider import CodexProvider
         return CodexProvider(config)

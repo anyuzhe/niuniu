@@ -46,7 +46,7 @@ class DevTeamModelsDialog(QDialog):
         self.resize(820, 760)
         box = QVBoxLayout(self)
         box.addWidget(label('角色可以使用同一个模型，也可以分别选择模型/协议。这里只保存配置，不连接模型；API 密钥只填写环境变量名，不填写密钥。已有任务保持其冻结配置。', 'note', True))
-        tabs = QTabWidget()
+        tabs = self.tabs = QTabWidget()
         box.addWidget(tabs, 1)
         for domain in DOMAINS:
             page = QWidget()
@@ -55,7 +55,7 @@ class DevTeamModelsDialog(QDialog):
             cfg = self.values[domain]
             fields = {}
             for key, title, options in (
-                ('provider', '协议', ('codex_cli', 'responses', 'chat_completions')),
+                ('provider', '协议', ('codex_cli', 'responses', 'chat_completions', 'pi_sdk')),
                 ('effort', '推理强度', ('', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh')),
             ):
                 widget = QComboBox()
@@ -65,8 +65,11 @@ class DevTeamModelsDialog(QDialog):
                 fields[key] = widget
                 form.addRow(title, widget)
             for key, title in (('model', '模型 ID（CLI 可留空）'), ('base_url', 'API 地址'),
-                               ('api_key_env', '密钥环境变量名'), ('codex_path', 'Codex 可执行文件（可留空）')):
+                               ('api_key_env', '密钥环境变量名'), ('codex_path', 'Codex 可执行文件（可留空）'),
+                               ('pi_path', 'Pi 可执行文件（留空自动发现）')):
                 widget = QLineEdit(cfg[key])
+                if key == 'model':
+                    widget.setPlaceholderText('Pi: openai-codex/gpt-6-luna；API: 自定义模型 ID')
                 widget.setAccessibleName(domain + '.' + key)
                 fields[key] = widget
                 form.addRow(title, widget)
@@ -87,7 +90,27 @@ class DevTeamModelsDialog(QDialog):
             tabs.addTab(page, domain + ' · ' + LABELS[domain])
         self.status = label('', 'muted', True)
         box.addWidget(self.status)
-        box.addWidget(row(button('保存角色配置', self.save, True), button('取消', self.reject)))
+        box.addWidget(label('Pi 使用本机已安装 SDK 和登录，仅开放牛牛角色工具，不加载 Pi 插件或内置 shell。模型 ID 可自定义为 provider/model。', 'muted', True))
+        box.addWidget(row(button('复制当前配置到全部角色', self.copy_to_all), button('保存角色配置', self.save, True), button('取消', self.reject)))
+
+    def copy_to_all(self):
+        domain = DOMAINS[self.tabs.currentIndex()]
+        try:
+            cfg = dict(self.values[domain])
+            for key, widget in self.fields[domain].items():
+                cfg[key] = (widget.currentText() if isinstance(widget, QComboBox) else
+                            widget.value() if isinstance(widget, QSpinBox) else widget.text().strip())
+            cfg = asdict(ModelConfig(**cfg))
+        except (ValueError, TypeError) as exc:
+            self.status.setText('配置未复制：' + str(exc))
+            return
+        for target, fields in self.fields.items():
+            self.values[target] = dict(cfg)
+            for key, widget in fields.items():
+                if isinstance(widget, QComboBox): widget.setCurrentText(cfg[key])
+                elif isinstance(widget, QSpinBox): widget.setValue(cfg[key])
+                else: widget.setText(cfg[key])
+        self.status.setText('已填入全部六角色；点击保存后生效，旧任务不受影响。')
 
     def payload(self):
         values = {}
