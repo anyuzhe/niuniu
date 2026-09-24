@@ -12,8 +12,8 @@ from quantlab.trading.public_web_market_snapshot import PublicWebConsensusProvid
 
 TENCENT='v_sh600000="1~浦发银行~600000~9.22~9.40~9.39~676431~263092~413339~9.22~1840~9.21~3828~9.20~10067~9.19~1090~9.18~5581~9.23~1494~9.24~425~9.25~1022~9.26~823~9.27~1823~~20260915093030~-0.18~-1.91~9.42~9.16~9.22/676431/624141587~676431~62414";'
 SINA='var hq_str_sh600000="浦发银行,9.390,9.400,9.220,9.420,9.160,9.220,9.230,67643079,624141587.000,184000,9.220,382800,9.210,1006700,9.200,109000,9.190,558140,9.180,149400,9.230,42500,9.240,102200,9.250,82300,9.260,182300,9.270,2026-09-15,09:30:00,00,";'
-EM=json.dumps({'data':{'f43':922,'f44':942,'f45':916,'f46':939,'f47':676431,'f48':624141587.0,
-    'f57':'600000','f58':'浦发银行','f60':940,'f86':1789435830}},ensure_ascii=False)
+EM=json.dumps({'data':{'total':1,'diff':[{'f2':9.22,'f15':9.42,'f16':9.16,'f17':9.39,'f5':676431,'f6':624141587.0,
+    'f12':'600000','f13':1,'f14':'浦发银行','f18':9.40,'f124':1789435830}]}},ensure_ascii=False)
 
 
 def fixture_http(url,encoding,headers):
@@ -54,6 +54,36 @@ class PublicWebMarketSnapshotTests(unittest.TestCase):
         row=value['instruments'][0]
         self.assertEqual(row['last'],9.22);self.assertEqual(row['metrics']['agreement_sources'],['tencent','eastmoney'])
         self.assertEqual(row['execution_profile'],'UNKNOWN')
+
+    def test_eastmoney_batch_parses_bid_ask_and_bse_prefix(self):
+        from quantlab.trading.public_web_market_snapshot import _parse_eastmoney
+        text=json.dumps({'data':{'diff':[{'f2':123.4,'f5':18187,'f6':228644047.05,'f12':'920982','f13':0,'f14':'锦波生物',
+            'f15':129.3,'f16':120.0,'f17':121.0,'f18':121.34,'f31':123.3,'f32':123.4,'f124':1790235274}]}})
+        row=_parse_eastmoney(text,'e'*64)['bj.920982']
+        self.assertEqual((row['bid1'],row['ask1'],row['volume']),(123.3,123.4,1818700))
+
+    def test_eastmoney_requests_are_batched(self):
+        urls=[]
+        def http(url,encoding,headers):
+            if 'eastmoney.com' in url:urls.append(url)
+            return fixture_http(url,encoding,headers)
+        symbols=['sh.6%05d'%i for i in range(150)]
+        with patch('quantlab.trading.public_web_market_snapshot.time.sleep'):
+            from quantlab.trading.public_web_market_snapshot import _eastmoney
+            _eastmoney(symbols,http)
+        self.assertEqual(len(urls),2)
+
+    def test_suspended_symbol_reports_no_trade_instead_of_disagreement(self):
+        t='v_sz000016="51~*ST康佳A~000016~2.46~2.46~0.00~0~0~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~0.00~0~~20260915093030~0.00~0.00~0.00~0.00~0.00/0/0~0~0";'
+        sn='var hq_str_sz000016="*ST康佳A,0.000,2.460,0.000,0.000,0.000,0.000,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,2026-09-15,09:30:00,00";'
+        def http(url,encoding,headers):
+            if 'qt.gtimg.cn' in url:return TENCENT+'\n'+t,'a'*64
+            if 'hq.sinajs.cn' in url:return SINA+'\n'+sn,'b'*64
+            return EM,'c'*64
+        value=PublicWebConsensusProvider(http_get=http,now_fn=lambda:datetime.fromisoformat('2026-09-15T09:31:00+08:00')).capture('2026-09-15','R1',['sh.600000','sz.000016'])
+        self.assertEqual(value['completeness'],'PARTIAL')
+        issue=value['market_metrics']['consensus_issues'][0]
+        self.assertEqual((issue['symbol'],issue['reason'],issue['tradable']),('sz.000016','no_trade_today',False))
 
     def test_only_one_source_fails_closed(self):
         def http(url,encoding,headers):

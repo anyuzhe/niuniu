@@ -5,7 +5,6 @@ never upgrades them to Strict PIT and does not promise SLA or long-term endpoint
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor,as_completed
 from datetime import datetime,timedelta,timezone
 from itertools import combinations
 from statistics import median
@@ -91,23 +90,29 @@ def _parse_sina(text,response_hash):
             'volume':_nonnegative(fields[8]),'amount':_nonnegative(fields[9]),'as_of':stamp,'response_hash':response_hash}
     return rows
 
-def _parse_eastmoney(text,response_hash,prefix):
-    try:data=json.loads(text).get('data') or {}
-    except (ValueError,TypeError):return None
-    code=str(data.get('f57') or '')
-    if not re.fullmatch(r'\d{6}',code):return None
-    symbol=prefix+'.'+code
-    def price(key):
-        value=_positive(data.get(key));return value/100 if value is not None else None
-    stamp=None
-    try:stamp=datetime.fromtimestamp(int(data['f86']),timezone.utc).astimezone(TZ).isoformat()
-    except (KeyError,TypeError,ValueError,OSError):pass
-    volume=_nonnegative(data.get('f47'))
-    return {'source':'eastmoney','symbol':symbol,'name':str(data.get('f58') or ''),
-        'last':price('f43'),'high':price('f44'),'low':price('f45'),'open':price('f46'),
-        'previous_close':price('f60'),'bid1':price('f19'),'ask1':price('f31'),
-        'volume':volume*100 if volume is not None else None,'amount':_nonnegative(data.get('f48')),
-        'as_of':stamp,'response_hash':response_hash}
+def _parse_eastmoney(text,response_hash):
+    """Batch ``ulist.np`` response (``fltt=2``: decimal prices; f5 in lots, f6 in yuan)."""
+    try:rows=(json.loads(text).get('data') or {}).get('diff') or []
+    except (ValueError,TypeError,AttributeError):return {}
+    if isinstance(rows,dict):rows=list(rows.values())
+    result={}
+    for data in rows:
+        if not isinstance(data,dict):continue
+        code=str(data.get('f12') or '')
+        if not re.fullmatch(r'\d{6}',code):continue
+        prefix='sh' if str(data.get('f13'))=='1' else ('bj' if code.startswith(('920','4','8')) else 'sz')
+        symbol=prefix+'.'+code
+        stamp=None
+        try:stamp=datetime.fromtimestamp(int(data['f124']),timezone.utc).astimezone(TZ).isoformat()
+        except (KeyError,TypeError,ValueError,OSError):pass
+        volume=_nonnegative(data.get('f5'))
+        result[symbol]={'source':'eastmoney','symbol':symbol,'name':str(data.get('f14') or ''),
+            'last':_positive(data.get('f2')),'high':_positive(data.get('f15')),'low':_positive(data.get('f16')),
+            'open':_positive(data.get('f17')),'previous_close':_positive(data.get('f18')),
+            'bid1':_positive(data.get('f31')),'ask1':_positive(data.get('f32')),
+            'volume':volume*100 if volume is not None else None,'amount':_nonnegative(data.get('f6')),
+            'as_of':stamp,'response_hash':response_hash}
+    return result
 
 
 def _market_id(symbol):return '1' if symbol.startswith('sh.') else '0'
@@ -125,31 +130,30 @@ def _sina(symbols,http_get):
     rows=_parse_sina(text,h);return rows,{'endpoint':'hq.sinajs.cn','hash':h,'responses':len(rows)}
 
 
-def _eastmoney_one(symbol,http_get):
-    secid=_market_id(symbol)+'.'+symbol.split('.')[1]
-    fields='f57,f58,f43,f44,f45,f46,f47,f48,f60,f86,f19,f31'
-    url='https://push2.eastmoney.com/api/qt/stock/get?secid='+secid+'&fields='+fields
-    headers={'Referer':'https://quote.eastmoney.com/'}
-    last=None
-    for attempt in range(2):
-        try:
-            text,h=http_get(url,'utf-8',headers);return _parse_eastmoney(text,h,symbol[:2]),h
-        except Exception as error:
-            last=error
-            if attempt==0:time.sleep(.12)
-    raise last
+EM_BATCH=100
+EM_MIN_INTERVAL=1.5  # Eastmoney drops connections from an IP that requests faster than this
+EM_FIELDS='f12,f13,f14,f2,f5,f6,f15,f16,f17,f18,f31,f32,f124'
 
 def _eastmoney(symbols,http_get):
-    rows={};hashes={};errors={}
-    with ThreadPoolExecutor(max_workers=min(2,len(symbols))) as pool:
-        futures={pool.submit(_eastmoney_one,symbol,http_get):symbol for symbol in symbols}
-        for future in as_completed(futures):
-            symbol=futures[future]
+    """One batch request per 100 symbols (serial), instead of one request per symbol."""
+    rows={};hashes=[];errors={}
+    headers={'Referer':'https://quote.eastmoney.com/'}
+    for index in range(0,len(symbols),EM_BATCH):
+        chunk=symbols[index:index+EM_BATCH]
+        secids=','.join(_market_id(s)+'.'+s.split('.')[1] for s in chunk)
+        url='https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids='+secids+'&fields='+EM_FIELDS
+        for attempt in range(2):
             try:
-                item,h=future.result()
-                if item is not None:rows[symbol]=item;hashes[symbol]=h
-            except Exception as error:errors[symbol]=type(error).__name__
-    evidence={'endpoint':'push2.eastmoney.com','hash':digest(hashes),'responses':len(hashes),'errors':errors}
+                text,h=http_get(url,'utf-8',headers);hashes.append(h)
+                parsed=_parse_eastmoney(text,h)
+                rows.update({s:parsed[s] for s in chunk if s in parsed})
+                for s in chunk:errors.pop(s,None)
+                break
+            except Exception as error:
+                for s in chunk:errors[s]=type(error).__name__
+                if attempt==0:time.sleep(EM_MIN_INTERVAL)
+        if index+EM_BATCH<len(symbols):time.sleep(EM_MIN_INTERVAL)
+    evidence={'endpoint':'push2.eastmoney.com','hash':digest(hashes),'responses':len(rows),'errors':errors}
     return rows,evidence
 
 
@@ -193,7 +197,13 @@ def _consensus_item(symbol,source_rows,frame):
     quotes={source:rows[symbol] for source,rows in source_rows.items() if symbol in rows}
     required=['previous_close','last'] if frame=='AUCTION' else ['previous_close','open','high','low','last']
     subset=_choose_subset(quotes,required)
-    if not subset:return None,None,{'symbol':symbol,'reason':'fewer_than_two_agreeing_sources','sources':sorted(quotes)}
+    if not subset:
+        idle=[row for row in quotes.values() if row.get('volume')==0 and row.get('open') is None]
+        if len(idle)>=2:
+            return None,None,{'symbol':symbol,'reason':'no_trade_today','tradable':False,
+                'previous_close':_first(idle,'previous_close'),'sources':sorted(r['source'] for r in idle),
+                'note':'至少两源显示当日零成交且无开盘价（停牌或未成交），不输出行情价格'}
+        return None,None,{'symbol':symbol,'reason':'fewer_than_two_agreeing_sources','sources':sorted(quotes)}
     values={key:_first(subset,key) for key in required}
     current_keys=('last',) if frame=='AUCTION' else ('open','high','low','last')
     prices=[values[key] for key in current_keys if values.get(key) is not None]
