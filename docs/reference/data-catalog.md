@@ -164,7 +164,7 @@ result.to_dict()   # 可直接 JSON 序列化
 - 停牌或当日零成交的股票标 `no_trade_today`。
 
 **涨跌停：**
-- 由 DATA 自己推算：涨跌停价 = 昨收 ×（1 ± 比例），四舍五入到分。比例按当天取自规则表 `quantlab.trading.price_limit_regime`：主板 10%（主板 ST 2026-07-06 前 5%、之后 10%）、创业板（300/301/302）和科创板 20%、北交所 30%；上市前 5 个交易日不设涨跌停，标 `no_limit_new_listing`；规则表没有覆盖的板块不推算，`limit_check=rule_not_modelled`。2026-09-25 修正：此前主板 ST 一律按 5%、302 开头按 10%，涨跌 5%–10% 的 ST 股和涨跌 10%–20% 的 302 股会被误标涨停/跌停。
+- 由 DATA 自己推算：涨跌停价 = 昨收 ×（1 ± 比例），四舍五入到分。比例按当天取自规则表 `quantlab.trading.price_limit_regime`：主板 10%（主板 ST 2026-07-06 前 5%、之后 10%）、创业板（300/301/302）和科创板 20%、北交所 30%；上市前 5 个交易日不设涨跌停，标 `no_limit_new_listing`；规则表没有覆盖的板块不推算，`limit_check=rule_not_modelled`。2026-09-25 修正：此前主板 ST 一律按 5%、302 开头按 10%，涨跌 5%–10% 的 ST 股和涨跌 10%–20% 的 302 股会被误标涨停/跌停（[缺陷修复记录](../archive/testing/20260925-代码检查缺陷修复记录.md)）。
 - `limit_status` 取值：`limit_up`（封涨停）、`limit_down`（封跌停）、`limit_break`（盘中碰过涨停价但现价低于涨停价，即炸板）。
 - 推算结果与扶摇的涨停池、跌停池、炸板池对照，结果写在 `limit_check`：`agree`（一致）、`computed_only`（只有推算认定，例如扶摇池不含的 ST 股）、`vendor_only`（只有扶摇池里有）、`differs`（两边不同）。
 

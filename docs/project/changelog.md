@@ -1933,3 +1933,23 @@
 - 测试：新增 `test_data_center_services.py` 4 项（接口未 READY 时分区不可点、状态与封存表、文件预览、任务计划被阻止/确认执行/运行记录/日志/取消，任务用替身不起后台进程）；状态和预览用数据侧测试里的临时数据湖。
 - 未验证：本机 VM 只挂了数据湖目录、没有 `catalog/`，无法用真实数据根跑状态接口；Mac 真实窗口未验收。
 - 全量回归（云端副本）：2,095 项通过（含数据侧新增的 `test_data_services`）；数据侧 `test_research_provider` 缺 pytest 未运行。
+
+### 2026-09-25｜[DATA] 代码检查缺陷修复（宿主按用户授权修改）
+
+- 用户授权修复 2026-09-24 对 `85ab2e9` 检查发现的问题，本条是其中 DATA 侧的 15 项，逐项现象、原因、改动和测试见[缺陷修复记录](../archive/testing/20260925-代码检查缺陷修复记录.md)。改动由宿主开发者完成，未经数据侧另行复核；没有碰数据盘上的数据文件，也没有重新采集。
+- `data_services.py`：“补某一天”改用覆盖该日的最新参考快照日历，没有覆盖时计划直接阻止（此前执行时找不到当日快照而失败）；交易日补采上一交易日到前一天每个自然日的公告目录，以及其中周末、节假日的机构调研、股东增减持（此前每周五、周六的公告目录会漏）；任务启动在 `catalog/jobs/.lock` 下串行、计划和状态原子写，两个启动脚本同时打开只起一个记录器；以 `runner.lock` 判断后台任务存活，只对确认活着的任务进程组发信号；启动失败记 `failed`；`cancel()` 返回实际结束状态；预览的总行数、`date`/`code` 校验、920 代码归属北交所，必填日期可填 `today`；日志句柄不再泄漏。
+- `day_seals.py`：撤销后重封的版本号接着编，不再覆盖 `_history` 里的旧版本；撤销时核对结果一并移走。
+- `sector_intraday.py`：涨跌停按交易日取 `trading/price_limit_regime.py`（主板 ST 自 2026-07-06 起 10%，302 开头 20%），规则表未覆盖的板块不推算。
+- 采集脚本：记录器单实例（`catalog/jobs/sector_recorder.lock`），成分刷新分段、不再阻塞开盘，个股快照只在各时点截止前拍、过期记 `missed` 并记录迟到秒数（`stock_intraday.SNAPSHOT_DEADLINES`）；成分快照断点文件坏行跳过重取；收盘更新里成分快照失败只记失败项，前复权未完成时其余步骤照常执行、运行最后记失败。
+- 数据清单同步更新涨跌停比例、记录器、个股快照截止、任务锁与补采范围、封存版本号的说明。
+- 测试：`test_data_services.py` 新增 10 项，新文件 `test_collect_intraday.py` 8 项，`test_sector_intraday.py` 新增 1 项、改 1 项；这些测试放回修复前的代码全部失败。全量结果见下条。提交 `c6fcf30`。
+
+### 2026-09-25｜[CODE] 代码检查缺陷修复
+
+- `pyproject.toml` 声明 `numpy>=1.24,<3`、`pandas>=2.0,<4`，离线环境导出的基础包加入二者（此前干净安装后 `niuniu-sentiment-cycle` 报缺 numpy）。
+- `README.md`、`README.en.md`、`docs/guide/data-and-evidence.md` 改为按数据清单描述：`realtime_quote`、`fuyao_context`、`market_snapshot` 已于 2026-09-24 `READY`，`stock_fund_flow_daily` 仍待审查。
+- 数据中心“更新与封存”：取消后按实际结束状态提示；运行日志只接受最新一次读取的结果，重复选中或读取较慢时不再重复追加。
+- 测试：`test_data_center_services.py`、`test_offline_environment.py` 各新增 1 项。
+- 全量回归（云端副本，装齐全部依赖，Qt 离屏）：2,125 项全部通过，0 失败、0 跳过（修复前 2,104 项，两侧共新增 21 项）；新增和改动的 22 项放回修复前的代码全部失败，同文件原有 22 项修复前后都通过。`scripts/check_docs.py`、`git diff --check` 通过；新虚拟环境 `pip install .` 后相关模块导入正常。
+- 未验证：真实数据盘、Mac 真实窗口、交易日盘中记录器与供应商请求。
+- 提交：`c6fcf30`（DATA）、`3d3e338`（CODE），以及包含本条、缺陷修复记录、状态页和归档索引的文档提交；普通推送到 `origin/claude/lucid-dirac-xhls8w`，没有合入 `main`。
