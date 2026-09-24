@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from quantlab.data.research_provider import DataProviderError, InvalidRequest
-from quantlab.data.sector_intraday import (SectorIntradayProvider, limit_prices, market_status,
+from quantlab.data.sector_intraday import (SectorIntradayProvider, classify_board, limit_prices, market_status,
                                            niuniu_symbol)
 
 TZ = ZoneInfo("Asia/Shanghai")
@@ -126,6 +126,37 @@ class SectorIntradayTests(unittest.TestCase):
         self.assertTrue(stale["stale"])
         with self.assertRaises(DataProviderError):
             provider(FakeClient(fail=10)).board_snapshot("concept")
+
+
+class BoardExtrasTests(unittest.TestCase):
+    def test_classify(self):
+        self.assertEqual(classify_board("林业", "industry"), ("industry", None))
+        self.assertEqual(classify_board("储能", "concept"), ("theme", None))
+        for name, reason in (("融资融券", "trading_access"), ("沪股通", "trading_access"),
+                             ("证金持股", "holder_label"), ("同花顺漂亮100", "index_selection"),
+                             ("中国AI50", "index_selection"), ("ST板块", "status_label"),
+                             ("科创次新股", "listing_age"), ("2026中报预增", "earnings_label")):
+            self.assertEqual(classify_board(name, "concept"), ("market_label", reason), name)
+
+    def test_constituent_count_from_daily_file(self):
+        import tempfile
+        from pathlib import Path
+        import pandas as pd
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "lake/bronze/provider=fuyao/sector_board_constituents"
+            base.mkdir(parents=True)
+            pd.DataFrame({"board_code": ["885431.TI"] * 3 + ["881101.TI"],
+                          "symbol": ["sh.600000", "sz.300750", "sh.600001", "sh.600000"]}
+                         ).to_parquet(base / "date=2026-09-24.parquet", index=False)
+            p = SectorIntradayProvider(FakeClient(), public_loaders={}, now_fn=lambda: NOW,
+                                       sleep=lambda s: None, data_root=tmp)
+            value = p.board_snapshot(["concept", "industry"])
+            by = {b["code"]: b for b in value["boards"]}
+            self.assertEqual(by["885431.TI"]["constituent_count"], 3)
+            self.assertEqual(by["881101.TI"]["constituent_count"], 1)
+            self.assertIsNone(by["885001.TI"]["constituent_count"])
+            self.assertEqual(by["881101.TI"]["board_class"], "industry")
+            self.assertEqual(value["constituent_counts_date"], "2026-09-24")
 
 
 if __name__ == "__main__":

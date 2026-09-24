@@ -1892,3 +1892,8 @@
 - 成分股只数需要数据侧在板块榜里提供 `constituent_count`（已提需求）；字段出现前只按名称过滤，页面写明原因。
 - 真实数据（2026-09-24 收盘）：隐藏 19 个标签后，成交额榜前列由“融资融券/深股通/沪股通”变为芯片概念、华为概念、国企改革等。
 - 测试：`test_intraday_sectors.py` 增加 2 项（标签隐藏与开关、提供只数时隐藏小板块），页面测试覆盖开关。
+
+### 2026-09-24｜[DATA] 盘中板块接口追加：成分股只数与板块分类（响应 CODE 追加需求）
+
+- `sector_board_snapshot` 每个板块新增 `constituent_count`（来自新增的每日成分快照 `sector_board_constituents`，`scripts/collect/sector_constituents.py`；首份 2026-09-24，710 个板块、80,701 行）和 `board_class` / `label_reason`（DATA 维护的 `industry` / `theme` / `market_label` 分类，版本 `board-class-v1`；2026-09-24 的 19 个 `market_label` 与 CODE 原按名称隐藏的 19 个一致）。盘中记录器开盘前自动刷新成分快照。数据清单 §3.4 更新字段说明并新增 `sector_board_constituents`（READY）。测试新增 2 项，共 7 项通过。
+- 当晚另完成：2026-09-24 参考快照（在市 5,222 只）；公开数据 13 项（当天观察 9 项 + 涨停池、大宗交易、机构调研、股东增减持）；18:30 原定采集因连不上 Mac 延到 22:40 前后完成。日K/5分钟/日状态计划已生成（`artifacts/data-collection-plans-20260924-daily/`），需在 Mac 上运行。
