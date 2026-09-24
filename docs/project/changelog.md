@@ -1867,3 +1867,11 @@
 - `test_market_snapshot_provider` 两项原先读取仓库真实清单、假定盘中快照未开放，改为固定一份“待审查”清单（9a40b7b；数据侧随后在 setUp 做了同样处理，两者兼容）。
 - 验证：本机VM用项目 `.env` 的扶摇密钥连通，证券消歧“贵州茅台”返回 600519.SH；未在Mac真实窗口里跑完整对话。测试：扶摇集成测试增加日常模式开放/未开放两种情况；全量回归见本节末。
 - 全量回归（云端副本，Python 3.12、离屏Qt）：2,062项通过；数据侧 `test_research_provider` 仍因缺 pytest 未运行。
+
+### 2026-09-24｜[DATA] 盘中板块接口（响应 CODE 需求“盘中板块榜与板块成分行情”）
+
+- 评估刷新频率：CODE 原提 60 秒，看盘偏慢。实测扶摇：710 个概念/行业板块 3 次批量请求约 3–4 秒；1,065 只成分股 4 次批量约 2 秒；15 秒内约 40 次请求后出现一次网络错误，歇 20 秒恢复。经用户确认：板块榜 10 秒、打开的板块成分股 5 秒。
+- 新增 `src/quantlab/data/sector_intraday.py`（`SectorIntradayProvider.board_snapshot / board_members / board_series`）：最小间隔内返回缓存（带年龄），失败重试一次、再失败返回上次结果标 `stale`；成分股用腾讯+新浪轮流核对（每只 ≤30 秒一次、每次 ≤300 只），核对时不一致的不输出价格；涨跌停/炸板由 DATA 按板块规则推算并与扶摇涨停/跌停/炸板池对照；上市前 5 个交易日标无涨跌停。
+- 新增 `scripts/collect/sector_intraday_recorder.py` 与 `artifacts/run-sector-recorder.command`：交易时间每分钟把全部板块写入 `lake/bronze/provider=fuyao/sector_board_intraday/`。
+- 收盘后实测：710 个板块全部返回；新能源汽车 1,065 只首次 7 秒、之后 2–5 秒，1,061 只与公开行情一致、4 只零成交；涨停/炸板与扶摇池一致。数据清单新增 §3.4，两个接口先标 `REVIEW_REQUIRED`，2026-09-25 盘中实测后开放；记录器数据集 `NOT_READY`。
+- 测试：`tests/test_sector_intraday.py` 5 项。
