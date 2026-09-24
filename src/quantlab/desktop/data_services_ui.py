@@ -325,7 +325,8 @@ def jobs_section(window, box):
     box.addWidget(label('任务由数据侧在后台独立进程里执行，关掉牛牛也不会中断；运行记录保存在数据盘上。'
                         '盘中记录器在交易日打开牛牛时会自动启动（你授权的唯一例外），其他任务都要先看计划、确认后才执行。',
                         'muted', True))
-    state = {'jobs': [], 'inputs': {}, 'plan': None, 'runs': [], 'selected': None, 'log_offset': 0}
+    state = {'jobs': [], 'inputs': {}, 'plan': None, 'runs': [], 'selected': None, 'log_offset': 0,
+             'log_request': 0}
     job_names = {}
 
     def clear_form():
@@ -443,15 +444,20 @@ def jobs_section(window, box):
         run_detail.setText('\n'.join(parts))
         cancel_button.setEnabled(run['state'] in LIVE)
         run_id = run['run_id']
+        offset = state['log_offset']
+        state['log_request'] += 1
+        request = state['log_request']
 
         def got_log(value):
-            if state['selected'] != run_id or not _alive(log_view):
+            # only the latest read counts: an older, slower reply (or one from before re-selecting) would repeat
+            # lines; dropping it is safe because the offset only moves forward on the reply that is kept
+            if request != state['log_request'] or state['selected'] != run_id or not _alive(log_view):
                 return
             if value['lines']:
                 log_view.appendPlainText('\n'.join(value['lines']))
             state['log_offset'] = value['next_offset']
 
-        call(window, lambda: jobs.log(run_id, state['log_offset']), got_log, status)
+        call(window, lambda: jobs.log(run_id, offset), got_log, status)
 
     def select(r, _c=None):
         if not 0 <= r < len(state['runs']):
@@ -467,7 +473,14 @@ def jobs_section(window, box):
             return
         cancel_button.setEnabled(False)
         status.setText('正在取消…')
-        call(window, lambda: jobs.cancel(run_id), lambda _: (status.setText('已取消。'), load_runs()), status)
+
+        def cancelled(value):
+            final = value.get('state')
+            status.setText('已取消。' if final == 'cancelled'
+                           else f"没有取消：这次运行已经{RUN_STATE.get(final, final)}。")
+            load_runs()
+
+        call(window, lambda: jobs.cancel(run_id), cancelled, status)
 
     def tick():
         if not _alive(runs_grid):

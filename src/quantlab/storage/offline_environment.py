@@ -70,7 +70,7 @@ def _installed_wheel_matches(wheel, distribution):
 def environment_packages():
     from pip._vendor.packaging.requirements import Requirement
     from pip._vendor.packaging.utils import canonicalize_name
-    pending=[('polars',set()),('pyarrow',set()),('duckdb',set()),('pip',set())]
+    pending=[('polars',set()),('pyarrow',set()),('duckdb',set()),('numpy',set()),('pandas',set()),('pip',set())]
     for optional in ('PyQt6','vnpy','alphalens-reloaded','setuptools','wheel'):
         try:metadata.version(optional)
         except metadata.PackageNotFoundError:continue

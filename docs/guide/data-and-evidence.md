@@ -313,7 +313,7 @@ qfq v2 的覆盖不是“所有历史都已裁决”：DATA 对未确认事件�
 
 DATA 当前还交付6个 `READY` 按需研究API：`research_search`、`stock_research_reports`、`stock_news`、`stock_announcements`、`financial_statements`、`investor_qa`。其统一实现由 DATA 提供的 `quantlab.data.research_provider.ResearchDataProvider` 负责供应商、凭证、限频、字段映射和错误语义；CODE 只通过 `ResearchDataAPI` 暴露给普通 Chat/MCP/CLI。每次调用先查 DATA catalog 的同名项仍为 `READY`，否则在联网前拒绝；供应商错误只报告不可用，不换源。
 
-`stock_fund_flow_daily`、`realtime_quote`、`market_snapshot`、`fuyao_context` 当前均为 `REVIEW_REQUIRED`。这一状态现在不仅体现在新统一工具里，也已经约束旧入口：普通 Chat 不注册 Fuyao 聚合工具、不做自动实时报价预取；MarketSnapshot readiness/live CLI/Daily Orchestrator 不允许公开网页实时 capture。即使旧 provider 类、网络代码或凭证仍存在，也不能绕开 DATA 状态。DATA 日后把对应项改为 `READY` 后，这些 gate 才允许 CODE 使用；CODE 不自行改变状态。
+`stock_fund_flow_daily` 仍为 `REVIEW_REQUIRED`，不进入正式工具。`realtime_quote`、`market_snapshot`、`fuyao_context` 已由 DATA 于 2026-09-24 标为 `READY`：普通 Chat 注册 Fuyao 聚合工具并做自动实时报价预取，MarketSnapshot readiness/live CLI/Daily Orchestrator 允许公开网页实时 capture。这些 gate 同时约束新统一工具和旧入口，都按清单状态开关（聊天在新建会话时读取清单）；DATA 把某项改回非 `READY` 后，新会话和之后的运行不再使用。旧 provider 类、网络代码或凭证存在本身不构成可用授权，CODE 不自行改变状态。
 
 其余17类新增公开来源文件数据已经由 DATA 标 `READY` 并可通过 catalog 发现。它们的 schema/日期语义差异较大，CODE 不建立“任意 dataset_id + 任意列/SQL”的模型工具；后续只有具体产品功能需要时，才按清单的字段和覆盖合同增加有界 reader。这样既能消费 DATA 现有资产，也不会把数据湖浏览权限重新交给模型。
 

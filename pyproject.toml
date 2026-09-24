@@ -7,7 +7,8 @@ name = "quantlab-research"
 version = "0.1.0"
 description = "Unified technical factor research core"
 requires-python = ">=3.11"
-dependencies = ["polars>=1.0,<2", "pyarrow>=15", "duckdb>=1.0,<2", "requests>=2.31,<3"]
+dependencies = ["polars>=1.0,<2", "pyarrow>=15", "duckdb>=1.0,<2", "requests>=2.31,<3", "numpy>=1.24,<3",
+                "pandas>=2.0,<4"]
 
 [project.optional-dependencies]
 desktop = ["PyQt6>=6.7,<7"]

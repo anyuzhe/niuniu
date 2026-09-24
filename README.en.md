@@ -25,7 +25,7 @@ The two macOS `.command` launchers use the project virtual environment and `/Vol
 
 Trading Desk provides the daily cockpit, themes, stock dossiers, decisions, strategy intents and paper reviews. AI Team keeps independent opinions separate before synthesis. Trading Knowledge stores sources and Playbooks; Research Lab provides factors, experiments, statistical validation and independent execution accounting. Additional modules cover limit-event/sentiment research, bounded autonomous research, developer worktrees, system health and read-only mobile/broker-shadow views.
 
-Live quotes for ad-hoc stock questions are implemented (Fuyao as the primary source, public-web consensus for cross-validation and fallback) but are currently disabled: the DATA catalog lists `realtime_quote` and `fuyao_context` as `REVIEW_REQUIRED`. They switch on only after DATA marks them `READY`. These quotes are not formal MarketSnapshot records, Strict PIT evidence or orders.
+Live quotes for ad-hoc stock questions (Fuyao as the primary source, public-web consensus for cross-validation and fallback) are enabled: DATA marked `realtime_quote` and `fuyao_context` `READY` in the catalog on 2026-09-24. With Fuyao credentials configured on the host Fuyao is the primary source; without them only the public-web consensus is used. If DATA moves either entry away from `READY`, new sessions stop using it. These quotes are not formal MarketSnapshot records, Strict PIT evidence or orders.
 
 ## Documentation
 

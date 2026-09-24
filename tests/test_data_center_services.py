@@ -163,6 +163,26 @@ class DataCenterServiceTests(unittest.TestCase):
         self.assertEqual(fake.runs[0]['state'], 'cancelled')
         window.close()
 
+    def test_cancel_reports_how_the_run_ended_and_log_lines_are_not_repeated(self):
+        from PyQt6.QtWidgets import QLabel, QPlainTextEdit, QPushButton
+        window = self.window()
+        fake = FakeJobs()
+        fake.run('p1')
+        fake.cancel = lambda run_id: {'state': 'succeeded'}  # it finished before the request arrived
+        window._data_services = {('DataUpdateJobs', str(window.data_root)): fake}
+        grids = self.section(window, 'jobs')
+        runs_grid = grids[1]
+        runs_grid.cellClicked.emit(0, 0)
+        runs_grid.cellClicked.emit(0, 0)  # the second read starts before the first reply is shown
+        self.wait(window)
+        log = window.scroll.widget().findChild(QPlainTextEdit)
+        self.assertEqual(log.toPlainText().count('写入清单'), 1)
+        next(b for b in window.scroll.widget().findChildren(QPushButton) if b.text() == '取消这次运行').click()
+        self.wait(window)
+        texts = [label.text() for label in window.scroll.widget().findChildren(QLabel)]
+        self.assertTrue(any('没有取消' in text and '完成' in text for text in texts), texts)
+        window.close()
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -14,6 +14,16 @@ UNSUPPORTED=SimpleNamespace(system=lambda:'Linux',machine=lambda:'aarch64',pytho
 
 
 class OfflineEnvironmentTests(unittest.TestCase):
+    def test_modules_that_import_numpy_and_pandas_declare_them(self):
+        import re
+        import tomllib
+        root = Path(__file__).resolve().parents[1]
+        declared = tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))['project']['dependencies']
+        names = {re.split(r'[<>=!~;\[ ]', item, maxsplit=1)[0].lower() for item in declared}
+        # statistics/correlation.py and trading/sentiment_cycle.py import numpy at module level; the DATA
+        # services, intraday providers and snapshots read Parquet through pandas
+        self.assertTrue({'numpy', 'pandas'} <= names, names)
+
     def test_cached_scripts_allow_only_shebang_relocation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'tool.py').write_bytes(b'#!/venv/bin/python\nprint(1)\n')
