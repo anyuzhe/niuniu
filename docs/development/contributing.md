@@ -8,6 +8,8 @@
 
 阅读 `agent_memory/README.md`、通用规则及本任务相关架构合同。P10 产品内开发继续通过隔离 worktree、allowed paths、lease、冻结测试、Reviewer 和 Human Merge，不借本文件扩大权限。
 
+开发工作台的六职责需求入口与文件归属遵循 [ownership.md](ownership.md)。LEAD/QA 是只读过程职责，四个实施域按确认计划获得精确文件租约；高级旧任务保留兼容。测试执行不是操作系统沙箱，不能用角色标签替代数据/服务授权。
+
 ## 2. 目录怎么放
 
 | 路径 | 保存什么 | 不放什么 |

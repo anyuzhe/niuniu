@@ -7,6 +7,7 @@ from pathlib import Path
 from quantlab.storage.codec import encode
 from quantlab.devstudio.service import DevStudioError,DevStudioService
 from quantlab.devstudio.runtime import DevAgentRuntime,DevRuntimeError
+from quantlab.agent.model_config import ModelError
 
 
 def _json(path,maximum=1_000_000):
@@ -21,14 +22,28 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description='牛牛 P10 Dev Studio；隔离worktree + 动态Subagent + Reviewer + Human Merge Gate')
     parser.add_argument('--output',required=True);parser.add_argument('--repo-root',required=True)
     group=parser.add_mutually_exclusive_group(required=True)
-    for name in ('create','status','list','run-main','run-ready','run-cycle','diff','merge','cleanup'):
+    for name in ('create','status','list','run-main','run-ready','run-cycle','diff','merge','cleanup','plan-request','approve-plan','team-models'):
         group.add_argument('--'+name,action='store_true')
     parser.add_argument('--task-id');parser.add_argument('--spec-json');parser.add_argument('--message',default='')
     parser.add_argument('--confirm',action='store_true')
+    parser.add_argument('--request',default='')
+    parser.add_argument('--allow-model',action='store_true',help='确认将需求和必要代码发送到配置的模型')
     args=parser.parse_args(argv)
     try:
         service=DevStudioService(Path(args.output),Path(args.repo_root))
-        if args.create:
+        if args.plan_request:
+            from quantlab.devstudio.planning import DevRequestPlanner
+            data=DevRequestPlanner(service).plan(args.request,allow_send=args.allow_model)
+        elif args.approve_plan:
+            if not args.spec_json:raise ValueError('--approve-plan requires --spec-json containing the plan object')
+            data=service.create_from_plan(_json(args.spec_json),confirmed=args.confirm)
+        elif args.team_models:
+            from quantlab.devstudio.team import load_team_models,save_team_models
+            if args.spec_json:
+                if not args.confirm:raise ValueError('saving team models requires --confirm')
+                data=save_team_models(service.output,_json(args.spec_json))
+            else:data=load_team_models(service.output)
+        elif args.create:
             if not args.spec_json:raise ValueError('--create requires --spec-json')
             data=service.create_task(_json(args.spec_json))
         elif args.list:data={'records':service.list(),'automatic_merge':False,'automatic_push':False}
@@ -46,7 +61,7 @@ def main(argv=None):
                 if not args.confirm:raise ValueError('--cleanup requires --confirm')
                 data=service.cleanup(args.task_id,force=False)
         print(encode({'ok':True,'data':data}));return 0
-    except (DevStudioError,DevRuntimeError,OSError,ValueError,KeyError,TypeError,json.JSONDecodeError) as exc:
+    except (DevStudioError,DevRuntimeError,ModelError,OSError,ValueError,KeyError,TypeError,json.JSONDecodeError) as exc:
         print(encode({'ok':False,'error':{'code':getattr(exc,'code','INVALID_REQUEST'),'message':str(exc)[:800]}}));return 2
 
 

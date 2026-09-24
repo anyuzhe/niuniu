@@ -63,7 +63,7 @@ def path_list(value,name='paths',maximum=50):
 
 def normalize_task_spec(value):
     if not isinstance(value,dict):raise ValueError('DevTask spec must be an object')
-    allowed={'title','request','acceptance_criteria','allowed_paths','test_commands','max_parallel_subagents','notes'}
+    allowed={'title','request','acceptance_criteria','allowed_paths','test_commands','max_parallel_subagents','notes','team'}
     if set(value)-allowed:raise ValueError('DevTask spec has unknown fields')
     parallel=value.get('max_parallel_subagents',3)
     if type(parallel) is not int or not 1<=parallel<=3:raise ValueError('max_parallel_subagents must be 1..3')
@@ -76,17 +76,22 @@ def normalize_task_spec(value):
         normalized_commands.append(command)
     allowed_paths=path_list(value.get('allowed_paths'),'allowed_paths',100)
     if not allowed_paths:raise ValueError('allowed_paths cannot be empty; DevTask write scope must be explicit')
-    return {'title':text(value.get('title'),'title',160,True),
+    result = {'title':text(value.get('title'),'title',160,True),
         'request':text(value.get('request'),'request',20000,True),
         'acceptance_criteria':string_list(value.get('acceptance_criteria'),'acceptance_criteria',50,1000,True),
         'allowed_paths':allowed_paths,
         'test_commands':normalized_commands,'max_parallel_subagents':parallel,
         'notes':text(value.get('notes'),'notes',8000)}
+    if 'team' in value:
+        from .team import normalize_team, validate_team_tests
+        result['team'] = normalize_team(value['team'], allowed_paths)
+        validate_team_tests(normalized_commands)
+    return result
 
 
 def normalize_subtask_spec(value):
     if not isinstance(value,dict):raise ValueError('Subtask spec must be an object')
-    allowed={'role','title','instruction','depends_on','lease_paths','acceptance_criteria','model','effort'}
+    allowed={'role','title','instruction','depends_on','lease_paths','acceptance_criteria','model','effort','domain'}
     if set(value)-allowed:raise ValueError('Subtask spec has unknown fields')
     role=text(value.get('role'),'role',30,True).upper()
     if role not in ROLES:raise ValueError('unknown Dev Studio role')
@@ -97,11 +102,17 @@ def normalize_subtask_spec(value):
     depends=[uuid_text(item,'depends_on') for item in depends]
     effort=text(value.get('effort'),'effort',20).lower()
     if effort not in ('','none','minimal','low','medium','high','xhigh'):raise ValueError('invalid effort')
-    return {'role':role,'title':text(value.get('title'),'title',160,True),
+    result = {'role':role,'title':text(value.get('title'),'title',160,True),
         'instruction':text(value.get('instruction'),'instruction',12000,True),
         'depends_on':depends,'lease_paths':lease_paths,
         'acceptance_criteria':string_list(value.get('acceptance_criteria'),'acceptance_criteria',30,1000),
         'model':text(value.get('model'),'model',160),'effort':effort}
+    if 'domain' in value:
+        from .team import DOMAINS
+        domain = text(value['domain'], 'domain', 20, True).upper()
+        if domain not in DOMAINS: raise ValueError('unknown professional domain')
+        result['domain'] = domain
+    return result
 
 
 def paths_overlap(left,right):

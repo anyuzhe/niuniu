@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from quantlab.agent.model_config import ModelError
 
 from .service import DevStudioError,DevStudioService
 
@@ -58,7 +59,14 @@ def model_diff(value):
     return {**value,'patch':patch[:limit]+('\n[diff truncated; inspect files individually]' if len(patch)>limit else ''),
         'patch_truncated':len(patch)>limit}
 
+READ_RANGE=tool('dev_read_range','Read a bounded line range with the full-file SHA for guarded edits. Use next_start_line to continue.',{
+    'path':PATH,'start_line':{'type':'integer','minimum':1,'maximum':1000000},
+    'limit':{'type':'integer','minimum':1,'maximum':200}})
+
 COMMON=[
+    READ_RANGE,
+    tool('dev_list_files','List tracked repository files and professional owners; paginated.',{
+        'prefix':PATH,'offset':{'type':'integer','minimum':0,'maximum':100000}}),
     tool('dev_task_status','Read the frozen DevTask, subtasks, tests and acceptance state.',{}),
     tool('dev_read_file','Read UTF-8 text from the isolated DevTask worktree.',{'path':PATH}),
     tool('dev_search','Search literal text in the isolated worktree.',{'query':SHORT}),
@@ -77,8 +85,11 @@ MAIN=COMMON+[
 SUBMIT=tool('dev_submit_result','Finish this subtask with a bounded evidence summary. Actual changed files are recomputed by the host.',{
     'summary':TEXT,'verdict':{'type':'string','enum':['PASS','FAIL','NEEDS_CHANGES','UNKNOWN']},
     'evidence':STRINGS,'stop_reason':SHORT})
-WRITE=tool('dev_write_file','Write one UTF-8 file inside this IMPLEMENTER path lease only. Use expected_sha256 from dev_read_file; empty means create/overwrite without CAS.',{
+WRITE=tool('dev_write_file','Write one UTF-8 file inside this IMPLEMENTER lease. Team mode requires read SHA for existing files; empty SHA only creates a new file. Prefer dev_replace_text for small changes.',{
     'path':PATH,'text':{'type':'string','maxLength':500000},'expected_sha256':{'type':'string','maxLength':64}})
+REPLACE=tool('dev_replace_text','Replace one unique exact text span inside the current writer lease, guarded by the full-file SHA. Never rewrites unrelated text.',{
+    'path':PATH,'old':{'type':'string','maxLength':60000},'new':{'type':'string','maxLength':60000},
+    'expected_sha256':{'type':'string','maxLength':64}})
 TEST=tool('dev_run_frozen_test','Run one DevTask test command by frozen index; the model cannot invent a new command.',{
     'command_index':{'type':'integer','minimum':0,'maximum':19}})
 
@@ -89,6 +100,13 @@ class _BaseAPI:
     def _state(self):return model_state(self.service,self.task_id)
     def _common(self,name,args,subtask_id=None):
         if name=='dev_task_status':return self._state()
+        if name=='dev_list_files':
+            from .planning import file_catalog
+            state=self._raw_state()
+            return file_catalog(self.service.workspace,state['worktree_path'],args['prefix'],args['offset'])
+        if name=='dev_read_range':
+            state=self._raw_state()
+            return self.service.workspace.read_range(state['worktree_path'],args['path'],args['start_line'],args['limit'])
         if name=='dev_read_file':
             if subtask_id:return self.service.read_file(self.task_id,subtask_id,args['path'])
             state=self._raw_state();return self.service.workspace.read_file(state['worktree_path'],args['path'])
@@ -100,17 +118,26 @@ class _BaseAPI:
     @staticmethod
     def _reply(name,fn):
         try:return {'ok':True,'tool':name,'data':fn(),'error':None}
-        except (DevStudioError,OSError,ValueError,KeyError,TypeError) as exc:
+        except (DevStudioError,OSError,ValueError,KeyError,TypeError,ModelError) as exc:
             return {'ok':False,'tool':name,'data':None,'error':{'code':getattr(exc,'code','DEV_TOOL_FAILED'),'message':str(exc)[:500]}}
 
 
 class MainDevAPI(_BaseAPI):
-    def schemas(self):return json.loads(json.dumps(MAIN))
+    def schemas(self):
+        definitions=json.loads(json.dumps(MAIN))
+        if self._raw_state()['spec'].get('team'):
+            from .team import DOMAINS
+            create=next(d for d in definitions if d['name']=='dev_create_subtask')
+            create['parameters']['properties']['domain']={'type':'string','enum':list(DOMAINS)}
+            create['parameters']['required'].append('domain')
+            create['description']+=' Assign a professional domain; effort must be empty because the host froze model profiles.'
+        return definitions
     def call(self,name,args):
-        if name not in {x['name'] for x in MAIN}:return {'ok':False,'tool':name,'data':None,'error':{'code':'UNKNOWN_TOOL','message':'tool unavailable'}}
+        definitions=self.schemas()
+        if name not in {x['name'] for x in definitions}:return {'ok':False,'tool':name,'data':None,'error':{'code':'UNKNOWN_TOOL','message':'tool unavailable'}}
         args=args or {}
         def work():
-            _validate_call(MAIN,name,args)
+            _validate_call(definitions,name,args)
             if name in {x['name'] for x in COMMON}:return self._common(name,args)
             if name=='dev_create_subtask':return self.service.add_subtask(self.task_id,{**args,'model':''})
             if name=='dev_reopen_subtask':return self.service.reopen_subtask(self.task_id,args['subtask_id'],args['instruction'])
@@ -125,7 +152,7 @@ class SubtaskDevAPI(_BaseAPI):
         state=self._raw_state();return next(s for s in state['subtasks'] if s['subtask_id']==self.subtask_id)
     def schemas(self):
         role=self._sub()['spec']['role'];items=list(COMMON)
-        if role=='IMPLEMENTER':items.append(WRITE)
+        if role=='IMPLEMENTER':items.extend((WRITE,REPLACE))
         if role=='TESTER':items.append(TEST)
         items.append(SUBMIT);return json.loads(json.dumps(items))
     def call(self,name,args):
@@ -136,6 +163,7 @@ class SubtaskDevAPI(_BaseAPI):
             _validate_call(definitions,name,args)
             if name in {x['name'] for x in COMMON}:return self._common(name,args,self.subtask_id)
             if name=='dev_write_file':return self.service.write_file(self.task_id,self.subtask_id,args['path'],args['text'],args['expected_sha256'] or None)
+            if name=='dev_replace_text':return self.service.replace_text(self.task_id,self.subtask_id,args['path'],args['old'],args['new'],args['expected_sha256'])
             if name=='dev_run_frozen_test':
                 state=self._raw_state();index=args['command_index'];commands=state['spec']['test_commands']
                 if not 0<=index<len(commands):raise DevStudioError('INVALID_ARGUMENT','frozen test index out of range')

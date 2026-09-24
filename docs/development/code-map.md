@@ -101,6 +101,10 @@
 
 [tests](../../tests) 的 293 个测试模块（2026-09-24）及 [examples](../../examples) 的全部 Python 文件也包含在 JSON 清单中。历史 verify 脚本可能依赖实际数据、特定实验 ID 或可选组件，不能仅凭名称默认无条件运行。实际测试结果与限制见 [整理验收](documentation-cleanup.md)。
 
+## 六职责开发工作台（2026-09-25）
+
+[team.py](../../src/quantlab/devstudio/team.py) 是 LEAD/DATA/CORE/AI/APP/QA 的归属和模型合同；[planning.py](../../src/quantlab/devstudio/planning.py) 实现需求只读规划、基线绑定和计划确认；原 `devstudio/contracts/store/service/runtime/tools/workspace` 复用 P10 增加专业域校验、受控并行、失败返工、独立 QA 和最终合并复核。桌面入口在 [dev_studio.py](../../src/quantlab/desktop/dev_studio.py)，需求与六角色配置在 [dev_team.py](../../src/quantlab/desktop/dev_team.py)；同源 [CLI](../../src/quantlab/agent/dev_studio_cli.py) 保持无自动 push。新增 [后端闭环测试](../../tests/test_dev_team.py) 与 [离屏入口测试](../../tests/test_dev_team_desktop.py)，使用临时 Git 仓库、真实测试执行和脚本化模型，不能当作付费模型验收。文件归属与现有限制见 [ownership.md](ownership.md)。上方目录数量表仍保留其标明的旧基线，不作为实时统计。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

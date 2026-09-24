@@ -101,12 +101,21 @@ class DevTaskStore:
             state=self._read(task_id)
             if state['state'] in TERMINAL or state['state']=='READY_FOR_HUMAN':raise DevTaskError('TASK_FROZEN','cannot add subtask in current state')
             if len(state['subtasks'])>=50:raise DevTaskError('SUBTASK_BUDGET','DevTask subtask budget exceeded')
+            if state['spec'].get('team'):
+                from .team import validate_domain_subtask
+                try: validate_domain_subtask(state['spec'], spec)
+                except ValueError as exc: raise DevTaskError('DOMAIN_VIOLATION', str(exc)) from None
+                if spec['role'] == 'TESTER' and any(s['spec']['role'] == 'TESTER' for s in state['subtasks']):
+                    raise DevTaskError('TESTER_EXISTS', '重开现有 QA 测试任务，不创建重复验收来源')
+                if spec['role'] == 'IMPLEMENTER' and any(s['spec']['role'] in ('TESTER', 'REVIEWER') and s['status'] == 'RUNNING' for s in state['subtasks']):
+                    raise DevTaskError('VALIDATION_RUNNING', '测试或审核期间不能增加实施任务')
             if spec['role']=='REVIEWER' and any(s['spec']['role']=='REVIEWER' and s['status']!='CANCELLED' for s in state['subtasks']):
                 raise DevTaskError('REVIEWER_EXISTS','DevTask permits one independent Reviewer; reopen it instead of creating another')
             known={s['subtask_id'] for s in state['subtasks']}
             if any(dep not in known for dep in spec['depends_on']):raise DevTaskError('INVALID_DEPENDENCY','depends_on references unknown subtask')
-            if spec['role']=='REVIEWER':
-                prerequisites=[s['subtask_id'] for s in state['subtasks'] if s['spec']['role'] in ('IMPLEMENTER','TESTER')]
+            if spec['role']=='REVIEWER' or (state['spec'].get('team') and spec['role']=='TESTER'):
+                roles = ('IMPLEMENTER','TESTER') if spec['role']=='REVIEWER' else ('IMPLEMENTER',)
+                prerequisites=[s['subtask_id'] for s in state['subtasks'] if s['spec']['role'] in roles]
                 spec['depends_on']=list(dict.fromkeys([*spec['depends_on'],*prerequisites]))
             allowed=state['spec']['allowed_paths']
             if spec['lease_paths'] and allowed:
@@ -123,7 +132,28 @@ class DevTaskStore:
                 for reviewer in state['subtasks']:
                     if reviewer['spec']['role']=='REVIEWER' and reviewer['status']=='PENDING' and sub['subtask_id'] not in reviewer['spec']['depends_on']:
                         reviewer['spec']['depends_on'].append(sub['subtask_id'])
-            state['subtasks'].append(sub);state['state']='PLANNED'
+            if state['spec'].get('team') and spec['role'] == 'IMPLEMENTER':
+                for qa in state['subtasks']:
+                    if qa['spec']['role'] in ('TESTER', 'REVIEWER'):
+                        # Sequential development after a prior QA phase must reopen QA,
+                        # but never introduce a dependency cycle.
+                        if qa['subtask_id'] in spec['depends_on']:
+                            raise DevTaskError('INVALID_DEPENDENCY', '实施任务不能依赖最终 QA；接口依赖应指向实施/探索任务')
+                        qa['spec']['depends_on'] = list(dict.fromkeys([*qa['spec']['depends_on'], sub['subtask_id']]))
+                        qa.update(status='PENDING', result=None, started_at=None, finished_at=None)
+                        qa.pop('review_workspace_fingerprint', None)
+                state['main_acceptance'] = None
+            state['subtasks'].append(sub)
+            if state['spec'].get('team'):
+                # Automatic final-QA dependencies can point forward. Validate the
+                # resulting graph, including indirect QA -> explorer -> writer cycles.
+                graph={s['subtask_id']:set(s['spec']['depends_on']) for s in state['subtasks']}
+                resolved=set()
+                while len(resolved)<len(graph):
+                    ready={key for key,deps in graph.items() if key not in resolved and deps<=resolved}
+                    if not ready:raise DevTaskError('DEPENDENCY_CYCLE','子任务依赖形成环，请调整接口与执行顺序')
+                    resolved.update(ready)
+            state['state']='PLANNED'
             self._event(state,'SUBTASK_ADDED',sub['subtask_id']+' '+spec['role']+' '+spec['title'],_now(self.now_fn));self._save(state);return sub
 
     def start_subtask(self,task_id,subtask_id):
@@ -131,10 +161,23 @@ class DevTaskStore:
         with self.locked(task_id):
             state=self._read(task_id);sub=next((s for s in state['subtasks'] if s['subtask_id']==subtask_id),None)
             if sub is None:raise DevTaskError('NOT_FOUND','subtask not found')
-            if sub['status']=='RUNNING':return sub
+            if state['state'] in (*TERMINAL, 'READY_FOR_HUMAN'):raise DevTaskError('TASK_FROZEN','task is frozen')
+            if sub['status']=='RUNNING':raise DevTaskError('SUBTASK_RUNNING','subtask is already running')
             if sub['status']!='PENDING':raise DevTaskError('SUBTASK_STATE','subtask cannot start')
             by_id={s['subtask_id']:s for s in state['subtasks']}
             if any(by_id[d]['status']!='DONE' for d in sub['spec']['depends_on']):raise DevTaskError('DEPENDENCY_BLOCKED','dependencies are not done')
+            if state['spec'].get('team'):
+                if sub['attempts'] >= 3: raise DevTaskError('ATTEMPT_BUDGET', '同一子任务最多执行三次，请人工检查')
+                if any((by_id[d].get('result') or {}).get('verdict') != 'PASS' for d in sub['spec']['depends_on']):
+                    raise DevTaskError('DEPENDENCY_FAILED', '依赖任务没有通过，不能继续')
+                active = [s for s in state['subtasks'] if s['status'] == 'RUNNING']
+                role = sub['spec']['role']
+                if role in ('TESTER', 'REVIEWER') and active:
+                    raise DevTaskError('VALIDATION_EXCLUSIVE', 'QA 必须在稳定工作区独占执行')
+                if any(s['spec']['role'] in ('TESTER', 'REVIEWER') for s in active):
+                    raise DevTaskError('VALIDATION_EXCLUSIVE', 'QA 执行期间不能开始其他子任务')
+                if role == 'IMPLEMENTER' and sum(s['spec']['role'] == 'IMPLEMENTER' for s in active) >= state['spec']['team']['max_writers']:
+                    raise DevTaskError('WRITER_BUDGET', '并行写入者数量已达到批准上限')
             running=sum(s['status']=='RUNNING' for s in state['subtasks'])
             if running>=state['spec']['max_parallel_subagents']:raise DevTaskError('PARALLEL_BUDGET','max parallel subagents reached')
             at=_now(self.now_fn);sub.update(status='RUNNING',started_at=at,attempts=sub['attempts']+1);state['state']='RUNNING'
@@ -148,7 +191,7 @@ class DevTaskStore:
             state=self._read(task_id);sub=next((s for s in state['subtasks'] if s['subtask_id']==subtask_id),None)
             if sub is None:raise DevTaskError('NOT_FOUND','subtask not found')
             if key in ('runtime_model','runtime_provider'):
-                if sub['status'] not in ('RUNNING','DONE'):raise DevTaskError('SUBTASK_STATE','runtime identity may be recorded only for running/done subtask')
+                if sub['status'] not in ('RUNNING','DONE','BLOCKED'):raise DevTaskError('SUBTASK_STATE','runtime identity requires an executed subtask')
             elif sub['status']!='RUNNING':raise DevTaskError('SUBTASK_STATE','subtask is not running')
             sub[key]=value;self._save(state);return value
 
@@ -167,8 +210,10 @@ class DevTaskStore:
             for changed in result['changed_files']:
                 if not any(changed==lease or changed.startswith(lease+'/') for lease in leases):
                     raise DevTaskError('LEASE_VIOLATION','subtask changed file outside its path lease')
-            at=_now(self.now_fn);sub.update(status='DONE',finished_at=at,result=result)
-            if all(s['status'] in ('DONE','CANCELLED') for s in state['subtasks']):state['state']='REVIEW'
+            status = 'BLOCKED' if state['spec'].get('team') and result['verdict'] != 'PASS' else 'DONE'
+            at=_now(self.now_fn);sub.update(status=status,finished_at=at,result=result)
+            if status == 'BLOCKED': state['state'] = 'BLOCKED'
+            elif all(s['status'] in ('DONE','CANCELLED') for s in state['subtasks']):state['state']='REVIEW'
             self._event(state,'SUBTASK_FINISHED',subtask_id+' '+result['verdict'],at);self._save(state);return sub
 
     def reopen_subtask(self,task_id,subtask_id,instruction=''):
@@ -177,6 +222,21 @@ class DevTaskStore:
             state=self._read(task_id);sub=next((s for s in state['subtasks'] if s['subtask_id']==subtask_id),None)
             if sub is None:raise DevTaskError('NOT_FOUND','subtask not found')
             if sub['status'] not in ('DONE','BLOCKED'):raise DevTaskError('SUBTASK_STATE','only DONE/BLOCKED subtask may be reopened')
+            if state['state'] in (*TERMINAL, 'READY_FOR_HUMAN'):raise DevTaskError('TASK_FROZEN','task is frozen')
+            if state['spec'].get('team'):
+                if sub['attempts'] >= 3: raise DevTaskError('ATTEMPT_BUDGET', '子任务已达到三次执行上限')
+                if any(s['status'] == 'RUNNING' for s in state['subtasks']):
+                    raise DevTaskError('SUBTASKS_RUNNING', '请等待当前执行结束后重开任务')
+                affected = {subtask_id}
+                while True:
+                    expanded = affected | {s['subtask_id'] for s in state['subtasks'] if affected.intersection(s['spec']['depends_on'])}
+                    if expanded == affected: break
+                    affected = expanded
+                for other in state['subtasks']:
+                    if other['subtask_id'] in affected and other['subtask_id'] != subtask_id:
+                        other.update(status='PENDING', started_at=None, finished_at=None, result=None)
+                        other.pop('review_workspace_fingerprint', None)
+                sub.pop('review_workspace_fingerprint', None)
             if instruction:
                 if not isinstance(instruction,str) or len(instruction)>12000:raise DevTaskError('INVALID_ARGUMENT','instruction is invalid')
                 sub['spec']['instruction']=instruction.strip()
@@ -208,6 +268,7 @@ class DevTaskStore:
         with self.locked(task_id):
             state=self._read(task_id)
             running=[s for s in state['subtasks'] if s['status']=='RUNNING']
+            if state['state'] in TERMINAL: raise DevTaskError('TASK_FROZEN', 'terminal task cannot change acceptance')
             if running:raise DevTaskError('SUBTASKS_RUNNING','cannot accept while subtasks are running')
             reviewers=[s for s in state['subtasks'] if s['spec']['role']=='REVIEWER' and s['status']=='DONE']
             reviewer_pass=any((s.get('result') or {}).get('verdict')=='PASS' for s in reviewers)
@@ -219,6 +280,8 @@ class DevTaskStore:
                 if any(s['status'] not in ('DONE','CANCELLED') for s in state['subtasks']):raise DevTaskError('SUBTASKS_INCOMPLETE','all subtasks must finish')
                 if not reviewer_pass:raise DevTaskError('REVIEW_REQUIRED','independent Reviewer PASS is required')
                 if not test_pass:raise DevTaskError('TESTS_REQUIRED','all frozen test commands must pass')
+                if state['spec'].get('team') and any((s.get('result') or {}).get('verdict') != 'PASS' for s in state['subtasks'] if s['status'] != 'CANCELLED'):
+                    raise DevTaskError('SUBTASK_FAILED', '每个必要子任务都必须通过后才能验收')
             at=_now(self.now_fn);state['main_acceptance']={'verdict':verdict,'summary':str(summary)[:8000],
                 'evidence':evidence or [],'at':at,'reviewer_pass':reviewer_pass,'tests_pass':test_pass}
             state['state']='READY_FOR_HUMAN' if verdict=='ACCEPT' else ('PLANNED' if verdict=='REPLAN' else 'BLOCKED')
