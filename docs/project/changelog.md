@@ -1952,4 +1952,4 @@
 - 测试：`test_data_center_services.py`、`test_offline_environment.py` 各新增 1 项。
 - 全量回归（云端副本，装齐全部依赖，Qt 离屏）：2,125 项全部通过，0 失败、0 跳过（修复前 2,104 项，两侧共新增 21 项）；新增和改动的 22 项放回修复前的代码全部失败，同文件原有 22 项修复前后都通过。`scripts/check_docs.py`、`git diff --check` 通过；新虚拟环境 `pip install .` 后相关模块导入正常。
 - 未验证：真实数据盘、Mac 真实窗口、交易日盘中记录器与供应商请求。
-- 提交：`c6fcf30`（DATA）、`3d3e338`（CODE），以及包含本条、缺陷修复记录、状态页和归档索引的文档提交；普通推送到 `origin/claude/lucid-dirac-xhls8w`，没有合入 `main`。
+- 提交：`c6fcf30`（DATA）、`3d3e338`（CODE），以及包含本条、缺陷修复记录、状态页和归档索引的文档提交；先普通推送到 `origin/claude/lucid-dirac-xhls8w`，用户确认后快进推送到 `origin/main`（`85ab2e9..0fa2ff3`，远端 SHA 已核对）。
