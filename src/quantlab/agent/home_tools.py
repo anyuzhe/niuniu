@@ -18,7 +18,7 @@ TOOLS = [
     schema('get_stock_report', '读取一只A股的一页报告：价格与涨幅、相对全市场/行业强弱、均线位置、放量、连板、需要留意的事项（ST、解禁、减持、业绩预告等）。query 为6位代码或股票名称。',
            {'query': TEXT}),
     schema('get_my_stocks', '读取用户“我的股票”列表及每只股票的当日巡检结果和整体集中度。无参数。', {}),
-    schema('get_judgments', '读取用户在“复盘验证”里保存过的判断（看多/观望/看空、周期、失效价、理由）及按后续真实走势核对的结果和准确率统计。无参数。', {}),
+    schema('get_judgments', '读取用户在“复盘验证”里保存过的判断（看多/观望/看空、周期、失效价、理由）及按后续真实走势核对的结果和准确率统计（含按大V作者分组）。无参数。', {}),
 ]
 NAMES = {t['name'] for t in TOOLS}
 
@@ -96,7 +96,7 @@ class HomeAPI:
             if name == 'get_judgments':
                 from quantlab.trading.judgments import review_judgments
                 review = review_judgments(self.output, self.data_catalog_path)
-                keep = ('made_on', 'code', 'name', 'stance', 'horizon', 'source', 'stop', 'target', 'reason')
+                keep = ('made_on', 'code', 'name', 'stance', 'horizon', 'source', 'author', 'stop', 'target', 'reason')
                 data = {'trading_day': review['trading_day'], 'stats': review['stats'],
                         'recent': [{**{k: r[k] for k in keep}, 'result': (r['result'] or {}).get('text')}
                                    for r in review['rows'][:40]]}

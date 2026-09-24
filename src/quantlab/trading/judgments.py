@@ -29,8 +29,9 @@ from quantlab.trading.stock_report import _optional_path, normalize_code
 
 FORMAT = 'niuniu-judgments-v1'
 STANCES = {'bullish': '看多', 'neutral': '观望', 'bearish': '看空'}
-SOURCES = {'me': '我的判断', 'ai': 'AI 的判断'}
-HORIZONS = (5, 10, 20)
+SOURCES = {'me': '我的判断', 'ai': 'AI 的判断', 'kol': '大V观点'}
+HORIZONS = (1, 3, 5, 10, 20)
+MARKET = 'market'    # a view on the whole market: checked against the equal-weight market series
 FLAT = 0.01          # an aligned move smaller than ±1% counts as 持平
 MAX_JUDGMENTS = 2000
 MIN_STATS = 10       # fewer finished judgments than this: say the rate means little
@@ -50,7 +51,8 @@ def load_judgments(output) -> list[dict]:
     except (OSError, ValueError):
         return []
     items = value.get('judgments', []) if isinstance(value, dict) else []
-    return [i for i in items if isinstance(i, dict) and i.get('id') and normalize_code(i.get('code', ''))
+    return [i for i in items if isinstance(i, dict) and i.get('id')
+            and (i.get('code') == MARKET or normalize_code(i.get('code', '')))
             and i.get('stance') in STANCES and i.get('horizon') in HORIZONS]
 
 
@@ -73,39 +75,54 @@ def _positive(value, name):
     return float(value)
 
 
-def save_judgment(output, *, code, made_on, close, stance, horizon, name='', source='me', stop=None,
-                  target=None, reason='', now=None) -> dict:
-    """Record one judgment. `close` is the actual close on `made_on` that the user saw."""
-    code = normalize_code(code or '')
+def make_judgment(*, code, made_on, close, stance, horizon, name='', source='me', stop=None, target=None,
+                  reason='', author='', post_id=None, now=None) -> dict:
+    """Validate one judgment. `close` is the actual close on `made_on` that the user saw."""
+    code = MARKET if code == MARKET else normalize_code(code or '')
     if code is None:
         raise ValueError('股票代码无效')
     day = date.fromisoformat(made_on).isoformat()
     if stance not in STANCES:
         raise ValueError('判断须为 看多 / 观望 / 看空')
     if horizon not in HORIZONS:
-        raise ValueError('核对周期须为 5、10 或 20 个交易日')
+        raise ValueError('核对周期须为 ' + '、'.join(map(str, HORIZONS)) + ' 个交易日之一')
     if source not in SOURCES:
-        raise ValueError('来源须为 我的判断 或 AI 的判断')
-    close = _positive(close, '收盘价')
+        raise ValueError('来源须为 ' + ' / '.join(SOURCES.values()))
     stop, target = _positive(stop, '失效价'), _positive(target, '目标价')
-    if close is None:
-        raise ValueError('缺少判断日收盘价')
+    if code == MARKET:
+        if stop or target:
+            raise ValueError('大盘判断不设失效价和目标价')
+        close = None
+    else:
+        close = _positive(close, '收盘价')
+        if close is None:
+            raise ValueError('缺少判断日收盘价')
     if stance == 'bullish' and ((stop and stop >= close) or (target and target <= close)):
         raise ValueError('看多时失效价应低于、目标价应高于当前收盘价')
     if stance == 'bearish' and ((stop and stop <= close) or (target and target >= close)):
         raise ValueError('看空时失效价应高于、目标价应低于当前收盘价')
     if stance == 'neutral' and (stop or target):
         raise ValueError('观望不设失效价和目标价')
-    items = load_judgments(output)
-    if len(items) >= MAX_JUDGMENTS:
+    return {'id': f"{day}-{code.replace('.', '')}-{uuid.uuid4().hex[:6]}", 'code': code,
+            'name': '大盘' if code == MARKET else (name or ''), 'made_on': day,
+            'close': None if close is None else round(close, 4), 'stance': stance, 'horizon': horizon,
+            'source': source, 'stop': stop, 'target': target, 'reason': (reason or '').strip()[:500],
+            'author': (author or '').strip()[:60], 'post_id': post_id,
+            'created_at': (now or datetime.now(timezone.utc)).isoformat(), 'result': None}
+
+
+def add_judgments(output, records, *, replace_post=None) -> list[dict]:
+    """Append validated records; `replace_post` first drops that post's earlier judgments."""
+    items = [i for i in load_judgments(output) if replace_post is None or i.get('post_id') != replace_post]
+    if len(items) + len(records) > MAX_JUDGMENTS:
         raise ValueError(f'最多保存 {MAX_JUDGMENTS} 条判断')
-    record = {'id': f"{day}-{code.replace('.', '')}-{uuid.uuid4().hex[:6]}", 'code': code, 'name': name or '',
-              'made_on': day, 'close': round(close, 4), 'stance': stance, 'horizon': horizon, 'source': source,
-              'stop': stop, 'target': target, 'reason': (reason or '').strip()[:500],
-              'created_at': (now or datetime.now(timezone.utc)).isoformat(), 'result': None}
-    items.append(record)
+    items.extend(records)
     _save(output, items)
-    return record
+    return records
+
+
+def save_judgment(output, **kwargs) -> dict:
+    return add_judgments(output, [make_judgment(**kwargs)])[0]
 
 
 def delete_judgment(output, judgment_id) -> bool:
@@ -218,6 +235,15 @@ def _bars(folder: Path | None, code: str, start: date) -> list[dict]:
     return frame.select('date', 'close', 'close_raw').to_dicts()
 
 
+def _market_bars(market: dict | None) -> list[dict]:
+    """The equal-weight market series as an index, so market views use the same checks."""
+    level, bars = 1.0, []
+    for day in sorted(market or {}):
+        level *= 1 + (market[day] or 0.0)
+        bars.append({'date': day, 'close': level, 'close_raw': level})
+    return bars
+
+
 def _stats(rows: list[dict]) -> dict:
     finished = [r for r in rows if (r['result'] or {}).get('verdict') in ('right', 'wrong', 'flat')]
     n = len(finished)
@@ -235,9 +261,11 @@ def _stats(rows: list[dict]) -> dict:
 
 def summarize(rows: list[dict]) -> dict:
     groups = {}
-    for key, labels in (('source', SOURCES), ('stance', STANCES), ('horizon', {h: f'{h}日' for h in HORIZONS})):
-        groups[key] = [{'key': k, 'label': v, **_stats([r for r in rows if r[key] == k])}
-                       for k, v in labels.items() if any(r[key] == k for r in rows)]
+    authors = {r.get('author'): r.get('author') for r in rows if r.get('author')}
+    for key, labels in (('source', SOURCES), ('stance', STANCES), ('horizon', {h: f'{h}日' for h in HORIZONS}),
+                        ('author', authors)):
+        groups[key] = [{'key': k, 'label': v, **_stats([r for r in rows if r.get(key) == k])}
+                       for k, v in labels.items() if any(r.get(key) == k for r in rows)]
     overall = _stats(rows)
     status = {s: sum((r['result'] or {}).get('status') == s for r in rows) for s in ('running', 'waiting', 'unavailable')}
     notes = []
@@ -264,10 +292,18 @@ def review_judgments(output, catalog_path=None) -> dict:
             code, made_on = item['code'], date.fromisoformat(item['made_on'])
             if code not in cache:
                 starts = [date.fromisoformat(i['made_on']) for i in items if i['code'] == code]
-                cache[code] = _bars(folder, code, min(starts) - timedelta(days=30))
+                cache[code] = (_market_bars(market) if code == MARKET
+                               else _bars(folder, code, min(starts) - timedelta(days=30)))
             bars = cache[code]
             end = last_day or (bars[-1]['date'] if bars else made_on)
-            if folder is None:
+            if code == MARKET:
+                # The market is its own benchmark: no excess.
+                result = (evaluate(item, bars, None, end) if market and min(market) <= made_on else
+                          {'status': 'unavailable', 'text': '市场总览里没有覆盖判断日的全市场序列，无法核对大盘判断。'})
+                if result['status'] == 'done':
+                    item['result'] = {**result, 'checked_at': datetime.now(timezone.utc).isoformat()}
+                    changed = True
+            elif folder is None:
                 result = {'status': 'unavailable', 'text': '数据清单里没有可用的前复权日线，无法核对。'}
             else:
                 # The benchmark only counts when the series covers the whole window.
@@ -293,11 +329,13 @@ def judgments_prompt(review: dict) -> str:
         if g['finished']:
             lines.append(f"{g['label']}：{g['finished']} 条，准确率 {g['hit_rate'] * 100:.0f}%，平均顺向超额 {_p(g['avg_aligned_excess'])}。")
     for r in review['rows'][:15]:
-        lines.append(f"- {r['made_on']} {r['name'] or r['code']} {STANCES[r['stance']]}（{SOURCES[r['source']]}，{r['horizon']}日）"
+        who = f"{r['author']}，" if r.get('author') else ''
+        lines.append(f"- {r['made_on']} {r['name'] or r['code']} {STANCES[r['stance']]}（{who}{SOURCES[r['source']]}，{r['horizon']}日）"
                      + (f"理由：{r['reason']}；" if r['reason'] else '') + (r['result'] or {}).get('text', ''))
     lines.append('请指出我的判断在哪类情况下更准、哪类情况下常错，失效价设置是否合理，以及样本量是否足以下结论。')
     return '\n'.join(lines)
 
 
-__all__ = ['STANCES', 'SOURCES', 'HORIZONS', 'VERDICTS', 'load_judgments', 'save_judgment', 'delete_judgment',
+__all__ = ['STANCES', 'SOURCES', 'HORIZONS', 'VERDICTS', 'MARKET', 'load_judgments', 'make_judgment', 'add_judgments',
+           'save_judgment', 'delete_judgment',
            'evaluate', 'summarize', 'review_judgments', 'judgments_prompt']

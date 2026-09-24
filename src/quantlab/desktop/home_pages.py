@@ -7,6 +7,7 @@ from .widgets import Card, button, kpis, label, row, table
 from .market_pages import market_page, themes_page  # noqa: F401  (re-exported)
 from .stock_pages import stock_page, mine_page  # noqa: F401  (re-exported)
 from .market_pages import candidates_page  # noqa: F401  (re-exported)
+from .kol_pages import kol_page  # noqa: F401  (re-exported)
 
 
 def _coming(window, box, what, today):
@@ -83,7 +84,7 @@ def review_page(window):
                          f"{r['horizon']} 日", outcome(r), _pp((r['result'] or {}).get('return')),
                          _pp((r['result'] or {}).get('market')), _pp((r['result'] or {}).get('excess')), remark(r)]
                         for r in rows],
-                       lambda i: window.open_stock_report(rows[i]['code']))
+                       lambda i: window.open_stock_report(rows[i]['code']) if rows[i]['code'] != 'market' else None)
         for i, r in enumerate(rows):
             for column in range(detail.columnCount()):
                 detail.item(i, column).setToolTip(f"{r['code']}：{(r['result'] or {}).get('text', '')}")

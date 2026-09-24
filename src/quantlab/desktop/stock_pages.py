@@ -152,6 +152,7 @@ def _judgment_card(window, report):
     horizon = QComboBox()
     for days in HORIZONS:
         horizon.addItem(f'{days} 个交易日', days)
+    horizon.setCurrentIndex(HORIZONS.index(5))
     source = QComboBox()
     for key, text in SOURCES.items():
         source.addItem(text, key)
