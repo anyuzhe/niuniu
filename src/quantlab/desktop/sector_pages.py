@@ -72,7 +72,7 @@ def sectors_page(window):
     order.setAccessibleName('排序')
     tidy = QCheckBox('过滤全市场标签和小板块')
     tidy.setChecked(getattr(window, 'sector_filter', True))
-    tidy.setToolTip('隐藏融资融券、沪股通、同花顺指数、次新股等不代表题材的标签，以及成分股少于 10 只的板块')
+    tidy.setToolTip('隐藏数据侧标为全市场标签（融资融券、沪股通、精选指数、次新股、业绩标签等）的板块，以及成分股少于 10 只的板块')
     ask = button('问 AI 解读', lambda: window.ask_ai(sector_prompt(state['snapshot'], state['board'], state['members']))
                  if state['snapshot'] else None, True)
     head = row(status, kind, order, tidy, button('立即刷新', lambda: refresh(force=True)), ask)

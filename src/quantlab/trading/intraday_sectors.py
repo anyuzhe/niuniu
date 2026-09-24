@@ -9,7 +9,6 @@ cross-checks and price-limit status. This module only
 """
 from __future__ import annotations
 
-import re
 import threading
 
 from quantlab.data.dataset_catalog import DataCatalogError, get_data_catalog_entry
@@ -25,14 +24,13 @@ MEMBER_STATUS = {
 }
 TYPE_NAMES = {'concept': '概念', 'industry': '行业'}
 
-# Concept lists also carry market-wide tags that are not themes (trading eligibility, holder
-# lists, vendor indices, listing status, earnings seasons). They top the turnover ranking
-# and say nothing about which direction is strong, so the page hides them by default.
-MARKET_LABELS = {
-    '融资融券', '沪股通', '深股通', '证金持股', '国家大基金持股', '高股息精选', '中国AI50',
-    'ST板块', '摘帽', '新股与次新股', '注册制次新股', '科创次新股',
+# Boards DATA classifies as market_label (margin trading, Stock Connect, vendor indices,
+# listing status, earnings seasons...) are not themes; the page hides them by default,
+# together with boards that have fewer than MIN_MEMBERS constituents.
+LABEL_REASONS = {
+    'trading_access': '交易资格', 'holder_label': '持股名单', 'index_selection': '精选指数',
+    'status_label': '风险状态', 'listing_age': '次新股', 'earnings_label': '业绩标签',
 }
-MARKET_LABEL_PATTERNS = (re.compile(r'^同花顺'), re.compile(r'^\d{4}.*(预增|预减|预亏|扭亏)$'))
 MIN_MEMBERS = 10
 
 _lock = threading.Lock()
@@ -104,14 +102,15 @@ def freshness(value: dict) -> str:
     return ' · '.join(p for p in parts if p)
 
 
-def is_market_label(name: str) -> bool:
-    return name in MARKET_LABELS or any(p.search(name) for p in MARKET_LABEL_PATTERNS)
+def is_market_label(board: dict) -> bool:
+    """DATA's classification (board_class); CODE keeps no name list of its own."""
+    return board.get('board_class') == 'market_label'
 
 
 def _hidden(board: dict) -> str | None:
-    if is_market_label(board['name']):
+    if is_market_label(board):
         return 'label'
-    count = board.get('constituent_count')
+    count = board.get('constituent_count')  # None means unknown, never zero
     if count is not None and count < MIN_MEMBERS:
         return 'small'
     return None
@@ -129,14 +128,20 @@ def pick_boards(snapshot: dict, kind='all', order='up', limit=60, filtered=True)
 
 def filter_note(snapshot: dict) -> str:
     boards = snapshot.get('boards', [])
-    labels = [b['name'] for b in boards if _hidden(b) == 'label']
+    labels = [b for b in boards if _hidden(b) == 'label']
     small = sum(_hidden(b) == 'small' for b in boards)
-    text = f"已隐藏 {len(labels)} 个全市场标签（{'、'.join(labels[:6])}{'等' if len(labels) > 6 else ''}）"
-    if any(b.get('constituent_count') is not None for b in boards):
-        text += f"和 {small} 个成分股少于 {MIN_MEMBERS} 只的板块"
+    if not any('board_class' in b for b in boards):
+        text = '数据侧的板块榜没有提供板块分类，全市场标签暂不能隐藏'
     else:
-        text += f"；成分股少于 {MIN_MEMBERS} 只的板块暂不能隐藏：数据侧的板块榜还没有提供成分股数量"
-    return text + '。取消勾选可显示全部。'
+        reasons = sorted({LABEL_REASONS.get(b.get('label_reason'), '其他') for b in labels})
+        text = (f"已隐藏 {len(labels)} 个全市场标签（{'、'.join(reasons)}，如"
+                f"{'、'.join(b['name'] for b in labels[:4])}）" if labels else '没有需要隐藏的全市场标签')
+    if any(b.get('constituent_count') is not None for b in boards):
+        day = snapshot.get('constituent_counts_date')
+        text += f"，以及 {small} 个成分股少于 {MIN_MEMBERS} 只的板块" + (f"（成分按 {day} 统计）" if day else '')
+    else:
+        text += f"；成分股数量暂缺，少于 {MIN_MEMBERS} 只的板块暂不能隐藏"
+    return text + '。分类和成分数由数据侧提供；取消勾选可显示全部。'
 
 
 def member_state(row: dict) -> str:
@@ -189,6 +194,6 @@ def sector_prompt(snapshot: dict, board: dict | None = None, members: dict | Non
     return '\n'.join(lines)
 
 
-__all__ = ['is_market_label', 'filter_note', 'MARKET_LABELS', 'MIN_MEMBERS', 'catalog_status', 'is_ready', 'not_ready_text', 'shared_provider', 'reset_shared_provider', 'error_text',
+__all__ = ['is_market_label', 'filter_note', 'LABEL_REASONS', 'MIN_MEMBERS', 'catalog_status', 'is_ready', 'not_ready_text', 'shared_provider', 'reset_shared_provider', 'error_text',
            'freshness', 'pick_boards', 'member_state', 'boards_summary', 'members_summary', 'sector_prompt',
            'LIVE_STATUSES', 'MARKET_STATUS', 'TYPE_NAMES']

@@ -58,28 +58,39 @@ class SummaryTests(Base):
 
 
 class FilterTests(unittest.TestCase):
-    def snapshot(self, counts=None):
-        names = ['融资融券', '沪股通', '同花顺漂亮100', '2026中报预增', '科创次新股', '林业', '风电设备', '机器人概念']
-        boards = [{'code': f'88{i:04d}.TI', 'name': n, 'type': 'concept', 'change_pct': 5.0 - i, 'amount': 1e10 * (9 - i)}
-                  for i, n in enumerate(names)]
-        for board in boards:
-            if counts is not None:
-                board['constituent_count'] = counts.get(board['name'], 50)
-        return {'boards': boards}
+    def snapshot(self, counts=None, classified=True):
+        rows = [('融资融券', 'market_label', 'trading_access'), ('同花顺漂亮100', 'market_label', 'index_selection'),
+                ('2026中报预增', 'market_label', 'earnings_label'), ('林业', 'industry', None),
+                ('风电设备', 'industry', None), ('机器人概念', 'theme', None)]
+        boards = []
+        for i, (name, cls, reason) in enumerate(rows):
+            board = {'code': f'88{i:04d}.TI', 'name': name, 'type': 'concept', 'change_pct': 5.0 - i,
+                     'amount': 1e10 * (9 - i), 'constituent_count': (counts or {}).get(name, 50) if counts is not None else None}
+            if classified:
+                board.update(board_class=cls, label_reason=reason)
+            boards.append(board)
+        return {'boards': boards, 'constituent_counts_date': '2026-09-24' if counts is not None else None}
 
-    def test_market_labels_hidden_and_switch_off(self):
+    def test_data_classification_hides_labels_and_switch_off(self):
         snap = self.snapshot()
         self.assertEqual([b['name'] for b in sectors.pick_boards(snap)], ['林业', '风电设备', '机器人概念'])
-        self.assertEqual(len(sectors.pick_boards(snap, filtered=False)), 8)
+        self.assertEqual(len(sectors.pick_boards(snap, filtered=False)), 6)
         self.assertEqual(sectors.pick_boards(snap, order='amount')[0]['name'], '林业')
         note = sectors.filter_note(snap)
-        self.assertIn('已隐藏 5 个全市场标签', note)
-        self.assertIn('还没有提供成分股数量', note)
+        self.assertIn('已隐藏 3 个全市场标签', note)
+        self.assertIn('交易资格', note)
+        self.assertIn('成分股数量暂缺', note)
 
-    def test_small_boards_hidden_when_counts_are_provided(self):
-        snap = self.snapshot({'林业': 5})
+    def test_small_boards_hidden_only_with_known_counts(self):
+        snap = self.snapshot({'林业': 5, '风电设备': None})
         self.assertEqual([b['name'] for b in sectors.pick_boards(snap)], ['风电设备', '机器人概念'])
         self.assertIn('1 个成分股少于 10 只', sectors.filter_note(snap))
+        self.assertIn('2026-09-24', sectors.filter_note(snap))
+
+    def test_no_classification_means_nothing_hidden_by_name(self):
+        snap = self.snapshot(classified=False)
+        self.assertEqual(len(sectors.pick_boards(snap)), 6)
+        self.assertIn('没有提供板块分类', sectors.filter_note(snap))
 
 
 class ToolTests(Base):

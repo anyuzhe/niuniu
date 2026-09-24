@@ -1897,3 +1897,10 @@
 
 - `sector_board_snapshot` 每个板块新增 `constituent_count`（来自新增的每日成分快照 `sector_board_constituents`，`scripts/collect/sector_constituents.py`；首份 2026-09-24，710 个板块、80,701 行）和 `board_class` / `label_reason`（DATA 维护的 `industry` / `theme` / `market_label` 分类，版本 `board-class-v1`；2026-09-24 的 19 个 `market_label` 与 CODE 原按名称隐藏的 19 个一致）。盘中记录器开盘前自动刷新成分快照。数据清单 §3.4 更新字段说明并新增 `sector_board_constituents`（READY）。测试新增 2 项，共 7 项通过。
 - 当晚另完成：2026-09-24 参考快照（在市 5,222 只）；公开数据 13 项（当天观察 9 项 + 涨停池、大宗交易、机构调研、股东增减持）；18:30 原定采集因连不上 Mac 延到 22:40 前后完成。日K/5分钟/日状态计划已生成（`artifacts/data-collection-plans-20260924-daily/`），需在 Mac 上运行。
+
+### 2026-09-24｜[CODE] 盘中板块改用数据侧的板块分类与成分数
+
+- 数据侧在板块榜里加了 `constituent_count`、`board_class`、`label_reason`（f816f48）。页面与 AI 摘要改为隐藏 `board_class=market_label` 的板块，删除 CODE 自己的名称清单；成分股少于 10 只的板块按 `constituent_count` 隐藏（为空时视为未知，不当成 0）。页面说明写明隐藏的类别和成分统计日期；没有分类字段时不按名称猜，照实说明。
+- 真实数据（2026-09-24 收盘）：隐藏 19 个全市场标签和 76 个成分股少于 10 只的板块，710 个板块里显示 615 个；涨幅榜前列由林业（5 只）等小板块变为风电零部件、风电设备、纺织制造等。
+- 测试：`test_intraday_sectors.py` 过滤测试改为 3 项（按分类隐藏与开关、只数已知才隐藏、无分类不按名称隐藏）。
+- 全量回归（云端副本）：2,078 项通过；数据侧 `test_research_provider` 缺 pytest 未运行。
