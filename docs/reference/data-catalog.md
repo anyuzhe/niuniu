@@ -149,7 +149,7 @@ result.to_dict()   # 可直接 JSON 序列化
 | `market_snapshot` | API | 正式盘中 MarketSnapshot（Daily Orchestrator 各时段） | `quantlab.trading.market_snapshot_provider.MarketSnapshotProviderRegistry`，实时通道 `public-web-consensus-v1`；另有手工导入 `manual-import-v1` | 按交易日 × 时段（AUCTION/R1/R2/R3）× 证券（每次最多 200 只）抓取，保留各源响应哈希 | 盘中研究与复盘输入；非 Strict PIT。`PARTIAL` 快照里缺的证券不要自己补 | `READY` | 通过 Registry 调用；不直接调用底层网页接口 |
 | `fuyao_context` | API | 扶摇个股/板块/短线/基本面聚合查询 | `quantlab.agent.fuyao_tools.FuyaoContextService`（`resolve / stock / sector / short_term / fundamental`；聊天里由 `FuyaoResearchAPI` 暴露为 5 个工具） | 按调用返回，不持久化；每次返回结果和扶摇请求凭据（request_id、source_hash）。字段：`volume` 为股、`turnover` 为元（约 8 位有效数字）、日期为 `date_ms`（北京时间 0 点的毫秒时间戳）；财务指标 `value` 为字符串，比率类单位为 % | 研究问答上下文。**板块成分是当前成分，不是历史成分**；个股 K 线是扶摇自己的复权，**回测和统计用 `qfq_published_f24`，不要用这里的 K 线**；龙虎榜、热度、涨跌停池为扶摇口径，与 DATA 文件数据可能有出入。凭证在项目 `.env` 的 `HITHINK_FINANCE_API_KEY`（或 macOS 钥匙串），缺凭证时不可用 | `READY` | 通过该服务调用；CODE 不读取、不打印密钥 |
 
-### 3.4 盘中板块接口（API，2026-09-24 新增，下一交易日盘中实测后开放）
+### 3.4 盘中板块接口（API，2026-09-24 开放）
 
 对应 CODE 需求《盘中板块榜与板块成分行情》。入口：`quantlab.data.sector_intraday.SectorIntradayProvider`，进程内建一个实例，页面复用它。
 
@@ -178,12 +178,12 @@ result.to_dict()   # 可直接 JSON 序列化
 - 板块榜：概念 390 个加行业 320 个共 710 个，全部返回，约 4 秒。
 - 新能源汽车板块 1,065 只成分股：第一次约 7 秒，之后每次 2–5 秒，1,061 只与公开行情一致，4 只当日零成交。
 - 涨停、炸板与扶摇池对照一致。
-- **盘中（集合竞价、连续竞价、午休、涨跌停封单）的更新情况和延迟，DATA 将于下一交易日（2026-09-28，中秋休市后）开盘后实测**，通过后把下面两项改为 `READY`。在此之前 CODE 可以按这里的字段先开发。
+- **尚未实测的只有盘中表现**：交易时段扶摇多久更新一次、集合竞价时返回什么、整天按 10 秒/5 秒刷新是否限流、封板股判断。DATA 于下一交易日（2026-09-28，中秋休市后）盘中实测，结果写在这里；发现问题会修，严重时改回 `REVIEW_REQUIRED`。在此之前页面请照实显示 `as_of`、`age_seconds` 和 `stale`，延迟大时用户能直接看到。
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
 |---|---|---|---|---|---|---|---|
-| `sector_board_snapshot` | API | 同花顺概念、行业板块行情榜 | `SectorIntradayProvider.board_snapshot(types=["concept","industry"])`；采样走势用 `board_series(code)` | 每个板块：`code, name, type(concept/industry), last, change, change_pct, amount, volume, previous_close, open, high, low, as_of`，按涨跌幅从高到低；整体：`as_of, age_seconds, market_status, completeness, missing, counts, cache, stale` | 盘中看盘与 AI 解读。`market_status` 取值：`PREOPEN / OPENING_AUCTION / TRADING / MIDDAY_BREAK / CLOSING_AUCTION / CLOSED / NON_TRADING_DAY` | `REVIEW_REQUIRED` | 盘中实测通过前只用于开发；10 秒刷新 |
-| `sector_board_members` | API | 单个板块的当前成分股行情 | `SectorIntradayProvider.board_members(code)`，`code` 取自板块榜 | 每只：`symbol, name, last, change_pct, amount, volume, previous_close, open, high, low, as_of, status(trading/no_trade_today/withheld_source_mismatch), limit_status, limit_up_price, limit_down_price, limit_check, cross_check`；整体同上，另有 `counts`（涨停/跌停/炸板/暂不输出只数） | 当前成分，不代表历史成分 | `REVIEW_REQUIRED` | 同上；只刷新用户打开的那个板块，5 秒刷新 |
+| `sector_board_snapshot` | API | 同花顺概念、行业板块行情榜 | `SectorIntradayProvider.board_snapshot(types=["concept","industry"])`；采样走势用 `board_series(code)` | 每个板块：`code, name, type(concept/industry), last, change, change_pct, amount, volume, previous_close, open, high, low, as_of`，按涨跌幅从高到低；整体：`as_of, age_seconds, market_status, completeness, missing, counts, cache, stale` | 盘中看盘与 AI 解读。`market_status` 取值：`PREOPEN / OPENING_AUCTION / TRADING / MIDDAY_BREAK / CLOSING_AUCTION / CLOSED / NON_TRADING_DAY`。盘中延迟未实测，见上 | `READY` | 10 秒刷新；显示 `as_of`、`age_seconds`，`stale=true` 时标明是旧数据 |
+| `sector_board_members` | API | 单个板块的当前成分股行情 | `SectorIntradayProvider.board_members(code)`，`code` 取自板块榜 | 每只：`symbol, name, last, change_pct, amount, volume, previous_close, open, high, low, as_of, status(trading/no_trade_today/withheld_source_mismatch), limit_status, limit_up_price, limit_down_price, limit_check, cross_check`；整体同上，另有 `counts`（涨停/跌停/炸板/暂不输出只数） | 当前成分，不代表历史成分。盘中延迟未实测，见上 | `READY` | 只刷新用户打开的那个板块，5 秒刷新；`withheld_source_mismatch` 的股票不显示价格 |
 | `sector_board_intraday` | FILE | 盘中每分钟的全部板块行情记录 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_intraday/date=YYYY-MM-DD/HHMMSS.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每个文件是一分钟的全部板块，列同 `sector_board_snapshot` 的板块行，另有 `market_status, snapshot_as_of, stale` | 需要 Mac 在交易时间运行记录器（`artifacts/run-sector-recorder.command`），没运行的时段没有数据，也不能补 | `NOT_READY` | 有了首日数据并核对后改 `READY` |
 
 ## 4. 尚不可用、待审查或只供 DATA 内部使用

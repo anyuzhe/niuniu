@@ -1875,3 +1875,4 @@
 - 新增 `scripts/collect/sector_intraday_recorder.py` 与 `artifacts/run-sector-recorder.command`：交易时间每分钟把全部板块写入 `lake/bronze/provider=fuyao/sector_board_intraday/`。
 - 收盘后实测：710 个板块全部返回；新能源汽车 1,065 只首次 7 秒、之后 2–5 秒，1,061 只与公开行情一致、4 只零成交；涨停/炸板与扶摇池一致。数据清单新增 §3.4，两个接口先标 `REVIEW_REQUIRED`，下一交易日（2026-09-28，09-25 中秋休市）盘中实测后开放；记录器数据集 `NOT_READY`。
 - 测试：`tests/test_sector_intraday.py` 5 项。
+- 同日续：经用户同意，`sector_board_snapshot`、`sector_board_members` 先改为 `READY`，清单写明盘中延迟、竞价时段、全天限流、封板判断尚未实测；2026-09-28 盘中实测，问题严重时改回 `REVIEW_REQUIRED`。`sector_board_intraday` 仍为 `NOT_READY`。
