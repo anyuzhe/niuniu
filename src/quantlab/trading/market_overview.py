@@ -157,6 +157,7 @@ def _daily_stats(panel: pl.DataFrame) -> pl.DataFrame:
         (pl.col('pct') > 1e-9).sum().alias('up'),
         (pl.col('pct') < -1e-9).sum().alias('down'),
         pl.col('pct').median().alias('median_pct'),
+        pl.col('pct').mean().alias('mean_pct'),
         pl.col('is_limit_up_close').fill_null(False).sum().alias('limit_up'),
         pl.col('is_limit_down_close').fill_null(False).sum().alias('limit_down'),
         pl.col('is_broken_board').fill_null(False).sum().alias('broken'),
@@ -402,6 +403,9 @@ def build_market_overview(catalog_path=None, trading_day: str | None = None,
         'history': [{'date': r['date'].isoformat(), 'up_ratio': _num(r['up_ratio']), 'limit_up': r['limit_up'],
                      'limit_down': r['limit_down'], 'max_streak': r['max_streak'], 'amount': _num(r['amount'], 0)}
                     for r in rows[-60:]],
+        # Equal-weight average of all tradable stocks, per session: the benchmark that
+        # 复盘验证 compares saved judgments against.
+        'market_returns': [{'date': r['date'].isoformat(), 'mean_pct': _num(r['mean_pct'], 6)} for r in rows],
         'industries': _industries(panel, sources.reference, [d for d in sessions if d <= end]),
         '_stocks': _stock_snapshot(features, end),
         'candidates': screen_candidates(features, end, [d for d in sessions if d <= end]),

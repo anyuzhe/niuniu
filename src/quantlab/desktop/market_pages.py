@@ -45,7 +45,8 @@ def _expected_day(now=None):
 
 def _stale(overview):
     # Results from before a feature existed (e.g. no candidates yet) are rebuilt too.
-    return overview is None or overview['trading_day'] < _expected_day() or 'candidates' not in overview
+    return (overview is None or overview['trading_day'] < _expected_day()
+            or not {'candidates', 'market_returns'} <= set(overview))
 
 
 def _start_build(window, force=False):

@@ -1,7 +1,8 @@
 """个股报告 / 我的股票 pages."""
 from PyQt6 import sip
-from PyQt6.QtWidgets import QDoubleSpinBox, QLineEdit
+from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLineEdit
 
+from quantlab.trading.judgments import HORIZONS, SOURCES, STANCES, load_judgments, save_judgment
 from quantlab.trading.market_overview import latest_stocks
 from quantlab.trading.my_stocks import add_stock, inspect_my_stocks, my_stocks_prompt, remove_stock
 from quantlab.trading.stock_report import (StockReportError, build_stock_report, online_context, report_prompt,
@@ -59,6 +60,7 @@ def stock_page(window):
         for item in report['flags'] or ['暂无特别需要留意的事项。']:
             flags.add(label('· ' + item, '', True))
         holder.add(flags)
+        holder.add(_judgment_card(window, report))
         events = report['events']
         if events['earnings']:
             holder.add(label('业绩预告：' + '；'.join(
@@ -126,6 +128,64 @@ def stock_page(window):
         window.pending_stock = None
         query.setText(pending)
         load(pending)
+
+
+def _price_box(suffix):
+    box = QDoubleSpinBox()
+    box.setRange(0, 100000)
+    box.setDecimals(2)
+    box.setSpecialValueText('不设')
+    box.setSuffix(suffix)
+    box.setToolTip('按实际收盘价核对；0 表示不设')
+    return box
+
+
+def _judgment_card(window, report):
+    """保存判断: recorded against this report's close, checked later on 复盘验证."""
+    f = report['facts']
+    card = Card('保存判断（之后自动核对）')
+    card.add(label(f"从 {report['trading_day']} 收盘价 {f['close']:.2f} 元算起；失效价、目标价按每天的实际收盘价核对，"
+                   '先到哪个就在哪天结束；否则到期按涨跌判断对错。结果在“复盘验证”里。', 'muted', True))
+    stance = QComboBox()
+    for key, text in STANCES.items():
+        stance.addItem(text, key)
+    horizon = QComboBox()
+    for days in HORIZONS:
+        horizon.addItem(f'{days} 个交易日', days)
+    source = QComboBox()
+    for key, text in SOURCES.items():
+        source.addItem(text, key)
+    stop, target = _price_box(' 元'), _price_box(' 元')
+    for box, name in ((stance, '判断'), (horizon, '核对周期'), (source, '来源'), (stop, '失效价'), (target, '目标价')):
+        box.setAccessibleName(name)
+    reason = QLineEdit()
+    reason.setPlaceholderText('理由（可不填），例如：放量突破平台，行业走强')
+    reason.setAccessibleName('判断理由')
+    status = label('', 'muted', True)
+    previous = [j for j in load_judgments(window.output) if j['code'] == report['code']]
+    if previous:
+        last = previous[-1]
+        status.setText(f"这只股票已保存 {len(previous)} 条判断，最近一次：{last['made_on']} {STANCES[last['stance']]}"
+                       f"（{last['horizon']} 日）。")
+
+    def save():
+        try:
+            record = save_judgment(window.output, code=report['code'], name=report['name'],
+                                   made_on=report['trading_day'], close=f['close'], stance=stance.currentData(),
+                                   horizon=horizon.currentData(), source=source.currentData(),
+                                   stop=stop.value() or None, target=target.value() or None, reason=reason.text())
+        except (ValueError, OSError) as exc:
+            status.setText('没有保存：' + str(exc))
+            return
+        reason.clear()
+        status.setText(f"已保存：{STANCES[record['stance']]}，{record['horizon']} 个交易日后核对。在“复盘验证”查看。")
+
+    card.add(row(stance, horizon, source, label('失效价', 'muted'), stop, label('目标价', 'muted'), target))
+    card.add(row(reason, button('保存判断', save, True)))
+    card.add(status)
+    card.judgment_controls = {'stance': stance, 'horizon': horizon, 'source': source, 'stop': stop, 'target': target,
+                              'reason': reason, 'status': status, 'save': save}
+    return card
 
 
 def _add(window, text, status, weight=None, cost=None):
