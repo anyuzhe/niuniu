@@ -13,6 +13,7 @@ import socket
 
 import polars as pl
 
+from quantlab.data.capture_root import capture_root
 from quantlab.data.baostock_catalog import DAILY_FIELDS
 from quantlab.storage.codec import digest, encode
 
@@ -98,10 +99,10 @@ class DailyMarketArchive:
     def __init__(self,output,now_fn=None):
         self.output=Path(output).resolve();self.now_fn=now_fn or (lambda:datetime.now(timezone.utc))
         if not self.output.is_dir():raise DailyMarketArchiveError('INVALID_WORKSPACE','工作空间不存在。')
-        self.root=self.output/'_market_data'/'daily_market'
+        self.market_root=capture_root(self.output);self.root=self.market_root/'daily_market'
 
     def _guard(self):
-        for path in (self.output/'_market_data',self.root):
+        for path in (self.market_root,self.root):
             if path.is_symlink():raise DailyMarketArchiveError('INVALID_WORKSPACE','DailyMarket 路径不能是符号链接。')
 
     def day_root(self,day):

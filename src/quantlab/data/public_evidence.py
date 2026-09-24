@@ -23,6 +23,7 @@ import time as _time
 
 import polars as pl
 
+from quantlab.data.capture_root import capture_root
 from quantlab.storage.codec import digest, encode
 
 FORMAT = 'public-evidence-capture-v1'
@@ -195,7 +196,8 @@ class PublicEvidenceArchive:
         self.http = http or http_fetch
         self.sleep = sleep
         self.calendar_days = calendar_days
-        self.root = self.output / '_market_data' / 'public_evidence'
+        self.market_root = capture_root(self.output)
+        self.root = self.market_root / 'public_evidence'
 
     # ---- helpers -------------------------------------------------------------------------------
     def _source(self, source_id):
@@ -206,7 +208,7 @@ class PublicEvidenceArchive:
 
     def _day_dir(self, source_id, day):
         self._source(source_id)
-        for path in (self.output / '_market_data', self.root, self.root / source_id):
+        for path in (self.market_root, self.root, self.root / source_id):
             if path.is_symlink():
                 raise PublicEvidenceError('INVALID_WORKSPACE', '公开证据路径不能是符号链接。')
         return self.root / source_id / _day(day).isoformat()

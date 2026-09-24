@@ -35,6 +35,26 @@
 | `daily_plan.py` | 每日只读计划包，参考快照先行、其余计划随后 | 各计划分别批准，不能一键自动采集 |
 | `status_incremental.py` | Baostock交易/ST状态缺整只和尾部增量 | 状态表单独更新，历史内部洞仅报告 |
 | `corporate_actions_daily.py` | 同花顺/巨潮/Baostock分红每日再观察 | 内容SHA比较，变更备份、逐证券回执 |
+| `inventory.py` | 只读盘点数据根：文件、行数、列签名、日期范围、指纹 | 报告必须写在数据根外；`--deep-hash` 才算内容 SHA |
+| `migrate_captures.py` | 把工作空间 `_market_data` 捕获包复制到数据根并重定向 | plan→apply→redirect→pointer，每步需计划 SHA；源文件不动 |
+| `registry.py` | 数据集注册表 draft/verify/apply 与 `reg_*` 视图计划 | 写入须带草稿或视图计划的完整 SHA |
+| `public_sources.py` | 17 项公开来源数据（东财/同花顺/巨潮/交易所/中证/申万，a-stock-data 代码） | `list` 看清单；`plan --dataset ...` → `apply --plan ... --approve-sha256 ...`，每项单独批准 |
+
+## 数据根与注册表
+
+- **数据根**：所有脚本经 `paths.py` 取数据根。设置 `NIUNIU_DATA_ROOT`（绝对路径）可改到隔离目录；不设时使用历史路径 `/Volumes/Lexar/niuniu-data`。脚本里不再写死数据根，测试会检查这一点。
+- **全量公司行动采集必须显式 `--dest`**：`ths_dividend.py` 与 `cninfo_allotment.py` 不再默认指向已被替代的 v1 目录。当前目录以注册表为准（同花顺 `corporate_actions_dividend_v2`、巨潮 `corporate_actions_allotment_v2`）。
+- **注册表**：`catalog/dataset_registry.json` 声明每个逻辑数据集的当前目录，映射清单是人工审阅的 `registry_spec.json`。更新流程：
+
+```bash
+python3 scripts/collect/registry.py draft --out <数据根外>/registry-draft.json   # 只读，打印草稿 SHA
+python3 scripts/collect/registry.py apply --draft <草稿> --approve-sha256 <草稿SHA>
+python3 scripts/collect/registry.py verify                                      # 只读，报告目录漂移
+python3 scripts/collect/registry.py views                                       # 只读，打印 reg_* 视图计划 SHA
+python3 scripts/collect/registry.py views --apply --approve-sha256 <计划SHA>   # 写 catalog，需先确认无其他进程在用
+```
+
+草稿之后目录若有变化，apply 会拒绝，需要重新 draft。旧注册表先复制到 `catalog/registry_history/` 再替换。`views` 只创建或替换 `reg_` 前缀视图，不碰表和其他视图。
 
 ## 采集信封（`envelope.py`）
 
@@ -98,7 +118,8 @@
 - `status_incremental.py` 从原状态文件真实末日之后采集完整交易日状态，逐证券备份、原子合并和回执；内部缺日单列 `interior_gaps`，不自动补。`--apply --plan <状态计划> --approve-sha256 <完整SHA>` 才联网；失败用相同计划和 `--resume-run` 续跑。默认计划在参考日历落后于当天时拒绝，不把旧日历末日当今天。
 - `corporate_actions_daily.py` 对同花顺分红、巨潮配股按全供应商历史重新观察；Baostock分红默认重查最近3个报告年度并保留更早原始行，`--lookback-years` 可扩大至60（需要更多请求）。结果按字段和行内容做顺序无关、保留重复的摘要比较；不变文件不改字节，新增/修订先备份旧文件及空结果标记再替换，供应商把已有历史整段返回空值时拒绝擦除。每证券持久回执、可续跑，需单独 `--dataset ... --apply --plan ... --approve-sha256 ...`。Baostock超出批准回看窗口的旧年修订**不会自动发现**；仅生成bronze观察版本，不自动裁决事件、重算因子。
 - `baostock_reference_snapshot.py` 按日期建立新不可变快照；没有快照时下游使用旧归档源并在计划中绑定其SHA。优先使用最新不晚于目标日期的完成快照，必须验证manifest与实际证券文件SHA；最新快照损坏或不完整会拒绝而非回退旧版。参考快照中的在市口径可能不同于2026-09-22首采所用旧stock_basic，差异应单列审阅，不得暗改旧验收总体。
-- 公司行动每日重新观察**全部在市证券**（巨潮仅TDX历史配股证券与在市交集），不是低成本事件推送；供应商访问预算、频率和每日日期由宿主审阅。`--resume`（全量首采脚本）仍只跳过已有文件，不等于上述增量命令。
+- **频率（2026-09-23 起）**：公司行动历史记录不再每日全量复查。2026-09-23 全量再观察三家合计 6,451 只、真实修订 0 条，详见[再观察结果与采集频率](../../docs/archive/data-evidence/20260923-公司行动再观察结果与采集频率.md)。全量复查只在发布新版 qfq 前做一次（平时最多每季度一次）；每日只采新事件和新上市证券（待实现的子集模式做好前，每周一次）。Baostock 请求间隔不低于 1 秒、单次登录，过密会被封禁。`--resume`（全量首采脚本）仍只跳过已有文件，不等于上述增量命令。
+- **公开来源数据**（`public_sources.py`，2026-09-23 起）：“当天观察”的 9 项（`em_monitor, em_anomaly, index_weights, holder_count, northbound_minute, earnings_forecast, share_buyback, equity_pledge, ipo_calendar`）只能当天采，错过不能回补，北向分钟须收盘后采；`sw_industry_history` 本身是全量变更历史，每周采一次即可；按交易日的 `ths_limit_up, block_trades` 当天收盘后采，`margin_official` 是 T+1，次日采前一交易日；按公告日的 `institution_survey, holder_trades` 当天或次日采，`cninfo_announcements` 次日采前一天（当天晚间仍会新增）；`lockup_expiry` 的未来分区是预告，应每周重采；**脚本目前会跳过已有分区，重采模式尚未实现**，做好之前未来分区保持首采时的观察。每项 `plan` 后单独批准；东财请求间隔不低于 1.5 秒，不并行。
 - 每日真实联网仍须当次授权；未取得当次批准时只允许生成计划，不因调度自动执行。
 
 ## 授权边界

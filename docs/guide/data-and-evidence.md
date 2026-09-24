@@ -316,3 +316,36 @@ DATA 当前还交付6个 `READY` 按需研究API：`research_search`、`stock_re
 `stock_fund_flow_daily`、`realtime_quote`、`market_snapshot`、`fuyao_context` 当前均为 `REVIEW_REQUIRED`。这一状态现在不仅体现在新统一工具里，也已经约束旧入口：普通 Chat 不注册 Fuyao 聚合工具、不做自动实时报价预取；MarketSnapshot readiness/live CLI/Daily Orchestrator 不允许公开网页实时 capture。即使旧 provider 类、网络代码或凭证仍存在，也不能绕开 DATA 状态。DATA 日后把对应项改为 `READY` 后，这些 gate 才允许 CODE 使用；CODE 不自行改变状态。
 
 其余17类新增公开来源文件数据已经由 DATA 标 `READY` 并可通过 catalog 发现。它们的 schema/日期语义差异较大，CODE 不建立“任意 dataset_id + 任意列/SQL”的模型工具；后续只有具体产品功能需要时，才按清单的字段和覆盖合同增加有界 reader。这样既能消费 DATA 现有资产，也不会把数据湖浏览权限重新交给模型。
+
+## 16. 数据集注册表（整改阶段1）
+
+`catalog/dataset_registry.json` 声明每个逻辑数据集当前使用哪个物理目录，以及它替代了哪些旧目录；旧目录一律原地保留。读取入口是 [dataset_registry.py](../../src/quantlab/data/dataset_registry.py) 的 `resolve(data_root, name, legacy_default=...)`。
+
+| 状态 | 含义 |
+|---|---|
+| `current` | 该逻辑数据集的当前目录；`resolve` 只返回这一种 |
+| `superseded` | 已被新版本替代，保留供追溯；`resolve` 拒绝 |
+| `legacy` | 没有维护中的采集器的遗留数据；`resolve` 拒绝 |
+| `quarantine` | 已知有问题、隔离待处理；`resolve` 拒绝 |
+
+- 注册表不存在时，`resolve` 返回调用方给的原默认路径（`source=legacy_default`），行为与整改前一致。
+- 注册表存在即为权威：格式错误、未知字段、路径越出数据根或经过符号链接、current 目录缺失、名称未注册或不是 current，全部报错，不回退。
+- `listing_fingerprint` 是草稿时的“路径+大小+mtime”摘要，只用于发现目录变化；之后获批采集造成的漂移是预期的，由 `registry.py verify` 报告，不阻断读取。`content_manifest_sha256` 才固定字节，目前为空，由需要固定输入的阶段（如 qfq 重建）填写。
+- 注册表不改变任何数据资格：`research_only` 仍是 `research_only`，TDX 仍是 `vendor_observation_personal_research_not_pit`。
+- 可选 `version_ledger` 字段只引用 F21 观察/修订账本及其 SHA；注册表不判断事件修订，F21 也不决定当前目录。
+
+维护命令见 [采集脚本说明](../../scripts/collect/README.md)。截至 2026-09-23，产品各读取模块仍使用原写死的相对路径，按数据集分批切换到 `resolve`。
+
+## 17. 捕获包位置（整改阶段 2）
+
+回溯日线、DailyMarket、公开证据、前瞻参考、Baostock 导入与 series 这些“捕获包”原先写在工作空间 `artifacts/_market_data/`。2026-09-23 起它们在数据根 `lake/_market_data/`，工作空间通过重定向文件指过去：
+
+```text
+artifacts/_market_data.redirect.json   → /Volumes/Lexar/niuniu-data/lake/_market_data
+niuniu-data/lake/_market_data/CAPTURE_ROOT.json   同一 capture_root_id
+```
+
+- 所有捕获读写都经 [capture_root.py](../../src/quantlab/data/capture_root.py) 定位。没有重定向文件时仍是 `<工作空间>/_market_data`；重定向文件存在但格式不对、目标缺失、目标 marker 的 id 不一致或路径经过符号链接时直接报错，不回退。
+- 原 `artifacts/_market_data` 原样保留：历史实验、冻结清单和回执里记录的旧绝对路径仍然可读。它不再接收新写入。
+- `catalog/retro_daily_tail.json` 已改指 `lake/_market_data/retro_daily/<capture_id>`，pack index digest 与原来相同；迁移后的 capture 所在的 `lake` 目录本身就可当作未重定向的工作空间读取。
+- 迁移本身不改变任何资格：捕获包仍是 research_only / 回顾性参考，与迁移前一样。

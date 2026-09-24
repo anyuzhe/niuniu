@@ -28,6 +28,7 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collect.scan_gaps import DATASETS, canonical_digest, file_sha256  # noqa: E402
 from collect import coverage as cov  # noqa: E402
+from collect import paths  # noqa: E402
 from collect.daily_common import select_reference_file, select_stock_basic  # noqa: E402
 
 FIELDS = {
@@ -460,7 +461,7 @@ def main(argv: list[str] | None = None) -> int:
 
     short = plan["plan_sha256"][:16]
     backup_root = (Path(args.backup_root) if args.backup_root else
-                   Path("/Volumes/Lexar/niuniu-data/backups") /
+                   paths.BACKUPS /
                    f"collection-{short}" / plan["dataset"])
     receipt_path = (Path(args.receipt) if args.receipt else
                     Path("artifacts/collection-receipts") / f"{short}.json")

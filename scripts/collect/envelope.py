@@ -59,10 +59,14 @@ def _verify_empty_marker(path: Path, code: str) -> bool:
     return value.get('code') == code and value.get('status') == 'empty'
 
 
-def build_parser(description: str, *, default_dest: str, default_throttle: float) -> argparse.ArgumentParser:
+def build_parser(description: str, *, default_dest: str | None, default_throttle: float) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=description)
-    p.add_argument('--dest', default=default_dest,
-                   help='目标 bronze 目录（默认 %(default)s）')
+    if default_dest is None:
+        p.add_argument('--dest', required=True,
+                       help='目标 bronze 目录（必须显式给出；不提供默认目录）')
+    else:
+        p.add_argument('--dest', default=default_dest,
+                       help='目标 bronze 目录（默认 %(default)s）')
     p.add_argument('--receipt', default=None,
                    help='回执 JSON 路径；默认写入 <dest>/_receipts/<name>-<run_id>.json')
     p.add_argument('--universe', default=None,

@@ -30,6 +30,7 @@ import time
 
 import polars as pl
 
+from quantlab.data.capture_root import capture_root
 from quantlab.storage.codec import digest, encode
 
 FORMAT = 'retro-daily-baostock-v1'
@@ -253,12 +254,13 @@ class RetroDailyStore:
             raise RetroDailyError('INVALID_WORKSPACE', '工作空间不存在。')
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.today_fn = today_fn or (lambda: datetime.now(TZ).date())
-        self.root = self.output / '_market_data' / 'retro_daily'
+        self.market_root = capture_root(self.output)
+        self.root = self.market_root / 'retro_daily'
         self._pack_cache = {}
 
     # ---- paths -------------------------------------------------------------------------------
     def _guard(self):
-        for path in (self.output / '_market_data', self.root):
+        for path in (self.market_root, self.root):
             if path.is_symlink():
                 raise RetroDailyError('INVALID_WORKSPACE', '回溯日线路径不能是符号链接。')
 

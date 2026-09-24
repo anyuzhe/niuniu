@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collect.envelope import empty_marker_path, sha256_file, symbol_filename  # noqa: E402
+from collect import paths  # noqa: E402
 
 
 def digest(value) -> str:
@@ -64,7 +65,7 @@ def main(argv=None) -> int:
     if args.approve_sha256 != plan["plan_sha256"]:
         print("REFUSED: approval hash mismatch", file=sys.stderr); return 2
     backup_root = (Path(args.backup_root) if args.backup_root else
-                   Path("/Volumes/Lexar/niuniu-data/backups") /
+                   paths.BACKUPS /
                    f"empty-marker-{plan['plan_sha256'][:16]}")
     results = []
     for action in plan["actions"]:

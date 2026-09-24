@@ -1775,3 +1775,40 @@
 - 测试：新增 `test_market_overview.py`（合成数据湖按真实文件格式：涨跌停/连板/除权日不算下跌/昨日涨停溢价/两融变动/行业与涨停原因/超出数据日期拒绝/NOT_READY 不替代/CLI/桌面渲染）6项；导航相关的7个桌面测试改为按 key 跳转并覆盖专业模式显隐与保存。全量结果见下一条补记。
 - 限制：只有盘后数据；指数行情、概念板块成分、盘中实时尚未由数据侧提供；行业是参考快照当天的证监会分类；尚无定时任务，靠打开页面或 CLI 触发。
 - 验证（云端隔离副本，Python 3.12、离屏Qt、vnpy 4.4.0）：294个测试模块逐一独立进程运行，共1,986项；首轮仅 `test_trading_cockpit_desktop` 3项因原首页变为“今日市场”失败，测试改为先进入专业模式“交易台”后通过，其余全部通过（10个Qt模块打印OK后退出时段错误，为既有Qt退出问题）。`scripts/check_docs.py` 与 `git diff --check` 通过。未在Mac本机 `.venv`（Python 3.13）打开真实窗口验收。
+
+### 2026-09-23｜[数据侧整改 第一批] 阶段0只读盘点与阶段1数据集注册表
+
+- 按用户批准的《牛牛数据侧整改方案》（D1–D7 全部按建议采纳）开始第一批。工作在独立 git worktree `.worktrees/data-remediation`（分支 `data-remediation`）进行，未触碰另一会话中未提交的 F21 版本账本文件。
+- 阶段0：新增只读 `scripts/collect/inventory.py`，按数据集目录输出文件数、字节、Parquet 行数、列签名分组、页脚统计日期范围、空结果标记、回执与 listing fingerprint；`--deep-hash` 才计算逐文件内容清单。报告只能写在数据根外。真实盘点结果在 `artifacts/data-remediation-20260923/stage0-inventory.json`（分段运行后合并），0 个不可读文件。主要发现：silver qfq 日/5 分钟截止 2026-09-04 而 raw 截止 2026-09-22；巨潮配股 v2 有 67 种供应商列签名、同花顺 v2 有 4 种；`src/quantlab/data/dividends.py` 仍读仅 3 只证券的 Baostock 旧分红目录，`corporate_action_review.py` 仍读同花顺 v1 与东财旧分红；12 个 silver 目录中 9 个为空；`backups/` 约 30.8 GB。
+- 阶段1：新增 `src/quantlab/data/dataset_registry.py`（`catalog/dataset_registry.json` 的读取、校验与 `resolve`）。注册表缺失时保持调用方原默认路径；存在时即为权威，格式错误、未知字段、越出数据根、符号链接路径、current 目录缺失、未注册或非 current 名称均报错，不静默回退。listing fingerprint 漂移只由 `verify` 报告，不阻断 resolve；注册表不提升任何数据资格。可选 `version_ledger` 字段只引用 F21 账本，二者职责分开。
+- 新增 `scripts/collect/registry.py`（draft/verify/apply/views）与人工审阅的 `registry_spec.json`（25 个逻辑数据集：15 current、6 superseded、4 legacy）。apply 必须给出草稿完整 SHA，且草稿后目录未漂移；旧注册表先复制到 `catalog/registry_history/`。已在真实数据根安装注册表，SHA `98a227f94b3fbd409c143b84d31d8afaf888d5168e462c82d1bdaa23f1b1daa8`；产品代码暂未改为按注册表读取，行为不变。
+- `reg_*` catalog 视图生成器只 CREATE OR REPLACE `reg_` 前缀视图，拒绝与表同名，写前记录原 `reg_` 视图。14 个视图的 SQL 已在内存 DuckDB 中对真实数据逐一建视图并计数，行数与盘点一致；**尚未写入 `catalog/mqc.duckdb`**，需确认并行会话不在读取 catalog 后再按计划 SHA 应用。
+- 路径统一：新增 `scripts/collect/paths.py`，全部采集脚本经它取数据根（`NIUNIU_DATA_ROOT` 或历史默认路径），脚本中不再出现硬编码数据根。`ths_dividend.py`、`cninfo_allotment.py` 取消指向 v1 旧目录的默认 `--dest`，必须显式给出。偏离方案之处：未设环境变量时仍回退到历史路径而非报错，原因是每日脚本在导入时绑定路径常量且既有 58 项测试依赖此行为；强制显式数据根留待后续。
+- 测试：新增 `tests/test_collect_inventory.py` 5 项、`tests/test_dataset_registry.py` 12 项；与既有采集测试合计 75 项全部通过（Linux VM，Python 3.10，离线临时目录）。未运行全仓回归，因为本批未修改被其他产品模块导入的代码。
+
+### 2026-09-23｜[数据侧整改 第二批] catalog 视图、当日增量、捕获包迁入数据根
+
+- catalog：14 个 `reg_*` 视图已按计划 SHA `8785586044e0…` 写入 `catalog/mqc.duckdb`，只新增 `reg_` 前缀视图，未改表和原有视图；逐个核对行数与盘点一致。写入须在 Mac 路径下进行（DuckDB 创建视图时即解析文件路径），本次在 Linux 工作区用用户命名空间把数据根挂到 `/Volumes/Lexar/niuniu-data` 后执行。
+- 当日增量（用户已批准）：2026-09-23 参考快照 7/7 文件完成，在市 A 股 5,222 只。`daily_plan.py` 重新生成计划（`artifacts/data-collection-plans-20260923-daily-r2/`），7 只新股的日 K、5 分钟、日状态全部 ok（计划 SHA `b96b0d8d…`、`e2ab6c47…`、`16fd0e77…`）。日 K/5 分钟目标日仍为 2026-09-22（北京时间 18:00 前）。
+- 公司行动每日再观察：巨潮配股 644/644 完成（601 unchanged、43 updated、0 failed）。**这 43 条 updated 全部是误报**：`daily_common._stable_value` 把供应商返回的 `pandas.NaT` 记为字符串 `"NaT"`，而同一单元格从 Parquet 读回是 `None`，导致内容未变的文件被判为修订并重写。已修复（`cdaa2fc`，NA 先于日期分支判断）并补回归测试；43 个被重写文件与备份的逻辑内容逐一核对相同，更正记录在 `artifacts/data-remediation-20260923/stage3-cninfo-false-revision-audit.json`，原回执不改写，备份保留在 `backups/corporate-daily-e043b14436741eb5/`。修复后的 401 只没有再出现误报。
+- 捕获包迁移（阶段 2）：新增 `src/quantlab/data/capture_root.py` 与 `scripts/collect/migrate_captures.py`。`artifacts/_market_data` 的 1,800 个文件（673,750,558 字节）按计划 SHA `36fa879d…` 先整体核对、再复制到 `/Volumes/Lexar/niuniu-data/lake/_market_data` 并逐文件核对，源文件一个未动。随后写入 `artifacts/_market_data.redirect.json`（capture_root_id `66a590b0…`），所有捕获读写模块（回溯日线、DailyMarket、公开证据、前瞻参考、Baostock 导入/series、证据调度、打板研究工具、行情工具）改为经 `capture_root()` 定位；无重定向时行为不变，重定向无效时报错。`catalog/retro_daily_tail.json` 改指迁移后的 capture，pack index digest 不变，旧指针备份在 `catalog/retro_daily_tail.history/`。真实数据上已验证：工作空间解析到新根、回溯尾部读取 sh.600000 2026-09-07..15 共 7 行成功。
+- 新目录名为 `lake/_market_data` 而非方案中的 `captures/`，因为 `baostock_series`、`retro_tail` 的校验按目录名 `_market_data` 判断。
+- 注册表更新为 SHA `807ddb62f592…`，新增 `capture_tree` 类型及 5 个 `captures.*` 条目（旧版在 `catalog/registry_history/`）。
+- 测试：新增 8 项（capture root/迁移）与 1 项（NaT 回归）。在 Python 3.11 隔离环境中跑通受影响模块：采集 76 项及 retro_daily、retro_pack、retro_tail 三组、daily_market_archive、public_evidence、forward_daily、baostock_series、baostock_data、evidence_scheduler、limit_research_tools、archived_daily_dataset、archived_data_tools、archived_dataset_lifecycle、archived_research_check 全部通过；`archived_suspension_contract` 中依赖 vnpy 的 1 项因未安装 vnpy 未运行，其余 7 项通过。未跑桌面（PyQt）测试。
+
+### 2026-09-23｜[数据侧] 公司行动全量再观察结论：不再每日复查历史
+
+- 巨潮配股 644/644、同花顺分红 4,478/5,222、Baostock 分红 1,329/5,222，真实修订均为 0；巨潮 43 条 updated 为 NaT 比较 bug 误报（`cdaa2fc` 已修，逐一核对内容相同）。同花顺在用户确认无需继续后停止，回执可续跑；Baostock 因请求间隔被调到 0.3 秒且频繁重新登录，IP 被封禁后中止。
+- 决定：历史记录不再每日全量复查，全量复查只在发布新版 qfq 前做（平时最多每季度一次）；每日只采新事件与新上市证券，`corporate_actions_daily.py` 的子集模式待实现，之前每周一次。Baostock 请求间隔不低于 1 秒、单次登录。详见[再观察结果与采集频率](../archive/data-evidence/20260923-公司行动再观察结果与采集频率.md)。
+
+### 2026-09-23｜[数据侧整改 第三批] qfq v2 发布、公开来源数据 17 项、研究查询 API
+
+- qfq v2（`d1fd5e3`、`4c9212c`）：`scripts/derive/build_qfq.py` 从三家原始公司行动重建复权因子，事件须至少两个可用来源一致才采用（共 54,712 个），TDX 单源事件忽略，无法确认的事件不猜。发布到 `lake/silver/qfq_kline_daily_v2` 与 `qfq_kline_min5_v2`（5,222 只，至 2026-09-22；`date` 为 date32）；452 只只从最后一个未确认事件日起提供，起点见 `_meta/coverage.parquet`。按用户“不管这些历史”的决定，截断部分不补。旧 qfq 两项标为 DEPRECATED。
+- 公开来源采集（`fb8e0ca`）：`scripts/collect/public_sources.py` 按 plan→SHA 批准→apply 的同一合同采集 17 项公开数据（涨停池、交易所融资融券、大宗交易、巨潮公告目录、机构调研、股东增减持、限售解禁、业绩预告、股东户数、回购、质押、新股、指数权重、申万行业历史、东财异动监控/异常波动、北向分钟），首采均已完成，覆盖见数据清单 §3.1。数据源代码取自 a-stock-data（Apache-2.0，commit `2e0ae63`），按用户决定直接引用、未逐行审查，来源与哈希记在 `scripts/collect/vendor/a_stock_data/PROVENANCE.json`。东财串行且间隔不低于 1.5 秒。
+- 采集中修掉的问题：申万站点缺中间证书（固定 GeoTrust 中间证书并加 UA）、上交所融资融券分页上限 2,000（改分页并核对总数）、巨潮 502 与无效栏目循环（重试 4 次、单栏目、核对公告总数）、业绩预告按报告期分别拉取并在 5,000 行上限处报错、回购/新股只返回最新 5,000 条（回执写 `truncated_to_latest`）。
+- 研究查询 API：新增 `quantlab.data.research_provider.ResearchDataProvider`，给 CODE 的按需接口 7 项（问财语义搜索、个股研报、个股新闻、个股公告、三大报表、互动易问答、个股资金流）。出错一律抛异常，不以空结果冒充无数据；按供应商限频；问财密钥只从环境变量或 git 忽略的 `.env` 读取。实网冒烟测试 6 项通过；资金流接口当晚被东财拒绝连接，标为 REVIEW_REQUIRED。
+- 注册表更新为 SHA `41d5887a…`，新增 17 个 `public.*` 条目（`dated_snapshots` 类型，旧版在 `catalog/registry_history/`）。`docs/reference/data-catalog.md` 同步新增 §3.1 文件数据与 §3.2 API。
+- 测试：新增 `tests/test_research_provider.py` 10 项、`tests/test_collect_public_sources.py` 4 项；连同 `test_collect_daily`、`test_build_qfq` 共 43 项通过。
+- 每日增量：2026-09-23 的日 K、5 分钟、日状态 r3 计划已生成（目标日 2026-09-23，各 5,222 个动作），需在 Mac 上单进程运行。
+- 每日增量完成（2026-09-23 夜在 Mac 上单进程运行）：日状态 5,221/5,222 ok，sz.002107 超时后于 09-24 用单独计划 `27dc70a8…` 补齐；日K 5,219 ok、3 只当日停牌；5 分钟 5,222 ok（每只 48 根）。日K/5 分钟/日状态三项截止推进到 2026-09-23，数据清单已更新；qfq v2 仍截止 2026-09-22。
+- qfq v2 按新计划 `cf7f1ba8…` 重建至 2026-09-23（日线与 5 分钟各 5,222 只，TDX 快照与公司行动输入未变，截断仍为 452 只），coverage 已重新生成。09-23 巨潮公告 1,507 条、融资融券 4,108 条已补采；资金流接口复测仍被拒绝连接，维持 REVIEW_REQUIRED。

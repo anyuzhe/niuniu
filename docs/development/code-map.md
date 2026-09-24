@@ -134,3 +134,9 @@ TDX固定分片合同：[tdx_sharding.py](../../src/quantlab/data/tdx_sharding.p
 ## 产品化改造：日常工作台（2026-09-24）
 
 桌面导航改为 [app.py](../../src/quantlab/desktop/app.py) 中的 `PAGES`（key、标题、图标、是否专业模式），`navigate_page(key)` 按 key 跳转；日常页面在 [home_pages.py](../../src/quantlab/desktop/home_pages.py) 与 [market_pages.py](../../src/quantlab/desktop/market_pages.py)，专业模式开关存于 [ui_settings.py](../../src/quantlab/desktop/ui_settings.py)。今日市场/主线方向的计算在 [market_overview.py](../../src/quantlab/trading/market_overview.py)，只经数据清单读取 READY 文件；测试见 [test_market_overview.py](../../tests/test_market_overview.py)。
+
+## 数据侧整改（2026-09-23）
+
+[dataset_registry.py](../../src/quantlab/data/dataset_registry.py) 读取并校验 `catalog/dataset_registry.json`，提供 `resolve`/`verify`；[registry.py](../../scripts/collect/registry.py) 负责 draft/verify/apply 与 `reg_*` 视图计划，映射清单在 [registry_spec.json](../../scripts/collect/registry_spec.json)；[inventory.py](../../scripts/collect/inventory.py) 只读盘点数据根；[paths.py](../../scripts/collect/paths.py) 是采集脚本唯一的数据根来源。测试：[test_dataset_registry.py](../../tests/test_dataset_registry.py)、[test_collect_inventory.py](../../tests/test_collect_inventory.py)。
+
+[capture_root.py](../../src/quantlab/data/capture_root.py) 解析工作空间捕获包位置（重定向到数据根 `lake/_market_data`）；迁移脚本 [migrate_captures.py](../../scripts/collect/migrate_captures.py)；测试 [test_capture_root.py](../../tests/test_capture_root.py)。

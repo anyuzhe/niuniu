@@ -15,7 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collect import coverage  # noqa: E402
 from collect.envelope import Envelope, main_guard  # noqa: E402
 
-DEFAULT_DEST = "/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/daily_status_v2"
+from collect.paths import bronze  # noqa: E402
+
+DEFAULT_DEST = str(bronze("baostock", "daily_status_v2"))
 FIELDS = "date,code,tradestatus,isST"
 REQUIRED = FIELDS.split(",")
 

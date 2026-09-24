@@ -1,0 +1,9 @@
+{
+ "upstream": "https://github.com/simonlin1212/a-stock-data",
+ "commit": "2e0ae6383c649b2bc5f68d3bc430d357f1c59ae7",
+ "license": "Apache-2.0",
+ "source_file": "SKILL.md",
+ "source_sha256": "4d23acf79e86be4241024759ba966d6a43fc5944b53019890ebd229807535cea",
+ "extraction": "definitions only (imports, functions, classes, UPPER/_private constants); example calls dropped",
+ "modifications": "optional imports mootdx/stockstats wrapped in try/except ImportError"
+}

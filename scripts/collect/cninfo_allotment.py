@@ -32,7 +32,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collect import universe as uni
 from collect.envelope import Envelope, build_parser, main_guard, read_universe_file
 
-DEFAULT_DEST = '/Volumes/Lexar/niuniu-data/lake/bronze/provider=cninfo/corporate_actions_allotment'
+# No default destination: v1 dropped ~40 vendor columns and must never be resumed;
+# name the target explicitly (remediation P5).
+DEFAULT_DEST = None
 SOURCE = 'akshare.stock_allotment_cninfo'
 # 只作为「这一列必须在」的存在性门槛，**不是**投影白名单：其余列一律照单全收。
 REQUIRED = ['证券代码', '配股价格', '配股比例', '除权基准日', '股权登记日', '实际配股数量']

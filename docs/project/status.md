@@ -54,6 +54,10 @@
 
 只读预览发现：2026-09-22新参考快照的`stock_basic(type=1,status=1)`为**5,222只**，比此前首采绑定的旧表5,215只多7只（均有2026-09-07至09-22的IPO日期）；按新版本构造的状态、日K和5分钟计划均显示7只缺证券；原有13只停牌尾部已由独立状态SHA证明、列为`suspended_tail`而非重试动作。不能把旧版本5,215/5,215延伸声明成新版本的全覆盖。新脚本没有因预览而补采这7只。2026-09-23参考快照尚不存在；当前只读计划包处于`reference_required`，没有当日下游采集授权或执行。首次完整基线交验数字仍以其原总体和原回执为准。
 
+### 2026-09-23 数据侧整改：盘点、注册表与捕获包迁移
+
+已完成只读全量盘点；数据根安装了 `catalog/dataset_registry.json`（30 个逻辑数据集）并写入 14 个 `reg_*` catalog 视图。捕获包已复制到 `niuniu-data/lake/_market_data`，工作空间经 `artifacts/_market_data.redirect.json` 改写到数据根，原 `artifacts/_market_data` 保留不动。2026-09-23 参考快照与 7 只新股已补齐；公司行动每日再观察中巨潮已完成，同花顺与 Baostock 分红进行中。产品行情/公司行动读取尚未切换到注册表。第三批：qfq v2 已发布（至 2026-09-22，452 只历史截断，旧 qfq 停用）；新增 17 项公开来源文件数据与 `ResearchDataProvider` 研究查询 API（6 项 READY、资金流待复测），CODE 按 `docs/reference/data-catalog.md` 使用。详见[开发总档案](changelog.md)与[数据与证据说明](../guide/data-and-evidence.md)。
+
 ### 2026-09-17 后台自主候选实测补充
 
 后台聊天已新增显式 `--allow-granted-research` 队列接线；缺 Grant、超范围、预算不足仍拒绝。真实 GPT-5.5 已在独立两证券样本中完成“读数据摘要 → 自拟三个DSL候选 → 预览/冻结 → 授权内提交 → 逐一读结果”；三次归档复算数值匹配，测试授权已撤销。

@@ -7,6 +7,7 @@ import fcntl
 import hashlib
 import json
 import polars as pl
+from quantlab.data.capture_root import capture_root
 from quantlab.data.baostock_ingest import load_import
 from quantlab.data.baostock_dataset import dataset_manifest, read_table, read_dataset_bytes, responses
 from quantlab.data.baostock_provider import BaostockSnapshotProvider
@@ -89,7 +90,7 @@ class SeriesService:
     def __init__(self, output):
         self.output = Path(output).resolve()
         if not self.output.is_dir(): raise ValueError('Series workspace is missing')
-        self.root = self.output/'_market_data'/'baostock_series'
+        self.root = capture_root(self.output)/'baostock_series'
     def folder(self, series_id):
         folder = self.root/canonical_id(series_id)
         if any(p.is_symlink() for p in (self.root.parent, self.root, folder)):

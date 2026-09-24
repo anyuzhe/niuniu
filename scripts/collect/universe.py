@@ -15,8 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-LAKE = Path('/Volumes/Lexar/niuniu-data/lake/bronze')
-CATALOG = Path('/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb')
+from collect.paths import CATALOG, LAKE  # noqa: E402  single data-root source
 
 PRESETS = {
     'stocks': 'baostock stock_basic 中 type=1 的全部 A 股，含已退市（status=0）',

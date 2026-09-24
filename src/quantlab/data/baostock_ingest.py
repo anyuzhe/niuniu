@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import time
+from quantlab.data.capture_root import capture_root
 from quantlab.data.baostock_catalog import import_plan, LIMITATIONS
 from quantlab.storage.codec import encode, digest
 
@@ -21,8 +22,8 @@ def write_json(path, value):
 
 
 def import_root(output):
-    output=Path(output).resolve();root=output/'_market_data'/'baostock'
-    if any(p.is_symlink() for p in (output/'_market_data',root)):
+    output=Path(output).resolve();market=capture_root(output);root=market/'baostock'
+    if any(p.is_symlink() for p in (market,root)):
         raise ValueError('市场数据目录不能是符号链接')
     root.mkdir(parents=True,exist_ok=True);return root
 
@@ -152,8 +153,8 @@ def run_import(output,spec,*,stop=None,timeout=300,identifier=None):
 
 def load_import(output,identifier):
     if not isinstance(identifier,str) or str(UUID(identifier))!=identifier:raise ValueError('无效数据批次编号')
-    directory=Path(output).resolve()/'_market_data'/'baostock'/identifier
-    if directory.is_symlink() or not directory.resolve().is_relative_to(Path(output).resolve()):raise ValueError('数据批次路径无效')
+    market=capture_root(Path(output).resolve());directory=market/'baostock'/identifier
+    if directory.is_symlink() or not directory.resolve().is_relative_to(market.resolve()):raise ValueError('数据批次路径无效')
     path=directory/'manifest.json'
     if path.is_symlink() or path.stat().st_size>2_000_000:raise ValueError('无效导入清单')
     manifest=json.loads(path.read_text())

@@ -25,6 +25,7 @@ import sys
 import polars as pl
 import pyarrow.parquet as pq
 
+from quantlab.data.capture_root import capture_root
 from quantlab.agent.qm50_archived_inputs import ArchivedDailyBridge
 from quantlab.data.base import DataBatch, DataRequest, DataSnapshot
 from quantlab.data.retro_daily import FIELDS, SCHEMA, normalize_symbol_rows
@@ -503,8 +504,8 @@ def _destination(source_root: Path, destination) -> tuple[Path, Path]:
     parent = parent.resolve()
     target = parent / raw.name
     source_root = source_root.resolve()
-    market_tree = source_root / "_market_data"
-    if target == source_root or target == market_tree or target.is_relative_to(market_tree):
+    market_trees = {source_root / "_market_data", capture_root(source_root).resolve()}
+    if target == source_root or any(target == tree or target.is_relative_to(tree) for tree in market_trees):
         raise ValueError("Destination cannot be the source or its _market_data tree")
     return parent, target
 
