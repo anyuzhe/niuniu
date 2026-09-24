@@ -182,13 +182,15 @@ class FuyaoIntegrationTests(unittest.TestCase):
         client = FakeFuyaoClient()
         fuyao = FuyaoQuoteProvider(client,
             now_fn=lambda: datetime(2026, 9, 17, 10, 0, 1, tzinfo=TZ))
-        result = FuyaoAugmentedQuoteProvider(fuyao, PublicProvider(last=35.0)).capture(
+        # DATA 2026-09-24: a Fuyao quote that disagrees with the public consensus is withheld,
+        # not passed on; with no agreeing symbol left the capture fails closed.
+        with self.assertRaisesRegex(ValueError, "fuyao_public_price_mismatch"):
+            FuyaoAugmentedQuoteProvider(fuyao, PublicProvider(last=35.0)).capture(
+                "2026-09-17", "R1", ["sz.301396"])
+        result = FuyaoAugmentedQuoteProvider(fuyao, PublicProvider(last=31.5)).capture(
             "2026-09-17", "R1", ["sz.301396"])
         self.assertEqual(result["provider"], "fuyao-with-public-cross-validation-v1")
         self.assertEqual(result["instruments"][0]["last"], 31.5)
-        self.assertEqual(result["completeness"], "PARTIAL")
-        self.assertEqual(result["market_metrics"]["consensus_issues"][0]["reason"],
-            "fuyao_public_price_mismatch")
 
     def test_public_consensus_is_retained_when_fuyao_primary_fails(self):
         class FailedFuyao:

@@ -179,15 +179,24 @@ class FuyaoAugmentedQuoteProvider:
             return {**primary, "provider": PROVIDER_ID, "market_metrics": metrics,
                 "notes": str(primary.get("notes") or "") + " 公开网页交叉校验不可用，本次仅保留扶摇主源并显式标记。"}
         public_by_symbol = {item.get("symbol"): item for item in validation.get("instruments", [])}
+        public_idle = {issue.get("symbol"): issue for issue in
+            (validation.get("market_metrics") or {}).get("consensus_issues", []) if issue.get("reason") == "no_trade_today"}
         issues = list(metrics.get("consensus_issues") or [])
+        kept = []
         for item in primary.get("instruments", []):
-            other = public_by_symbol.get(item.get("symbol"))
+            symbol = item.get("symbol")
+            other = public_by_symbol.get(symbol)
             if other is None:
-                issues.append({"symbol": item.get("symbol"), "reason": "public_validation_missing"})
+                if symbol in public_idle and not item.get("tradable"):
+                    issues.append({"symbol": symbol, "reason": "no_trade_today", "tradable": False,
+                        "previous_close": item.get("previous_close"), "sources": ["fuyao", *public_idle[symbol].get("sources", [])]})
+                else:
+                    issues.append({"symbol": symbol, "reason": "public_validation_missing"})
                 continue
             current_key = "auction_price" if frame == "AUCTION" else "last"
             if not _agrees(item, other, current_key) or not _agrees(item, other, "previous_close"):
-                issues.append({"symbol": item.get("symbol"), "reason": "fuyao_public_price_mismatch",
+                # Disagreement is withheld, never passed on as a quote.
+                issues.append({"symbol": symbol, "reason": "fuyao_public_price_mismatch",
                     "fuyao": {current_key: item.get(current_key), "previous_close": item.get("previous_close")},
                     "public": {current_key: other.get(current_key), "previous_close": other.get("previous_close")}})
                 continue
@@ -199,6 +208,16 @@ class FuyaoAugmentedQuoteProvider:
             item_metrics["public_source_last"] = public_metrics.get("source_last", {})
             item_metrics["bid1"] = public_metrics.get("bid1")
             item_metrics["ask1"] = public_metrics.get("ask1")
+            if not item.get("name"):
+                item["name"] = other.get("name") or ""
+            # Fuyao turnover is rounded to ~8 significant digits; the public consensus keeps yuan precision.
+            if other.get("amount") is not None:
+                item["amount"] = other.get("amount")
+            item["execution_profile"] = other.get("execution_profile", item.get("execution_profile"))
+            kept.append(item)
+        if not kept:
+            raise ValueError("扶摇与公开网页校验没有任何一只证券价格一致：" + str([i.get("reason") for i in issues])[:160])
+        primary = {**primary, "instruments": kept}
         metrics["consensus_issues"] = issues
         metrics["public_validation"] = validation.get("market_metrics", {}).get("source_health", {})
         complete = primary.get("completeness") == "FULL" and validation.get("completeness") == "FULL" and not issues

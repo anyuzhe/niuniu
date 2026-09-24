@@ -4,7 +4,7 @@
 
 本文件是 **DATA → CODE 的唯一日常数据交接入口**。DATA 负责数据本身；CODE 只负责使用 DATA 已交付的数据。
 
-最近一次 DATA 审查：2026-09-24（开放实时行情 `realtime_quote`、`market_snapshot`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
+最近一次 DATA 审查：2026-09-24（开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
 
 ## 1. 责任边界
 
@@ -121,20 +121,33 @@ result.to_dict()   # 可直接 JSON 序列化
 | `investor_qa` | API | 投资者互动问答 | `ResearchDataProvider.investor_qa(code, limit=1..100)` | 每行 `ask_time, question, answer, answer_time, answerer, answered` | 巨潮互动易，**只支持深市公司**；沪市、北交所代码会抛 `InvalidRequest` | `READY` | 沪市公司提示“暂不支持” |
 | `stock_fund_flow_daily` | API | 个股日级资金流（按单笔大小） | `ResearchDataProvider.stock_fund_flow_daily(code, days=1..120)` | 每行 `date, main_net, small_net, mid_net, large_net, super_net`（元）、`*_pct`（%）、`close, pct_change`；当天一行在收盘前是盘中值 | 东财，最近 120 个交易日 | `REVIEW_REQUIRED` | 暂不使用：接口已写好，但 2026-09-23 晚间复测时东财该服务拒绝了测试出口的连接；DATA 复测通过后改为 `READY` |
 
-### 3.3 实时行情接口（API）
+### 3.3 实时行情与扶摇接口（API）
 
-2026-09-24 DATA 审查后开放。两项共用同一个实现：腾讯、东方财富、新浪三家公开网页行情，**至少两家在昨收、开高低收上一致**（容差 max(0.011 元, min(0.03 元, 价格×2bp))）才输出，否则该股不输出并写明原因。它们是研究和自用行情，没有交易所级 SLA，不是 Strict PIT，也不授权交易。
+2026-09-24 DATA 审查后开放。
 
-- 单位：价格为元；`volume` 为**股**（腾讯、东财原始单位是手，已×100）；`amount` 为元。`as_of` 取参与一致的各源里最早的时间（北京时间）。
-- 停牌或当日零成交的股票不输出价格，问题列表里标 `no_trade_today`、`tradable=false`；两家价格对不上的标 `fewer_than_two_agreeing_sources`。有这类股票时 `completeness` 为 `PARTIAL`。
-- 除权除息日的 `previous_close` 是交易所的除权参考价，不等于前一日K线收盘价。
-- 东方财富对同一出口 IP 请求过密会断开连接；此时只剩腾讯、新浪两家，仍能形成一致结果。接口内东财按每批 100 只、间隔 1.5 秒串行请求。
-- 已实测：收盘后的收盘价，覆盖普通股、科创板、北交所、停牌股，一次最多 200 只，昨收与 2026-09-23 入库日K一致（200 只里 1 只为当日除权，差异符合预期）。**盘中（集合竞价、连续竞价、涨跌停封单）尚未实测**，DATA 下一交易日开盘后补测，结果写在这里。
+**实时报价的来源和一致规则：**
+
+- 扶摇（需凭证）为主源，腾讯、东方财富、新浪三家公开网页行情做交叉校验。
+- 扶摇的现价和昨收必须与公开行情一致才输出，对不上的不输出，问题列表里标 `fuyao_public_price_mismatch`。
+- 公开行情内部要**至少两家在昨收、开高低收上一致**，容差 max(0.011 元, min(0.03 元, 价格×2bp))。
+- 扶摇不可用时，只用公开行情的两源一致结果；公开行情全部不可用时，只用扶摇并在 `market_metrics` 里注明。
+- 这些都是研究和自用行情，没有交易所级 SLA，不是 Strict PIT，也不授权交易。
+
+**字段和语义：**
+
+- 单位：价格为元；`volume` 为**股**（扶摇、新浪原始就是股，腾讯、东财原始是手，已×100）；`amount` 为元。扶摇的成交额只精确到约 8 位有效数字，通过校验时改用公开行情的成交额。
+- `as_of`：扶摇是响应就绪时间；公开行情取参与一致的各源里最早的时间（北京时间）。
+- 停牌或当日零成交的股票不输出价格，问题列表里标 `no_trade_today`、`tradable=false`；有这类股票时 `completeness` 为 `PARTIAL`。
+- 除权除息日的 `previous_close` 是交易所的除权参考价，不等于前一日K线收盘价（例：600160 在 2026-09-24 除息，昨收 34.83，不是 35.05）。
+- 东方财富对同一出口 IP 请求过密会断开连接，此时靠腾讯、新浪两家仍能形成一致结果。接口内东财按每批 100 只、间隔 1.5 秒串行请求。
+
+**已实测：**收盘后的收盘价，覆盖普通股、科创板、北交所、停牌股、当日除息股，一次最多 200 只。扶摇与三家公开行情的现价、昨收、成交量一致。**盘中（集合竞价、连续竞价、涨跌停封单）尚未实测**，DATA 下一交易日开盘后补测，结果写在这里。
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
 |---|---|---|---|---|---|---|---|
-| `realtime_quote` | API | 个股实时报价（问答用） | `quantlab.agent.live_stock_quote.LiveStockQuoteService.query(text)`；行情来自 `quantlab.trading.public_web_market_snapshot.PublicWebConsensusProvider` | 单次有界查询，最多 10 只，不持久化；每只返回 `last, change, change_pct, previous_close, open, high, low, volume, amount, bid1, ask1, agreement_sources, source_times`，外加 `market_status`、`age_seconds`、`completeness`、`consensus_issues` | 问答临时报价；`fuyao_context` 为 `READY` 之前不使用扶摇 | `READY` | 通过这个服务调用；不要在别处直接请求腾讯/东财/新浪/扶摇；`status` 不是 `OK` 时告诉用户暂时拿不到报价 |
+| `realtime_quote` | API | 个股实时报价（问答用） | `quantlab.agent.live_stock_quote.LiveStockQuoteService.query(text)`；行情来自 `quantlab.trading.public_web_market_snapshot.PublicWebConsensusProvider` | 单次有界查询，最多 10 只，不持久化；每只返回 `last, change, change_pct, previous_close, open, high, low, volume, amount, bid1, ask1, agreement_sources, source_times`，外加 `market_status`、`age_seconds`、`completeness`、`consensus_issues` | 问答临时报价；扶摇为主、公开行情校验，扶摇无凭证时只用公开行情 | `READY` | 通过这个服务调用；不要在别处直接请求腾讯/东财/新浪/扶摇；`status` 不是 `OK` 时告诉用户暂时拿不到报价 |
 | `market_snapshot` | API | 正式盘中 MarketSnapshot（Daily Orchestrator 各时段） | `quantlab.trading.market_snapshot_provider.MarketSnapshotProviderRegistry`，实时通道 `public-web-consensus-v1`；另有手工导入 `manual-import-v1` | 按交易日 × 时段（AUCTION/R1/R2/R3）× 证券（每次最多 200 只）抓取，保留各源响应哈希 | 盘中研究与复盘输入；非 Strict PIT。`PARTIAL` 快照里缺的证券不要自己补 | `READY` | 通过 Registry 调用；不直接调用底层网页接口 |
+| `fuyao_context` | API | 扶摇个股/板块/短线/基本面聚合查询 | `quantlab.agent.fuyao_tools.FuyaoContextService`（`resolve / stock / sector / short_term / fundamental`；聊天里由 `FuyaoResearchAPI` 暴露为 5 个工具） | 按调用返回，不持久化；每次返回结果和扶摇请求凭据（request_id、source_hash）。字段：`volume` 为股、`turnover` 为元（约 8 位有效数字）、日期为 `date_ms`（北京时间 0 点的毫秒时间戳）；财务指标 `value` 为字符串，比率类单位为 % | 研究问答上下文。**板块成分是当前成分，不是历史成分**；个股 K 线是扶摇自己的复权，**回测和统计用 `qfq_published_f24`，不要用这里的 K 线**；龙虎榜、热度、涨跌停池为扶摇口径，与 DATA 文件数据可能有出入。凭证在项目 `.env` 的 `HITHINK_FINANCE_API_KEY`（或 macOS 钥匙串），缺凭证时不可用 | `READY` | 通过该服务调用；CODE 不读取、不打印密钥 |
 
 ## 4. 尚不可用、待审查或只供 DATA 内部使用
 
@@ -149,7 +162,6 @@ result.to_dict()   # 可直接 JSON 序列化
 | `tdx_capital_changes` | DATABASE | TDX 股本变动/除权除息（原始） | `/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb` 视图 `tdx_capital_changes` | 每行一条供应商记录，字段在 `record_json` | 个人研究采集，`vendor_observation_personal_research_not_pit` | `NOT_READY` | 同上 |
 | `tdx_archive` | DATABASE | TDX 其余 12 类原始数据（K线、逐笔、竞价、五档、财务、题材、涨停梯队等） | `/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb` 视图 `tdx_*` | 每行一条供应商记录；不同观察版本未合并 | 个人研究采集；全市场全历史未完成 | `NOT_READY` | DATA 内部输入 |
 | `auction_tdx_raw` | DATABASE | TDX 集合竞价（原始） | `/Volumes/Lexar/niuniu-data/catalog/mqc.duckdb` 视图 `tdx_auction` | 同一事件多个观察版本，单位未统一 | 沪深采集调度下界 2025-07-22；未治理 | `NOT_READY` | F25 之前不作为 Auction 输入 |
-| `fuyao_context` | API | 扶摇个股/板块/短线/基本面聚合查询 | `quantlab.agent.fuyao_tools.FuyaoContextService`（MCP 客户端 `quantlab.agent.fuyao_mcp`） | 按调用返回；需扶摇凭证（环境变量或 macOS 钥匙串） | 2026-09-24 审查：DATA 的工作环境拿不到扶摇凭证，无法实测字段、单位和限频，因此不能开放。开放前实时报价也不使用扶摇作主源 | `REVIEW_REQUIRED` | 不使用；DATA 在有凭证的环境实测通过后改为 `READY` |
 | `company_action_decisions_f22` | FILE | 最终公司行动决策数据 | **由 DATA 填写** | 由 DATA 定义 | F23 输入 | `NOT_READY` | 仅变为 `READY` 后读取 |
 | `auction_governed_f25` | FILE | 统一版本/单位后的 Auction | **由 DATA 填写** | 由 DATA 定义 | Auction 产品/研究输入 | `NOT_READY` | 仅变为 `READY` 后读取 |
 | `strict_pit_universe_f26` | FILE | Strict PIT Universe | **由 DATA 填写** | 由 DATA 定义 | 严格历史资格 | `NOT_READY` | 仅变为 `READY` 后读取 |
