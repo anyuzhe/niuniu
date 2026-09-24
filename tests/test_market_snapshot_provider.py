@@ -16,6 +16,10 @@ class MarketSnapshotProviderTests(unittest.TestCase):
         self.root=Path(self.temp.name);self.output=self.root/'artifacts';self.data=self.root/'data'
         self.output.mkdir();self.data.mkdir()
         self.ready_catalog=self.catalog('READY');self.review_catalog=self.catalog('REVIEW_REQUIRED')
+        # Tests that rely on the default catalog must not depend on the live DATA catalog's status.
+        from unittest.mock import patch
+        patcher=patch('quantlab.data.dataset_catalog.default_data_catalog_path',return_value=self.review_catalog)
+        patcher.start();self.addCleanup(patcher.stop)
 
     def catalog(self,status):
         path=self.root/('data-catalog-'+status+'.md')
