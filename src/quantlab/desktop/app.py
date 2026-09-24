@@ -31,6 +31,7 @@ PAGES = [
     ('candidates','今日候选','★',False),
     ('stock','个股报告','◎',False),('mine','我的股票','◉',False),('review','复盘验证','↺',False),
     ('kol','大V复盘','✎',False),('assistant','AI 助手','✦',False),
+    ('data','数据中心','▤',False),
     ('desk','交易台','▣',True),('theme_matrix','主题矩阵','▥',True),('dossiers','股票决策档案','◍',True),
     ('intent','持仓计划','◈',True),('decision_review','决策复盘','↻',True),('ai_team','AI 团队','✧',True),
     ('lab','研究实验室','▤',True),('dev','开发工作台','⌘',True),('system','系统中心','⚙',True),
@@ -231,7 +232,7 @@ class MainWindow(QMainWindow):
             b.blockSignals(True);b.setChecked(i==index);b.blockSignals(False)
         from . import home_pages, trading_pages
         handlers={'market':home_pages.market_page,'themes':home_pages.themes_page,'sectors':home_pages.sectors_page,'candidates':home_pages.candidates_page,
-            'stock':home_pages.stock_page,'mine':home_pages.mine_page,'review':home_pages.review_page,'kol':home_pages.kol_page,'assistant':home_pages.assistant_page,
+            'stock':home_pages.stock_page,'mine':home_pages.mine_page,'review':home_pages.review_page,'kol':home_pages.kol_page,'assistant':home_pages.assistant_page,'data':home_pages.data_center_page,
             'desk':trading_pages.today_page,'theme_matrix':trading_pages.theme_page,'dossiers':trading_pages.stock_page,
             'intent':trading_pages.position_page,'decision_review':trading_pages.review_page,'ai_team':trading_pages.ai_team_page,
             'lab':trading_pages.research_lab_page,'dev':trading_pages.dev_studio_page,'system':trading_pages.system_center_page}
