@@ -53,6 +53,8 @@ def stock_page(window):
             chart.caption = f"日K（前复权）{report['kline'][0]['date']} → {report['kline'][-1]['date']}"
             chart.setMinimumHeight(280)
             holder.add(chart)
+        for rule in report.get('matched_rules', []):
+            holder.add(label(f"今日入选“{rule['name']}”规则。历史验证：{rule['text']}", 'note', True))
         flags = Card('需要留意')
         for item in report['flags'] or ['暂无特别需要留意的事项。']:
             flags.add(label('· ' + item, '', True))

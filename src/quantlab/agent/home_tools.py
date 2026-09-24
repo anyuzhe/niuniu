@@ -14,7 +14,7 @@ MAX_RESPONSE_BYTES = 48 * 1024
 WARNINGS = ['数据为收盘后描述性统计（research_only），不是买卖信号；回答时注明数据截至日期。']
 
 TOOLS = [
-    schema('get_market_overview', '读取最近一次“今日市场/主线方向”结果：涨跌家数、涨跌停、连板、成交额、近一年分位、连板梯队、领涨行业和涨停原因。无参数。', {}),
+    schema('get_market_overview', '读取最近一次“今日市场/主线方向/今日候选”结果：涨跌家数、涨跌停、连板、成交额、近一年分位、连板梯队、领涨行业、涨停原因，以及各选股规则今天的候选和它过去一年的验证结果。无参数。', {}),
     schema('get_stock_report', '读取一只A股的一页报告：价格与涨幅、相对全市场/行业强弱、均线位置、放量、连板、需要留意的事项（ST、解禁、减持、业绩预告等）。query 为6位代码或股票名称。',
            {'query': TEXT}),
     schema('get_my_stocks', '读取用户“我的股票”列表及每只股票的当日巡检结果和整体集中度。无参数。', {}),
@@ -79,7 +79,12 @@ class HomeAPI:
                     return _error(name, 'NOT_BUILT', '还没有生成今日市场，请用户在“今日市场”页面生成。')
                 data = {k: overview[k] for k in ('trading_day', 'summary', 'market', 'percentile', 'margin', 'caveats')}
                 data.update(ladder=overview['ladder'][:10], industries=overview['industries'][:8],
-                            reasons=overview['reasons'][:8])
+                            reasons=overview['reasons'][:8],
+                            candidates=[{'name': c['name'], 'description': c['description'], 'count': c['count'],
+                                         'validation': c['validation'].get('text'),
+                                         'stocks': [{'code': x['code'], 'name': x['name'], 'reason': x['reason']}
+                                                    for x in c['stocks'][:8]]}
+                                        for c in overview.get('candidates', [])])
                 return _ok(name, data, [{'kind': 'market_overview', 'trading_day': overview['trading_day']}])
             if name == 'get_stock_report':
                 from quantlab.trading.stock_report import build_stock_report

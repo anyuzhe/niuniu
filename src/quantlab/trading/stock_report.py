@@ -177,6 +177,8 @@ def build_stock_report(output, query: str, catalog_path=None) -> dict:
         'peers': [{'code': r['code'], 'name': r['name'], 'ret20': r['ret20'], 'pct': r['pct']}
                   for r in peers.iter_rows(named=True)],
         'kline': _kline(catalog_path, code, day),
+        'matched_rules': [{'name': r['name'], 'verdict': r['validation']['verdict'], 'text': r['validation'].get('text')}
+                          for r in overview.get('candidates', []) if any(x['code'] == code for x in r['stocks'])],
         'caveats': ['数据截至 ' + overview['trading_day'] + ' 收盘，涨跌按前复权计算。',
                     '“需要留意”是客观事实提示，不是买卖建议。'],
     }

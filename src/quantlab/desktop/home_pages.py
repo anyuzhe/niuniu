@@ -6,6 +6,7 @@ from quantlab.trading.decision_store import DecisionStore
 from .widgets import Card, button, label, row, table
 from .market_pages import market_page, themes_page  # noqa: F401  (re-exported)
 from .stock_pages import stock_page, mine_page  # noqa: F401  (re-exported)
+from .market_pages import candidates_page  # noqa: F401  (re-exported)
 
 
 def _coming(window, box, what, today):
@@ -14,13 +15,6 @@ def _coming(window, box, what, today):
     if today:
         card.add(label('现在可以先用：' + today, 'muted', True))
     box.addWidget(card)
-
-
-def candidates_page(window):
-    box = window.page('今日候选', '哪些股票值得重点研究，以及为什么；每条规则都标出历史验证结果。')
-    _coming(window, box,
-            '按已有扫描规则自动给出候选清单，每只股票写明入选理由；规则在全市场历史上验证过的，会直接显示验证结果。',
-            '')
 
 
 def review_page(window):

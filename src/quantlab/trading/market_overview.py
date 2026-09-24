@@ -22,10 +22,12 @@ import polars as pl
 
 from quantlab.data.dataset_catalog import DataCatalogError, get_ready_data_source, read_data_catalog
 from quantlab.trading.limit_states import annotate_limit_states
+from quantlab.trading.candidates import screen_candidates
 
 FORMAT = 'niuniu-market-overview-v1'
 DEFAULT_LOOKBACK_SESSIONS = 250
 TOP_INDUSTRIES = 10
+FEATURE_WARMUP = 60
 TOP_REASONS = 12
 MIN_INDUSTRY_MEMBERS = 10
 INDUSTRY_TOP_RANK = 5
@@ -143,6 +145,7 @@ def _annotate(panel: pl.DataFrame, reference: Path, sessions: list[date]) -> pl.
         'listing_date', 'sessions_since_listing')
     states = annotate_limit_states(frame.filter(pl.col('preclose').is_not_null()))
     keep = ['date', 'code', 'limit_rule_status', 'is_limit_up_close', 'is_limit_down_close', 'is_broken_board',
+            'is_one_word_limit_up',
             'limit_up_streak', 'prev_is_limit_up_close', 'prev_limit_up_streak']
     return panel.join(states.select(keep), on=['date', 'code'], how='left')
 
@@ -277,8 +280,12 @@ STOCK_COLUMNS = ['code', 'name', 'industry', 'close', 'pct', 'ret5', 'ret20', 'r
                  'rank20', 'industry_rank20', 'industry_size']
 
 
-def _stock_snapshot(panel: pl.DataFrame, reference: Path, day: date) -> pl.DataFrame:
-    """Per-stock facts for one session, so stock pages need no full-market scan."""
+def _features(panel: pl.DataFrame, reference: Path) -> pl.DataFrame:
+    """Per-stock, per-session features over the whole loaded window.
+
+    The same numbers feed the day's stock snapshot, today's candidate screens and
+    their historical check, so what is shown and what is validated cannot drift apart.
+    """
     industry = pl.read_parquet(reference / 'industry.parquet').select(
         'code', pl.col('industry').map_elements(_industry_name, return_dtype=pl.String).alias('industry'))
     close = pl.col('close')
@@ -291,19 +298,27 @@ def _stock_snapshot(panel: pl.DataFrame, reference: Path, day: date) -> pl.DataF
         pl.col('pct').rolling_std(20).over('code').alias('vol20'),
         pl.col('is_limit_up_close').fill_null(False).cast(pl.Int64).rolling_sum(10, min_samples=1)
         .over('code').alias('limit_ups_10d'),
-    ).filter(pl.col('date') == day).join(industry, on='code', how='left')
-    live = pl.col('tradable') & pl.col('ret20').is_not_null()
-    frame = frame.with_columns(
-        pl.when(live).then(pl.col('ret20').rank('average') / pl.col('ret20').filter(live).count())
-        .otherwise(None).alias('rank20'),
         pl.col('limit_up_streak').fill_null(0).alias('streak'),
         pl.col('raw_close').alias('close_raw'),
+        # Forward outcome for validation: buy at the next session's open, sell at the close
+        # five sessions after the signal. A one-word limit-up next day cannot be bought.
+        (close.shift(-5).over('code') / pl.col('open').shift(-1).over('code') - 1).alias('fwd5'),
+        pl.col('is_one_word_limit_up').shift(-1).over('code').fill_null(False).alias('next_one_word'),
+        pl.col('tradable').shift(-1).over('code').fill_null(False).alias('next_tradable'),
+    ).join(industry, on='code', how='left')
+    live = pl.col('tradable') & pl.col('ret20').is_not_null()
+    return frame.with_columns(
+        pl.when(live).then(pl.col('ret20').rank('average').over('date') / pl.col('ret20').filter(live).count().over('date'))
+        .otherwise(None).alias('rank20'),
+        pl.when(live).then(pl.col('ret20').rank('average').over('date', 'industry')
+                           / pl.col('ret20').count().over('date', 'industry')).otherwise(None).alias('industry_rank20'),
+        pl.len().over('date', 'industry').alias('industry_size'),
     )
-    frame = frame.with_columns(
-        pl.when(live).then(pl.col('ret20').rank('average').over('industry') / pl.col('ret20').count().over('industry'))
-        .otherwise(None).alias('industry_rank20'),
-        pl.len().over('industry').alias('industry_size'),
-    )
+
+
+def _stock_snapshot(features: pl.DataFrame, day: date) -> pl.DataFrame:
+    """Per-stock facts for one session, so stock pages need no full-market scan."""
+    frame = features.filter(pl.col('date') == day)
     return frame.select(*[pl.col('close_raw').alias('close') if c == 'close' else pl.col(c) for c in STOCK_COLUMNS])
 
 
@@ -337,7 +352,8 @@ def build_market_overview(catalog_path=None, trading_day: str | None = None,
     else:
         beijing_today = (now or datetime.now(timezone.utc)).astimezone(timezone(timedelta(hours=8))).date()
         end = max(d for d in calendar if d <= beijing_today)
-    sessions = [d for d in calendar if d <= end][-(lookback_sessions + 25):]
+    # 60 extra sessions warm up the 60-day features used by the candidate screens.
+    sessions = [d for d in calendar if d <= end][-(lookback_sessions + 25 + FEATURE_WARMUP):]
     if len(sessions) < 7:
         raise MarketOverviewError('交易日历过短，无法计算')
     panel = _load_panel(sources, sessions[0], end)
@@ -350,9 +366,10 @@ def build_market_overview(catalog_path=None, trading_day: str | None = None,
         end = data_end
         sessions = [d for d in sessions if d <= end]
     panel = _annotate(panel, sources.reference, sessions)
+    features = _features(panel, sources.reference)
     stats = _daily_stats(panel).with_columns(
         (pl.col('amount') / pl.col('amount').shift(1) - 1).alias('amount_change'))
-    stats = stats.filter(pl.col('date').is_in(sessions[20:]))
+    stats = stats.filter(pl.col('date').is_in(sessions[max(20, len(sessions) - lookback_sessions - 5):]))
     if stats.is_empty() or stats['date'].max() != end:
         raise MarketOverviewError(f'{end} 没有可交易的日线')
     rows = stats.to_dicts()
@@ -386,7 +403,8 @@ def build_market_overview(catalog_path=None, trading_day: str | None = None,
                      'limit_down': r['limit_down'], 'max_streak': r['max_streak'], 'amount': _num(r['amount'], 0)}
                     for r in rows[-60:]],
         'industries': _industries(panel, sources.reference, [d for d in sessions if d <= end]),
-        '_stocks': _stock_snapshot(panel, sources.reference, end),
+        '_stocks': _stock_snapshot(features, end),
+        'candidates': screen_candidates(features, end, [d for d in sessions if d <= end]),
         'reasons': _reasons(pools, end, names),
         'sources': {
             'daily': 'qfq_published_f24（前复权日线，涨跌按复权计算）',

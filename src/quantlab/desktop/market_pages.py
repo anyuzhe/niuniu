@@ -44,7 +44,8 @@ def _expected_day(now=None):
 
 
 def _stale(overview):
-    return overview is None or overview['trading_day'] < _expected_day()
+    # Results from before a feature existed (e.g. no candidates yet) are rebuilt too.
+    return overview is None or overview['trading_day'] < _expected_day() or 'candidates' not in overview
 
 
 def _start_build(window, force=False):
@@ -68,7 +69,7 @@ def _start_build(window, force=False):
         if window.closing:
             return
         from .app import PAGE_KEYS
-        if PAGE_KEYS[window.root_current] in ('market', 'themes'):
+        if PAGE_KEYS[window.root_current] in ('market', 'themes', 'candidates'):
             window.navigate_root(window.root_current)
 
     window.async_call(work, done, guarded=False)
@@ -159,4 +160,47 @@ def themes_page(window):
                         'muted', True))
 
 
-__all__ = ['market_page', 'themes_page']
+VERDICT_STYLE = {'positive': '✔ ', 'negative': '✘ ', 'unclear': '○ ', 'insufficient': '… '}
+
+
+def candidate_prompt(overview, rule):
+    names = '、'.join(f"{s['name']}（{s['code']}）" for s in rule['stocks'][:10])
+    return (f"“{rule['name']}”规则（{rule['description']}）在 {overview['trading_day']} 选出 {rule['count']} 只，"
+            f"前几只：{names}。\n历史验证：{rule['validation'].get('text')}\n"
+            '请结合今天的市场和主线，说明这批股票里哪些更值得进一步研究、为什么，以及需要注意的风险；'
+            '考虑到这条规则的历史验证结果，不要给出确定的买卖指令。')
+
+
+def candidates_page(window):
+    box = window.page('今日候选', '几条固定选股规则今天选出了哪些股票；每条规则都附上它过去一年的实际表现。')
+    overview = latest_overview(window.output)
+    _header(window, box, overview)
+    if not overview:
+        return
+    rules = overview.get('candidates')
+    if not rules:
+        box.addWidget(label('当前结果是旧版本生成的，没有候选数据；点“立即更新”重新生成。', 'note', True))
+        return
+    from quantlab.trading.candidates import CAVEATS
+    for rule in rules:
+        v = rule['validation']
+        card = Card(f"{rule['name']} · 今日 {rule['count']} 只")
+        card.add(label(rule['description'], 'muted', True))
+        verdict = label(VERDICT_STYLE.get(v['verdict'], '') + '历史验证：' + v['text'], 'note', True)
+        card.add(verdict)
+        stocks = rule['stocks']
+        if stocks:
+            grid = table(['股票', '代码', '行业', '今日', '近20日', '入选理由'],
+                         [[r['name'], r['code'], r['industry'] or '—', _pct(r['pct']), _pct(r['ret20']), r['reason']]
+                          for r in stocks], lambda i, s=stocks: window.open_stock_report(s[i]['code']))
+            card.add(_tall(grid, min(len(stocks), 8)))
+            more = f"（只列前 {len(stocks)} 只）" if rule['count'] > len(stocks) else ''
+            card.add(row(label('双击打开个股报告' + more, 'muted'),
+                         button('问 AI 看这批股票', lambda r=rule: window.ask_ai(candidate_prompt(overview, r)))))
+        else:
+            card.add(label('今天没有股票符合这条规则。', 'muted'))
+        box.addWidget(card)
+    box.addWidget(label('验证方法与局限：\n' + '\n'.join('· ' + c for c in CAVEATS), 'muted', True))
+
+
+__all__ = ['market_page', 'themes_page', 'candidates_page']
