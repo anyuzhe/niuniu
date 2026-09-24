@@ -1,4 +1,5 @@
 import json,tempfile,unittest
+from unittest import mock
 from contextlib import redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -56,14 +57,18 @@ class MarketSnapshotProviderTests(unittest.TestCase):
         api=MarketDataResearchAPI(self.output,self.data);names={row['name'] for row in api.schemas()}
         self.assertIn('get_market_snapshot_provider_status',names)
         self.assertFalse({'capture_market_snapshot','connect_market_provider','set_market_provider_credentials'} & names)
-        reply=api.call('get_market_snapshot_provider_status',{});self.assertTrue(reply['ok'])
+        # The agent reads the repository catalog; pin it so the test does not follow DATA's live status.
+        with mock.patch('quantlab.data.dataset_catalog.default_data_catalog_path',return_value=self.review_catalog):
+            reply=api.call('get_market_snapshot_provider_status',{})
+        self.assertTrue(reply['ok'])
         self.assertEqual(reply['data']['status'],'BLOCKED');self.assertFalse(reply['data']['live_provider_available'])
 
 
     def test_system_health_surfaces_provider_gap_without_marking_research_broken(self):
         from datetime import timezone
         from quantlab.agent.system_health import SystemHealthService
-        health=SystemHealthService(self.output,self.data,now_fn=lambda:datetime(2026,9,15,0,0,tzinfo=timezone.utc)).build()
+        with mock.patch('quantlab.data.dataset_catalog.default_data_catalog_path',return_value=self.review_catalog):
+            health=SystemHealthService(self.output,self.data,now_fn=lambda:datetime(2026,9,15,0,0,tzinfo=timezone.utc)).build()
         provider=health['components']['market_snapshot_provider']
         self.assertEqual(provider['status'],'NOT_CONFIGURED');self.assertFalse(provider['evidence']['live_provider_available'])
         self.assertEqual(provider['evidence']['data_catalog_status'],'REVIEW_REQUIRED')
