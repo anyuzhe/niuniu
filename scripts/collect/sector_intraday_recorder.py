@@ -1,7 +1,8 @@
 """Record one-minute THS sector-board snapshots during the trading session.
 
 Runs as one long process on the Mac (the launcher ``.command`` starts it before the
-open).  Every ``--interval`` seconds between 09:15 and 15:01 Beijing time it asks the
+open).  It first refreshes the day's board-constituents snapshot
+(``sector_constituents.py``, a few minutes) that feeds ``constituent_count``.  Every ``--interval`` seconds between 09:15 and 15:01 Beijing time it asks the
 DATA provider ``SectorIntradayProvider.board_snapshot`` for concept + industry
 boards and appends the rows to one Parquet file per minute:
 
@@ -94,6 +95,16 @@ def main(argv=None) -> int:
     except Exception as error:
         print(f"交易日历读取失败：{error}")
         return 1
+    # Daily constituents snapshot (for constituent_count); a few minutes, resumable.
+    try:
+        from collect.sector_constituents import run as snapshot_constituents
+        for _ in range(5):
+            result = snapshot_constituents(Path(args.data_root), max_seconds=600)
+            print(json.dumps({k: v for k, v in result.items() if k != "empty_boards"}, ensure_ascii=False), flush=True)
+            if result.get("complete") or result.get("status") == "already_complete":
+                break
+    except Exception as error:
+        print(f"成分快照失败（盘中板块照常记录，constituent_count 沿用上一天）：{error}", flush=True)
     while True:
         hm = datetime.now(TZ).strftime("%H:%M")
         if hm >= END:

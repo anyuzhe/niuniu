@@ -108,6 +108,51 @@ def limit_prices(symbol: str, name: str, previous_close: float) -> tuple[float, 
     return _round_price(previous_close * (1 + ratio)), _round_price(previous_close * (1 - ratio))
 
 
+# ------------------------------------------------------------------ board classification
+# DATA-owned rule for concept boards that are market-wide labels rather than themes.
+# Each entry: (reason, exact names, name prefixes, name regex).
+import re as _re
+_MARKET_LABELS = (
+    ("trading_access", {"融资融券", "沪股通", "深股通"}, (), None),
+    ("holder_label", {"证金持股", "国家大基金持股"}, (), None),
+    ("index_selection", {"高股息精选", "中国AI50"}, ("同花顺",), None),
+    ("status_label", {"ST板块", "摘帽"}, (), None),
+    ("listing_age", {"新股与次新股", "注册制次新股", "科创次新股"}, (), None),
+    ("earnings_label", set(), (), _re.compile(r"^20\d{2}(一季报|中报|三季报|年报)(预增|预减|扭亏|预盈|预亏)$")),
+)
+BOARD_CLASS_VERSION = "board-class-v1"
+
+
+def classify_board(name: str, kind: str) -> tuple[str, str | None]:
+    """``(board_class, label_reason)``: ``industry`` / ``theme`` / ``market_label``."""
+    if kind == "industry":
+        return "industry", None
+    text = str(name or "").strip()
+    for reason, names, prefixes, pattern in _MARKET_LABELS:
+        if text in names or text.startswith(prefixes) or (pattern is not None and pattern.match(text)):
+            return "market_label", reason
+    return "theme", None
+
+
+def load_constituent_counts(data_root: Path) -> tuple[str | None, dict[str, int]]:
+    """Counts from the latest complete daily constituents file (``sector_constituents.py``)."""
+    base = data_root / "lake/bronze/provider=fuyao/sector_board_constituents"
+    try:
+        files = sorted(p for p in base.glob("date=*.parquet") if not p.name.startswith("._"))
+    except OSError:
+        files = []
+    if not files:
+        return None, {}
+    latest = files[-1]
+    try:
+        import pandas as pd
+        frame = pd.read_parquet(latest, columns=["board_code", "symbol"])
+    except Exception:
+        return None, {}
+    counts = frame.groupby("board_code")["symbol"].nunique().to_dict()
+    return latest.stem.split("=", 1)[1], {str(k): int(v) for k, v in counts.items()}
+
+
 class _Reference:
     """Listing dates and the trading calendar from DATA's latest reference snapshot."""
 
@@ -176,7 +221,9 @@ class SectorIntradayProvider:
         self.min_interval_members = min_interval_members
         self.cross_check_interval = cross_check_interval
         root = data_root or os.environ.get("NIUNIU_DATA_ROOT") or DEFAULT_DATA_ROOT
-        self.reference = _Reference(Path(root))
+        self.data_root = Path(root)
+        self.reference = _Reference(self.data_root)
+        self._counts: tuple[float, str | None, dict[str, int]] | None = None
         self._lock = threading.RLock()
         self._catalog: dict[str, tuple[str, list[dict]]] = {}
         self._calendar: tuple[str, set[str]] | None = None
@@ -270,6 +317,12 @@ class SectorIntradayProvider:
         value["cache"] = {"hit": True, "age_seconds": round(now_mono - entry[0], 3)}
         return value
 
+    def _constituent_counts(self, mono: float) -> tuple[str | None, dict[str, int]]:
+        if self._counts is None or mono - self._counts[0] > 600:
+            day, counts = load_constituent_counts(self.data_root)
+            self._counts = (mono, day, counts)
+        return self._counts[1], self._counts[2]
+
     # ---------------------------------------------------------------- 1. boards
 
     def board_snapshot(self, types=("concept", "industry")) -> dict:
@@ -311,9 +364,11 @@ class SectorIntradayProvider:
                 stamps.append(stamp)
             for row in self._items(call):
                 quotes[str(row.get("thscode", "")).upper()] = (row, stamp)
+        counts_day, counts = self._constituent_counts(time.monotonic())
         boards, missing = [], []
         for code in codes:
             kind, name = catalog[code]
+            board_class, label_reason = classify_board(name, kind)
             if code not in quotes:
                 missing.append({"code": code, "name": name, "type": kind, "reason": "no_quote_returned"})
                 continue
@@ -328,13 +383,15 @@ class SectorIntradayProvider:
                 "amount": _float(row.get("turnover")), "volume": _float(row.get("volume")),
                 "previous_close": _positive(row.get("prev_price")), "open": _positive(row.get("open_price")),
                 "high": _positive(row.get("high_price")), "low": _positive(row.get("low_price")),
-                "as_of": stamp})
+                "as_of": stamp, "constituent_count": counts.get(code),
+                "board_class": board_class, "label_reason": label_reason})
         boards.sort(key=lambda b: (b["change_pct"] is None, -(b["change_pct"] or 0)))
         as_of = min(stamps) if stamps else None
         return {**self._envelope(dataset, now, trading, as_of, {"types": list(types)}),
                 "completeness": "FULL" if not missing else "PARTIAL", "boards": boards, "missing": missing,
                 "counts": {"requested": len(codes), "returned": len(boards)},
                 "cross_check": "none: THS board indices have a single source (Fuyao)",
+                "constituent_counts_date": counts_day, "board_class_version": BOARD_CLASS_VERSION,
                 "units": {"amount": "yuan", "volume": "shares (vendor value)", "change_pct": "percent"}}
 
     def _sample(self, value: dict) -> None:
@@ -532,5 +589,5 @@ class SectorIntradayProvider:
                                          "check time is withheld"}}
 
 
-__all__ = ["SectorIntradayProvider", "limit_prices", "limit_ratio", "market_status", "niuniu_symbol",
+__all__ = ["SectorIntradayProvider", "classify_board", "load_constituent_counts", "limit_prices", "limit_ratio", "market_status", "niuniu_symbol",
            "MIN_INTERVAL_BOARDS", "MIN_INTERVAL_MEMBERS"]
