@@ -10,13 +10,43 @@ STATUS_COLORS = {'READY': QColor('#22d787'), 'REVIEW_REQUIRED': QColor('#f6b72f'
                  'NOT_READY': QColor('#8fa4b7'), 'DEPRECATED': QColor('#f35f62')}
 
 
+SECTIONS = (('catalog', '数据目录', None), ('status', '更新状态', 'data_status_service'),
+            ('preview', '预览与试查询', 'data_preview_service'), ('jobs', '更新与封存', 'data_update_jobs'))
+
+
+def open_section(window, key):
+    window.data_center_section = key
+    window.navigate_page('data')
+
+
 def data_center_page(window):
-    box = window.page('数据中心', '牛牛能用哪些数据：数据侧交付的文件、数据库和查询接口，各自覆盖到哪天、能不能用、怎么用。')
+    box = window.page('数据中心', '牛牛能用哪些数据、更新到哪天、能不能用；在这里看数据、试查询，并发起数据侧的更新和封存任务。')
     catalog = getattr(window, 'data_catalog_path', None)
     try:
         data = catalog_rows(catalog)
     except Exception as exc:  # unreadable catalog is a technical error, reported as such
         box.addWidget(label('读不了数据清单：' + str(exc)[:200], 'note', True))
+        return
+    services = service_status(catalog)
+    current = getattr(window, 'data_center_section', 'catalog')
+    tabs = []
+    for key, name, dataset_id in SECTIONS:
+        ready = dataset_id is None or services[dataset_id] == 'READY'
+        tab = button(name, lambda k=key: open_section(window, k), key == current)
+        tab.setEnabled(ready)
+        if not ready:
+            tab.setToolTip('数据侧接口尚未开放')
+        tabs.append(tab)
+    box.addWidget(row(*tabs))
+    section = dict((k, d) for k, _, d in SECTIONS).get(current)
+    if current != 'catalog' and section and services[section] == 'READY':
+        from . import data_services_ui
+        if current == 'status':
+            data_services_ui.status_section(window, box)
+        elif current == 'preview':
+            data_services_ui.preview_section(window, box, data['rows'])
+        else:
+            data_services_ui.jobs_section(window, box)
         return
     counts = data['counts']
     box.addWidget(kpis([
@@ -94,18 +124,22 @@ def data_center_page(window):
     delivery.currentIndexChanged.connect(lambda _: show())
     show()
 
+    _services_card(window, box, catalog)
+
+
+def _services_card(window, box, catalog):
     services = service_status(catalog)
-    card = Card('更新状态 · 预览 · 更新与归档')
+    card = Card('更新状态 · 预览 · 更新与封存')
     for dataset_id, name in SERVICES.items():
         value = services[dataset_id]
         if value == 'READY':
-            text = f'{name}：数据侧接口已开放，页面接入中。'
+            text = f'{name}：已开放，点上面的“{name}”。'
         elif value == 'NOT_LISTED':
             text = f'{name}：数据侧尚未提供接口（需求已提）。用途：{SERVICE_PURPOSE[dataset_id]}。'
         else:
             text = f'{name}：数据侧接口状态为 {STATUS_NAMES.get(value, value)}，开放后可用。'
         card.add(label(text, '', True))
-    card.add(label('数据的采集、校验、写入和归档都由数据侧负责；这里只调用数据侧公开的接口，执行更新前会先显示计划并请你确认。',
+    card.add(label('数据的采集、校验、写入和封存都由数据侧负责；这里只调用数据侧公开的接口，执行任务前会先显示计划并请你确认。',
                    'muted', True))
     box.addWidget(card)
     box.addWidget(row(label('研究实验用过的行情和股票池版本，在专业模式“研究实验室”的旧数据中心里查看。', 'muted', True),

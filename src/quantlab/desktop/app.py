@@ -371,8 +371,8 @@ class MainWindow(QMainWindow):
 
     def data_page(self):
         box=self.page(LEGACY_NAV[1],'数据快照 · 时间可用性 · Universe 版本 · 复现证据')
-        from .reference_tools import ReferenceDialog
-        box.addWidget(button('获取 Baostock 历史行业 / 股本 / 交易状态',lambda:self.show_dialog(ReferenceDialog(self))))
+        # Reference data (industry, share capital, trading status) is collected by DATA; see 数据中心 → 更新与封存.
+        box.addWidget(label('行业、股本、交易状态等参考数据由数据侧采集，在日常页面“数据中心 → 更新与封存”里发起更新。','muted',True))
         sources=Card('数据接入与来源口径');sources.add(Flow([('MQC 行情','日线 / 5 分钟\n只读数据源'),('Parquet','按证券与周期读取'),('DuckDB','查询与研究分析'),('Corporate Action','以实验归档事件为准'),('Universe / PIT','以已保存资格来源为准')]))
         box.addWidget(sources)
         box.addWidget(label('以下为实验归档范围，不代表全量数据质量通过认证。双击记录查看行情快照和股票池版本。','note',True))
