@@ -8,3 +8,4 @@
 - 训练期 = 2022-12-31 及以前。筛选脚本只看训练期：`scan.py`（480 组：15 个指标 × 8 个时点 × 4 个分位）、`down.py`、`refine.py`、`family.py`、`more.py`、`famA.py`、`linear.py`、`ridge2.py`（2019–2021 拟合、2022 留出验证，最后用整个训练期拟合出 `CloseScore` 的系数）。合计约 650 种组合，结论要按多重比较打折看。
 - 检验期只在策略和参数固定后，用产品引擎（`quantlab.intraday.backtest`）跑了一次。
 - 第二轮（同日）：`auction.py`、`gapdown.py`（两头集合竞价/低开）、`grid.py`（挂单网格）、`breakout.py`（突破）、`scan2.py`（收盘竞价平仓扫描）、`ridge_multi.py`、`combo.py`（多时点打分）、`baseline.py`（每天都先卖的对照）、`wf.py` / `wf2.py` / `wf3.py`（训练期内逐年滚动比较变体）、`stops.py`、`regime.py`、`wf_final.py`（生成 `quantlab/intraday/morning_models.py` 的逐年系数）。
+- 第三轮（趋势突破）：`trend.py`（开盘区间 15/30 分钟、昨日高低点、30/60 分钟唐奇安通道 × 两个方向 × 放量/大盘/均价线/主动买卖过滤）、`trend2.py`（大盘门槛与跟踪止损、均价线出场）、`trend3.py`（多日趋势同向/反向）、`trend_test.py`（唯一预先选定的一组在 2023–2024 的一次检验）。

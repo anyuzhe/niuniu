@@ -75,6 +75,8 @@ class Day:
     market: object = None
     # the whole day's market context from GstIntraday.market() (minutes, ret_pc, ret_open, count, gap)
     context: object = None
+    # the previous usable day's volume (shares), from stock_days; None for the first usable day
+    prev_volume: float | None = None
 
     @property
     def minutes(self):
@@ -233,10 +235,12 @@ class GstIntraday:
         (plus one cached market-context query per date range)."""
         sql = ('select b.date, b.minute, b.open, b.high, b.low, b.close, b.volume::double as volume, b.amount, '
                'b.vwap, b.ticks::double as ticks, b.buy_volume::double as buy_volume, '
-               'b.sell_volume::double as sell_volume, d.prev_close '
-               'from bars_1m b join stock_days d on d.symbol = b.symbol and d.date = b.date '
-               'where b.symbol = ? and d.usable_ticks')
-        params = [symbol]
+               'b.sell_volume::double as sell_volume, d.prev_close, d.prev_volume '
+               'from bars_1m b join (select symbol, date, prev_close, lag(volume::double) over '
+               '(partition by symbol order by date) as prev_volume from stock_days '
+               'where symbol = ? and usable_ticks) d on d.symbol = b.symbol and d.date = b.date '
+               'where b.symbol = ?')
+        params = [symbol, symbol]
         if start:
             sql += ' and b.date >= ?'
             params.append(start)
@@ -263,8 +267,10 @@ class GstIntraday:
                 bars[key] = np.asarray(np.ma.filled(values, np.nan) if np.ma.isMaskedArray(values) else values,
                                        dtype=float)
             context = self._market_for(day, start, end) if with_market else None
+            prev_volume = data['prev_volume'][a]
+            prev_volume = None if np.ma.is_masked(prev_volume) or prev_volume != prev_volume else float(prev_volume)
             yield Day(symbol, name, day, prev_close, up, down, reason, bars,
-                      market_asof(context, bars['minute']) if context else None, context)
+                      market_asof(context, bars['minute']) if context else None, context, prev_volume)
 
     def day(self, symbol: str, day) -> Day | None:
         return next(self.days(symbol, day, day), None)

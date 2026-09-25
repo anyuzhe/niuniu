@@ -371,6 +371,39 @@ class ResearchStrategyTests(unittest.TestCase):
         # the 2023 coefficients are the ones the full-day model was fitted with (training period only)
         self.assertEqual(MODELS['2023']['10:00'], STRATEGIES['intraday_score'].MODELS['10:00'])
 
+    def test_range_breakout_filters_and_first_break_only(self):
+        strategy = STRATEGIES['range_breakout']
+        config = self.config('range_breakout')
+
+        def path(m):  # range 9.9–10.1 until 10:00, breaks down at 10:20, recovers, breaks again at 11:00
+            if m <= '10:00':
+                return 10.1 if m == '09:40' else (9.9 if m == '09:50' else 10.0)
+            if '10:20' <= m < '10:40' or m >= '11:00':
+                return 9.8
+            return 10.0
+        volume = [300_000.0 if m in ('10:20', '11:00') else 100_000.0 for m in MINUTES]
+        market = lambda m: -0.015
+        day = make_day(path, volume=volume, market=market)
+        day.prev_volume = 100_000.0 * 240
+        _, trips = run_day(day, strategy, {}, config)
+        self.assertEqual(len(trips), 1)  # only the first breakdown is traded
+        self.assertEqual((trips[0]['direction'], trips[0]['entry_minute'], trips[0]['exit_minute']),
+                         ('先卖后买', '10:21', '15:00'))
+        self.assertIn('跌破开盘 30 分钟区间 9.90', strategy.entry_reason(
+            0, {'p': {'range_minutes': 30}, 'why': (-1, 9.9)}, day, -1))
+        calm = make_day(path, volume=volume, market=lambda m: -0.005)  # market not down enough
+        calm.prev_volume = 100_000.0 * 240
+        self.assertEqual(run_day(calm, strategy, {}, config)[1], [])
+        quiet = make_day(path, market=market)  # no volume surge
+        quiet.prev_volume = 100_000.0 * 240
+        self.assertEqual(run_day(quiet, strategy, {}, config)[1], [])
+        self.assertEqual(len(run_day(quiet, strategy, {'volume_x': 0}, config)[1]), 1)
+        up = make_day(lambda m: 10.3 if m >= '10:30' else 10.0, market=lambda m: 0.02)
+        up.prev_volume = 100_000.0 * 240
+        _, trips = run_day(up, strategy, {'direction': 1, 'volume_x': 0}, config)
+        self.assertEqual((len(trips), trips[0]['direction']), (1, '先买后卖'))
+        self.assertEqual(run_day(up, strategy, {'direction': -1, 'volume_x': 0}, config)[1], [])
+
     def test_slot_grid_carries_prices_and_starts_from_the_first_price(self):
         from quantlab.intraday.strategies import SLOTS, slot_grid
         prices = [10.0 if m < '10:00' else 10.5 for m in MINUTES]
@@ -487,6 +520,7 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(first.name, '同花顺')
         self.assertEqual(list(first.minutes), ['09:25', '09:31', '09:32', '15:00'])
         self.assertTrue(np.isnan(first.bars['buy_volume'][2]))  # NULL stays missing, not zero
+        self.assertEqual((days[0].prev_volume, days[1].prev_volume), (None, 1.0))  # previous usable day
 
     def test_chinext_limit_changes_on_2020_08_24_and_st(self):
         before, after = self.reader.days('sz.300033')

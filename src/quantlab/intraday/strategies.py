@@ -470,6 +470,80 @@ class MorningScore(IntradayScore):
         return ctx
 
 
+class RangeBreakout(Strategy):
+    """Opening-range trend breakout with optional market and volume confirmation (research control)."""
+    key = 'range_breakout'
+    name = '趋势突破（开盘区间，可调）'
+    description = ('记下开盘后 N 分钟的最高价和最低价。之后到 14:00 前，1 分钟收盘价第一次跌破最低价就先卖后买（方向设为 −1 或 0 时），'
+                   '第一次突破最高价就先买后卖（方向设为 1 或 0 时）。可要求 16 只股票平均同向涨跌超过一定幅度（大盘确认），以及突破那一分钟的'
+                   '成交量是昨天平均每分钟的若干倍（放量确认）。默认在收盘集合竞价平仓，也可设跟踪止损。默认参数是训练期（2019–2022）里'
+                   '最好的一组：30 分钟区间向下突破 + 16 只平均跌 ≥1% + 放量 3 倍；训练期每笔扣费后约 +18 bp，但 2023–2024 只有 +10 bp、'
+                   't≈0.7，不能算有效。')
+    params = {'range_minutes': 30, 'direction': -1, 'market_pct': 1.0, 'volume_x': 3.0, 'trail_pct': 0.0, 'min_price': 8.0}
+    specs = [('range_minutes', '开盘区间（分钟）', 5, 60, 5), ('direction', '方向（1 只做突破向上，−1 只做跌破向下，0 都做）', -1, 1, 1),
+             ('market_pct', '16 只平均同向涨跌至少（%，0 为不要求）', 0.0, 3.0, 0.25),
+             ('volume_x', '突破分钟成交量 ≥ 昨日平均每分钟的倍数（0 为不要求）', 0.0, 10.0, 0.5),
+             ('trail_pct', '跟踪止损（%，0 为拿到收盘集合竞价）', 0.0, 5.0, 0.5), ('min_price', '最低股价（元）', 0.0, 50.0, 1.0)]
+
+    def prepare(self, day, params):
+        ctx = super().prepare(day, params)
+        p = ctx['p']
+        grid = slot_grid(day)
+        k = int(p['range_minutes'])
+        ctx['range_end'] = SLOTS[k - 1]
+        ctx['high'] = float(grid['hi'][k - 1])
+        ctx['low'] = float(grid['lo'][k - 1])
+        ctx['grid'] = grid
+        ctx['used'] = set()
+        ctx['minute_volume'] = day.prev_volume / len(SLOTS) if getattr(day, 'prev_volume', None) else None
+        return ctx
+
+    def entry(self, i, ctx, day):
+        p = ctx['p']
+        minute = day.bars['minute'][i]
+        if minute <= ctx['range_end'] or minute > '14:00' or day.prev_close < p['min_price']:
+            return 0
+        slot = _SLOT_INDEX.get(minute)
+        if slot is None or slot == 0:
+            return 0
+        close, before = ctx['grid']['close'][slot], ctx['grid']['close'][slot - 1]
+        direction = int(p['direction'])
+        for side, level in ((1, ctx['high']), (-1, ctx['low'])):
+            if side in ctx['used'] or (direction and side != direction):
+                continue
+            crossed = (before <= level < close) if side > 0 else (before >= level > close)
+            if not crossed:
+                continue
+            ctx['used'].add(side)  # only the first break in each direction counts
+            if p['market_pct']:
+                market = _market_at(day, i)
+                if market is None or side * market <= p['market_pct'] / 100:
+                    continue
+            if p['volume_x']:
+                volume = float(np.nan_to_num(day.bars['volume'][i]))
+                if not ctx['minute_volume'] or volume < p['volume_x'] * ctx['minute_volume']:
+                    continue
+            ctx['why'] = (side, level)
+            return side
+        return 0
+
+    def entry_reason(self, i, ctx, day, side):
+        return f"{'突破' if side > 0 else '跌破'}开盘 {int(ctx['p']['range_minutes'])} 分钟区间 {ctx['why'][1]:.2f}"
+
+    def exit(self, i, ctx, day, trip):
+        trail = ctx['p']['trail_pct']
+        if not trail:
+            return None
+        close = float(day.bars['close'][i])
+        side = trip['entry'].side
+        best = trip.get('best', trip['entry'].avg())
+        best = max(best, close) if side > 0 else min(best, close)
+        trip['best'] = best
+        if (side > 0 and close <= best * (1 - trail / 100)) or (side < 0 and close >= best * (1 + trail / 100)):
+            return '跟踪止损'
+        return None
+
+
 class GapRebound(Strategy):
     key = 'gap_rebound'
     name = '低开回补（研究所得）'
@@ -506,15 +580,16 @@ class GapRebound(Strategy):
         return f"集合竞价低开 {ctx['gap'] * 100:+.2f}%"
 
 
-STRATEGIES = {s.key: s for s in (MorningScore(), IntradayScore(), GapRebound(), WeakClose(), CloseScore(), OpeningBreakout(), VwapReversion(), LateMomentum())}
+STRATEGIES = {s.key: s for s in (MorningScore(), IntradayScore(), RangeBreakout(), GapRebound(), WeakClose(), CloseScore(), OpeningBreakout(), VwapReversion(), LateMomentum())}
 # 尾盘动量 decides at 14:30 and closes at 14:56, so it needs its own trading window and close time.
 _AUCTION = {'windows': (('14:00', '14:10'),), 'force_close': '14:11', 'close_in_auction': True}
 STRATEGY_CONFIG = {'late_momentum': {'windows': (('14:30', '14:45'),), 'force_close': '14:56'},
                    'weak_close': _AUCTION, 'close_score': _AUCTION,
                    'gap_rebound': {'windows': (('09:25', '09:25'),), 'force_close': '09:31', 'close_in_auction': True},
+                   'range_breakout': {'windows': (('09:36', '14:00'),), 'force_close': '14:30', 'close_in_auction': True},
                    'morning_score': {'windows': (('10:00', '11:00'),), 'force_close': '11:05', 'close_in_auction': True},
                    'intraday_score': {'windows': (('10:00', '11:30'), ('13:30', '14:35')), 'force_close': '14:40',
                                       'close_in_auction': True}}
 
-__all__ = ['Strategy', 'STRATEGIES', 'STRATEGY_CONFIG', 'MorningScore', 'IntradayScore', 'GapRebound', 'WeakClose', 'CloseScore', 'slot_grid', 'OpeningBreakout', 'VwapReversion',
+__all__ = ['Strategy', 'STRATEGIES', 'STRATEGY_CONFIG', 'MorningScore', 'IntradayScore', 'RangeBreakout', 'GapRebound', 'WeakClose', 'CloseScore', 'slot_grid', 'OpeningBreakout', 'VwapReversion',
            'LateMomentum']
