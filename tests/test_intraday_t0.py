@@ -9,7 +9,8 @@ import numpy as np
 
 from quantlab.intraday import backtest
 from quantlab.intraday.gst import Day, GstIntraday, IntradayDataError
-from quantlab.intraday.strategies import STRATEGIES, LateMomentum, OpeningBreakout, Strategy, VwapReversion
+from quantlab.intraday.strategies import (STRATEGIES, CloseScore, LateMomentum, OpeningBreakout, Strategy, VwapReversion,
+                                          WeakClose)
 from quantlab.intraday.t0 import Costs, T0Config, run_day, summarize, verdict
 
 
@@ -24,7 +25,7 @@ MINUTES = session_minutes()
 
 
 def make_day(prices, *, prev_close=10.0, volume=100_000.0, day=date(2024, 3, 1), up=11.0, down=9.0,
-             highs=None, lows=None, opens=None, symbol='sh.600000'):
+             highs=None, lows=None, opens=None, symbol='sh.600000', market=None):
     """One synthetic day. `prices` gives the close of each minute (a callable of the minute or a list)."""
     closes = np.array([prices(m) for m in MINUTES] if callable(prices) else prices, dtype=float)
     n = len(closes)
@@ -35,7 +36,9 @@ def make_day(prices, *, prev_close=10.0, volume=100_000.0, day=date(2024, 3, 1),
     bars = {'minute': np.array(MINUTES[:n]), 'open': opens, 'high': highs, 'low': lows, 'close': closes,
             'volume': vol, 'amount': vol * closes, 'vwap': closes, 'ticks': np.full(n, 20.0),
             'buy_volume': vol / 2, 'sell_volume': vol / 2}
-    return Day(symbol, '测试', day, prev_close, up, down, '主板 ±10%', bars)
+    if market is not None:
+        market = np.array([market(m) for m in MINUTES] if callable(market) else market, dtype=float)[:n]
+    return Day(symbol, '测试', day, prev_close, up, down, '主板 ±10%', bars, market)
 
 
 class Scripted(Strategy):
@@ -268,6 +271,71 @@ class StrategyTests(unittest.TestCase):
             self.assertEqual(decisions_a, decisions_b, key)
 
 
+class ResearchStrategyTests(unittest.TestCase):
+    """尾盘弱势 / 尾盘打分: sell at 14:01, buy back in the closing auction, 1-tick slippage."""
+
+    @staticmethod
+    def weak_prices(m):
+        return 10.0 if m < '13:00' else (9.6 if m < '15:00' else 9.5)
+
+    def config(self, key):
+        return backtest.config_for(key, T0Config(costs=Costs(commission=0, commission_min=0, stamp_before=0,
+                                                             stamp_after=0, transfer=0, slippage_ticks=1)))
+
+    def test_weak_close_sells_at_1401_and_buys_back_in_the_auction(self):
+        day = make_day(self.weak_prices, market=lambda m: -0.012 if m >= '13:00' else 0.0)
+        _, trips = run_day(day, WeakClose(), {}, self.config('weak_close'))
+        self.assertEqual(len(trips), 1)
+        trip = trips[0]
+        self.assertEqual((trip['direction'], trip['entry_minute'], trip['exit_minute']), ('先卖后买', '14:01', '15:00'))
+        self.assertAlmostEqual(trip['entry_price'], 9.59)  # one tick below the 14:01 open
+        self.assertAlmostEqual(trip['exit_price'], 9.5)  # the closing auction price, no spread
+        self.assertEqual(trip['reason'], '收盘集合竞价平仓')
+        self.assertIn('16 只平均 -1.20%', WeakClose().entry_reason(0, {'why': (-0.04, -0.012)}, day, -1))
+
+    def test_weak_close_needs_market_weakness_price_and_data(self):
+        config = self.config('weak_close')
+        calm = make_day(self.weak_prices, market=lambda m: -0.005)
+        self.assertEqual(run_day(calm, WeakClose(), {}, config)[1], [])
+        unknown = make_day(self.weak_prices)  # no market context
+        self.assertEqual(run_day(unknown, WeakClose(), {}, config)[1], [])
+        cheap = make_day(lambda m: self.weak_prices(m) / 2, prev_close=5.0, up=5.5, down=4.5, market=lambda m: -0.02)
+        self.assertEqual(run_day(cheap, WeakClose(), {}, config)[1], [])
+        self.assertEqual(len(run_day(cheap, WeakClose(), {'min_price': 0}, config)[1]), 1)
+
+    def test_auction_buyback_blocked_at_limit_up_is_unfinished(self):
+        prices = [self.weak_prices(m) for m in MINUTES]
+        prices[-1] = 11.0  # closes at the limit up: the buy-back in the auction cannot be filled
+        day = make_day(prices, market=lambda m: -0.02)
+        record, trips = run_day(day, WeakClose(), {}, self.config('weak_close'))
+        self.assertEqual(record['unfinished'], 1)
+        self.assertIn('未能回补', trips[0]['reason'])
+
+    def test_close_score_uses_fixed_training_coefficients(self):
+        strategy = CloseScore()
+        day = make_day(self.weak_prices, market=lambda m: -0.015 if m >= '13:00' else 0.0)
+        i = MINUTES.index('14:00')
+        score = strategy.score(day, i)
+        # by hand: close 9.6, open 10, VWAP (09:31..14:00) = mean price, no imbalance, at the day's low, no gap
+        closes = day.bars['close'][1:i + 1]
+        vwap = closes.mean()
+        values = (-0.04, -0.04, 9.6 / vwap - 1, 0.0, 0.0, -0.015, 0.0)
+        expected = strategy.BIAS + sum(w * (v - m) / d for v, m, d, w in
+                                       zip(values, strategy.MEAN, strategy.STD, strategy.WEIGHT))
+        self.assertAlmostEqual(score, expected)
+        _, trips = run_day(day, strategy, {}, self.config('close_score'))
+        self.assertEqual(len(trips), 1 if expected <= -20 else 0)
+        self.assertIsNone(strategy.score(make_day(self.weak_prices), i))
+
+    def test_tick_slippage(self):
+        day = make_day(lambda m: 10.0)
+        config = T0Config(costs=Costs(commission=0, commission_min=0, stamp_before=0, stamp_after=0, transfer=0,
+                                      slippage_ticks=2))
+        _, trips = run_day(day, Scripted(1, '10:00', '10:10'), {}, config)
+        self.assertAlmostEqual(trips[0]['entry_price'], 10.02)
+        self.assertAlmostEqual(trips[0]['exit_price'], 9.98)
+
+
 class SummaryTests(unittest.TestCase):
     def test_summary_and_verdict(self):
         days = [{'symbol': s, 'date': f'2024-01-0{d}', 'bps': b, 'pnl': b * 10, 'trips': 1, 'unfinished': 0}
@@ -357,6 +425,24 @@ class ReaderTests(unittest.TestCase):
         self.assertAlmostEqual(st.limit_down, 1.9)
         self.assertEqual(st.limit_reason, 'ST ±5%')
         self.assertEqual(after.limit_reason, '创业板 ±20%')
+
+    def test_market_context_uses_prices_known_at_each_minute(self):
+        from quantlab.intraday import gst
+        old = gst.MARKET_MIN_STOCKS
+        gst.MARKET_MIN_STOCKS = 1
+        try:
+            reader = GstIntraday(path=self.db, status_dir=Path(self.temp.name) / 'status')
+            table = reader.market()
+            # 2020-08-25: only 601777 is usable (300033 is not) → its own return 2.0/2.0-1 = 0
+            self.assertEqual(table[date(2020, 8, 25)]['09:31'], (0.0, 1))
+            day = next(reader.days('sz.300033', '2020-08-24', '2020-08-24'))
+            self.assertTrue(np.isnan(day.market[0]))  # 09:25 auction bar has no market value
+            self.assertAlmostEqual(day.market[1], 101.5 / 101 - 1)
+            reader.close()
+        finally:
+            gst.MARKET_MIN_STOCKS = old
+        day = next(self.reader.days('sz.300033', '2020-08-24', '2020-08-24'))
+        self.assertTrue(np.isnan(day.market).all())  # fewer than 8 stocks → unknown
 
     def test_ticks_in_sequence(self):
         rows = self.reader.ticks('sz.300033', date(2020, 8, 24))

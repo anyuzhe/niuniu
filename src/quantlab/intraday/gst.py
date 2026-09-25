@@ -31,6 +31,9 @@ RULE_LABELS = {'MAIN_10PCT': '主板 ±10%', 'CHINEXT_20PCT': '创业板 ±20%',
                'CHINEXT_10PCT_PRE_REFORM': '创业板 ±10%（2020-08-24 改革前）', 'MAIN_RISK_WARNING_5PCT': 'ST ±5%'}
 
 
+MARKET_MIN_STOCKS = 8
+
+
 class IntradayDataError(ValueError):
     pass
 
@@ -57,6 +60,9 @@ class Day:
     limit_down: float | None
     limit_reason: str
     bars: dict
+    # equal-weight average return vs previous close of all gst stocks at each of this day's minutes
+    # (last trade so far per stock; NaN where fewer than MARKET_MIN_STOCKS have traded or unknown)
+    market: object = None
 
     @property
     def minutes(self):
@@ -76,6 +82,7 @@ class GstIntraday:
         self._lock = threading.Lock()
         self._conn = None
         self._st = {}
+        self._market = {}
 
     def _db(self):
         if self._conn is None:
@@ -145,9 +152,55 @@ class GstIntraday:
         reason = label + ('' if st_days is not None else '（ST 状态未知，按非 ST）')
         return up, down, reason
 
+    # ------------------------------------------------------------ market context
+    def market(self, start=None, end=None) -> dict:
+        """{date: {minute: (average return vs prev close, stocks counted)}} over the gst stocks.
+
+        Computed in DuckDB with a date filter; each stock contributes its last trade price so far
+        in the day, so the value at a minute only uses prices known at that minute.
+        """
+        key = (str(start) if start else None, str(end) if end else None)
+        if key in self._market:
+            return self._market[key]
+        where, params = ['usable_ticks'], []
+        if start:
+            where.append('date >= ?')
+            params.append(start)
+        if end:
+            where.append('date <= ?')
+            params.append(end)
+        cond = ' and '.join(where)
+        sql = f"""
+            with s as (select symbol, date, prev_close from stock_days where {cond}
+                       and symbol in (select symbol from stocks)),
+                 g as (select distinct b.date, b.minute from bars_1m b join s using (symbol, date)
+                       where b.minute >= '09:30'),
+                 x as (select s.date, g.minute, s.symbol, b.close / s.prev_close - 1 as r
+                       from s join g on g.date = s.date
+                       left join bars_1m b on b.symbol = s.symbol and b.date = s.date and b.minute = g.minute),
+                 f as (select date, minute, last_value(r ignore nulls) over (
+                           partition by symbol, date order by minute
+                           rows between unbounded preceding and current row) as r from x)
+            select date, minute, avg(r) as r, count(r) as n from f group by date, minute order by date, minute"""
+        if len(self._market) >= 32:
+            self._market.clear()
+        out = {}
+        for day, minute, value, count in self._query(sql, params).fetchall():
+            out.setdefault(day, {})[minute] = (value, count)
+        self._market[key] = out
+        return out
+
+    def _market_for(self, day, minutes, start, end):
+        table = self.market(start, end).get(day)
+        if not table:
+            return np.full(len(minutes), np.nan)
+        values = [table.get(m, (None, 0)) for m in minutes]
+        return np.array([v if v is not None and n >= MARKET_MIN_STOCKS else np.nan for v, n in values], dtype=float)
+
     # ------------------------------------------------------------ bars and ticks
-    def days(self, symbol: str, start=None, end=None):
-        """Yield Day objects for usable days in [start, end], one query per call."""
+    def days(self, symbol: str, start=None, end=None, *, with_market=True):
+        """Yield Day objects for usable days in [start, end], one bars query per call
+        (plus one cached market-context query per date range)."""
         sql = ('select b.date, b.minute, b.open, b.high, b.low, b.close, b.volume::double as volume, b.amount, '
                'b.vwap, b.ticks::double as ticks, b.buy_volume::double as buy_volume, '
                'b.sell_volume::double as sell_volume, d.prev_close '
@@ -179,7 +232,8 @@ class GstIntraday:
                 values = data[column][a:b]
                 bars[key] = np.asarray(np.ma.filled(values, np.nan) if np.ma.isMaskedArray(values) else values,
                                        dtype=float)
-            yield Day(symbol, name, day, prev_close, up, down, reason, bars)
+            market = self._market_for(day, list(bars['minute']), start, end) if with_market else None
+            yield Day(symbol, name, day, prev_close, up, down, reason, bars, market)
 
     def day(self, symbol: str, day) -> Day | None:
         return next(self.days(symbol, day, day), None)

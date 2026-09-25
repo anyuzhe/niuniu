@@ -204,8 +204,131 @@ class LateMomentum(Strategy):
         return None
 
 
-STRATEGIES = {s.key: s for s in (OpeningBreakout(), VwapReversion(), LateMomentum())}
-# 尾盘动量 decides at 14:30 and closes at 14:56, so it needs its own trading window and close time.
-STRATEGY_CONFIG = {'late_momentum': {'windows': (('14:30', '14:45'),), 'force_close': '14:56'}}
+def _session_state(day, i):
+    """Intraday facts at bar i using bars from 09:30 on (the 09:25 auction only gives the open)."""
+    bars, minutes = day.bars, day.bars['minute']
+    live = minutes >= '09:30'
+    upto = live & (np.arange(len(minutes)) <= i)
+    volume = np.nan_to_num(bars['volume'][upto])
+    amount = np.nan_to_num(bars['amount'][upto])
+    buy = np.nan_to_num(bars['buy_volume'][upto]).sum()
+    sell = np.nan_to_num(bars['sell_volume'][upto]).sum()
+    auction = np.flatnonzero(~live)
+    first_live = np.flatnonzero(live)
+    first_open = float(bars['open'][auction[0]]) if len(auction) else float(bars['open'][first_live[0]])
+    high = float(np.nanmax(bars['high'][upto])) if upto.any() else np.nan
+    low = float(np.nanmin(bars['low'][upto])) if upto.any() else np.nan
+    close = float(bars['close'][i])
+    return {'close': close, 'first_open': first_open,
+            'vwap': float(amount.sum() / volume.sum()) if volume.sum() > 0 else close,
+            'imbalance': float((buy - sell) / (buy + sell)) if buy + sell > 0 else 0.0,
+            'range_pos': (close - low) / (high - low) if high > low else 0.5}
 
-__all__ = ['Strategy', 'STRATEGIES', 'STRATEGY_CONFIG', 'OpeningBreakout', 'VwapReversion', 'LateMomentum']
+
+def _market_at(day, i):
+    market = getattr(day, 'market', None)
+    if market is None:
+        return None
+    value = float(market[i])
+    return None if value != value else value
+
+
+def _can_sell(day, close):
+    return day.limit_down is None or close > day.limit_down + 0.011
+
+
+class WeakClose(Strategy):
+    key = 'weak_close'
+    name = '尾盘弱势（研究所得）'
+    description = ('牛牛在训练期（2019–2022）筛出的规律：下午走弱的股票，在大盘也弱时，尾盘大多继续走弱。14:00 时个股比昨收跌 3% 以上，'
+                   '且这 16 只股票平均跌 1% 以上，就先卖一部分底仓，收盘集合竞价买回（集合竞价不用付买卖价差）。只做先卖后买；'
+                   '股价低于 8 元不做（1 个价位的成本太高）。大盘用 16 只股票的等权平均代替。')
+    params = {'at': '14:00', 'stock_drop_pct': 3.0, 'market_drop_pct': 1.0, 'min_price': 8.0}
+    specs = [('stock_drop_pct', '个股比昨收跌幅至少（%）', 1.0, 8.0, 0.5),
+             ('market_drop_pct', '16 只平均跌幅至少（%）', 0.0, 4.0, 0.25),
+             ('min_price', '最低股价（元）', 0.0, 50.0, 1.0)]
+
+    def prepare(self, day, params):
+        ctx = super().prepare(day, params)
+        ctx['done'] = False
+        return ctx
+
+    def entry(self, i, ctx, day):
+        p = ctx['p']
+        if ctx['done'] or day.bars['minute'][i] < p['at']:
+            return 0
+        ctx['done'] = True  # one look, at the first bar from 14:00 on
+        close = float(day.bars['close'][i])
+        market = _market_at(day, i)
+        if day.prev_close < p['min_price'] or market is None or not _can_sell(day, close):
+            return 0
+        if close / day.prev_close - 1 <= -p['stock_drop_pct'] / 100 and market <= -p['market_drop_pct'] / 100:
+            ctx['why'] = (close / day.prev_close - 1, market)
+            return -1
+        return 0
+
+    def entry_reason(self, i, ctx, day, side):
+        stock, market = ctx['why']
+        return f'14:00 个股 {stock * 100:+.2f}%，16 只平均 {market * 100:+.2f}%'
+
+
+class CloseScore(Strategy):
+    """Linear score fitted on the training period only (2019-05-29..2022-12-31, 16 stocks, price >= 8,
+    ridge with lambda = 0.01 n on standardised features) for the return from 14:00 to the close, in bp."""
+    key = 'close_score'
+    name = '尾盘打分（研究所得）'
+    description = ('14:00 用 7 个指标给“到收盘还会涨跌多少”打分：比昨收涨跌、比开盘涨跌、偏离当天均价、主动买卖差、在当天高低点中的位置、'
+                   '16 只股票平均涨跌、开盘跳空。系数只用训练期（2019–2022）拟合、之后固定。预计跌幅超过门槛就先卖后买，收盘集合竞价买回。'
+                   '预计上涨的一侧在训练期扣费后没有收益，所以不做先买后卖。')
+    params = {'at': '14:00', 'threshold_bp': 20.0, 'min_price': 8.0}
+    specs = [('threshold_bp', '预计跌幅门槛（基点）', 5.0, 60.0, 5.0), ('min_price', '最低股价（元）', 0.0, 50.0, 1.0)]
+    FEATURES = ('ret_pc', 'ret_open', 'vwap_dev', 'imbalance', 'range_pos', 'market', 'gap')
+    MEAN = (-0.00020936154006856377, 0.00047018212283560365, -0.0008987307405341468, -0.035300052200572876,
+            0.4551696340545929, 0.0003930853202376636, -0.000644687989003311)
+    STD = (0.02545661612631969, 0.023764018402734042, 0.01069242594288529, 0.14084845269383875,
+           0.28017536833018497, 0.013864537669053878, 0.012374582173443685)
+    WEIGHT = (1.5753797996814225, 3.442199907816161, -12.446773996595415, -4.6388324890047326,
+              10.147385390473394, 10.069913712692225, -0.39707383619149506)
+    BIAS = -2.3173054595527423
+
+    def score(self, day, i):
+        market = _market_at(day, i)
+        if market is None:
+            return None
+        s = _session_state(day, i)
+        close = s['close']
+        values = (close / day.prev_close - 1, close / s['first_open'] - 1, close / s['vwap'] - 1, s['imbalance'],
+                  s['range_pos'], market, s['first_open'] / day.prev_close - 1)
+        return self.BIAS + sum(w * (v - m) / d for v, m, d, w in zip(values, self.MEAN, self.STD, self.WEIGHT))
+
+    def prepare(self, day, params):
+        ctx = super().prepare(day, params)
+        ctx['done'] = False
+        return ctx
+
+    def entry(self, i, ctx, day):
+        p = ctx['p']
+        if ctx['done'] or day.bars['minute'][i] < p['at']:
+            return 0
+        ctx['done'] = True
+        close = float(day.bars['close'][i])
+        if day.prev_close < p['min_price'] or not _can_sell(day, close):
+            return 0
+        score = self.score(day, i)
+        if score is not None and score <= -p['threshold_bp']:
+            ctx['score'] = score
+            return -1
+        return 0
+
+    def entry_reason(self, i, ctx, day, side):
+        return f"14:00 打分预计到收盘 {ctx['score']:+.0f} 个基点"
+
+
+STRATEGIES = {s.key: s for s in (WeakClose(), CloseScore(), OpeningBreakout(), VwapReversion(), LateMomentum())}
+# 尾盘动量 decides at 14:30 and closes at 14:56, so it needs its own trading window and close time.
+_AUCTION = {'windows': (('14:00', '14:10'),), 'force_close': '14:11', 'close_in_auction': True}
+STRATEGY_CONFIG = {'late_momentum': {'windows': (('14:30', '14:45'),), 'force_close': '14:56'},
+                   'weak_close': _AUCTION, 'close_score': _AUCTION}
+
+__all__ = ['Strategy', 'STRATEGIES', 'STRATEGY_CONFIG', 'WeakClose', 'CloseScore', 'OpeningBreakout', 'VwapReversion',
+           'LateMomentum']

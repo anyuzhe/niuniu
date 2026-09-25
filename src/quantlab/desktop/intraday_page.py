@@ -23,8 +23,9 @@ from .widgets import Card, Chart, button, kpis, label, row, table
 UP, DOWN, GREY = QColor('#f35f62'), QColor('#22d787'), QColor('#5d7182')
 MAX_TRIP_ROWS = 2000
 COST_PRESETS = {
+    'tick': ('普通佣金：万 2.5、最低 5 元，滑点 1 个价位（按盘口实测价差）', Costs(slippage_ticks=1.0)),
+    'low': ('低佣金：万 1 免五，滑点 1 个价位', Costs(commission=0.0001, commission_min=0.0, slippage_ticks=1.0)),
     'standard': ('普通佣金：万 2.5、最低 5 元，滑点 0.1%', Costs()),
-    'low': ('低佣金：万 1 免五，滑点 0.1%', Costs(commission=0.0001, commission_min=0.0)),
     'none': ('不计费用和滑点（只看信号本身）', Costs(commission=0, commission_min=0, stamp_before=0, stamp_after=0,
                                         transfer=0, slippage=0)),
 }
@@ -205,7 +206,8 @@ def intraday_page(window):
     tabs.addTab(replay_tab, '分时回放')
     box.addWidget(label('说明：底仓做T 指手里已有一笔隔夜持仓（默认 10 万元），当天先卖一部分再买回（先卖后买），或先多买一些'
                         '再卖出同样数量的旧股（先买后卖），收盘时仓位回到原样，所以不违反 T+1。收益按“相对一直拿着不动”计算。'
-                        '信号在一根 1 分钟 K 线收完后产生，下一根的开盘价成交并扣滑点；每分钟最多成交该分钟成交量的 20%；'
+                        '信号在一根 1 分钟 K 线收完后产生，下一根的开盘价成交并扣滑点（默认 1 个价位，按盘口实测价差）；“研究所得”的两种尾盘策略'
+                        '在收盘集合竞价买回；每分钟最多成交该分钟成交量的 20%；'
                         '整分钟都在涨停价成交时买不进、在跌停价成交时卖不出。数据只有这 16 只股票，结论不能直接推广。'
                         '这是研究工具，不是买卖建议。', 'muted', True))
 

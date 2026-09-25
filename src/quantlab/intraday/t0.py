@@ -32,6 +32,7 @@ import numpy as np
 
 STAMP_CHANGE = date(2023, 8, 28)
 LOT = 100
+TICK = 0.01
 ENTRY_PATIENCE = 3
 
 
@@ -43,6 +44,9 @@ class Costs:
     stamp_after: float = 0.0005
     transfer: float = 0.00001
     slippage: float = 0.001
+    # When set, slippage is this many price ticks (0.01 yuan) instead of a percentage. The gst quotes
+    # (2019-05..2020-06) show the bid-ask spread of these stocks is one tick most of the time.
+    slippage_ticks: float | None = None
 
     def stamp(self, day: date) -> float:
         return self.stamp_after if day >= STAMP_CHANGE else self.stamp_before
@@ -56,6 +60,9 @@ class T0Config:
     max_trips: int = 20
     daily_loss_limit: float = 0.01
     force_close: str = '14:50'
+    # True: from force_close on, open trips wait for the closing call auction (15:00 bar) and are
+    # closed there at the close price, with no spread to cross.
+    close_in_auction: bool = False
     windows: tuple = (('09:35', '11:00'), ('13:30', '14:50'))
     costs: Costs = field(default_factory=Costs)
 
@@ -145,7 +152,10 @@ def run_day(day, strategy, params, config: T0Config):
             return 0
         raw = float(price if price is not None else opens[i])
         if price is None:
-            price = opens[i] * (1 + costs.slippage * order.side)
+            if costs.slippage_ticks is not None:
+                price = opens[i] + order.side * costs.slippage_ticks * TICK
+            else:
+                price = opens[i] * (1 + costs.slippage * order.side)
             if order.side > 0 and up is not None:
                 price = min(price, up)
             if order.side < 0 and down is not None:
@@ -215,6 +225,13 @@ def run_day(day, strategy, params, config: T0Config):
         # 2) decide at the close of this bar, for the next bar
         if trip is not None and pending is None:
             reason = None
+            if minute >= config.force_close and config.close_in_auction:
+                if auction_close:
+                    pending = _Order('exit', -trip['entry'].side, trip['entry'].filled, i, '收盘集合竞价平仓')
+                    pending.placed = last - 1  # only the closing auction bar can fill it
+                    trip['reason'] = pending.reason
+                    trip['exit'] = pending
+                continue
             if minute >= config.force_close:
                 reason = '收盘前平仓'
             else:
