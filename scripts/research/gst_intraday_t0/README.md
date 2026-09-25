@@ -10,3 +10,4 @@
 - 第二轮（同日）：`auction.py`、`gapdown.py`（两头集合竞价/低开）、`grid.py`（挂单网格）、`breakout.py`（突破）、`scan2.py`（收盘竞价平仓扫描）、`ridge_multi.py`、`combo.py`（多时点打分）、`baseline.py`（每天都先卖的对照）、`wf.py` / `wf2.py` / `wf3.py`（训练期内逐年滚动比较变体）、`stops.py`、`regime.py`、`wf_final.py`（生成 `quantlab/intraday/morning_models.py` 的逐年系数）。
 - 第三轮（趋势突破）：`trend.py`（开盘区间 15/30 分钟、昨日高低点、30/60 分钟唐奇安通道 × 两个方向 × 放量/大盘/均价线/主动买卖过滤）、`trend2.py`（大盘门槛与跟踪止损、均价线出场）、`trend3.py`（多日趋势同向/反向）、`trend_test.py`（唯一预先选定的一组在 2023–2024 的一次检验）。
 - 第四轮（外部资料与盘口）：`gao.py` / `gao2.py`（大盘日内动量在 16 只平均上的复现，以及用它做个股 T 的扣费结果）；`orderbook/`：`build.py`（五档快照整理，2019-05..2020-06）、`feat.py`、`ic.py`（盘口失衡、微价格、主动流对未来 30 秒到 10 分钟中间价的相关性）、`mm.py`（排队挂单做 T，保守排队成交模型）、`exec.py` / `timing.py`（已有先卖信号的真实盘口成交价、挂单进场与按盘口择时）。
+- 第五轮（缠论 + 盘口）：`chan/`：`chanlib.py`（用仓库固定的缠论核心逐根 1 分钟 K 线增量计算，只记录笔已确认的买卖点及确认时刻）、`runchunk.py`（按股票 × 年份分块，前置 10 个交易日预热）、`evalchan.py` / `run_eval1.py`（各类买卖点 × 三种出场）、`run_eval2.py`（大盘同向过滤、线段级买卖点）、`run_eval3.py`（2019-05..2020-06 用盘口失衡与主动成交确认）。
