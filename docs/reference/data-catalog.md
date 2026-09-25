@@ -4,7 +4,7 @@
 
 本文件是 **DATA → CODE 的唯一日常数据交接入口**。DATA 负责数据本身；CODE 只负责使用 DATA 已交付的数据。
 
-最近一次 DATA 审查：2026-09-25（开放数据中心三个接口与封存；此前 2026-09-24：开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
+最近一次 DATA 审查：2026-09-25（开放 16 只股票日内回测数据库 `gst_intraday`；开放数据中心三个接口与封存；此前 2026-09-24：开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
 
 ## 1. 责任边界
 
@@ -235,6 +235,50 @@ result.to_dict()   # 可直接 JSON 序列化
 | `hot_rank_ths` | FILE | 同花顺个股人气榜（日榜前 100） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/hot_rank_day` | 当天观察；`rank, code, name, heat, change_pct, rank_change, concept_tags(JSON), popularity_tag, analyse_title, analyse` | 2026-09-25 起，由 `daily_close_update` 当天采集，不能回补 | `READY` | 上榜原因是供应商 AI 摘要原文 |
 | `hot_rank_em` | FILE | 东财人气榜前 100 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/hot_rank` | 当天观察；`rank, code, market, rank_change, rank_change_history` | 同上 | `READY` | 只有排名，名称和价格请连日K或实时报价 |
 | `stock_intraday_snapshot` | FILE | 全市场个股盘中快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/stock_intraday_snapshot/date=YYYY-MM-DD/HHMM.parquet`，回执 `_receipts/YYYY-MM-DD.json` | 每个时点一个文件（09:25、10:00、11:30、14:00、14:57、15:00，各在时点后约 30 秒取，最晚到仍能代表该时点的截止：09:25→09:30、10:00→10:05、11:30→13:00、14:00→14:05、14:57→15:00、15:00→15:20；过了截止没取到的在回执记 `missed`，不再以该时点补取；回执另有 `due_at`、`delay_seconds`）；每只：`symbol, last, change, change_pct, previous_close, open, high, low, volume(股), amount(元), as_of, status, slot` | 在市 A 股加北交所约 5,570 只，一次约 10 秒；每次抽 200 只用腾讯核对，结果写在回执。由盘中记录器采集，记录器没开的时点没有数据 | `NOT_READY` | 首个交易日（2026-09-28）有数据并核对后改 `READY` |
+
+### 3.6 16 只股票的日内成交与盘口（DATABASE，2026-09-25 开放）
+
+来源：用户提供的 gst MySQL 导出 `/Volumes/Lexar/niuniu-data/staging/gst_export_20260925/`（`stock_contracts.csv` 成交、`stock_pans.csv` 五档盘口），由 `scripts/derive/gst_intraday.py` 转换（`convert --table ticks|quotes` 断点续跑，`build` 重建数据库，约 30 秒）。原始 parquet 在 `lake/silver/gst_intraday/ticks|quotes/part-*.parquet`，每行带 `flag`（为空表示干净）；质量汇总在同目录 `build_summary.json` 和库内 `build_info`。
+
+股票（16 只）：`sh.600352 浙江龙盛, sh.600410 华胜天成, sh.600516 方大炭素, sh.600639 浦东金桥, sh.600756 浪潮软件, sh.600775 南京熊猫, sh.600895 张江高科, sh.601777 力帆股份, sh.603000 人民网, sz.000563 陕国投Ａ, sz.000592 平潭发展, sz.002191 劲嘉股份, sz.002460 赣锋锂业, sz.002466 天齐锂业, sz.300033 同花顺, sz.300040 九洲电气`。
+
+**打开方式**：`duckdb.connect("/Volumes/Lexar/niuniu-data/lake/silver/gst_intraday/gst_intraday.duckdb", read_only=True)`，必须只读打开（多个回测进程可同时读）。库约 2 GB，直接在库里用 SQL 按 `symbol, date` 过滤取数，不要整表读进内存。
+
+**给回测用的表和视图**（只含“可用日”的干净行；原始全量表 `ticks_all`、`quotes_all` 只供 DATA 审计）：
+
+| 名称 | 类型 | 粒度 | 列 |
+|---|---|---|---|
+| `ticks` | 视图 | 约 3 秒一条的成交汇总，62,477,441 行，2019-05-29 至 2024-10-24 | `symbol, name, date, seq(当日顺序), time('HH:MM:SS'), ts(北京时间, 无时区), price(元), change_price, change_pct(%), volume(股), amount(元), side(B 主动买 / S 主动卖 / N 中性，供应商口径)` |
+| `quotes` | 视图 | 约 3 秒一张的五档盘口快照，12,983,502 行，**只有 2019-05-29 至 2020-06-22** | `symbol, name, date, seq, time, ts, last, open, high, low(元), cum_volume(当日累计, 股), cum_amount(元), bid1_px…bid5_px, bid1_vol…bid5_vol, ask1_px…ask5_px, ask1_vol…ask5_vol(量为股)` |
+| `bars_1m` | 表 | 由 `ticks` 汇总的 1 分钟K，4,770,155 行 | `symbol, date, minute, open, high, low, close, volume(股), amount(元), vwap, ticks(笔数), buy_volume, sell_volume` |
+| `stock_days` | 表 | 每只股票每天一行的质量记录 | 成交：`rows_all, rows_clean, first_time, last_time, close, volume, amount`；盘口：`quote_rows_all, quote_rows_clean, quote_first_time, quote_last_time, quote_cum_volume, quote_last`；日线参考（Baostock 不复权日K）：`ref_close, ref_volume, ref_amount, close_diff, volume_ratio, quote_volume_ratio`；结论：`is_trading_day, usable_ticks, usable_quotes, tick_reject_reason, quote_reject_reason`（中文原因） |
+| `stocks` | 表 | 每只一行 | `symbol, name, tick_days, tick_from, tick_to, quote_days, quote_from, quote_to, rejected_tick_days, rejected_quote_days` |
+| `trading_days` | 表 | 交易日历 | `date` |
+
+**1 分钟K的时间标签**（按分钟结束时刻标，与常见行情软件一致）：
+- `09:25` 是集合竞价单独一根（09:30 前的成交）。
+- `09:31` 含 09:30:00–09:31:00；之后每根 `HH:MM` 含上一分钟整点之后到 `HH:MM:00` 的成交。
+- `11:30` 含 11:29 之后到午休前的成交；`13:01` 含 13:00:00–13:01:00；`15:00` 含 14:59 之后以及收盘集合竞价的成交。
+- 某分钟没有成交就没有这一行，不补空K。平均每天 238 根，中位数 239 根。
+- 14:57–15:00 是收盘集合竞价，所以 `14:58`、`14:59` 大多没有数据，收盘价的成交落在 `15:00`。
+
+**可用日规则**（DATA 已核对，CODE 直接用 `ticks` / `quotes` / `bars_1m` 就只会拿到可用日）：
+- 成交可用：当天是交易日，有 Baostock 日线，收盘价与日线相差不超过 0.011 元，成交量合计是日线的 97%–103%，首条不晚于 09:31、末条不早于 14:56，干净行不少于 50。每只可用 1,245–1,261 天。
+- 盘口可用：累计成交量是日线的 98%–102%，首张不晚于 09:31、末张不早于 14:56。每只可用 164–201 天。
+- 不可用原因：成交量与日线相差超过 3%（215 天）、成交记录没覆盖全天（116 天）、停牌（10 天）、收盘价与日线不符（2 天）；盘口没覆盖全天（316 天）、累计量不符（89 天）。另有 1,748 条盘口记录日期是周末或节假日（导出时错标了日期），整条剔除。
+- 行级剔除：无价格、方向标记异常、非交易时段、与上一条时间和数值完全相同（1,449,178 条，是抓取重复；剔除后成交量与日线吻合）。
+- 源数据本身缺的交易日（16 只都缺）：2019-08-21 至 2019-09-25 的 25 天、2019-10-11 至 10-17 的 5 天、2021-11-02、2023-03-16、2023-03-17、2023-03-20。另外 601777 再多缺 1 天。
+
+**回测注意**：
+- 价格是**不复权**的当日实际价，日内开平仓可以直接用。跨日持仓或跨日比较价格时，要乘 `qfq_published_f24` 同一天的 `factor`（按 `symbol=code, date` 关联）。其中 `sh.601777` 在 2020-12-23 前、`sz.002466` 在 2019-12-26 前、`sh.600516` 与 `sz.000563` 在各自的 `valid_from` 前，前复权不可用，跨日回测请避开这些区间。
+- `ticks` 是约 3 秒一次的成交汇总，不是逐笔成交；`side` 是供应商对主动买卖的划分。用它模拟成交时，只能假设在那 3 秒的价位成交，不能假设排在队首。
+- 五档盘口只覆盖 2019-05 至 2020-06。之后的日子只能用成交价加滑点估算，不能用真实买一卖一。
+- 涨跌停价没有入库：按前收（`stock_days.prev_close`，没有时用上一交易日 `ref_close`）计算，主板 ±10%，创业板 `sz.300xxx` 2020-08-24 起 ±20%、之前 ±10%，ST 股 ±5%（是否 ST 查 `security_status_baostock_v2` 的 `isST`；这 16 只里只有 `sh.601777` 在 2020-08-25 至 2021-04-23 是 ST）。回测撮合要自己判断涨停买不进、跌停卖不出。
+- 数据是一次性导入的历史，不会每天更新。
+
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `gst_intraday` | DATABASE | 16 只股票的 3 秒成交、五档盘口、1 分钟K与每日质量记录 | `/Volumes/Lexar/niuniu-data/lake/silver/gst_intraday/gst_intraday.duckdb`（DuckDB 1.5，只读打开） | 见上表；时间为北京时间，价格为元，量为股，额为元 | 成交与 1 分钟K：2019-05-29 至 2024-10-24；盘口：2019-05-29 至 2020-06-22。用于这 16 只股票的日内交易回测，research_only | `READY` | 只读 `ticks`、`quotes`、`bars_1m`、`stock_days`、`stocks`、`trading_days`；不读 `*_all` 表，不改库、不在库里建表（要中间结果请写到自己的目录） |
 
 ## 4. 尚不可用、待审查或只供 DATA 内部使用
 
