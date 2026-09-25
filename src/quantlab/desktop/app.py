@@ -28,7 +28,7 @@ LEGACY_NAV = ['研究工作台','数据中心','因子库','市场状态','结�
 # (key, title, icon, pro). Everyday workbenches first; research/governance/dev tools only in 专业模式.
 PAGES = [
     ('market','今日市场','⌂',False),('themes','主线方向','▦',False),('sectors','盘中板块','◧',False),
-    ('candidates','今日候选','★',False),
+    ('intraday','日内做T','⇅',False),('candidates','今日候选','★',False),
     ('stock','个股报告','◎',False),('mine','我的股票','◉',False),('review','复盘验证','↺',False),
     ('kol','大V复盘','✎',False),('assistant','AI 助手','✦',False),
     ('data','数据中心','▤',False),
@@ -231,7 +231,7 @@ class MainWindow(QMainWindow):
         for i,b in enumerate(self.nav):
             b.blockSignals(True);b.setChecked(i==index);b.blockSignals(False)
         from . import home_pages, trading_pages
-        handlers={'market':home_pages.market_page,'themes':home_pages.themes_page,'sectors':home_pages.sectors_page,'candidates':home_pages.candidates_page,
+        handlers={'market':home_pages.market_page,'themes':home_pages.themes_page,'sectors':home_pages.sectors_page,'intraday':home_pages.intraday_page,'candidates':home_pages.candidates_page,
             'stock':home_pages.stock_page,'mine':home_pages.mine_page,'review':home_pages.review_page,'kol':home_pages.kol_page,'assistant':home_pages.assistant_page,'data':home_pages.data_center_page,
             'desk':trading_pages.today_page,'theme_matrix':trading_pages.theme_page,'dossiers':trading_pages.stock_page,
             'intent':trading_pages.position_page,'decision_review':trading_pages.review_page,'ai_team':trading_pages.ai_team_page,

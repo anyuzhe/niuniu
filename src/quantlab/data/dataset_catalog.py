@@ -43,6 +43,9 @@ def _path(value=None) -> Path:
     return path.resolve()
 
 
+CATALOG_ID_HEADER = "数据 ID"
+
+
 def _split_markdown_row(line: str) -> list[str]:
     text = line.strip()
     if not (text.startswith("|") and text.endswith("|")):
@@ -85,6 +88,7 @@ def read_data_catalog(catalog_path=None) -> dict:
         raise DataCatalogError("DATA_CATALOG_FORMAT_INVALID", "DATA catalog must be UTF-8") from exc
 
     section = None
+    catalog_table = False
     entries = []
     seen = set()
     for line in text.splitlines():
@@ -97,7 +101,18 @@ def read_data_catalog(catalog_path=None) -> dict:
         if line.startswith("## "):
             section = None
             continue
-        if section is None or not line.lstrip().startswith("| `"):
+        stripped = line.lstrip()
+        if not stripped.startswith("|"):
+            catalog_table = False  # any non-table line ends the current table
+            continue
+        if not stripped.startswith("| `"):
+            if not set(stripped) <= set("|-: "):  # a header row decides what the table is
+                catalog_table = stripped.split("|")[1].strip() == CATALOG_ID_HEADER
+            continue
+        # Only rows of dataset tables (first header cell “数据 ID”) are catalog entries. DATA also
+        # documents schemas in ordinary tables inside these sections (e.g. §3.6 table/column lists);
+        # those rows are descriptions, not datasets.
+        if section is None or not catalog_table:
             continue
         cells = _split_markdown_row(line)
         if len(cells) == 8:

@@ -127,6 +127,24 @@ class DataCatalogCoreTests(CatalogFixture, TestCase):
             get_ready_data_source(self.catalog, dataset_id="ready.file")
         self.assertEqual(ctx.exception.code, "DATA_SOURCE_UNREADABLE")
 
+    def test_schema_tables_inside_catalog_sections_are_not_datasets(self):
+        # DATA documents table/column lists in ordinary tables under §3 (e.g. §3.6 gst_intraday).
+        self.write()
+        text = self.catalog.read_text(encoding="utf-8").replace(
+            "\n\n## 4.",
+            "\n\n### 3.6 日内库\n\n| 名称 | 类型 | 列 |\n|---|---|---|\n| `ticks` | 视图 | `symbol, date` |\n"
+            "| `bars_1m` | 表 | `minute` |\n\n说明文字。\n\n## 4.", 1)
+        self.catalog.write_text(text, encoding="utf-8")
+        parsed = read_data_catalog(self.catalog)
+        self.assertNotIn("ticks", [row["dataset_id"] for row in parsed["entries"]])
+        self.assertEqual(parsed["counts"]["READY"], 2)
+        self.assertEqual(parsed["counts"]["NOT_READY"], 1)
+        # a malformed row inside a real dataset table still fails closed
+        self.catalog.write_text(text.replace("| `ready.api` | API | 实时报价 |", "| `ready.api` |", 1), encoding="utf-8")
+        with self.assertRaises(DataCatalogError) as ctx:
+            read_data_catalog(self.catalog)
+        self.assertEqual(ctx.exception.code, "DATA_CATALOG_FORMAT_INVALID")
+
     def test_malformed_or_duplicate_catalog_fails_closed(self):
         self.write(duplicate=True)
         with self.assertRaises(DataCatalogError) as ctx:

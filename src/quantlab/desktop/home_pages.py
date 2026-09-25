@@ -10,6 +10,7 @@ from .market_pages import candidates_page  # noqa: F401  (re-exported)
 from .kol_pages import kol_page  # noqa: F401  (re-exported)
 from .sector_pages import sectors_page  # noqa: F401  (re-exported)
 from .data_center_page import data_center_page  # noqa: F401  (re-exported)
+from .intraday_page import intraday_page  # noqa: F401  (re-exported)
 
 
 def _coming(window, box, what, today):

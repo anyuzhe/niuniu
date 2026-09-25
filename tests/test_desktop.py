@@ -42,9 +42,10 @@ class DesktopTest(unittest.TestCase):
         cls.app=QApplication.instance() or QApplication([]);cls.app.setStyle('Fusion')
 
     def setUp(self):
-        # Walking every page must not call live market interfaces (盘中板块) from tests.
+        # Walking every page must not call live market interfaces (盘中板块) or open the real 日内 database from tests.
         from unittest.mock import patch as _patch
         _gate=_patch('quantlab.desktop.sector_pages.is_ready',return_value=False);_gate.start();self.addCleanup(_gate.stop)
+        _gate2=_patch('quantlab.desktop.intraday_page.is_data_ready',return_value=False);_gate2.start();self.addCleanup(_gate2.stop)
         self.temp=tempfile.TemporaryDirectory();root=Path(self.temp.name)
         for i in range(2):
             run_id=str(uuid4());folder=root/run_id;folder.mkdir()
