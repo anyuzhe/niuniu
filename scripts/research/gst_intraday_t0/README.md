@@ -7,3 +7,4 @@
 - `lib.py`：读矩阵，算前值填充的价格、均价、主动买卖量、涨跌停价、成本（每边 1 个价位 + 佣金 + 印花税 + 过户费）和按日期聚类的 t 值。
 - 训练期 = 2022-12-31 及以前。筛选脚本只看训练期：`scan.py`（480 组：15 个指标 × 8 个时点 × 4 个分位）、`down.py`、`refine.py`、`family.py`、`more.py`、`famA.py`、`linear.py`、`ridge2.py`（2019–2021 拟合、2022 留出验证，最后用整个训练期拟合出 `CloseScore` 的系数）。合计约 650 种组合，结论要按多重比较打折看。
 - 检验期只在策略和参数固定后，用产品引擎（`quantlab.intraday.backtest`）跑了一次。
+- 第二轮（同日）：`auction.py`、`gapdown.py`（两头集合竞价/低开）、`grid.py`（挂单网格）、`breakout.py`（突破）、`scan2.py`（收盘竞价平仓扫描）、`ridge_multi.py`、`combo.py`（多时点打分）、`baseline.py`（每天都先卖的对照）、`wf.py` / `wf2.py` / `wf3.py`（训练期内逐年滚动比较变体）、`stops.py`、`regime.py`、`wf_final.py`（生成 `quantlab/intraday/morning_models.py` 的逐年系数）。

@@ -199,7 +199,14 @@ def run_day(day, strategy, params, config: T0Config):
     for i in range(n):
         minute = minutes[i]
         if minute < '09:30':
-            continue  # opening auction bar: information only
+            # opening auction bar: never traded; a strategy whose window starts before 09:30 may decide
+            # on the auction price here and is filled at the first continuous trade (next bar's open)
+            if trip is None and pending is None and _in_windows(minute, config.windows):
+                side = strategy.entry(i, ctx, day)
+                if side:
+                    qty = trade_qty if side > 0 else min(trade_qty, base_shares)
+                    pending = _Order('entry', side, qty, i, strategy.entry_reason(i, ctx, day, side))
+            continue
         # 1) execute the order placed on an earlier bar
         if pending is not None and pending.placed < i:
             is_auction = auction_close and i == last

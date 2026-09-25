@@ -324,11 +324,197 @@ class CloseScore(Strategy):
         return f"14:00 打分预计到收盘 {ctx['score']:+.0f} 个基点"
 
 
-STRATEGIES = {s.key: s for s in (WeakClose(), CloseScore(), OpeningBreakout(), VwapReversion(), LateMomentum())}
+SLOTS = tuple([f'{h:02d}:{m:02d}' for h, a, b in ((9, 31, 59), (10, 0, 59), (11, 0, 30), (13, 1, 59), (14, 0, 59))
+               for m in range(a, b + 1)] + ['15:00'])
+_SLOT_INDEX = {m: i for i, m in enumerate(SLOTS)}
+
+
+def slot_grid(day):
+    """The day's bars on the 240 continuous-session minute slots (09:31..11:30, 13:01..15:00), the way
+    the research grid was built: prices carried forward (starting from the day's first price), volumes
+    zero in minutes without trades, high/low falling back to the carried price."""
+    bars = day.bars
+    n = len(SLOTS)
+    minutes = np.asarray(bars['minute'])
+    index = np.array([_SLOT_INDEX.get(m, -1) for m in minutes], dtype=int)
+    keep = index >= 0
+    at = index[keep]
+    auction = np.flatnonzero(minutes < '09:30')
+    live = np.flatnonzero(minutes >= '09:30')
+    first = auction[0] if len(auction) else (live[0] if len(live) else None)
+    first_open = float(bars['open'][first]) if first is not None else np.nan
+    close = np.full(n, np.nan)
+    high = np.full(n, np.nan)
+    low = np.full(n, np.nan)
+    volume, amount, buy, sell = (np.zeros(n) for _ in range(4))
+    close[at], high[at], low[at] = bars['close'][keep], bars['high'][keep], bars['low'][keep]
+    volume[at] = np.nan_to_num(bars['volume'][keep])
+    amount[at] = np.nan_to_num(bars['amount'][keep])
+    buy[at] = np.nan_to_num(bars['buy_volume'][keep])
+    sell[at] = np.nan_to_num(bars['sell_volume'][keep])
+    if np.isnan(close[0]):
+        close[0] = first_open
+    filled = np.where(np.isnan(close), 0, np.arange(n))  # carry the last traded price forward
+    close = close[np.maximum.accumulate(filled)]
+    high = np.where(np.isnan(high), close, high)
+    low = np.where(np.isnan(low), close, low)
+    cum_v, cum_a = np.cumsum(volume), np.cumsum(amount)
+    return {'close': close, 'hi': np.maximum.accumulate(high), 'lo': np.minimum.accumulate(low),
+            'vwap': np.where(cum_v > 0, cum_a / np.maximum(cum_v, 1), close),
+            'cum_buy': np.cumsum(buy), 'cum_sell': np.cumsum(sell), 'first_open': first_open}
+
+
+class IntradayScore(Strategy):
+    """Ridge models, one per decision time, for the return from the next minute's open to the close.
+    Fitted on the training period only (2019-05-29..2022-12-31, 16 stocks, price >= 8, lambda = 0.01 n,
+    standardised features) and then fixed; scripts/research/gst_intraday_t0/ridge_multi.py reproduces them."""
+    key = 'intraday_score'
+    name = '全天打分（研究所得）'
+    description = ('在 10:00、10:30、13:30、14:00、14:30 各打一次分，预测“从下一分钟到收盘”的涨跌。用 10 个指标：比昨收涨跌、比开盘涨跌、'
+                   '近 30 分钟涨跌、偏离当天均价、主动买卖差、在当天高低点中的位置、16 只股票平均比昨收和比开盘的涨跌、个股和 16 只平均的开盘跳空。'
+                   '系数只用训练期（2019–2022）拟合后固定。当天第一次预计跌幅超过门槛就先卖一部分底仓，收盘集合竞价买回；每天最多一次。'
+                   '预计上涨的一侧在验证中不赚钱，所以不做先买后卖。股价低于 8 元不做。')
+    params = {'threshold_bp': 20.0, 'min_price': 8.0}
+    specs = [('threshold_bp', '预计跌幅门槛（基点）', 5.0, 80.0, 5.0), ('min_price', '最低股价（元）', 0.0, 50.0, 1.0)]
+    FEATURES = ('ret_pc', 'ret_open', 'ret_30', 'vwap_dev', 'imbalance', 'range_pos', 'market', 'market_open', 'gap',
+                'market_gap')
+    MODELS = {
+        '10:00': {'mu': [-0.0002247460698, 0.0004411358254, 0.0004860595249, -0.0002538864243, -0.03317034492, 0.4712439061, -2.979508228e-05, 0.0007096484429, -0.0006368459315, -0.000711085213], 'sd': [0.01948235646, 0.016821736, 0.01460769832, 0.00752101161, 0.1729058808, 0.2938505576, 0.009555530101, 0.007395831872, 0.01242391059, 0.007544671203], 'w': [5.963748257, -1.020338321, 2.894457248, -20.19773628, -4.507582983, 11.31881715, 7.936008364, 11.71123702, -1.79488618, -5.66693303], 'b': 2.500339594},
+        '10:30': {'mu': [-0.0003605358826, 0.0003001468589, -0.0001535336202, -0.0005882103625, -0.03557800094, 0.4627124021, -5.537210124e-05, 0.0006757906266, -0.0006319209856, -0.0007039683176], 'sd': [0.02165424371, 0.01932494181, 0.009844158101, 0.008431526142, 0.1582170963, 0.2879190725, 0.01082924426, 0.008987574526, 0.01237439197, 0.007473092927], 'w': [3.944891092, -2.112737606, -1.114566822, -7.03481039, -3.469113315, 6.47736008, 8.353297985, 11.03071474, -0.5740723145, -5.655242761], 'b': 3.818797011},
+        '13:30': {'mu': [-0.0002296669455, 0.0004515550079, -0.0002411475243, -0.0008203227023, -0.03513361234, 0.4547184903, 0.0003610067645, 0.00109803067, -0.0006503411971, -0.000706946528], 'sd': [0.02477562436, 0.02286695854, 0.008946708888, 0.01052960873, 0.1449206356, 0.2821609684, 0.01341904703, 0.01199696836, 0.01236591451, 0.007442392105], 'w': [5.86460069, 4.240335928, 2.05204765, -17.96318043, -4.69473736, 7.143923092, 3.958998536, 8.085528933, 0.5160276644, -4.788175839], 'b': -1.230714096},
+        '14:00': {'mu': [-0.0002093615401, 0.0004701821228, 5.730927311e-05, -0.0008987307405, -0.0353000522, 0.4551696341, 0.0003930853202, 0.001131886632, -0.000644687989, -0.0007050568286], 'sd': [0.02545661613, 0.0237640184, 0.007008143564, 0.01069242594, 0.1408484527, 0.2801753683, 0.01386453767, 0.01277197318, 0.01237458217, 0.007434096064], 'w': [2.197373015, 2.243535603, 0.4650783047, -12.94194971, -4.553494555, 10.06372379, 4.430246745, 6.718794575, 1.293098462, -0.2117861357], 'b': -2.244624134},
+        '14:30': {'mu': [-0.0005005971047, 0.000195261744, -0.000174130216, -0.00108810827, -0.0355990226, 0.4535050655, 0.0002106993813, 0.0009391847524, -0.0006613609903, -0.000696699744], 'sd': [0.02609999038, 0.02453354483, 0.00672098254, 0.01081427007, 0.1377094669, 0.2806439981, 0.01459597697, 0.01355699523, 0.01223396067, 0.007361456525], 'w': [-0.4629788649, -0.1891624916, -2.739047735, -3.733268281, -2.329651241, 4.938778471, 4.689804459, 5.532385799, 0.1953352645, -0.1063695864], 'b': -0.6417086135},
+    }
+
+    def features(self, day, grid, at):
+        """The 10 features at decision slot `at` (only data up to that minute), or None."""
+        context = getattr(day, 'context', None)
+        if context is None or context.get('gap') is None:
+            return None
+        from quantlab.intraday.gst import market_asof
+        i = _SLOT_INDEX[at]
+        p = grid['close'][i]
+        back = grid['close'][max(0, i - 30)]
+        buy, sell = grid['cum_buy'][i], grid['cum_sell'][i]
+        hi, lo = grid['hi'][i], grid['lo'][i]
+        market = float(market_asof(context, [at])[0])
+        market_open = float(market_asof(context, [at], 'ret_open')[0])
+        if market != market or market_open != market_open:
+            return None
+        return (p / day.prev_close - 1, p / grid['first_open'] - 1, p / back - 1, p / grid['vwap'][i] - 1,
+                (buy - sell) / (buy + sell) if buy + sell > 0 else 0.0,
+                (p - lo) / (hi - lo) if hi > lo else 0.5, market, market_open,
+                grid['first_open'] / day.prev_close - 1, float(context['gap']))
+
+    def score(self, day, grid, at, models=None):
+        models = self.MODELS if models is None else models
+        if at not in models:
+            return None
+        values = self.features(day, grid, at)
+        if values is None:
+            return None
+        m = models[at]
+        return m['b'] + sum(w * (v - mu) / sd for v, mu, sd, w in zip(values, m['mu'], m['sd'], m['w']))
+
+    def prepare(self, day, params):
+        ctx = super().prepare(day, params)
+        ctx['grid'] = slot_grid(day)
+        ctx['pending_times'] = sorted(self.MODELS)
+        ctx['taken'] = False
+        return ctx
+
+    def entry(self, i, ctx, day):
+        p = ctx['p']
+        minute = day.bars['minute'][i]
+        if ctx['taken'] or day.prev_close < p['min_price']:
+            return 0
+        while ctx['pending_times'] and ctx['pending_times'][0] <= minute:
+            at = ctx['pending_times'].pop(0)
+            price = ctx['grid']['close'][_SLOT_INDEX[at]]
+            if not _can_sell(day, price) or (day.limit_up is not None and price >= day.limit_up - 0.011):
+                continue
+            score = self.score(day, ctx['grid'], at, ctx.get('models'))
+            if score is not None and score <= -p['threshold_bp']:
+                ctx['taken'] = True
+                ctx['why'] = (at, score)
+                return -1
+        return 0
+
+    def entry_reason(self, i, ctx, day, side):
+        at, score = ctx['why']
+        return f'{at} 打分预计到收盘 {score:+.0f} 个基点'
+
+
+class MorningScore(IntradayScore):
+    """The IntradayScore features at 10:00 and 10:30 only, with walk-forward models: each year is traded
+    with coefficients fitted only on earlier years (quantlab.intraday.morning_models)."""
+    key = 'morning_score'
+    name = '上午打分（研究所得，逐年滚动）'
+    description = ('10:00 和 10:30 各打一次分，预测“从下一分钟到收盘”的涨跌（10 个指标同“全天打分”）。每年用之前所有年份的数据重新拟合系数，'
+                   '当年只用这组固定系数，所以回测里的每一年都相当于没见过的数据；2019–2020 历史不够，不交易。'
+                   '预计跌幅超过门槛就先卖一部分底仓，收盘集合竞价买回；每天最多一次；只做先卖后买；股价低于 8 元不做。'
+                   '研究中发现下午的打分、止损、止盈都会降低收益，所以没有加入。')
+
+    def models_for(self, day):
+        from quantlab.intraday.morning_models import MODELS
+        years = sorted(MODELS)
+        year = str(day.date.year)
+        if year < years[0]:
+            return None
+        return MODELS[year] if year in MODELS else MODELS[years[-1]]
+
+    def prepare(self, day, params):
+        ctx = super().prepare(day, params)
+        ctx['models'] = self.models_for(day) or {}
+        ctx['pending_times'] = sorted(ctx['models'])
+        return ctx
+
+
+class GapRebound(Strategy):
+    key = 'gap_rebound'
+    name = '低开回补（研究所得）'
+    description = ('训练期（2019–2022）里，开盘集合竞价比昨收低 2% 以上的股票，开盘后到收盘平均回升。按 09:25 集合竞价价格判断，'
+                   '低开达到门槛就在开盘第一笔（加 1 个价位）先多买一些，收盘集合竞价卖出同样数量的旧股（先买后卖，不违反 T+1）。'
+                   '接近涨跌停不做。')
+    params = {'gap_pct': 2.0, 'min_price': 0.0}
+    specs = [('gap_pct', '低开幅度至少（%）', 0.5, 8.0, 0.5), ('min_price', '最低股价（元）', 0.0, 50.0, 1.0)]
+
+    def prepare(self, day, params):
+        ctx = super().prepare(day, params)
+        ctx['done'] = False
+        return ctx
+
+    def entry(self, i, ctx, day):
+        p = ctx['p']
+        if ctx['done']:
+            return 0
+        ctx['done'] = True  # only the opening auction bar decides
+        if day.bars['minute'][i] >= '09:30' or day.prev_close < p['min_price']:
+            return 0
+        price = float(day.bars['open'][i])
+        if day.limit_down is not None and price <= day.limit_down + 0.011:
+            return 0
+        if day.limit_up is not None and price >= day.limit_up - 0.011:
+            return 0
+        gap = price / day.prev_close - 1
+        if gap <= -p['gap_pct'] / 100:
+            ctx['gap'] = gap
+            return 1
+        return 0
+
+    def entry_reason(self, i, ctx, day, side):
+        return f"集合竞价低开 {ctx['gap'] * 100:+.2f}%"
+
+
+STRATEGIES = {s.key: s for s in (MorningScore(), IntradayScore(), GapRebound(), WeakClose(), CloseScore(), OpeningBreakout(), VwapReversion(), LateMomentum())}
 # 尾盘动量 decides at 14:30 and closes at 14:56, so it needs its own trading window and close time.
 _AUCTION = {'windows': (('14:00', '14:10'),), 'force_close': '14:11', 'close_in_auction': True}
 STRATEGY_CONFIG = {'late_momentum': {'windows': (('14:30', '14:45'),), 'force_close': '14:56'},
-                   'weak_close': _AUCTION, 'close_score': _AUCTION}
+                   'weak_close': _AUCTION, 'close_score': _AUCTION,
+                   'gap_rebound': {'windows': (('09:25', '09:25'),), 'force_close': '09:31', 'close_in_auction': True},
+                   'morning_score': {'windows': (('10:00', '11:00'),), 'force_close': '11:05', 'close_in_auction': True},
+                   'intraday_score': {'windows': (('10:00', '11:30'), ('13:30', '14:35')), 'force_close': '14:40',
+                                      'close_in_auction': True}}
 
-__all__ = ['Strategy', 'STRATEGIES', 'STRATEGY_CONFIG', 'WeakClose', 'CloseScore', 'OpeningBreakout', 'VwapReversion',
+__all__ = ['Strategy', 'STRATEGIES', 'STRATEGY_CONFIG', 'MorningScore', 'IntradayScore', 'GapRebound', 'WeakClose', 'CloseScore', 'slot_grid', 'OpeningBreakout', 'VwapReversion',
            'LateMomentum']

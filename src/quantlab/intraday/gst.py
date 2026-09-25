@@ -34,6 +34,16 @@ RULE_LABELS = {'MAIN_10PCT': '主板 ±10%', 'CHINEXT_20PCT': '创业板 ±20%',
 MARKET_MIN_STOCKS = 8
 
 
+def market_asof(context, minutes, field='ret_pc'):
+    """Market value at each of `minutes` as of that minute (last market minute <= it); NaN before 09:30."""
+    minutes = np.asarray(minutes).astype(str)
+    if context is None or len(context['minutes']) == 0:
+        return np.full(len(minutes), np.nan)
+    at = np.searchsorted(context['minutes'], minutes, side='right') - 1
+    values = np.asarray(context[field], dtype=float)
+    return np.where((at >= 0) & (minutes >= '09:30'), values[np.maximum(at, 0)], np.nan)
+
+
 class IntradayDataError(ValueError):
     pass
 
@@ -63,6 +73,8 @@ class Day:
     # equal-weight average return vs previous close of all gst stocks at each of this day's minutes
     # (last trade so far per stock; NaN where fewer than MARKET_MIN_STOCKS have traded or unknown)
     market: object = None
+    # the whole day's market context from GstIntraday.market() (minutes, ret_pc, ret_open, count, gap)
+    context: object = None
 
     @property
     def minutes(self):
@@ -154,10 +166,13 @@ class GstIntraday:
 
     # ------------------------------------------------------------ market context
     def market(self, start=None, end=None) -> dict:
-        """{date: {minute: (average return vs prev close, stocks counted)}} over the gst stocks.
+        """Equal-weight context over the gst stocks, per date:
+        {date: {'minutes': [...], 'ret_pc': [...], 'ret_open': [...], 'count': [...], 'gap': float}}.
 
-        Computed in DuckDB with a date filter; each stock contributes its last trade price so far
-        in the day, so the value at a minute only uses prices known at that minute.
+        Computed in DuckDB with a date filter. At each minute every usable stock contributes its last
+        trade price so far (its opening price before its first continuous trade), so a value only uses
+        prices known at that minute. ret_pc is vs the previous close, ret_open vs the day's first price
+        (the 09:25 auction when there is one); gap is the average first price vs the previous close.
         """
         key = (str(start) if start else None, str(end) if end else None)
         if key in self._market:
@@ -173,29 +188,44 @@ class GstIntraday:
         sql = f"""
             with s as (select symbol, date, prev_close from stock_days where {cond}
                        and symbol in (select symbol from stocks)),
+                 fo as (select b.symbol, b.date, arg_min(b.open, b.minute) as first_open
+                        from bars_1m b join s using (symbol, date) group by b.symbol, b.date),
                  g as (select distinct b.date, b.minute from bars_1m b join s using (symbol, date)
                        where b.minute >= '09:30'),
-                 x as (select s.date, g.minute, s.symbol, b.close / s.prev_close - 1 as r
-                       from s join g on g.date = s.date
+                 x as (select s.date, g.minute, s.symbol, s.prev_close, fo.first_open, b.close
+                       from s join fo on fo.symbol = s.symbol and fo.date = s.date
+                       join g on g.date = s.date
                        left join bars_1m b on b.symbol = s.symbol and b.date = s.date and b.minute = g.minute),
-                 f as (select date, minute, last_value(r ignore nulls) over (
-                           partition by symbol, date order by minute
-                           rows between unbounded preceding and current row) as r from x)
-            select date, minute, avg(r) as r, count(r) as n from f group by date, minute order by date, minute"""
+                 f as (select date, minute, prev_close, first_open,
+                              coalesce(last_value(close ignore nulls) over (
+                                  partition by symbol, date order by minute
+                                  rows between unbounded preceding and current row), first_open) as p
+                       from x)
+            select date, minute, avg(p / prev_close - 1), avg(p / first_open - 1), count(*),
+                   avg(first_open / prev_close - 1)
+            from f group by date, minute order by date, minute"""
         if len(self._market) >= 32:
             self._market.clear()
         out = {}
-        for day, minute, value, count in self._query(sql, params).fetchall():
-            out.setdefault(day, {})[minute] = (value, count)
+        for day, minute, r_pc, r_open, count, gap in self._query(sql, params).fetchall():
+            item = out.setdefault(day, {'minutes': [], 'ret_pc': [], 'ret_open': [], 'count': [], 'gap': gap})
+            item['minutes'].append(minute)
+            item['ret_pc'].append(r_pc)
+            item['ret_open'].append(r_open)
+            item['count'].append(count)
+        for item in out.values():
+            ok = np.array(item['count']) >= MARKET_MIN_STOCKS
+            item['minutes'] = np.array(item['minutes'])
+            item['ret_pc'] = np.where(ok, np.array(item['ret_pc'], dtype=float), np.nan)
+            item['ret_open'] = np.where(ok, np.array(item['ret_open'], dtype=float), np.nan)
+            item['count'] = np.array(item['count'])
+            if not ok.any():
+                item['gap'] = None
         self._market[key] = out
         return out
 
-    def _market_for(self, day, minutes, start, end):
-        table = self.market(start, end).get(day)
-        if not table:
-            return np.full(len(minutes), np.nan)
-        values = [table.get(m, (None, 0)) for m in minutes]
-        return np.array([v if v is not None and n >= MARKET_MIN_STOCKS else np.nan for v, n in values], dtype=float)
+    def _market_for(self, day, start, end):
+        return self.market(start, end).get(day)
 
     # ------------------------------------------------------------ bars and ticks
     def days(self, symbol: str, start=None, end=None, *, with_market=True):
@@ -232,8 +262,9 @@ class GstIntraday:
                 values = data[column][a:b]
                 bars[key] = np.asarray(np.ma.filled(values, np.nan) if np.ma.isMaskedArray(values) else values,
                                        dtype=float)
-            market = self._market_for(day, list(bars['minute']), start, end) if with_market else None
-            yield Day(symbol, name, day, prev_close, up, down, reason, bars, market)
+            context = self._market_for(day, start, end) if with_market else None
+            yield Day(symbol, name, day, prev_close, up, down, reason, bars,
+                      market_asof(context, bars['minute']) if context else None, context)
 
     def day(self, symbol: str, day) -> Day | None:
         return next(self.days(symbol, day, day), None)
@@ -245,4 +276,4 @@ class GstIntraday:
         return [dict(zip(names, row)) for row in cursor.fetchall()]
 
 
-__all__ = ['GstIntraday', 'Day', 'IntradayDataError', 'DATASET']
+__all__ = ['GstIntraday', 'Day', 'IntradayDataError', 'DATASET', 'market_asof']

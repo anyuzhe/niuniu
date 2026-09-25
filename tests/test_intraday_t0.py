@@ -335,6 +335,78 @@ class ResearchStrategyTests(unittest.TestCase):
         self.assertAlmostEqual(trips[0]['entry_price'], 10.02)
         self.assertAlmostEqual(trips[0]['exit_price'], 9.98)
 
+    def test_gap_rebound_decides_on_the_auction_and_buys_the_first_trade(self):
+        prices = [9.75] + [9.8] * (len(MINUTES) - 2) + [9.9]  # 09:25 auction 9.75 (−2.5%)
+        opens = list(prices)
+        opens[1] = 9.76  # first continuous trade
+        day = make_day(prices, opens=opens)
+        _, trips = run_day(day, STRATEGIES['gap_rebound'], {}, self.config('gap_rebound'))
+        self.assertEqual(len(trips), 1)
+        trip = trips[0]
+        self.assertEqual((trip['direction'], trip['entry_minute'], trip['exit_minute']), ('先买后卖', '09:31', '15:00'))
+        self.assertAlmostEqual(trip['entry_price'], 9.77)  # first trade + 1 tick
+        self.assertAlmostEqual(trip['exit_price'], 9.9)  # base shares sold in the closing auction
+        small = make_day([9.9] + [9.9] * (len(MINUTES) - 1))  # −1% gap: below the 2% threshold
+        self.assertEqual(run_day(small, STRATEGIES['gap_rebound'], {}, self.config('gap_rebound'))[1], [])
+        no_auction = make_day(prices[1:])
+        no_auction.bars['minute'] = np.array(MINUTES[1:])
+        self.assertEqual(run_day(no_auction, STRATEGIES['gap_rebound'], {}, self.config('gap_rebound'))[1], [])
+
+    def test_morning_score_uses_only_models_fitted_before_the_trade_year(self):
+        from quantlab.intraday.morning_models import MODELS
+        strategy = STRATEGIES['morning_score']
+        self.assertIsNone(strategy.models_for(make_day(lambda m: 10.0, day=date(2020, 6, 1))))
+        self.assertIs(strategy.models_for(make_day(lambda m: 10.0, day=date(2023, 6, 1))), MODELS['2023'])
+        self.assertIs(strategy.models_for(make_day(lambda m: 10.0, day=date(2031, 6, 1))), MODELS[max(MODELS)])
+        self.assertEqual(sorted(MODELS['2024']), ['10:00', '10:30'])
+        context = {'minutes': np.array(MINUTES[1:]), 'ret_pc': np.full(len(MINUTES) - 1, -0.01),
+                   'ret_open': np.full(len(MINUTES) - 1, -0.01), 'count': np.full(len(MINUTES) - 1, 16), 'gap': 0.0}
+        for year, expected in ((2024, 1), (2020, 0)):
+            day = make_day(lambda m: 10.0, day=date(year, 3, 1))
+            day.context = context
+            _, trips = run_day(day, strategy, {'threshold_bp': -1000}, self.config('morning_score'))
+            self.assertEqual(len(trips), expected, year)
+            if expected:
+                self.assertEqual((trips[0]['entry_minute'], trips[0]['exit_minute']), ('10:01', '15:00'))
+        # the 2023 coefficients are the ones the full-day model was fitted with (training period only)
+        self.assertEqual(MODELS['2023']['10:00'], STRATEGIES['intraday_score'].MODELS['10:00'])
+
+    def test_slot_grid_carries_prices_and_starts_from_the_first_price(self):
+        from quantlab.intraday.strategies import SLOTS, slot_grid
+        prices = [10.0 if m < '10:00' else 10.5 for m in MINUTES]
+        day = make_day(prices)
+        keep = [k for k, m in enumerate(MINUTES) if m not in ('09:31', '10:30')]  # two minutes without trades
+        for key in day.bars:
+            day.bars[key] = day.bars[key][keep]
+        grid = slot_grid(day)
+        self.assertEqual(len(grid['close']), len(SLOTS))
+        self.assertEqual(grid['close'][0], 10.0)  # 09:31 missing → the 09:25 price
+        self.assertEqual(grid['close'][SLOTS.index('10:30')], 10.5)  # carried from 10:29
+        self.assertEqual(grid['cum_buy'][0], 0.0)
+        self.assertAlmostEqual(grid['vwap'][SLOTS.index('09:59')], 10.0)
+
+    def test_intraday_score_sells_on_the_first_bearish_decision_only(self):
+        strategy = STRATEGIES['intraday_score']
+        rising = lambda m: 10.0 + (0.3 if m >= '09:40' else 0.0) - (0.6 if m >= '10:05' else 0.0)
+        context = {'minutes': np.array(MINUTES[1:]), 'ret_pc': np.full(len(MINUTES) - 1, -0.02),
+                   'ret_open': np.full(len(MINUTES) - 1, -0.02), 'count': np.full(len(MINUTES) - 1, 16), 'gap': 0.0}
+        day = make_day(rising)
+        day.context = context
+        grid = strategy.prepare(day, {})['grid']
+        # hand-check one score against the fixed 10:00 coefficients
+        values = strategy.features(day, grid, '10:00')
+        m = strategy.MODELS['10:00']
+        expected = m['b'] + sum(w * (v - mu) / sd for v, mu, sd, w in zip(values, m['mu'], m['sd'], m['w']))
+        self.assertAlmostEqual(strategy.score(day, grid, '10:00'), expected)
+        self.assertAlmostEqual(values[0], 0.03)  # 10.3 vs prev close 10
+        self.assertAlmostEqual(values[6], -0.02)
+        _, trips = run_day(day, strategy, {'threshold_bp': -1000}, self.config('intraday_score'))
+        self.assertEqual(len(trips), 1)  # one trip a day, at the first decision time
+        self.assertEqual((trips[0]['direction'], trips[0]['entry_minute']), ('先卖后买', '10:01'))
+        self.assertEqual(trips[0]['exit_minute'], '15:00')
+        day.context = None  # no market context → no trade
+        self.assertEqual(run_day(day, strategy, {'threshold_bp': -1000}, self.config('intraday_score'))[1], [])
+
 
 class SummaryTests(unittest.TestCase):
     def test_summary_and_verdict(self):
@@ -434,15 +506,28 @@ class ReaderTests(unittest.TestCase):
             reader = GstIntraday(path=self.db, status_dir=Path(self.temp.name) / 'status')
             table = reader.market()
             # 2020-08-25: only 601777 is usable (300033 is not) → its own return 2.0/2.0-1 = 0
-            self.assertEqual(table[date(2020, 8, 25)]['09:31'], (0.0, 1))
+            item = table[date(2020, 8, 25)]
+            self.assertEqual(list(item['minutes']), ['09:31', '09:32', '15:00'])
+            self.assertEqual(list(item['count']), [1, 1, 1])
+            self.assertEqual((item['ret_pc'][0], item['ret_open'][0], item['gap']), (0.0, 0.0, 0.0))
             day = next(reader.days('sz.300033', '2020-08-24', '2020-08-24'))
             self.assertTrue(np.isnan(day.market[0]))  # 09:25 auction bar has no market value
             self.assertAlmostEqual(day.market[1], 101.5 / 101 - 1)
+            self.assertAlmostEqual(day.context['gap'], 101.5 / 101 - 1)  # first price is the 09:25 auction
             reader.close()
         finally:
             gst.MARKET_MIN_STOCKS = old
         day = next(self.reader.days('sz.300033', '2020-08-24', '2020-08-24'))
         self.assertTrue(np.isnan(day.market).all())  # fewer than 8 stocks → unknown
+        self.assertIsNone(day.context['gap'])
+
+    def test_market_asof_carries_the_last_value(self):
+        from quantlab.intraday.gst import market_asof
+        context = {'minutes': np.array(['09:31', '09:33', '13:01']), 'ret_pc': np.array([0.01, 0.02, 0.03]),
+                   'ret_open': np.array([0.0, 0.0, 0.0])}
+        self.assertTrue(np.allclose(market_asof(context, ['09:25', '09:31', '09:32', '11:30', '14:00'])[1:],
+                                    [0.01, 0.01, 0.02, 0.03]))
+        self.assertTrue(np.isnan(market_asof(context, ['09:25'])[0]))
 
     def test_ticks_in_sequence(self):
         rows = self.reader.ticks('sz.300033', date(2020, 8, 24))
