@@ -15,3 +15,4 @@
 - 第七轮（全市场 5 分钟）：`market5m/`：`breadth.py`（从 READY 的 `bars_min5_baostock_raw` 按年算全市场每 5 分钟等权涨跌、上涨家数占比，临时口径，只作研究）、`wf_mkt.py`（16 只上午打分换成全市场大盘）、`universe.py`（每年上一年成交额前 500 只、股价 ≥8、非 ST）、`feat5.py`（500 只的 10:00/10:30 特征）、`wf500.py` / `wf500b.py`（逐年滚动：整体模型、大盘择时与个股选择拆开）、`timing.py`（10:00 大盘择时做T）。
 - 第八轮（数据侧新数据的样本外检验）：`market5m/oos2026.py`（2020–2024 定下的大盘择时与个股上午打分，原样放到 2026-05-21..09-24 的 `market_intraday_breadth` 与 `tdx_kline_min1` 上）、`market5m/index_mom.py`（`tdx_index_kline_min5` 2024-09 起按半年看“早盘→余下全天”的指数日内动量）。
 - 第九轮（正式 5 分钟全市场情绪）：`market5m/timing2.py`（`market_intraday_breadth_5m` 2020–2026 逐年滚动的 10:00 大盘择时，含近 120 日相关开关；需先按 2020–2026 重跑 `universe.py`、`feat5.py`）。
+- 第十轮（平台突破、放量突破、大盘随动）：`breakout5m/`：`build5.py`（每年 500 只的 5 分钟矩阵，含上一年末约 30 个交易日作历史）、`lib5.py`（读取、同时段 20 日均量、多日高低点、20 日 β、全市场情绪对齐、正T 成交与出场）、`scan.py`（A 日内平台 / B 多日平台 / C 放量突破 / Z 对照）、`scanD.py`（大盘随动）、`agg.py`（按 2020–22 / 2023–24 / 2025–26 汇总）、`diag.py`（毛收益与次日出场诊断）。
