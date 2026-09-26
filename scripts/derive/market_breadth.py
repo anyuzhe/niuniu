@@ -15,7 +15,9 @@ for delisted stocks the exchange's ``preclose`` (Baostock); otherwise the previo
 trading day's close times ``factor_prev / factor_today`` from ``qfq_published_f24``;
 when no factor exists (BSE, days after the qfq build) the raw close, counted in
 ``n_prev_close_raw``.  Suspended stocks (no bars) and stocks without a previous close are
-left out.  Newly listed stocks without price limits are counted in returns and up/down
+left out; a stock
+with no trade in a bar (sealed at the limit, halted intraday) keeps its last traded price
+from earlier that day and is counted; before its first trade of the day it is not.  Newly listed stocks without price limits are counted in returns and up/down
 but not in limit counts (``n_no_limit``): first 5 trading days on STAR, on ChiNext from
 2020-08-24 and on the main board from 2023-04-10; otherwise the first day only.
 
@@ -38,7 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collect import paths  # noqa: E402
 
-VERSION = "market-breadth-v3"
+VERSION = "market-breadth-v4"
 OUT = "lake/silver/market_intraday_breadth"
 
 
@@ -60,7 +62,7 @@ def _sql_inputs(con, root: Path, source: str, start: str, end: str) -> None:
     con.execute(f"""CREATE OR REPLACE VIEW bars AS
         SELECT code, date, substr(time, 9, 2) || ':' || substr(time, 11, 2) AS hhmm, time,
                open, high, low, close, amount
-        FROM read_parquet([{globs}], union_by_name = true) WHERE volume > 0 OR amount > 0""")
+        FROM read_parquet([{globs}], union_by_name = true) WHERE close > 0""")
     con.execute(f"""CREATE OR REPLACE TEMP TABLE days AS
         SELECT code, date, arg_min(open, time) AS day_open, arg_max(close, time) AS day_close, sum(amount) AS day_amount
         FROM bars WHERE date BETWEEN DATE '{start}' - INTERVAL 20 DAY AND DATE '{end}' GROUP BY 1, 2""")
@@ -129,13 +131,19 @@ def _sql_inputs(con, root: Path, source: str, start: str, end: str) -> None:
 
 
 BREADTH_SQL = """
-WITH x AS (
-  SELECT b.date, b.hhmm, b.code, b.close AS price, s.prev_close, s.day_open, s.prev_amount, s.prev_raw, s.no_limit,
-         s.limit_up, s.limit_down,
-         max(b.high) OVER w AS run_high, min(b.low) OVER w AS run_low
-  FROM bars b JOIN stock_day2 s USING (code, date)
-  WHERE b.date BETWEEN DATE '{start}' AND DATE '{end}'
-  WINDOW w AS (PARTITION BY b.code, b.date ORDER BY b.time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW))
+WITH b AS (
+  SELECT code, date, hhmm, close,
+         max(high) OVER w AS run_high, min(low) OVER w AS run_low
+  FROM bars WHERE date BETWEEN DATE '{start}' AND DATE '{end}'
+  WINDOW w AS (PARTITION BY code, date ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)),
+slots AS (SELECT DISTINCT date, hhmm FROM b),
+grid AS (SELECT s.*, t.hhmm FROM stock_day2 s JOIN slots t USING (date)),
+-- a stock with no trade in a bar (e.g. sealed at the limit) keeps its last traded price
+x AS (
+  SELECT g.date, g.hhmm, g.code, b.close AS price, g.prev_close, g.day_open, g.prev_amount, g.prev_raw, g.no_limit,
+         g.limit_up, g.limit_down, b.run_high, b.run_low
+  FROM grid g ASOF JOIN b ON g.code = b.code AND g.date = b.date AND g.hhmm >= b.hhmm
+  WHERE b.close IS NOT NULL)
 SELECT date, hhmm AS time,
        count(*) AS n_stocks,
        avg(price / prev_close - 1) AS ew_ret_prev_close,

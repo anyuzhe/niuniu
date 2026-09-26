@@ -4,7 +4,7 @@
 
 本文件是 **DATA → CODE 的唯一日常数据交接入口**。DATA 负责数据本身；CODE 只负责使用 DATA 已交付的数据。
 
-最近一次 DATA 审查：2026-09-26（开放全市场 1 分钟情绪 `market_intraday_breadth` 与通达信个股、指数分钟线；此前 2026-09-25：开放 16 只股票日内回测数据库 `gst_intraday`；开放数据中心三个接口与封存；此前 2026-09-24：开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
+最近一次 DATA 审查：2026-09-26（开放全市场 5 分钟情绪 `market_intraday_breadth_5m`（2020 年起，含退市股）、全市场 1 分钟情绪 `market_intraday_breadth` 与通达信个股、指数分钟线；此前 2026-09-25：开放 16 只股票日内回测数据库 `gst_intraday`；开放数据中心三个接口与封存；此前 2026-09-24：开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
 
 ## 1. 责任边界
 
@@ -294,12 +294,14 @@ result.to_dict()   # 可直接 JSON 序列化
 - 停牌（当天没有 K 线）的股票不计入；没有昨收的新股不计入；上市前 5 个交易日的新股没有涨跌停限制，计入涨跌和家数，但不计入涨跌停家数（`n_no_limit`）。
 - 涨跌停价 = 按四舍五入取到分的 `复权昨收 × (1 ± 幅度)`。幅度：北交所 30%；创业板、科创板 20%；沪深主板 10%；主板 ST 在 2026-07-06 以前是 5%，之后是 10%（交易所当天起施行新规，已用数据核对）。ST 标记取 Baostock `isST`。
 - `limit_up_count` / `limit_down_count` 是这一分钟价格在涨停 / 跌停价上的只数；`touched_*` 是开盘到这一分钟为止最高 / 最低价触及过涨停 / 跌停价的只数。
+- 某只股票在某根 K 线里没有成交（封死涨跌停、盘中临停）时，沿用它当天上一笔成交价，仍然计入；当天还没成交过的不计入。
 - `amt_w_ret_prev_close` 用上一交易日的成交额作权重，不会用到未来信息。
 - 核对结果：收盘涨停家数和同花顺涨停池相比，2026-09-21 至 09-24 分别是 104/101、64/62、51/51、51/51，差异来自北交所等不在同花顺池里的股票。沪市上涨、下跌家数和上证指数自带的家数相比差 1–2%，差异来自指数里的 B 股。
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
 |---|---|---|---|---|---|---|---|
 | `market_intraday_breadth` | FILE | 全市场日内情绪，1 分钟一行 | `/Volumes/Lexar/niuniu-data/lake/silver/market_intraday_breadth/freq=1m/year=YYYY/month=MM.parquet`，构建回执在 `freq=1m/_receipts/` | 每行 `date, time('HH:MM' 结束时刻), n_stocks, ew_ret_prev_close, ew_ret_open, amt_w_ret_prev_close, median_ret_prev_close, up_count, down_count, flat_count, limit_up_count, limit_down_count, touched_limit_up_count, touched_limit_down_count, n_no_limit, n_prev_close_raw, source, version`；收益为小数，例如 0.01 表示 1% | **2026-05-21 至 2026-09-24**，共 90 个交易日、21,600 行，每个时点约 5,480–5,556 只（含北交所）。由 `scripts/derive/market_breadth.py build` 生成，约 1.5 分钟 | `READY` | 按 `date, time` 读取。只有这一段时间有 1 分钟数据；2020 年起的 5 分钟版和盘中实时版见 §4 |
+| `market_intraday_breadth_5m` | FILE | 全市场日内情绪，5 分钟一行，2020 年起 | `/Volumes/Lexar/niuniu-data/lake/silver/market_intraday_breadth/freq=5m/year=YYYY/month=MM.parquet` | 字段同 `market_intraday_breadth`；`time` 为 5 分钟结束时刻，每天 48 行（`09:35` 含开盘集合竞价，`15:00` 含收盘集合竞价） | **2020-01-02 至 2026-09-24**，1,633 个交易日。来源 Baostock 5 分钟线，**含 2020 年以来退市的 225 只**（`stock_kline_*_delisted`，昨收用交易所 `preclose`），**不含北交所**。每个时点约 3,700 只（2020 年初）到 5,210 只（2026）。和 1 分钟版重叠的日子对照，涨停家数相差 0–2 只，上涨、下跌家数少约 5%（北交所约 345 只不在内）。早年每天约 90 只取不到复权因子，用原始昨收（`n_prev_close_raw`）；复权因子更新之后的日子（目前 2026-09-24）全部是原始昨收 | `READY` | 按 `date, time` 读取；与 1 分钟版口径相同，但股票范围不同，不要把两者拼成一条序列 |
 | `tdx_kline_min1` | FILE | 个股 1 分钟 K 线（含北交所） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/kline_min1/<sh_600000>.parquet` | 每只证券一个 parquet：`date, time, code, open, high, low, close, volume(股), amount(元), fetch_ts, provider`；不复权 | 5,569 只，沪深从 2026-05-21 起完整（停牌较多的股票更早），北交所从 2026-04 起 | `READY` | 直接读取；跨日比较价格时乘 `qfq_published_f24` 的 factor |
 | `tdx_index_kline_min1` | FILE | 主要指数 1 分钟 K 线 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/index_kline_min1/<sh_000001>.parquet` | 列同上，另有 `up_count, down_count`（交易所给出的该指数成分股的上涨、下跌家数）；`volume`、`amount` 为供应商原值 | `sh.000001` 上证指数、`sh.000300` 沪深 300、`sh.000905` 中证 500、`sh.000852` 中证 1000、`sz.399001` 深证成指、`sz.399006` 创业板指；2026-05-20 起（中证 1000 从 05-08 起） | `READY` | 直接读取 |
 | `tdx_index_kline_min5` | FILE | 主要指数 5 分钟 K 线 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/index_kline_min5/<sh_000001>.parquet` | 同上 | 同上 6 个指数，2024-09 起 | `READY` | 直接读取；2024-09 以前没有来源 |
@@ -308,7 +310,6 @@ result.to_dict()   # 可直接 JSON 序列化
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
 |---|---|---|---|---|---|---|---|
-| `market_intraday_breadth_5m` | FILE | 全市场日内情绪，5 分钟版，2020 年起 | 计划 `lake/silver/market_intraday_breadth/freq=5m/` | 字段同 `market_intraday_breadth` | 要先从 Baostock 补齐 2020 年以来退市的约 225 只股票，否则早年家数偏少、情绪偏乐观 | `NOT_READY` | 等 DATA 补齐退市股后开放；CODE 暂时继续用临时口径做研究 |
 | `market_intraday_breadth_live` | FILE | 盘中实时的全市场情绪 | `/Volumes/Lexar/niuniu-data/lake/silver/market_intraday_breadth/freq=live/date=YYYY-MM-DD.parquet`，回执 `freq=live/_receipts/` | 盘中记录器每分钟取一次通达信全市场报价（约 5,570 只，一次 5–7 秒），字段同 `market_intraday_breadth`，另有 `as_of`（报价服务器时间）、`captured_at`、`latency_s`（采集时刻减报价时刻）、`capture_s`、`n_requested`、`n_quoted`；昨收取交易所给的昨收（已除权），`time` 为该次采集开始的分钟 | 09:25–11:30、13:00–15:00 每分钟一行；只在盘中记录器开着时有数据（打开牛牛会自动启动）。离线用 2026-09-24 收盘报价试算，与历史版 15:00 一致（上涨 1,120 / 1,113、下跌 4,306 / 4,311） | `NOT_READY` | 2026-09-28 开盘实测、核对延迟后改 `READY`；之后 CODE 在 10:00、10:30 读当天文件的最后一行，缺失或 `latency_s` 过大时照实显示 |
 | `qfq_daily_existing` | FILE | 旧前复权日线（旧 MQC 构建） | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_daily` | 每只证券一个 parquet；`date, code, open, high, low, close, volume, amount, factor` | 截止 **2026-09-04**（比原始日K落后 12 个交易日）；来源为东财旧分红，构建脚本不在仓库、不可复现；漏掉早年配股和部分特别分红 | `DEPRECATED` | 替代项为 `qfq_published_f24`（已 READY）。CODE 应把 qfq 读取路径改到替代项；旧目录保留只为历史复算 |
 | `qfq_min5_existing` | FILE | 旧前复权 5 分钟 | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_min5` | 同上加 `time` | 截止 2026-09-04；问题同上 | `DEPRECATED` | 同上 |

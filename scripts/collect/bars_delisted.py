@@ -97,7 +97,7 @@ def apply(plan_path: Path, approve: str, *, max_seconds: float, pace: float = 1.
         if not todo:
             continue
         log(f"{dataset}: {len(todo)} to fetch")
-        session = BaostockSession(dataset, 90.0)
+        session = BaostockSession(dataset, 240.0)
         try:
             for i, t in enumerate(todo, 1):
                 if time.monotonic() - start > max_seconds:
