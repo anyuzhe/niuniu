@@ -14,3 +14,4 @@
 - 第六轮（提前判断一买）：`chan/b1_value.py`、`b1_value2.py`（事后知道一买位置时提前买入的收益上限，多种出场）、`b1_book.py`（2019-05..2020-06 下跌段创新低时用盘口衰竭信号实时买入）。
 - 第七轮（全市场 5 分钟）：`market5m/`：`breadth.py`（从 READY 的 `bars_min5_baostock_raw` 按年算全市场每 5 分钟等权涨跌、上涨家数占比，临时口径，只作研究）、`wf_mkt.py`（16 只上午打分换成全市场大盘）、`universe.py`（每年上一年成交额前 500 只、股价 ≥8、非 ST）、`feat5.py`（500 只的 10:00/10:30 特征）、`wf500.py` / `wf500b.py`（逐年滚动：整体模型、大盘择时与个股选择拆开）、`timing.py`（10:00 大盘择时做T）。
 - 第八轮（数据侧新数据的样本外检验）：`market5m/oos2026.py`（2020–2024 定下的大盘择时与个股上午打分，原样放到 2026-05-21..09-24 的 `market_intraday_breadth` 与 `tdx_kline_min1` 上）、`market5m/index_mom.py`（`tdx_index_kline_min5` 2024-09 起按半年看“早盘→余下全天”的指数日内动量）。
+- 第九轮（正式 5 分钟全市场情绪）：`market5m/timing2.py`（`market_intraday_breadth_5m` 2020–2026 逐年滚动的 10:00 大盘择时，含近 120 日相关开关；需先按 2020–2026 重跑 `universe.py`、`feat5.py`）。

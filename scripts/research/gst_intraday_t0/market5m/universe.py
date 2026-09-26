@@ -6,7 +6,7 @@ Dd=f'{H}/mnt/lake/bronze/provider=baostock/stock_kline_daily/*.parquet'
 St=f'{H}/mnt/lake/bronze/provider=baostock/daily_status_v2/*.parquet'
 c=duckdb.connect(); c.execute("set temp_directory='/tmp/duck'")
 out={}
-for yr in range(2020,2025):
+for yr in range(2020,2027):
     p=yr-1
     rows=c.execute(f"""
       with d as (select code, date, close, amount from read_parquet('{Dd}') where date between '{p}-01-01' and '{p}-12-31' and volume>0),
