@@ -33,6 +33,9 @@ def load(yr):
     def lead(x):
         out=np.full(x.shape,np.nan); out[:-1]=x[1:]; out[:-1][code[1:]!=code[:-1]]=np.nan; return out
     nO=lead(O[:,0]); nC=lead(dc)
+    pc2=lag(dc,2); pc6=lag(dc,6); pdv=lag(dv,1); pH1_=lag(dh,1); pL1_=lag(dl,1)
+    lim0=np.where(np.char.startswith(code.astype(str),'sz.30')&(date>='2020-08-24')|np.char.startswith(code.astype(str),'sh.688'),0.2,0.1)
+    prevLU=pc>=np.round(pc2*(1+lim0)+1e-9,2)-0.001
     # 20-day beta of 5-minute returns to the whole market (prior days only)
     prevH={N:np.nanmax(np.stack([lag(dh,s) for s in range(1,N+1)]),0) for N in (1,5,10,20)}
     prevL={N:np.nanmin(np.stack([lag(dl,s) for s in range(1,N+1)]),0) for N in (5,10,20)}
@@ -64,7 +67,7 @@ def load(yr):
     up=np.round(pc*(1+lim)+1e-9,2)
     stamp=np.where(date>='2023-08-28',5.0,10.0)
     D=dict(code=code,date=date,O=O,H=Hh,L=L,C=C,V=V,A=A,pc=pc,up=up,stamp=stamp,vs20=vs20,dv20=dv20,
-           mret=mret,mup=mup,beta=beta,nO=nO,nC=nC,slots=slots,**{f'pH{N}':prevH[N] for N in prevH},**{f'pL{N}':prevL[N] for N in prevL})
+           mret=mret,mup=mup,beta=beta,pc2=pc2,pc6=pc6,pdv=pdv,pL1=pL1_,prevLU=prevLU,nO=nO,nC=nC,slots=slots,**{f'pH{N}':prevH[N] for N in prevH},**{f'pL{N}':prevL[N] for N in prevL})
     return {k:(v[sel] if isinstance(v,np.ndarray) and v.shape[0]==n else v) for k,v in D.items()}
 
 def trades(D,sig,first=6,last=46,exit='close',stop=None,trail=None):
