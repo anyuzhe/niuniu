@@ -232,6 +232,26 @@ def main(argv=None) -> int:
     except Exception as error:
         print(f"交易日历读取失败：{error}")
         return 1
+    live = None
+    try:
+        from quantlab.data.market_breadth_live import LiveBreadth
+        live = LiveBreadth(data_root)
+    except Exception as error:
+        print(f"全市场情绪（实时）初始化失败，本日不记录：{error}", flush=True)
+    live_receipt = data_root / "lake/silver/market_intraday_breadth/freq=live/_receipts" / f"{today}.json"
+    live_log = {"date": today, "ok": 0, "failed": 0, "last_error": None}
+
+    def record_live():
+        try:
+            row = live.record()
+            live_log["ok"] += 1
+            live_log["last"] = {k: row[k] for k in ("time", "n_stocks", "up_count", "down_count", "capture_s", "latency_s")}
+        except Exception as error:
+            live_log["failed"] += 1
+            live_log["last_error"] = f"{type(error).__name__}: {error}"[:300]
+            print(f"全市场情绪（实时）失败：{live_log['last_error']}", flush=True)
+        _atomic(live_receipt, (json.dumps(live_log, ensure_ascii=False, indent=1) + "\n").encode())
+
     refresh = ConstituentsRefresh(data_root)
     done_slots, missed_slots = set(), set()
     snap_receipt = data_root / STOCK_SNAPSHOTS / "_receipts" / f"{today}.json"
@@ -263,6 +283,8 @@ def main(argv=None) -> int:
             time.sleep(15)
             continue
         started = time.monotonic()
+        if live is not None and ("09:25" <= hm <= "11:30" or "13:00" <= hm <= "15:00"):
+            record_live()
         record(sample(provider, target))
         refresh.step(args.interval - (time.monotonic() - started) - 10)
         time.sleep(max(1.0, args.interval - (time.monotonic() - started)))

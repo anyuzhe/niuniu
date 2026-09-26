@@ -103,12 +103,12 @@ def _sql_inputs(con, root: Path, source: str, start: str, end: str) -> None:
                (x.preclose IS NULL AND (fp.factor IS NULL OR ft.factor IS NULL)) AS prev_raw,
                CASE WHEN d.code LIKE 'bj.%' THEN 0.30
                     WHEN substr(d.code, 4, 3) IN ('688', '689') THEN 0.20
-                    WHEN substr(d.code, 4, 3) IN ('300', '301') AND d.date >= DATE '2020-08-24' THEN 0.20
+                    WHEN substr(d.code, 4, 3) IN ('300', '301', '302') AND d.date >= DATE '2020-08-24' THEN 0.20
                     WHEN coalesce(s.is_st, false) AND d.date < DATE '2026-07-06' THEN 0.05
                     ELSE 0.10 END AS pct,
                CASE WHEN d.code LIKE 'bj.%' THEN 1
                     WHEN substr(d.code, 4, 3) IN ('688', '689') THEN 5
-                    WHEN substr(d.code, 4, 3) IN ('300', '301') THEN CASE WHEN d.date >= DATE '2020-08-24' THEN 5 ELSE 1 END
+                    WHEN substr(d.code, 4, 3) IN ('300', '301', '302') THEN CASE WHEN d.date >= DATE '2020-08-24' THEN 5 ELSE 1 END
                     ELSE CASE WHEN d.date >= DATE '2023-04-10' THEN 5 ELSE 1 END END AS free_days,
                i.ipo_date, c.idx
         FROM days d
