@@ -61,7 +61,7 @@ def sim(r,e,ent,tp,sl,tr,tb):
             tt=act&(j-e+1>=tb); px[tt]=C[r,j][tt]-TICK; openm&=~tt; act&=~tt
         peak=np.where(j>=e,np.maximum(peak,h),peak)
     px[openm]=C[r[openm],-1]-TICK
-    return (px/ent-1)*1e4-(5+stamp+0.2)
+    return (px/ent-1)*1e4-(float(os.environ.get("FEE_RT","0")) or (5+stamp+0.2))
 out={}
 TP=(0.005,0.01,0.015,0.02,0.03,None); SL=(0.005,0.01,0.02); TR=(None,(0.005,0.003),(0.01,0.005)); TB=(6,12,None)
 for name,(sig,first) in RULES.items():
@@ -77,4 +77,4 @@ for name,(sig,first) in RULES.items():
         u,iv=np.unique(dd,return_inverse=True); w=bp>0
         out[(name,tp,sl,tr,tb)]=dict(n=len(bp),s=bp.sum(),nw=int(w.sum()),sw=bp[w].sum(),sl=bp[~w].sum(),dates=u,ds=np.bincount(iv,bp),dc=np.bincount(iv),ss=(bp**2).sum())
 tag='_'.join(only) if only else 'all'
-pickle.dump(out,open(f'{os.environ["HOME"]}/research/brk/ex_{tag}_{yr}.pkl','wb')); print(yr,tag,len(out))
+pickle.dump(out,open(f'{os.environ["HOME"]}/research/brk/ex{os.environ.get("FEE_RT","")}_{tag}_{yr}.pkl','wb')); print(yr,tag,len(out))

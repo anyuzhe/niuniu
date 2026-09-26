@@ -20,3 +20,4 @@
 - 第十二轮（反向做法）：`breakout5m/rev.py` + `revagg.py`（开盘先卖按开盘前特征分组、10:00/10:30 横截面反转）、`gapfade.py` + `gfagg.py`（大幅高开先卖，收盘封板则次日开盘买回，多种买回方式）、`sector.py`（申万一级板块补涨；`lib5.py` 增加了昨日涨停、前 2/6 日收盘等字段）。
 - 第十三轮（3 秒级冲刺剥头皮）：`tick/scalp.py`（读 `orderbook/build.py` 生成的每只股票盘口数组，按下一张快照卖一买入、买一卖出，扫描放量/平台信号 × 出场）、`scalp_agg.py`（汇总）、`fwd.py` + `fwagg.py`（信号后中间价变动与买一越过买入价的概率）、`fwd2.py`（逐只股票：价位大小、价差、1 分钟后净收益）。
 - 第十四轮（隔夜T 与 ETF 做T）：`breakout5m/overnight.py` + `onagg.py`（收盘买、次日卖底仓，按收盘时可知特征分组）、`etf.py`（`python3 etf.py idx` 用 6 个指数 5 分钟线按 ETF 成本测早盘动量与开盘区间突破；`python3 etf.py breadth` 用全市场等权情绪做 2020–2026 参照）。
+- 按“万 1 免五 + 现行印花税”重算：`run_fees_low.py`（在仓库根目录运行，正式引擎跑页面策略）、`breakout5m/refee.py`、`refee2.py`（按日期调整已存结果）、`breakout5m/exits.py`（设 `FEE_RT=7.2` 重跑）+ `aggx_low.py`、`market5m/timing2_low.py`。
