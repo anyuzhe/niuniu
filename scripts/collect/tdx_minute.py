@@ -291,8 +291,8 @@ def apply(plan_path: Path, approve: str, *, max_seconds: float, API=None, now_fn
                "elapsed_s": round(time.monotonic() - start, 1)}
     receipt = data_root / BASE / "_receipts" / f"tdx-minute-{sha[:12]}-{datetime.now(TZ):%Y%m%dT%H%M%S}.json"
     _atomic(receipt, json.dumps(summary, ensure_ascii=False, indent=1).encode())
-    log(json.dumps({k: v for k, v in summary.items() if k != "failed"}, ensure_ascii=False)
-        + f" failed={len(summary['failed'])}")
+    log(json.dumps({**{k: v for k, v in summary.items() if k != "failed"}, "failed": len(summary["failed"])},
+                   ensure_ascii=False))
     return summary
 
 

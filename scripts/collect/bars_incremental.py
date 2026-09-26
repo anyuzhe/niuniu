@@ -40,7 +40,10 @@ REQUEST_FIELDS = {
     "baostock-daily": FIELDS["baostock-daily"] + ",tradestatus",
     "baostock-min5": FIELDS["baostock-min5"],
 }
-FREQUENCY = {"baostock-daily": "d", "baostock-min5": "5"}
+# daily bars with the exchange's previous close and ST flag (used for delisted stocks)
+REQUEST_FIELDS["baostock-daily-ext"] = ("date,code,open,high,low,close,preclose,volume,amount,"
+                                        "adjustflag,tradestatus,isST")
+FREQUENCY = {"baostock-daily": "d", "baostock-min5": "5", "baostock-daily-ext": "d"}
 KEYS = {"baostock-daily": ["date"], "baostock-min5": ["date", "time"]}
 ADJUSTFLAG = "3"
 

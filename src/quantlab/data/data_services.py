@@ -790,6 +790,11 @@ class DataUpdateJobs:
                                 [day], "bars", weight=60, note="只补缺的证券和尾部交易日，已有的日期不重写"))
         steps.append(self._step("前复权重建", "fetch", ["qfq_published_f24"], [day], "qfq", overwrites=True, weight=15,
                                 note="按两源一致的公司行动整体重算，qfq 文件会被新版本替换"))
+        steps.append(self._step("通达信 1 分钟线", "fetch", ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"],
+                                [day], "tdx_minute", weight=15,
+                                note="约 5,600 只，每只取最新一页并合并，约 30 分钟；通达信只保留最近约 91 个交易日，不能漏跑太久"))
+        steps.append(self._step("全市场情绪序列", "fetch", ["market_intraday_breadth", "market_intraday_breadth_5m"],
+                                [day], "breadth", overwrites=True, weight=3, note="重算当月的 1 分钟和 5 分钟文件"))
         prev = calendar.previous(day)
         steps.append(self._step("封存", "seal", ["*"], [prev, day], "seal", trading_day=True,
                                 note=f"封存 {day}；同时把 {prev} 待封存的次日数据补封"))
