@@ -246,14 +246,12 @@ result.to_dict()   # 可直接 JSON 序列化
 
 **给回测用的表和视图**（只含“可用日”的干净行；原始全量表 `ticks_all`、`quotes_all` 只供 DATA 审计）：
 
-| 名称 | 类型 | 粒度 | 列 |
-|---|---|---|---|
-| `ticks` | 视图 | 约 3 秒一条的成交汇总，62,477,441 行，2019-05-29 至 2024-10-24 | `symbol, name, date, seq(当日顺序), time('HH:MM:SS'), ts(北京时间, 无时区), price(元), change_price, change_pct(%), volume(股), amount(元), side(B 主动买 / S 主动卖 / N 中性，供应商口径)` |
-| `quotes` | 视图 | 约 3 秒一张的五档盘口快照，12,983,502 行，**只有 2019-05-29 至 2020-06-22** | `symbol, name, date, seq, time, ts, last, open, high, low(元), cum_volume(当日累计, 股), cum_amount(元), bid1_px…bid5_px, bid1_vol…bid5_vol, ask1_px…ask5_px, ask1_vol…ask5_vol(量为股)` |
-| `bars_1m` | 表 | 由 `ticks` 汇总的 1 分钟K，4,770,155 行 | `symbol, date, minute, open, high, low, close, volume(股), amount(元), vwap, ticks(笔数), buy_volume, sell_volume` |
-| `stock_days` | 表 | 每只股票每天一行的质量记录 | 成交：`rows_all, rows_clean, first_time, last_time, close, volume, amount`；盘口：`quote_rows_all, quote_rows_clean, quote_first_time, quote_last_time, quote_cum_volume, quote_last`；日线参考（Baostock 不复权日K）：`ref_close, ref_volume, ref_amount, close_diff, volume_ratio, quote_volume_ratio`；结论：`is_trading_day, usable_ticks, usable_quotes, tick_reject_reason, quote_reject_reason`（中文原因） |
-| `stocks` | 表 | 每只一行 | `symbol, name, tick_days, tick_from, tick_to, quote_days, quote_from, quote_to, rejected_tick_days, rejected_quote_days` |
-| `trading_days` | 表 | 交易日历 | `date` |
+- `ticks`（视图）：约 3 秒一条的成交汇总，62,477,441 行，2019-05-29 至 2024-10-24。列：`symbol, name, date, seq(当日顺序), time('HH:MM:SS'), ts(北京时间, 无时区), price(元), change_price, change_pct(%), volume(股), amount(元), side(B 主动买 / S 主动卖 / N 中性，供应商口径)`
+- `quotes`（视图）：约 3 秒一张的五档盘口快照，12,983,502 行，**只有 2019-05-29 至 2020-06-22**。列：`symbol, name, date, seq, time, ts, last, open, high, low(元), cum_volume(当日累计, 股), cum_amount(元), bid1_px…bid5_px, bid1_vol…bid5_vol, ask1_px…ask5_px, ask1_vol…ask5_vol(量为股)`
+- `bars_1m`（表）：由 `ticks` 汇总的 1 分钟K，4,770,155 行。列：`symbol, date, minute, open, high, low, close, volume(股), amount(元), vwap, ticks(笔数), buy_volume, sell_volume`
+- `stock_days`（表）：每只股票每天一行的质量记录。列：成交：`rows_all, rows_clean, first_time, last_time, close, volume, amount`；盘口：`quote_rows_all, quote_rows_clean, quote_first_time, quote_last_time, quote_cum_volume, quote_last`；日线参考（Baostock 不复权日K）：`ref_close, ref_volume, ref_amount, close_diff, volume_ratio, quote_volume_ratio`；结论：`is_trading_day, usable_ticks, usable_quotes, tick_reject_reason, quote_reject_reason`（中文原因）
+- `stocks`（表）：每只一行。列：`symbol, name, tick_days, tick_from, tick_to, quote_days, quote_from, quote_to, rejected_tick_days, rejected_quote_days`
+- `trading_days`（表）：交易日历。列：`date`
 
 **1 分钟K的时间标签**（按分钟结束时刻标，与常见行情软件一致）：
 - `09:25` 是集合竞价单独一根（09:30 前的成交）。

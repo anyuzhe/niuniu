@@ -237,6 +237,21 @@ class Runner:
         self.sh(["scripts/derive/build_qfq.py", "coverage", "--plan", str(plans / "qfq-plan.json")])
         self.result_dataset("qfq_published_f24", through=step["dates"][0], files_written=info.get("codes", 0))
 
+    def step_tdx_minute(self, step, share):
+        plan = self.last_json(self.sh(["scripts/collect/tdx_minute.py", "plan", "--mode", "daily"]))
+        output = self.sh(["scripts/collect/tdx_minute.py", "apply", "--plan", plan["plan"], "--approve", plan["sha256"],
+                          "--max-seconds", "7200"], step_share=share, keep_awake=True)
+        info = self.last_json(output)
+        for dataset_id in ("tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"):
+            self.result_dataset(dataset_id, through=step["dates"][0], files_written=info.get("done", 0) if dataset_id == "tdx_kline_min1" else 6)
+
+    def step_breadth(self, step, share):
+        from datetime import date, timedelta
+        start = (date.fromisoformat(step["dates"][0]) - timedelta(days=3)).isoformat()
+        for source, dataset_id in (("tdx_min1", "market_intraday_breadth"), ("baostock_min5", "market_intraday_breadth_5m")):
+            info = self.last_json(self.sh(["scripts/derive/market_breadth.py", "build", "--source", source, "--from", start]))
+            self.result_dataset(dataset_id, through=step["dates"][0], files_written=len(info.get("files", [])) or 1)
+
     def step_seal(self, step, share):
         from quantlab.data import day_seals
         for position, day in enumerate(step["dates"]):
