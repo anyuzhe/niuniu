@@ -2117,3 +2117,10 @@
 - 研究关联改为读取实际`_trial_registries`及归档族；验证registry/binding/源实验SHA与身份，ResearchMemory沿精确run_id和hypothesis_id关联。原生Chat/MCP与只读分页桌面共用服务，未创建第二权威数据库。最初草稿只扫描归档并接受假注册ID，独立复核后重写为真实合同；新测试使用真实create/bind/report/archive，伪造ID拒绝。部分/坏记录/超预算不认证未登记，关联不重新计算p值。
 - 最终10模块73项全部PASS、0失败/错误/跳过；源码/测试/计算资源一致指纹`4b2d655d2027240d33530c54ab80668e64514129ff8dc55e4619c2882e00942b`。证据在`artifacts/alpha-research-integration-20260927/phase2-validation-complete.json`及逐模块日志。先前报告保留1项缺兼容明细字段错误；修后包含成本后跨UI基准端到端与原v1/v2同环境复算、只读Chat/MCP、授权/输入冻结、Qt迟到回调的完整复跑。不是全项目测试。
 - 宿主独立提交本阶段；正式数据、原始归档、采集、服务、日常模型设置和交易权限未改。阶段3使用独立实际数据副本与有限授权验收内置AI，不由开发者代选研究内容。
+
+### 2026-09-27｜[CODE/AI] 阶段3首次原生研究与工具日志修复
+
+- 在`9de39f1`上，由正式`headless_chat_runtime`使用现有Pi配置`openai-codex/gpt-6-luna`完成一次真实自主研究。宿主只复制并核SHA的12证券原始日线、限定2024上半年及已有因子族/预算；模型自行读取授权/数据、选择`BASE.MOMENTUM@1.0.0`的lookback=20、记录假设、预检提交、读回与保存finding。真实run=`8651cc8f-39b1-4273-89b7-c4e6354b4b71`，hypothesis=`c2b05dbf-4a47-41b1-9a6a-912451307043`，finding=`263eaee6-56ac-4bbc-9de6-5a494f596119`；finding为inconclusive、引用核对verified但claim_verified=false。不是有效Alpha或Strict PIT认证。
+- 首轮实际17次工具调用；授权范围错误及finding文本格式错误各一次被拒后，模型自行修正。Grant已撤销，原始副本SHA和源码指纹不变。原始日志在`artifacts/alpha-research-integration-20260927/native-v1`，不改写。
+- 原生验收发现Pi传输与ChatRuntime dispatcher双重记录tool_call/tool_result，导致17次实际调用出现34条结果事件；不是重复执行、也不是模型被喂了两份工具结果。现在由dispatcher独占规范工具日志，忽略provider的同类进度事件，其余身份/流式事件保留；开发工作台PiProvider不变。没有按内容去重或改写旧日志。新增独立回归验证真实结果优先、伪造provider审批记录不能成为执行证据、新进程旧事件读回一致；最终结果及修后真实复验随后记录。
+- 日志修复最终7模块56项PASS、0失败/错误/跳过，源/测试指纹前后一致`6b7085eebc749538cf03a4b63d7a9cd263e4b48ba86318502abc50acb58f973a`，见`phase3-regression-final.json`。新测试首次误用传输事件名tool_call读取存储，既有Journal实际保存为tool_start；按真实合同修正测试后完整复跑，不改变生产Journal旧格式。真实Pi修后复验及独立进程读回另记，不将单测等同模型验收。

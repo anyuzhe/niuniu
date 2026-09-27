@@ -177,6 +177,13 @@ class ChatRuntime:
                 payload=clean(payload)
                 if kind!='text_delta':self.store.event(tid,kind,payload)
                 emit(kind,payload)
+            def provider_event(kind,payload):
+                # Dispatch owns the authoritative tool journal. Some transports (Pi)
+                # also emit tool progress; recording both doubles UI/history entries.
+                # Do not deduplicate by result contents: dispatch retains the original
+                # result whereas the provider may receive a bounded context envelope.
+                if kind in ('tool_call','tool_result'):return
+                record(kind,payload)
             def dispatch(name,arguments,call_id):
                 nonlocal calls,failures,size,context_exhausted
                 if stop.is_set():raise ChatStopped('已停止；不再执行工具')
@@ -275,7 +282,7 @@ class ChatRuntime:
                     'host_live_quote_queries':host_live_quote_queries})
                 system=base_system+('\n因上下文预算已省略 '+str(omitted)+' 个旧轮次，缺失内容必须重新查询。' if omitted else '')
                 if stop.is_set():raise ChatStopped('已停止助手')
-                result=(provider or provider_for(config,api_key)).run(system,messages,self.api.schemas(),dispatch,record,stop)
+                result=(provider or provider_for(config,api_key)).run(system,messages,self.api.schemas(),dispatch,provider_event,stop)
                 if stop.is_set():raise ChatStopped('已停止助手')
                 result=clean(result);result.update(evidence=evidence,turn_id=tid,conversation_id=cid,tool_calls=calls,
                     host_live_quote_queries=host_live_quote_queries,agent_memory=memory_meta)
