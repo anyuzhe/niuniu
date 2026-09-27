@@ -26,7 +26,7 @@ def payload(text):
 
 def text_field(value, name, maximum=4000):
     if not isinstance(value,str) or not value.strip() or len(value)>maximum:
-        raise MemoryError('INVALID_ARGUMENT', name+'须为非空且不超长的文本。')
+        raise MemoryError('INVALID_ARGUMENT', name+'须为非空字符串（string，非数组/对象），最多'+str(maximum)+'字符。多项内容请合并为一个文本字符串。')
 
 
 class ResearchMemory:

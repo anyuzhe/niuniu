@@ -77,8 +77,11 @@ class ConversationStore:
         for event in history['events']:
             kind=event['kind'];item=event['payload']
             if kind not in ('user','assistant'):continue
-            if kind=='assistant' and item.get('status')!='completed':continue
-            content=item['text'];size+=len(content)
+            if kind=='assistant' and item.get('status') not in ('completed','partial'):continue
+            content=item['text']
+            if kind=='assistant' and item.get('status')=='partial':
+                content='【历史未完成答复，需重新核对证据】\n'+content
+            size+=len(content)
             if size>max_chars:raise ModelError('会话超过上下文预算；请新建会话或提高配置上限，不自动丢弃早期内容')
             result.append({'role':kind,'content':content})
         return result

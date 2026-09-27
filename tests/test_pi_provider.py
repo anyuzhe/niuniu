@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import Event, Timer
 from unittest.mock import patch
 from quantlab.agent.model_config import ModelConfig, ModelError, ChatStopped
-from quantlab.devstudio.pi_provider import PiProvider, resolve_pi, safe_error
+from quantlab.devstudio.pi_provider import PiBudgetStopped, PiProvider, resolve_pi, safe_error
 from quantlab.devstudio.team import DOMAINS, load_team_models
 
 SDK = '''
@@ -62,8 +62,8 @@ class PiProviderTests(unittest.TestCase):
  def test_duplicate_call_rejected(self):
   with self.assertRaisesRegex(ModelError,'duplicate'):self.run_pi('duplicate')
   self.assertEqual(len(self.calls),1)
- def test_tool_budget_enforced(self):
-  with self.assertRaisesRegex(ModelError,'budget'):self.run_pi('loop',max_tool_calls=1)
+ def test_tool_budget_forces_no_tools_finalization(self):
+  with self.assertRaisesRegex(PiBudgetStopped,'budget'):self.run_pi('loop',max_tool_calls=1)
   self.assertEqual(len(self.calls),1)
  def test_provider_error_not_success(self):
   with self.assertRaisesRegex(ModelError,'simulated'):self.run_pi('error')
@@ -78,7 +78,9 @@ class PiProviderTests(unittest.TestCase):
   with self.assertRaises(ChatStopped):self.run_pi('wait',stop=stop)
   self.assertEqual(self.calls,[])
  def test_initial_context_budget(self):
-  with self.assertRaisesRegex(ModelError,'上下文'):self.run_pi('x'*3000,max_context_chars=2000)
+  with self.assertRaises(PiBudgetStopped) as caught:self.run_pi('x'*3000,max_context_chars=2000)
+  self.assertEqual(caught.exception.reason,'context_budget_exhausted')
+  self.assertTrue(caught.exception.result['text'].strip())
  def test_absent_model_not_fallback(self):
   cfg=ModelConfig(provider='pi_sdk',model='fake/absent')
   with self.assertRaisesRegex(ModelError,'not found'):PiProvider(cfg).probe()

@@ -101,6 +101,12 @@ Factory 保留旧 DSL `candidate_ids` 合同；普通注册因子明确采用 `a
 
 `agent/research_links.py` 只读现有 run、工作空间 `_trial_registries`、已归档检验族及 ResearchMemory。关联依赖精确 ID、registry/binding 指纹、源实验字节和显式父假设，不按名称或相似参数合并。查询有界分页，部分/错误结果为 UNKNOWN；本地 REGISTERED 不等于可信事前登记、统计充分性或 Alpha。返回本地血缘而非重算 p 值，不新建权威数据库。原生 Chat/MCP 和因子证据页共用这一入口。
 
+### 8.2 有限对话收尾与证据恢复
+
+Pi传输在已有总轮次内保留最后一轮无工具收尾，宿主停止信号在同批工具间立即生效。预算停止携带非空文本、termination/needs_followup/reason；ChatRuntime仅将明确PiBudgetStopped转成追加式partial，Developer直接调用仍失败。协议异常、取消、未知工具和授权校验不因收尾放宽。
+
+`agent/chat_recovery.py`从原会话日志提取有界历史引用，不是第二状态库或可执行检查点。显式recovery_only只开放已有任务/研究/记忆查询和原finding保存；不能新建/批准/重跑研究、恢复Grant或触发行情联网。引用先重读真实来源，超限/缺失明确保留；长期会话仍受原上下文与事件预算限制。桌面预填和CLI共用同一模式。
+
 ## 9. TDX个人研究采集的调度边界
 
 既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。

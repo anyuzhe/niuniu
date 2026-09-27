@@ -50,7 +50,7 @@ class ChatStore(ConversationStore):
         self.append(self.locate(turn_id),mapped,{**payload,'turn_id':turn_id,'event_kind':kind})
 
     def finish(self,turn_id,status,text,metadata):
-        if status not in ('completed','failed','stopped','interrupted'):
+        if status not in ('completed','failed','stopped','interrupted','partial'):
             raise ValueError('无效结束状态')
         cid=self.locate(turn_id)
         self.append(cid,'assistant',{'text':text,'status':status,'turn_id':turn_id,

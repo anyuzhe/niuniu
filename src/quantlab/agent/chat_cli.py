@@ -42,9 +42,10 @@ def headless_chat_runtime(output, data_root=None, *, allow_granted_research=Fals
 def main(argv=None):
     p=argparse.ArgumentParser(description='牛牛 AI 研究助手；凭据由 Codex 或指定环境变量管理')
     p.add_argument('--output',required=True);p.add_argument('--data-root')
-    p.add_argument('--provider',choices=['codex_cli','responses','chat_completions'])
+    p.add_argument('--provider',choices=['codex_cli','responses','chat_completions','pi_sdk'])
     p.add_argument('--model');p.add_argument('--base-url');p.add_argument('--effort');p.add_argument('--codex-path')
     p.add_argument('--session');p.add_argument('--ask');p.add_argument('--probe',action='store_true')
+    p.add_argument('--recover-results',action='store_true',help='整理指定会话已有证据并补存结论；不提交、批准或重跑研究')
     p.add_argument('--list-sessions',action='store_true');p.add_argument('--gui',action='store_true')
     p.add_argument('--accept-model-service',action='store_true',help='明确允许向所选服务发送对话与工具摘要')
     p.add_argument('--allow-granted-research',action='store_true',help='仅接入后台共享任务队列；仍须已有有效 Research Session Grant，不创建授权')
@@ -53,6 +54,12 @@ def main(argv=None):
     p.add_argument('--allow-spec-tests',action='store_true',help='只许可至多3次固定规格测试/字段诊断，不建立通用研究授权')
     p.add_argument('--spec-source-workspace',help='宿主指定另一个工作空间的只读行情归档；仅规格会话，不暴露任意路径')
     a=p.parse_args(argv)
+    if a.recover_results:
+        if not a.session or a.gui or a.probe or a.list_sessions or a.allow_granted_research or a.allow_spec_tests:
+            p.error('--recover-results需要--session，且不与GUI/probe/list/研究执行开关混用')
+        from quantlab.agent.chat_recovery import RECOVERY_PROMPT
+        a.ask=a.ask or RECOVERY_PROMPT
+        a.local_data_only=True
     if a.spec_source_workspace and not a.research_spec:p.error('--spec-source-workspace requires --research-spec')
     if a.spec_source_workspace and (Path(a.spec_source_workspace).is_symlink() or not Path(a.spec_source_workspace).is_dir()):p.error('来源工作空间不存在或是符号链接')
     if a.allow_spec_tests and not a.research_spec:p.error('--allow-spec-tests requires --research-spec')
@@ -74,7 +81,7 @@ def main(argv=None):
                 else:
                     if not a.ask:p.error('提供 --ask、--probe、--list-sessions 或 --gui')
                     cid=a.session or runtime.store.create(a.ask[:60])
-                    result=runtime.send(cid,a.ask,config,allow_send=a.accept_model_service)
+                    result=runtime.send(cid,a.ask,config,allow_send=a.accept_model_service,recovery_only=a.recover_results)
         print(json.dumps({'ok':True,'data':result},ensure_ascii=False,allow_nan=False));return 0
     except Exception as exc:
         print(json.dumps({'ok':False,'error':str(exc)},ensure_ascii=False));return 2

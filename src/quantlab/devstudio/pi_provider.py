@@ -20,6 +20,19 @@ from quantlab.agent.provider_compat import CompletionProtocol
 MAX_FRAME = 2_000_000
 
 
+class PiBudgetStopped(ModelError):
+    """A usable but incomplete deterministic/finalized response; never task success."""
+    code = 'PI_BUDGET_STOPPED'
+
+    def __init__(self, result):
+        self.result = dict(result)
+        self.termination = result.get('termination')
+        self.needs_followup = result.get('needs_followup')
+        self.reason = result.get('reason')
+        super().__init__('Pi budget stopped ('+str(self.reason or 'budget_exhausted')+'): '+
+                         (result.get('text') or 'follow-up is required'))
+
+
 def resolve_pi(pi_path=''):
     """Find the actual installed SDK via the Pi executable, including GUI nvm PATHs."""
     candidates = [Path(pi_path).expanduser()] if pi_path else []
@@ -78,7 +91,18 @@ class PiProvider(CompletionProtocol):
                    'max_tool_calls':cfg.max_tool_calls, 'max_context_chars':cfg.max_context_chars,
                    'max_output_tokens':cfg.max_output_tokens}
         encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False)
-        if len(encoded)>cfg.max_context_chars: raise ModelError('Pi 初始上下文超过角色预算')
+        if len(encoded)>cfg.max_context_chars:
+            if probe: raise ModelError('Pi 初始上下文超过角色预算')
+            reason='context_budget_exhausted'
+            text=(' [Pi budget stop: '+reason+'] 角色上下文超过硬预算，模型未被调用。状态未完成；仅可从本次保留输入/已有证据恢复，'
+                  '不得推断或编造研究数值、批准、提交或写入 finding。')
+            result={'text':text,'provider':'pi_sdk','model':cfg.model.split('/',1)[1],
+                    'pi_provider':cfg.model.split('/',1)[0],'tool_calls':0,
+                    'usage':{'input':0,'output':0,'totalTokens':0},'termination':'budget_stopped',
+                    'needs_followup':True,'reason':reason}
+            emit('pi_budget_stop',{k:result[k] for k in ('termination','needs_followup','reason')})
+            emit('text_delta',{'text':text})
+            raise PiBudgetStopped(result)
         node, sdk = resolve_pi(cfg.pi_path)
         bridge = Path(__file__).with_name('pi_bridge.mjs')
         frames, errors = Queue(maxsize=256), deque(maxlen=20)
@@ -140,7 +164,13 @@ class PiProvider(CompletionProtocol):
                         if not probe and (not isinstance(result.get('text'),str) or not result['text'].strip()):
                             raise ModelError('Pi 没有最终回答')
                         if process.wait(timeout=5)!=0: raise ModelError('Pi 进程非正常结束')
-                        if not probe: emit('text_delta',{'text':result['text']})
+                        if not probe:
+                            if result.get('termination') == 'budget_stopped':
+                                emit('pi_budget_stop', {k:result.get(k) for k in ('termination','needs_followup','reason')})
+                                emit('text_delta',{'text':result['text']})
+                                raise PiBudgetStopped(result)
+                            # Older bridges omit termination metadata; retain normal-answer compatibility.
+                            emit('text_delta',{'text':result['text']})
                         return result
                     else: raise ModelError('Pi 返回未知协议消息')
             except (OSError, subprocess.SubprocessError) as exc:

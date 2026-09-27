@@ -55,7 +55,10 @@ class ResearchChatDialog(QDialog):
         self.input.setAccessibleName('研究问题');left_box.addWidget(self.input)
         self.send_button=button('发送研究问题',self.send,True)
         self.stop_button=button('停止助手（不取消研究）',self.stop);self.stop_button.setEnabled(False)
-        left_box.addWidget(row(self.send_button,self.stop_button));split.addWidget(left)
+        self.recovery_button=button('整理已有结果（不重跑）',self.prepare_recovery)
+        self.recovery_mode=QCheckBox('仅整理已有结果：禁止新研究，核对后可补存原假设结论')
+        left_box.addWidget(self.recovery_mode)
+        left_box.addWidget(row(self.send_button,self.stop_button,self.recovery_button));split.addWidget(left)
         right=QWidget();right_box=QVBoxLayout(right);right_box.addWidget(label('实际工具记录与证据'))
         self.tool_list=QListWidget();self.tool_list.setMaximumHeight(140);right_box.addWidget(self.tool_list)
         self.details=BusinessDetails({});right_box.addWidget(self.details,1)
@@ -86,6 +89,15 @@ class ResearchChatDialog(QDialog):
         if self.busy:return False
         self.input.setPlainText(text);self.input.setFocus();return True
 
+    def prepare_recovery(self):
+        if self.busy:return
+        if self.output!=self.window.output or self.data_root!=self.window.data_root:
+            self.status.setText('工作空间已变化，请重新打开助手。');return
+        from quantlab.agent.chat_recovery import RECOVERY_PROMPT
+        self.profile.setCurrentIndex(self.profile.findData('research'))
+        self.recovery_mode.setChecked(True);self.prefill(RECOVERY_PROMPT)
+        self.status.setText('已准备结果整理草稿；核对后点击发送。不会重跑研究或恢复旧执行授权。')
+
     def config_changed(self):
         self.consent.setChecked(False)
         target='Codex CLI 的 ChatGPT 登录服务' if self.settings.provider.currentData()=='codex_cli' else self.settings.fields['base_url'].text()
@@ -94,7 +106,8 @@ class ResearchChatDialog(QDialog):
     def set_busy(self,busy):
         self.busy=busy
         for control in (self.profile,self.sessions,self.new_button,self.save_button,self.probe_button,self.group,
-            self.consent,self.input,self.send_button,self.open_button,self.approvals_button,self.grant_button):control.setEnabled(not busy)
+            self.consent,self.input,self.send_button,self.open_button,self.approvals_button,self.grant_button,
+            self.recovery_button,self.recovery_mode):control.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
 
     def refresh_sessions(self,selected):
@@ -112,21 +125,27 @@ class ResearchChatDialog(QDialog):
         if self.busy:return
         self.session_id=self.sessions.currentData()
         if not self.session_id:return
+        self.transcript.clear();self.tool_list.clear();self.evidence.clear();self.references={}
+        self.details.setPlainText('{}');self.recovery_mode.setChecked(False)
         try:history=self.runtime.store.events(self.session_id)
         except Exception as error:
+            self.recovery_button.setEnabled(False)
             self.status.setText('会话记录无法读取：'+type(error).__name__);return
-        self.transcript.clear();self.tool_list.clear();self.evidence.clear();self.references={}
-        self.details.setPlainText('{}')
+        self.recovery_button.setEnabled(any(e['kind']=='user' for e in history['events']))
         if history['omitted']:self.transcript.appendPlainText('仅展示最近500条事件；更早记录仍保留在会话目录。')
         for event in history['events']:
             kind=event['kind'];value=event['payload']
             if kind in ('user','assistant'):
                 title='你' if kind=='user' else '助手 · '+value.get('model','')+'（模型生成文字）'
+                if kind=='assistant' and value.get('status')!='completed':title+='【本轮未完成】'
                 self.transcript.appendPlainText(title+'：\n'+value['text']+'\n')
             elif kind in ('tool_start','tool_result'):self.receive(kind,value)
-            elif kind=='state' and value.get('status') in ('failed','cancelled'):
+            elif kind=='state' and value.get('status') in ('failed','cancelled','interrupted','partial'):
                 self.transcript.appendPlainText('【本轮状态】'+value.get('error',value['status']))
-        self.status.setText('已读取本地会话；旧助手文字不是新的研究证据。')
+        last=next((e['payload'] for e in reversed(history['events']) if e['kind']=='assistant'),{})
+        self.status.setText('上轮未完成；可点击“整理已有结果（不重跑）”继续核对。' if last and
+            (last.get('status')!='completed' or last.get('metadata',{}).get('needs_followup'))
+            else '已读取本地会话；旧助手文字不是新的研究证据。')
 
     def receive(self,kind,value):
         if sip.isdeleted(self):return
@@ -176,26 +195,31 @@ class ResearchChatDialog(QDialog):
 
     def send(self):
         if self.busy:return
+        if self.output!=self.window.output or self.data_root!=self.window.data_root:
+            self.status.setText('工作空间已变化，请重新打开助手；未发送。');return
         if not self.consent.isChecked():self.status.setText('请先确认模型数据发送目的地。');return
         try:
             config=self.settings.collect();text=self.input.toPlainText().strip()
             if not text:raise ValueError('请输入研究问题')
         except ValueError as error:self.status.setText(str(error));return
         session=self.session_id;key=self.settings.key.text();self.stop_event=Event();stop=self.stop_event
+        runtime=self.runtime;recovery_only=self.recovery_mode.isChecked()
         self.input.clear();self.set_busy(True)
         self.transcript.appendPlainText('你：\n'+text+'\n\n助手（生成中，非完成状态）：\n')
         self.status.setText('正在请求模型…')
         def done(result,error):
             if sip.isdeleted(self):return
             self.set_busy(False)
+            if self.output!=self.window.output or self.data_root!=self.window.data_root:
+                self.status.setText('工作空间已变化，结果保留在原会话；未加载到当前工作空间。');return
             if error:self.status.setText('未完成：'+error);self.input.setPlainText(text)
             else:
                 self.select_session()
                 self.status.setText('模型本轮完成；调用 '+str(result['tool_calls'])+' 次工具。研究任务状态请以实际归档为准。'
-                    if result['status']=='completed' else result.get('error','本轮未完成'))
+                    if result['status']=='completed' else (result.get('error') or '本轮已暂停，已有结果保留；可使用“整理已有结果（不重跑）”。'))
             if self.close_requested:self.close()
-        self.window.async_call(lambda:self.runtime.run(session,text,config,network_allowed=True,
-            api_key=key,stop=stop,emit=self.signals.event.emit),done,guarded=False)
+        self.window.async_call(lambda:runtime.run(session,text,config,network_allowed=True,
+            api_key=key,stop=stop,emit=self.signals.event.emit,recovery_only=recovery_only),done,guarded=False)
 
     def stop(self):
         self.stop_event.set();self.stop_button.setEnabled(False)

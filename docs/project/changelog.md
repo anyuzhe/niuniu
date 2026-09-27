@@ -2131,3 +2131,12 @@
 - 在全新OS进程、没有研究执行权限的同一会话`199fbfb6-b02f-4750-9621-70c0fee54395`继续原生工具链。13次调用完成Grant核对、研究记忆/实验/任务读回、两次get_run_research_links、证据核对及finding保存；格式错误一次明确拒绝后模型自行修正。恢复Job `b2b1b5f0-ec9f-4fde-b846-c19ab7a818ee`退出0，源码与副本SHA检查通过；累计29调用/29结果，不新增研究任务。保留原预算失败Job `18f433d7-eb8d-4cb9-8b34-a137c18b0dc5`，不把恢复写成首轮无错误完成。
 - 主项目`artifacts/alpha-research-integration-20260927`保存原生v1/v2、主持脚本、输入副本清单、phase3-acceptance.json，以及从worktree复制并逐SHA核对的58份测试证据（97,241字节）；文件不随Git推送。额外宿主只读摘要调用被平台拦截，未更换方式绕过；新进程结论依据真实完成回执，没有编造未读的run/memory编号。
 - 三阶段分别33项、73项、56项测试通过，包含重叠回归不能相加为独立用例数。文档检查129文件、697本地链接、13外链、105运行时链接，0错误。最终仅文档收尾，不改变通过验收的代码；由宿主普通fast-forward集成和push并核对远端SHA，不自动重启、部署或交易。
+
+### 2026-09-27｜[CODE/AI] 硬预算收尾与结果恢复产品接线
+
+- 原因：上轮真实Pi研究完成后仍可能在写finding前耗尽轮次；本轮修复流程，不提高全局预算、不新增无人值守执行。模块：devstudio/pi_bridge.mjs、pi_provider.py；agent/chat_runtime、chat_journal、conversations、新chat_recovery、chat_cli、memory_tools/research_memory；desktop/research_chat及对应测试。
+- Pi在现有总轮次内预留无工具收尾，工具额度/宿主停止/上下文超限后不再派发，批内未执行项仅有模型协议占位，不伪造宿主日志。主控独立复核修复“最后收尾被误标completed”和“同批宿主停止后继续派发”两个边界。PiBudgetStopped保留文本/usage/reason，研究Chat独立转成partial；直接DevStudio使用仍抛异常，取消/身份/协议失败不放宽。
+- 宿主显式recovery_only工具白名单禁止新研究/批准/重跑/新假设和实时行情，允许核对已有归档后补存结论；CLI --recover-results与桌面按钮同源。历史引用只取规范UUID，不回放任意路径、外部文本或旧数值；追加式原记录不覆盖。结论字段说明明确string与字符上限，错误信息可直接指导修正，拒绝数组而非静默转义。
+- 验收：13模块102项PASS，0失败/错误/跳过，覆盖Node真实进程+假ModelRuntime、正常/停止/预算、原生Chat接线、CLI、离屏UI、研究Grant、冻结输入、记忆与Factory；前后源码/测试/计算资源指纹3e8959b82fc3a3dbe47ced965e44bc3f4a5863c8786e4d52ef5a1baa78226de6。不是全仓库或真实模型验收；真实模型另记。
+- 过程证据保留：Lexar卷不支持事务创建文件，原事务已完整回滚并核对SHA后用独占创建；一次观察报告目录不存在；首轮桥接测试缺Node PATH跳过，修正定位后最终全部执行。未隐瞒或抹除失败/跳过记录。
+- 提交状态：宿主独立提交本改动以冻结真实模型验收代码，最终普通fast-forward/push另核对；未改正式数据、采集、Runner/服务、日常模型配置或可见UI。

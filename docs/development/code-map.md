@@ -105,6 +105,10 @@
 
 [team.py](../../src/quantlab/devstudio/team.py) 是 LEAD/DATA/CORE/AI/APP/QA 的归属和模型合同；[planning.py](../../src/quantlab/devstudio/planning.py) 实现需求只读规划、基线绑定和计划确认；原 `devstudio/contracts/store/service/runtime/tools/workspace` 复用 P10 增加专业域校验、受控并行、失败返工、独立 QA 和最终合并复核。桌面入口在 [dev_studio.py](../../src/quantlab/desktop/dev_studio.py)，需求与六角色配置在 [dev_team.py](../../src/quantlab/desktop/dev_team.py)；同源 [CLI](../../src/quantlab/agent/dev_studio_cli.py) 保持无自动 push。新增 [后端闭环测试](../../tests/test_dev_team.py) 与 [离屏入口测试](../../tests/test_dev_team_desktop.py)，使用临时 Git 仓库、真实测试执行和脚本化模型，不能当作付费模型验收。文件归属与现有限制见 [ownership.md](ownership.md)。上方目录数量表仍保留其标明的旧基线，不作为实时统计。
 
+## 研究对话恢复（2026-09-27）
+
+[chat_recovery.py](../../src/quantlab/agent/chat_recovery.py) 从原会话提取历史ID与只整理结果的工具白名单；[chat_runtime.py](../../src/quantlab/agent/chat_runtime.py) 和 [chat_cli.py](../../src/quantlab/agent/chat_cli.py) 执行相同的权限收缩，桌面按钮见 [research_chat.py](../../src/quantlab/desktop/research_chat.py)。Pi预算收尾在 [pi_bridge.mjs](../../src/quantlab/devstudio/pi_bridge.mjs) 与 [pi_provider.py](../../src/quantlab/devstudio/pi_provider.py)，原生研究可以保留partial而开发任务不误报成功。测试见 [test_chat_recovery.py](../../tests/test_chat_recovery.py)、[test_chat_recovery_desktop.py](../../tests/test_chat_recovery_desktop.py)、[test_pi_budget_finalize.py](../../tests/test_pi_budget_finalize.py)。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。
