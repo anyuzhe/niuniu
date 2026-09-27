@@ -22,6 +22,7 @@ from quantlab.factors.wyckoff_classic import ClassicWyckoffFactor
 from quantlab.factors.registry import FactorRegistry
 from quantlab.regime.engine import compute_regime, filter_mask
 from quantlab.storage.codec import digest
+from quantlab.experiments.computation import computation_fingerprint
 from quantlab.storage.experiments import ExperimentStore
 from quantlab.statistics.bootstrap import bootstrap_statistics
 from quantlab.statistics.permutation import permutation_statistics, inference_family
@@ -70,7 +71,8 @@ class ExperimentRunner:
         self.research = research or FactorResearchEngine()
         if hasattr(store,'root'):
             from quantlab.factors.cache import FactorCache
-            code_hash=runtime_fingerprint()['code_hash'];root=store.root/'_factor_cache'
+            from quantlab.experiments.computation import computation_cache_key
+            code_hash=computation_cache_key(computation_fingerprint());root=store.root/'_factor_cache'
             cache=getattr(registry,'_factor_cache',None)
             if cache is None or cache.root!=root or cache.code_hash!=code_hash:
                 cache=FactorCache(root,code_hash);registry._factor_cache=cache
@@ -79,7 +81,7 @@ class ExperimentRunner:
 
     def run(self, config: ExperimentConfig) -> ExperimentResult:
         run_id = str(uuid4())
-        manifest = {"config": asdict(config), "runtime": runtime_fingerprint(), "universe": {"id": self.universe.universe_id, "version": self.universe.version}}
+        manifest = {"config": asdict(config), "runtime": runtime_fingerprint(), "computation_runtime": computation_fingerprint(), "universe": {"id": self.universe.universe_id, "version": self.universe.version}}
         record = {"run_id": run_id, "created_at": datetime.now(timezone.utc).isoformat(), "manifest": manifest}
         try:
             from quantlab.progress import checkpoint

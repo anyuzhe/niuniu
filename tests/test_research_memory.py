@@ -191,6 +191,39 @@ class ResearchMemoryTests(unittest.TestCase):
         with self.assertRaisesRegex(MemoryError,'有效数值'):
             self.memory.save('finding',str(uuid4()),{**spec,'assessment':'supported'})
 
+    def test_run_research_links_readonly_memory_and_registry(self):
+        source=self.source();hid=self.save_hypothesis();self.memory.save('finding',str(uuid4()),finding(hid,source.run_id))
+        from quantlab.agent.catalog import ReadOnlyResearchAPI
+        api=ReadOnlyResearchAPI(self.root)
+        linked=api.call('get_run_research_links',{'run_id':source.run_id,'offset':0,'limit':20})
+        self.assertTrue(linked['ok'],linked)
+        self.assertEqual(linked['data']['status'],'UNREGISTERED')
+        self.assertEqual(len(linked['data']['memory_links']),1)
+        self.assertEqual(linked['data']['memory_links'][0]['source_integrity'],'verified')
+        missing=api.call('get_run_research_links',{'run_id':str(uuid4()),'offset':0,'limit':20})
+        self.assertEqual(missing['data']['status'],'UNKNOWN')
+        from quantlab.storage.codec import digest
+        registry_run=str(uuid4());source_record=json.loads((source.artifact_path/'experiment.json').read_text())
+        registry={'registry_id':'reg-1','plan':{'name':'linked family','alpha':.05,
+            'trials':[{'trial_id':'t1','config':source_record['manifest']['config']}]}}
+        binding={'binding_id':'bind-1','record':source_record}
+        summary={'method':'holm_fwer','alpha':.05,'trials':[{'trial_id':'t1','status':'completed','timing':'after_local_registration'}],
+            'tests':[{'trial_id':'t1','horizon':1,'metric':'daily_mean_rank_ic','status':'computed','p_value':0.5,'p_holm':0.5,'reject_holm':False}],
+            'limitations':'fixture registry'}
+        manifest={'runtime':{},'config':{'research_question':'linked family'},'registry':registry,'bindings':{'t1':binding},'report_hash':digest(summary)}
+        folder=self.root/registry_run;folder.mkdir()
+        (folder/'experiment.json').write_text(json.dumps({'run_id':registry_run,'kind':'trial_registry','status':'completed',
+            'manifest':manifest,'summary':summary,'children':[{'name':'t1','run_id':source.run_id}]}))
+        linked=api.call('get_run_research_links',{'run_id':source.run_id,'offset':0,'limit':20})
+        # An arbitrary UUID + invented registry/binding IDs must never certify registration.
+        self.assertTrue(linked['ok'],linked)
+        self.assertEqual(linked['data']['status'],'UNKNOWN')
+        self.assertEqual(linked['data']['registered_families'],[])
+        self.assertTrue(linked['data']['errors'])
+        before=sorted(p.name for p in self.root.iterdir())
+        api.call('get_run_research_links',{'run_id':source.run_id,'offset':0,'limit':20})
+        self.assertEqual(before,sorted(p.name for p in self.root.iterdir()))
+
     def test_workspace_isolation_and_symlink_guard(self):
         hid=self.save_hypothesis()
         with tempfile.TemporaryDirectory() as other:

@@ -2,7 +2,6 @@
 from PyQt6 import sip
 from PyQt6.QtWidgets import QDialog,QVBoxLayout,QComboBox,QCheckBox,QLineEdit,QPushButton
 from quantlab.agent.alpha_factory import AlphaFactoryService
-from quantlab.agent.dsl_candidates import DslCandidateService
 from quantlab.storage.codec import encode
 from .business_view import BusinessDetails
 from .widgets import label,button,row
@@ -69,13 +68,11 @@ class AlphaFactoryDialog(QDialog):
         def show(value):
             if self.proposals.currentData()!=proposal_id:return
             self.current=value;self.details.setPlainText(encode(value));self.candidates.clear()
-            registered=DslCandidateService(self.window.output)
+            names={c['candidate_id']:c.get('name',c['candidate_id'][:8]) for c in value.get('prepared',{}).get('candidates',[])}
             promoted={r['candidate_id'] for r in value.get('promotions',[])}
             for cid in value.get('recommended_candidate_ids',[]):
                 if cid in promoted:continue
-                try:name=registered.get(cid)['plan']['name']
-                except Exception:name=cid[:8]
-                self.candidates.addItem(name,cid)
+                self.candidates.addItem(names.get(cid,cid[:8]),cid)
             self.buttons()
         self.work(lambda:self.service.get(proposal_id),show)
     def submit(self):
@@ -102,8 +99,8 @@ class AlphaFactoryDialog(QDialog):
         if not self.current or not self.promote_confirm.isChecked() or not self.candidates.currentData():return
         cid=self.candidates.currentData();name=self.watch_name.text().strip()
         if not name:
-            try:name=DslCandidateService(self.window.output).get(cid)['plan']['name']+' · Factory观察'
-            except Exception:name='Factory候选 '+cid[:8]
+            names={c['candidate_id']:c.get('name',c['candidate_id'][:8]) for c in self.current.get('prepared',{}).get('candidates',[])}
+            name=names.get(cid,'Factory候选 '+cid[:8])+' · Factory观察'
         proposal_id=self.current['proposal_id']
         def show(value):
             self.promote_confirm.setChecked(False);self.details.setPlainText(encode(value))

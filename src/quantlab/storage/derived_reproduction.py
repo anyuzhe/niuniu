@@ -160,7 +160,7 @@ def reproduce_alpha_factory(path,output,graph):
     from copy import deepcopy
     from datetime import date,datetime,timezone
     from uuid import uuid4
-    from quantlab.agent.alpha_factory import factory_decisions
+    from quantlab.agent.alpha_factory import factory_decisions,plan_candidate_ids
     from quantlab.agent.candidate_review import compare_candidate
     from quantlab.experiments.residual import run_residual
     from quantlab.experiments.return_increment import compare_returns
@@ -170,7 +170,8 @@ def reproduce_alpha_factory(path,output,graph):
     from quantlab.storage.experiments import LocalExperimentStore,load_record_fields
 
     record=graph[path.name];manifest=record['manifest'];original=record['summary'];plan=manifest['plan']
-    if original['planned_tests']!=len(original['tests']) or original['planned_candidates']!=len(plan['candidate_ids']):
+    candidate_ids=plan_candidate_ids(plan)
+    if original['planned_tests']!=len(original['tests']) or original['planned_candidates']!=len(candidate_ids):
         raise ValueError('Factory父归档计划数量不一致')
     primary=[plan['baseline_run_id'],*plan['control_run_ids']]
     if plan['require_net_return']:primary.append(plan['baseline_execution_run_id'])
@@ -183,7 +184,7 @@ def reproduce_alpha_factory(path,output,graph):
             raise ValueError('Factory来源复算未匹配：'+run_id)
         new_paths[run_id]=Path(result['artifact_path']);mapping.update(result.get('run_mapping',{}));mapping[run_id]=result['run_id']
     tests=[];reviews={};new_runs={};new_children=[]
-    for cid in plan['candidate_ids']:
+    for cid in candidate_ids:
         old_runs=original['runs'].get(cid,{})
         factor_old=old_runs.get('factor_run_id');execution_old=old_runs.get('execution_run_id')
         new_runs[cid]={'factor_job_id':old_runs.get('factor_job_id'),'factor_run_id':mapping.get(factor_old)}
@@ -219,7 +220,7 @@ def reproduce_alpha_factory(path,output,graph):
     for row,p in zip(tests,adjusted):
         row['p_holm']=p;row['reject']=p<=plan['alpha'] if p is not None else None
     names={d['candidate_id']:d['name'] for d in original['decisions']}
-    prepared={'plan':plan,'candidates':[{'candidate_id':cid,'name':names[cid]} for cid in plan['candidate_ids']]}
+    prepared={'plan':plan,'candidates':[{'candidate_id':cid,'name':names[cid]} for cid in candidate_ids]}
     decisions=factory_decisions(prepared,tests,reviews)
     report=deepcopy(original);report.update(tests=tests,candidate_reviews=reviews,runs=new_runs,
         decisions=decisions,available_tests=sum(t.get('p_value') is not None for t in tests),
@@ -248,7 +249,7 @@ def reproduce_alpha_factory(path,output,graph):
     target=LocalExperimentStore(output).save(run_id,new_record,None);mapping[path.name]=run_id
     failed=sum(t['status']=='failed' for t in tests)
     verification={'source_run_id':path.name,'run_id':run_id,'artifact_path':str(target),'run_mapping':mapping,
-        'planned_candidates':len(plan['candidate_ids']),'planned_tests':len(tests),
+        'planned_candidates':len(candidate_ids),'planned_tests':len(tests),
         'recomputed_tests':len(tests)-failed,'preserved_failed_slots':failed,
         'status':'available_results_matched' if failed else 'numerically_matched',
         'scope':'Recomputed frozen source studies, candidate reviews, all available Factory tests, Factory-wide Holm and the unchanged watchlist recommendation rule.'}

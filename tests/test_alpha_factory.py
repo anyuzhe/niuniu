@@ -5,7 +5,7 @@ import unittest
 
 import test_core
 from test_restricted_dsl import sample_ast
-from quantlab.agent.alpha_factory import AlphaFactoryService
+from quantlab.agent.alpha_factory import AlphaFactoryService,candidate_ref_id
 from quantlab.agent.dsl_candidates import DslCandidateService
 from quantlab.agent.market_data_tools import MarketDataResearchAPI
 from quantlab.app import build_runner
@@ -105,3 +105,68 @@ class AlphaFactoryTests(unittest.TestCase):
         proof=reproduce_artifact(self.output/result['result_run_id'],self.fx.root/'factory-reproduced')
         self.assertEqual(proof['status'],'numerically_matched')
         self.assertEqual(proof['planned_candidates'],1);self.assertEqual(proof['planned_tests'],1)
+
+    def v2_plan(self, **changes):
+        ref={'kind':'registered_factor','factor_id':'BASE.MOMENTUM','version':'1.0.0',
+            'parameters':{'lookback':3},'name':'注册动量3'}
+        value=self.plan(format='alpha-factory-plan-v2',candidate_refs=[ref]);value.pop('candidate_ids')
+        value.update(changes);return value
+
+    def test_registered_factor_refs_preview_submit_sync_reproduce(self):
+        plan=self.v2_plan();cid=candidate_ref_id(plan['candidate_refs'][0])
+        preview=self.service.preview(plan)
+        self.assertEqual(preview['candidates'][0]['candidate_id'],cid)
+        self.assertEqual(preview['candidates'][0]['name'],'注册动量3')
+        self.assertEqual(preview['candidates'][0]['factor_spec']['factor'],'BASE.MOMENTUM')
+        proposal=self.service.propose(str(uuid4()),plan);queue=JobQueue(self.output,self.fx.root)
+        try:self.service.submit(proposal['proposal_id'],proposal['prepared_digest'],lambda:queue,confirmed=True)
+        finally:queue.close()
+        result=self.service.sync(proposal['proposal_id'])
+        self.assertEqual(result['status'],'completed')
+        self.assertEqual(result['decisions'][0]['name'],'注册动量3')
+        record=json.loads((self.output/result['result_run_id']/'experiment.json').read_text())
+        self.assertIn('candidate_refs',record['manifest']['plan'])
+        self.assertNotIn('candidate_ids',record['manifest']['plan'])
+        from quantlab.storage.bundle import reproduce_artifact
+        proof=reproduce_artifact(self.output/result['result_run_id'],self.fx.root/'factory-v2-reproduced')
+        self.assertEqual(proof['status'],'numerically_matched')
+        self.assertEqual(proof['planned_candidates'],1)
+
+    def test_computation_compatible_previous_ui_baseline_runs_through_cost_after_factory(self):
+        account=self.baseline_execution()
+        # Model a saved previous UI build in isolated archives, leaving computation and inputs exact.
+        for run_id in (self.baseline.run_id,account.run_id):
+            path=self.output/run_id/'experiment.json';value=json.loads(path.read_text())
+            value['manifest']['runtime']['code_hash']='0'*64
+            value['experiment_id']=digest(value['manifest']);path.write_text(json.dumps(value))
+        plan=self.v2_plan(require_net_return=True,baseline_execution_run_id=account.run_id)
+        preview=self.service.preview(plan)
+        self.assertEqual(preview['format'],'alpha-factory-v2')
+        self.assertTrue(all(row['compatible'] for row in preview['runtime_compatibility']))
+        proposal=self.service.propose(str(uuid4()),plan);queue=JobQueue(self.output,self.fx.root)
+        try:self.service.submit(proposal['proposal_id'],proposal['prepared_digest'],lambda:queue,confirmed=True)
+        finally:queue.close()
+        result=self.service.sync(proposal['proposal_id'])
+        self.assertEqual(result['status'],'completed');self.assertEqual(len(result['tests']),2)
+        self.assertTrue(all(row['status']=='completed' for row in result['tests']),result['tests'])
+        path=self.output/self.baseline.run_id/'experiment.json';value=json.loads(path.read_text())
+        value['manifest']['computation_runtime']['code_hash']='0'*64
+        value['experiment_id']=digest(value['manifest']);path.write_text(json.dumps(value))
+        with self.assertRaisesRegex(ValueError,'computation'):
+            self.service.preview(plan)
+
+    def test_registered_factor_refs_reject_bad_contracts(self):
+        with self.assertRaisesRegex(ValueError,'字段不完整'):
+            self.service.preview({**self.plan(), 'candidate_refs':[{'kind':'registered_factor'}]})
+        from quantlab.agent.alpha_factory import normalize_plan
+        default=self.v2_plan();default['candidate_refs'][0]['parameters']={}
+        canonical=normalize_plan(default)
+        self.assertEqual(canonical['candidate_refs'][0]['parameters'],{'lookback':20})
+        duplicate=dict(canonical['candidate_refs'][0],name='same normalized factor')
+        with self.assertRaisesRegex(ValueError,'重复'):
+            normalize_plan({**default,'candidate_refs':[default['candidate_refs'][0],duplicate]})
+        with self.assertRaisesRegex(ValueError,'版本'):
+            normalize_plan({**default,'format':'future-format'})
+        bad=self.v2_plan();bad['candidate_refs'][0]['factor_id']='NO.SUCH'
+        with self.assertRaisesRegex(ValueError,'Unknown factor'):
+            self.service.preview(bad)

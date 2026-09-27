@@ -93,6 +93,14 @@ Broker Shadow 保存只读脱敏账户证据与对账。RealTrade Readiness 缺�
 
 早期 2,000 多行总体规划与多轮改造方案完整保留，但不再与当前架构并列为“最新权威”。新增功能沿现有边界接线，避免复制数据状态、破坏因果口径或增加无关功能。
 
+### 8.1 版本化计算身份与研究关联（2026-09-27）
+
+`experiments/computation.py` 为因子缓存和 Factory 基准比较提供 `computation-runtime-v1`：覆盖除 `desktop/` 外的保守 Python 集合、计算 JSON 资源、Python 及 numpy/polars/pyarrow/duckdb 版本。缓存键同时绑定上述身份，不仅绑定源文件；新档即便完整应用指纹相同也必须核对计算资源/依赖。`runtime_fingerprint()` 原合同不变，审批、Grant、JobQueue 和默认精确复算仍绑定全应用。计算兼容不签发授权，不代表跨应用版本可以精确复算；旧档缺计算身份时仍按旧完整运行环境处理。
+
+Factory 保留旧 DSL `candidate_ids` 合同；普通注册因子明确采用 `alpha-factory-plan-v2` / `candidate_refs`，输出 `alpha-factory-v2`。参数规范化后固定因子 ID、版本、参数和定义/代码指纹，语义重复候选拒绝；只接受现有评价器支持的收盘可用 scalar/boolean。沿用原审批、队列、固定检验族、失败槽位、结果归档和人工观察池晋级。旧冻结计划不自动升级，新代码变动须重新提案。
+
+`agent/research_links.py` 只读现有 run、工作空间 `_trial_registries`、已归档检验族及 ResearchMemory。关联依赖精确 ID、registry/binding 指纹、源实验字节和显式父假设，不按名称或相似参数合并。查询有界分页，部分/错误结果为 UNKNOWN；本地 REGISTERED 不等于可信事前登记、统计充分性或 Alpha。返回本地血缘而非重算 p 值，不新建权威数据库。原生 Chat/MCP 和因子证据页共用这一入口。
+
 ## 9. TDX个人研究采集的调度边界
 
 既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。

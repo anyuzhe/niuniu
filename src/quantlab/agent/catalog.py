@@ -32,6 +32,7 @@ TOOLS = [
     schema('get_experiment', '读取指定实验的统计摘要和实际证据引用。', {'run_id': TEXT}),
     schema('get_job', '读取现有任务状态，不提交或取消任务。', {'job_id': TEXT}),
     schema('get_proposal_progress', '只读关联一个真实提案、任务日志、冻结清单和结果头部；须披露errors/incomplete，不把日志running当进程在线。不批准、不恢复、不重跑。', {'proposal_id': TEXT}),
+    schema('get_run_research_links', '只读查看一个run_id与已登记TrialRegistry检验族、研究记忆假设/结论的精确证据关联；host固定当前output，模型不能传path，不按名称或相似参数伪join。', {'run_id': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
 ]
 
 
@@ -109,6 +110,7 @@ class ReadOnlyResearchAPI:
                     'strategy_package_preview_available': True, 'strategy_package_execution_authorized': False,
                     'strategy_archive_discovery_available': True, 'strategy_result_comparison_available': True,
                     'strategy_archive_write_authorized': False,
+                    'run_research_links_available': True,
                     'limitations': ['只读研究接口，不是已经接入大模型的对话助手。',
                         '历史行业/每日市值、严格 PIT 与官方历史涨跌停规则仍有资料缺口。',
                         '实验成功状态不代表统计有效、真实可成交或未来盈利。',
@@ -218,6 +220,14 @@ class ReadOnlyResearchAPI:
             if data.get('can_open_result'):
                 evidence.append({'kind': 'experiment', 'run_id': data['result']['run_id']})
             return data, evidence
+        if name == 'get_run_research_links':
+            from quantlab.agent.research_links import get_run_research_links
+            run_id = self.identifier(args['run_id'])
+            data = get_run_research_links(self.output, run_id, offset=args['offset'], limit=args['limit'])
+            evidence = [{'kind':'experiment','run_id':run_id}] if data.get('target_sha256') else []
+            evidence += [{'kind':'experiment','run_id':r['registry_run_id']} for r in data.get('registered_families',[]) if r.get('registry_run_id')]
+            evidence += [{'kind':'memory','memory_id':r['memory_id']} for r in data.get('memory_links',[])]
+            return data, evidence
         if name == 'get_job':
             job_id = self.identifier(args['job_id'])
             path = self.output/'_jobs'/(job_id+'.json')
@@ -239,7 +249,7 @@ class ReadOnlyResearchAPI:
         try:
             self.validate(name, arguments)
             data, evidence = self._read(name, arguments)
-            exact = name in {'preview_strategy_package', 'list_strategy_runs', 'get_strategy_run', 'compare_strategy_runs', 'get_proposal_progress'}
+            exact = name in {'preview_strategy_package', 'list_strategy_runs', 'get_strategy_run', 'compare_strategy_runs', 'get_proposal_progress', 'get_run_research_links'}
             result = {'ok': True, 'tool': name, 'data': data if exact else compact(data),
                       'evidence': evidence, 'warnings': [], 'error': None}
             if name == 'list_strategy_runs' and data.get('incomplete'):

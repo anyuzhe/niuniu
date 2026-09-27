@@ -16,6 +16,18 @@ from test_multitimeframe import bars,at
 from test_regime import inputs
 
 class CompletionFoundationsTests(unittest.TestCase):
+    def test_computation_fingerprint_excludes_desktop_and_marks_compatibility(self):
+        from quantlab.experiments.computation import computation_fingerprint, compatible_computation_runtime
+        fp=computation_fingerprint()
+        self.assertEqual(fp['version'],'computation-runtime-v1')
+        self.assertFalse(any(p.startswith('desktop/') for p in fp['included']))
+        self.assertTrue(any(p.startswith('factors/') for p in fp['included']))
+        ok,note=compatible_computation_runtime(fp,dict(fp, included=[]))
+        self.assertTrue(ok,note)
+        changed=dict(fp,code_hash='different')
+        ok,note=compatible_computation_runtime(changed,fp)
+        self.assertFalse(ok);self.assertIn('code_hash',note)
+
     def test_cache_integrity_and_identity(self):
         frame=pl.DataFrame({'value':[1.,2.]})
         with tempfile.TemporaryDirectory() as tmp:

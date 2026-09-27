@@ -8,8 +8,8 @@ from quantlab.storage.codec import encode
 
 PLAN={'type':'string','maxLength':24000}
 TOOLS=[
-    schema('preview_alpha_factory','预检固定Alpha Factory：冻结已注册DSL候选、基准/控制归档、样本、全Factory检验族和观察池筛选规则。不执行。',{'plan_json':PLAN}),
-    schema('propose_alpha_factory','保存待宿主一次批准的固定Alpha Factory，不执行研究。request_id须为UUID。',{'request_id':TEXT,'plan_json':PLAN}),
+    schema('preview_alpha_factory','预检固定Alpha Factory：旧合同用candidate_ids冻结已注册DSL候选；v2须增加format=alpha-factory-plan-v2并改用candidate_refs（不能有candidate_ids）；每项严格为kind=registered_factor、factor_id、version、parameters、name，参数按实际注册表规范化。不执行。',{'plan_json':PLAN}),
+    schema('propose_alpha_factory','保存待宿主一次批准的固定Alpha Factory，不执行研究。request_id须为UUID。plan_json支持旧candidate_ids，或format=alpha-factory-plan-v2加candidate_refs；模型不能approve/execute/promote。',{'request_id':TEXT,'plan_json':PLAN}),
     schema('get_alpha_factory','读取Factory计划、任务、全族Holm和观察池建议；不提交、同步或晋级。',{'proposal_id':TEXT}),
     schema('list_alpha_factories','查询已保存Factory；status留空表示全部。',{'status':TEXT,'offset':OFFSET,'limit':LIMIT}),
 ]
@@ -50,7 +50,7 @@ class AlphaFactoryAPI(DslCandidateAPI):
                 data={'factories':selected[offset:offset+limit],'total':len(selected),'errors':rows['errors']};refs=[]
             reply={'ok':True,'tool':name,'data':compact(data),'evidence':refs,
                 'warnings':['Factory必须宿主批准后才能执行；模型不能同步结果或把候选自动加入观察池。'],'error':None}
-            if len(encode(reply))>32000:reply['data']={'omitted':True,'reason':'result_size_limit'}
+            if len(encode(reply))>32000:raise ValueError('Factory响应超过预算，请缩小候选或分页；不返回空成功结果')
             return json.loads(encode(reply))
         except (ValueError,TypeError,KeyError,OSError,ModelError) as error:
             return {'ok':False,'tool':name,'data':None,'evidence':[],'warnings':[],

@@ -2110,3 +2110,10 @@
 - 最终测试：7模块33项PASS，0失败/错误/跳过，源码和测试指纹前后一致。日志与JSON在`artifacts/alpha-research-integration-20260927/phase1-validation-final.json`。首次旧聊天测试失败保留：MainWindow(tmp,tmp)自动首页读取了DATA正式目录，回调超时且Qt退出异常；诊断堆栈定位到market_overview._load_panel。已在聊天测试中显式隔离该无关数据依赖，仍走原生异步失败反馈，未放宽原断言。首次只有读取正式源，未改源数据；最终回归不再触及正式源。
 - 本阶段在独立分支提交，历史数值/正式数据/采集/服务/日常模型配置和权限未改；没有可见桌面或真实模型验收。阶段2、阶段3另行实施，不能把本阶段的模拟模型/离屏测试算作真实AI研究。
 
+### 2026-09-27｜[CODE] 阶段2：Factory普通因子、计算指纹与精确研究关联
+
+- 在阶段1提交`75d0611`后继续同一隔离分支。Factory新增显式`alpha-factory-plan-v2`/`candidate_refs`，保留v1 DSL；参数经真实注册表规范化，稳定ID不依赖名称，重复语义/未知因子/不支持可用时点拒绝。完整接通原预览、待批准提案、人工提交、JobQueue、固定检验族、可选成本后增量、归档、同环境复算与人工Watch。原模型没有新增批准/执行Factory权限。
+- 新`computation-runtime-v1`覆盖保守非桌面Python、计算JSON、Python和numpy/polars/pyarrow/duckdb版本；缓存键含完整计算身份。修正“全应用Python指纹相同却跳过JSON/依赖变化”的漏洞，基准逐来源返回兼容说明。旧无计算指纹的档案仍要求原全应用条件；SessionGrant、审批、队列guard和默认精确复算不放松。不实现任意跨版本精确复算。
+- 研究关联改为读取实际`_trial_registries`及归档族；验证registry/binding/源实验SHA与身份，ResearchMemory沿精确run_id和hypothesis_id关联。原生Chat/MCP与只读分页桌面共用服务，未创建第二权威数据库。最初草稿只扫描归档并接受假注册ID，独立复核后重写为真实合同；新测试使用真实create/bind/report/archive，伪造ID拒绝。部分/坏记录/超预算不认证未登记，关联不重新计算p值。
+- 最终10模块73项全部PASS、0失败/错误/跳过；源码/测试/计算资源一致指纹`4b2d655d2027240d33530c54ab80668e64514129ff8dc55e4619c2882e00942b`。证据在`artifacts/alpha-research-integration-20260927/phase2-validation-complete.json`及逐模块日志。先前报告保留1项缺兼容明细字段错误；修后包含成本后跨UI基准端到端与原v1/v2同环境复算、只读Chat/MCP、授权/输入冻结、Qt迟到回调的完整复跑。不是全项目测试。
+- 宿主独立提交本阶段；正式数据、原始归档、采集、服务、日常模型设置和交易权限未改。阶段3使用独立实际数据副本与有限授权验收内置AI，不由开发者代选研究内容。

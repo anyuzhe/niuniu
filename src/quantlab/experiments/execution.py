@@ -9,6 +9,7 @@ from quantlab.execution.portfolio import TargetWeightBuilder, PortfolioConfig
 from quantlab.storage.codec import digest
 from quantlab.storage.experiments import load_record
 from quantlab.experiments.runner import runtime_fingerprint
+from quantlab.experiments.computation import computation_fingerprint
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,7 @@ class ExecutionStudy:
             from quantlab.trading.strategy_package import validate_runtime_strategy_source
             strategy_package=validate_runtime_strategy_source(strategy_package,config,execution_config,portfolio_config,backend,market_rules)
         run_id=str(uuid4())
-        manifest={'config':asdict(config),'execution':asdict(execution_config),'portfolio':asdict(portfolio_config),'backend':backend,'market_rules':market_rules.records if market_rules else None,'runtime':runtime_fingerprint()}
+        manifest={'config':asdict(config),'execution':asdict(execution_config),'portfolio':asdict(portfolio_config),'backend':backend,'market_rules':market_rules.records if market_rules else None,'runtime':runtime_fingerprint(),'computation_runtime':computation_fingerprint()}
         if strategy_package is not None:manifest['strategy_package']=strategy_package
         record={'run_id':run_id,'created_at':datetime.now(timezone.utc).isoformat(),'kind':'execution',
             'manifest':manifest,'children':[]}

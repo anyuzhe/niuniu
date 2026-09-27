@@ -10,7 +10,10 @@ import json
 from quantlab.agent.candidate_review import compare_candidate
 from quantlab.agent.dsl_candidates import DslCandidateService
 from quantlab.experiments.campaign_state import read_checked,write_checked
+from dataclasses import asdict
+from quantlab.domain import FactorType
 from quantlab.experiments.runner import runtime_fingerprint
+from quantlab.experiments.computation import computation_fingerprint, manifest_runtime_compatible
 from quantlab.statistics.permutation import holm
 from quantlab.storage.artifact_integrity import snapshot_tree
 from quantlab.storage.codec import digest
@@ -18,9 +21,14 @@ from quantlab.storage.experiments import LocalExperimentStore,load_record_fields
 
 NAMESPACE=UUID('bba57ed9-e650-4dcb-b7d0-f177bdf7ce91')
 FORMAT='alpha-factory-v1'
-PLAN_KEYS={'name','candidate_ids','baseline_run_id','control_run_ids','baseline_execution_run_id',
+FORMAT_V2='alpha-factory-v2'
+PLAN_V2='alpha-factory-plan-v2'
+COMMON_PLAN_KEYS={'name','baseline_run_id','control_run_ids','baseline_execution_run_id',
     'train_end','evaluation_start','horizon','alpha','min_common_finite_ratio','max_abs_signal_corr',
     'require_positive_paired_ic_difference','require_net_return'}
+PLAN_KEYS=COMMON_PLAN_KEYS|{'candidate_ids'}
+REF_PLAN_KEYS=COMMON_PLAN_KEYS|{'format','candidate_refs'}
+CANDIDATE_REF_KEYS={'kind','factor_id','version','parameters','name'}
 
 
 def canonical_id(value):
@@ -30,14 +38,53 @@ def canonical_id(value):
 
 def now():return datetime.now(timezone.utc).isoformat()
 
+def _normalize_candidate_ref(ref):
+    from quantlab.app import default_registry
+    if not isinstance(ref,dict) or set(ref)!=CANDIDATE_REF_KEYS or ref.get('kind')!='registered_factor':
+        raise ValueError('candidate_refs只接受kind/factor_id/version/parameters/name严格字段')
+    if not all(isinstance(ref.get(k),str) and ref[k] for k in ('factor_id','version','name')):
+        raise ValueError('普通因子候选引用字段无效')
+    if not 1<=len(ref['name'].strip())<=120:raise ValueError('普通因子候选名称须为1–120字符')
+    if not isinstance(ref.get('parameters'),dict):raise ValueError('普通因子候选参数须为对象')
+    factor=default_registry().get(ref['factor_id'],ref['version'])
+    if factor.definition.factor_type not in (FactorType.SCALAR,FactorType.BOOLEAN):
+        raise ValueError('Alpha Factory当前只接受scalar/boolean注册因子')
+    params=factor.parameters(ref['parameters'])
+    if factor.definition.available_at_rule!='bar close':raise ValueError('Alpha Factory不默许延迟可用因子')
+    return {'kind':'registered_factor','factor_id':ref['factor_id'],'version':ref['version'],'parameters':params,'name':ref['name'].strip()}
+
+
+def candidate_ref_id(ref):
+    ref=_normalize_candidate_ref(ref)
+    return str(uuid5(NAMESPACE,'registered-factor:'+digest({k:ref[k] for k in ('factor_id','version','parameters')})))
+
+
+def plan_candidate_ids(plan):
+    if 'candidate_ids' in plan:return list(plan['candidate_ids'])
+    if plan.get('format')!=PLAN_V2:raise ValueError('Factory候选引用计划版本不支持')
+    ids=[]
+    for ref in plan['candidate_refs']:
+        if not isinstance(ref,dict) or set(ref)!=CANDIDATE_REF_KEYS:raise ValueError('Factory candidate_refs归档字段不完整')
+        ids.append(str(uuid5(NAMESPACE,'registered-factor:'+digest({k:ref[k] for k in ('factor_id','version','parameters')}))))
+    return ids
+
+
 def normalize_plan(plan):
-    if not isinstance(plan,dict) or set(plan)!=PLAN_KEYS:raise ValueError('Alpha Factory计划字段不完整')
+    if not isinstance(plan,dict) or set(plan) not in (PLAN_KEYS,REF_PLAN_KEYS):raise ValueError('Alpha Factory计划字段不完整')
     name=plan['name']
     if not isinstance(name,str) or not 1<=len(name.strip())<=120:raise ValueError('工厂名称须为1–120字符')
-    candidates=plan['candidate_ids']
-    if not isinstance(candidates,list) or not 1<=len(candidates)<=12:raise ValueError('一次工厂须冻结1–12个候选')
-    candidates=[canonical_id(v) for v in candidates]
-    if len(set(candidates))!=len(candidates):raise ValueError('候选不能重复')
+    if 'candidate_ids' in plan:
+        candidates=plan['candidate_ids']
+        if not isinstance(candidates,list) or not 1<=len(candidates)<=12:raise ValueError('一次工厂须冻结1–12个候选')
+        candidates=[canonical_id(v) for v in candidates]
+        if len(set(candidates))!=len(candidates):raise ValueError('候选不能重复')
+    else:
+        if plan['format']!=PLAN_V2:raise ValueError('Factory候选引用计划版本不支持')
+        refs=plan['candidate_refs']
+        if not isinstance(refs,list) or not 1<=len(refs)<=12:raise ValueError('一次工厂须冻结1–12个候选')
+        refs=[_normalize_candidate_ref(v) for v in refs]
+        ids=[candidate_ref_id(v) for v in refs]
+        if len(set(ids))!=len(ids):raise ValueError('候选不能重复')
     baseline=canonical_id(plan['baseline_run_id']);controls=plan['control_run_ids']
     if not isinstance(controls,list) or not 1<=len(controls)<=5:raise ValueError('控制因子须为1–5个完成归档')
     controls=[canonical_id(v) for v in controls]
@@ -57,11 +104,14 @@ def normalize_plan(plan):
     if type(corr) not in (int,float) or not 0<=corr<=1:raise ValueError('最大绝对相关须在0与1之间')
     positive=plan['require_positive_paired_ic_difference']
     if type(positive) is not bool:raise ValueError('配对IC方向开关必须为布尔值')
-    return {'name':name.strip(),'candidate_ids':candidates,'baseline_run_id':baseline,
+    result={'name':name.strip(),'baseline_run_id':baseline,
         'control_run_ids':controls,'baseline_execution_run_id':execution,
         'train_end':split.isoformat(),'evaluation_start':evaluation.isoformat(),'horizon':horizon,'alpha':float(alpha),
         'min_common_finite_ratio':float(ratio),'max_abs_signal_corr':float(corr),
         'require_positive_paired_ic_difference':positive,'require_net_return':require_net}
+    if 'candidate_ids' in plan:result['candidate_ids']=candidates
+    else:result.update(format=PLAN_V2,candidate_refs=refs)
+    return result
 
 
 def _record(output,run_id,kind='factor'):
@@ -74,23 +124,23 @@ def _record(output,run_id,kind='factor'):
         raise ValueError('请选择已完成的'+kind+'归档')
     return record,path.parent
 
-def _factor_spec(record,name,parameters):
+def _factor_spec(record,name,parameters,factor_id='DSL.RESTRICTED',version='1.0.0'):
     manifest=record['manifest'];cfg=deepcopy(manifest['config'])
     if manifest['universe'].get('id')!='explicit_symbols' or cfg.get('theory_origin'):
         raise ValueError('Alpha Factory当前只接受显式股票池和注册因子基准')
     names={'research_question':'question','factor_id':'factor','factor_version':'version','random_seed':'seed'}
     spec={names.get(k,k):v for k,v in cfg.items() if k not in ('data','theory_origin') and v is not None}
-    spec.update(cfg['data']);spec.update(question=name,factor='DSL.RESTRICTED',version='1.0.0',
+    spec.update(cfg['data']);spec.update(question=name,factor=factor_id,version=version,
         parameters=parameters,mode='single',replay=True,
         adjustment=manifest['data_snapshot']['adjustment'])
     return spec
 
 
-def _execution_spec(record,name,parameters):
+def _execution_spec(record,name,parameters,factor_id='DSL.RESTRICTED',version='1.0.0'):
     manifest=record['manifest'];cfg=deepcopy(manifest['config'])
     names={'research_question':'question','factor_id':'factor','factor_version':'version','random_seed':'seed'}
     spec={names.get(k,k):v for k,v in cfg.items() if k not in ('data','theory_origin') and v is not None}
-    spec.update(cfg['data']);spec.update(question=name,factor='DSL.RESTRICTED',version='1.0.0',
+    spec.update(cfg['data']);spec.update(question=name,factor=factor_id,version=version,
         parameters=parameters,mode='execution',replay=True,
         adjustment=manifest['signal_data_snapshot']['adjustment'],execution=manifest['execution'],
         portfolio=manifest['portfolio'],execution_backend=manifest['backend'])
@@ -100,9 +150,12 @@ def _execution_spec(record,name,parameters):
 def prepare_factory(output,plan):
     from quantlab.app import default_registry
     from quantlab.agent.planning import preview_experiment
-    output=Path(output).resolve();plan=normalize_plan(plan);runtime=runtime_fingerprint()
+    output=Path(output).resolve();plan=normalize_plan(plan);runtime=runtime_fingerprint();comp=computation_fingerprint()
     baseline,_=_record(output,plan['baseline_run_id']);base=baseline['manifest'];cfg=base['config']
-    if base.get('runtime')!=runtime:raise ValueError('基准运行环境与当前代码不同，请先重建基准')
+    ok,note=manifest_runtime_compatible(base,runtime,comp)
+    if not ok:raise ValueError('基准运行环境与当前代码不同，请先重建基准：'+note)
+    compatibility=[{'run_id':plan['baseline_run_id'],'role':'baseline','compatible':ok,
+                    'full_runtime_equal':base.get('runtime')==runtime,'note':note}]
     if plan['horizon'] not in cfg['horizons']:raise ValueError('基准缺少所选持有期')
     split=date.fromisoformat(plan['train_end']);start=date.fromisoformat(cfg['data']['start']);end=date.fromisoformat(cfg['data']['end'])
     if not start<=split<end:raise ValueError('训练截止须位于基准区间内并保留样本外')
@@ -115,37 +168,61 @@ def prepare_factory(output,plan):
         for key in ('data','context','processor','regime','regime_filter'):
             if other.get(key)!=cfg.get(key):raise ValueError('控制因子研究条件不同：'+key)
         if plan['horizon'] not in other['horizons']:raise ValueError('控制因子缺少所选持有期')
-        if manifest.get('runtime')!=runtime:raise ValueError('控制因子运行环境与当前代码不同')
+        ok,note=manifest_runtime_compatible(manifest,runtime,comp)
+        if not ok:raise ValueError('控制因子运行环境与当前代码不同：'+note)
+        compatibility.append({'run_id':run_id,'role':'control','compatible':ok,
+                              'full_runtime_equal':manifest.get('runtime')==runtime,'note':note})
         source_fingerprints[run_id]=digest(snapshot_tree(output,run_id))
-    registry=default_registry();dsl=registry.get('DSL.RESTRICTED','1.0.0');dsl_hash=registry.code_hash(dsl)
-    service=DslCandidateService(output);candidates=[]
-    for candidate_id in plan['candidate_ids']:
-        record=service.get(candidate_id);candidate=record['plan']
-        if candidate['factor_code_hash']!=dsl_hash:raise ValueError('DSL代码变化；请重新验证并注册候选')
-        params=dsl.parameters(candidate['parameters'])
-        spec=_factor_spec(baseline,plan['name']+' · '+candidate['name'],params)
-        preview_experiment(spec)
-        candidates.append({'candidate_id':candidate_id,'name':candidate['name'],'parameters':params,
-            'registration_hash':digest(record),'factor_spec':spec})
+    registry=default_registry();candidates=[]
+    if 'candidate_ids' in plan:
+        dsl=registry.get('DSL.RESTRICTED','1.0.0');dsl_hash=registry.code_hash(dsl)
+        service=DslCandidateService(output)
+        for candidate_id in plan['candidate_ids']:
+            record=service.get(candidate_id);candidate=record['plan']
+            if candidate['factor_code_hash']!=dsl_hash:raise ValueError('DSL代码变化；请重新验证并注册候选')
+            params=dsl.parameters(candidate['parameters'])
+            spec=_factor_spec(baseline,plan['name']+' · '+candidate['name'],params)
+            preview_experiment(spec)
+            candidates.append({'candidate_id':candidate_id,'candidate_kind':'restricted_dsl','name':candidate['name'],'parameters':params,
+                'registration_hash':digest(record),'factor_spec':spec})
+    else:
+        for ref in plan['candidate_refs']:
+            factor=registry.get(ref['factor_id'],ref['version']);params=factor.parameters(ref['parameters'])
+            if params!=ref['parameters']:raise ValueError('普通因子候选参数已不符合当前注册表规范')
+            factor_hash=registry.code_hash(factor);definition_hash=digest(asdict(factor.definition))
+            candidate_id=candidate_ref_id(ref)
+            registration={'kind':'registered_factor','candidate_id':candidate_id,'factor_id':ref['factor_id'],'version':ref['version'],
+                'parameters':params,'name':ref['name'],'definition_hash':definition_hash,'factor_code_hash':factor_hash}
+            spec=_factor_spec(baseline,plan['name']+' · '+ref['name'],params,ref['factor_id'],ref['version'])
+            preview_experiment(spec)
+            candidates.append({'candidate_id':candidate_id,'candidate_kind':'registered_factor','candidate_ref':ref,
+                'name':ref['name'],'parameters':params,'factor_id':ref['factor_id'],'version':ref['version'],
+                'definition_hash':definition_hash,'factor_code_hash':factor_hash,'registration_hash':digest(registration),'factor_spec':spec})
     execution_record=None
     if plan['require_net_return']:
         execution_record,_=_record(output,plan['baseline_execution_run_id'],'execution')
         manifest=execution_record['manifest'];ecfg=manifest['config']
-        if manifest.get('runtime')!=runtime:raise ValueError('基准执行归档运行环境与当前代码不同')
+        ok,note=manifest_runtime_compatible(manifest,runtime,comp)
+        if not ok:raise ValueError('基准执行归档运行环境与当前代码不同：'+note)
+        compatibility.append({'run_id':plan['baseline_execution_run_id'],'role':'baseline_execution','compatible':ok,
+                              'full_runtime_equal':manifest.get('runtime')==runtime,'note':note})
         for key in ('factor_id','factor_version','parameters','data'):
             if ecfg.get(key)!=cfg.get(key):raise ValueError('基准执行归档与因子基准不一致：'+key)
         if manifest.get('universe')!=base.get('universe') or manifest.get('signal_data_snapshot')!=base.get('data_snapshot'):
             raise ValueError('基准执行归档的股票池或信号行情快照不同')
         source_fingerprints[plan['baseline_execution_run_id']]=digest(snapshot_tree(output,plan['baseline_execution_run_id']))
         for candidate in candidates:
-            spec=_execution_spec(execution_record,plan['name']+' · 成本后 · '+candidate['name'],candidate['parameters'])
+            spec=_execution_spec(execution_record,plan['name']+' · 成本后 · '+candidate['name'],candidate['parameters'],
+                candidate.get('factor_id','DSL.RESTRICTED'),candidate.get('version','1.0.0'))
             preview_experiment(spec);candidate['execution_spec']=spec
     tests=[]
     for candidate in candidates:
         tests.append({'candidate_id':candidate['candidate_id'],'id':'residual_ic','kind':'residual_alpha'})
         if plan['require_net_return']:
             tests.append({'candidate_id':candidate['candidate_id'],'id':'net_return_increment','kind':'return_increment'})
-    return {'format':FORMAT,'plan':plan,'runtime':runtime,'sources':source_fingerprints,
+    return {'format':FORMAT_V2 if 'candidate_refs' in plan else FORMAT,'plan':plan,'runtime':runtime,'computation_runtime':comp,
+        'runtime_compatibility_note':'旧档无computation_runtime仍需完整runtime相同；新档仅允许计算兼容用于Factory基准/cache，不代表跨版本精确复算或授权。','sources':source_fingerprints,
+        'runtime_compatibility':compatibility,
         'candidates':candidates,'planned_tests':tests,'planned_test_count':len(tests),
         'selection_rule':{
             'min_common_finite_ratio':plan['min_common_finite_ratio'],
@@ -229,7 +306,7 @@ class AlphaFactoryService:
                 if old['request_id']!=request_id or old['prepared_digest']!=digest(prepared):
                     raise ValueError('同一请求编号不能改写已冻结Factory计划')
                 return old
-            state={'format':FORMAT,'proposal_id':proposal_id,'request_id':request_id,'status':'pending',
+            state={'format':prepared['format'],'proposal_id':proposal_id,'request_id':request_id,'status':'pending',
                 'created_at':now(),'prepared':prepared,'prepared_digest':digest(prepared),
                 'jobs':[],'tests':[],'result_run_id':None,'promotions':[]}
             self.store.save(state);return state
@@ -394,7 +471,8 @@ class AlphaFactoryService:
             for row in tests:
                 rid=row.get('run_id')
                 if rid and rid not in seen:children.append({'run_id':rid,'artifact_path':row['artifact_path'],'name':row['id']+' '+row['candidate_id'][:8]});seen.add(rid)
-            manifest={'format':FORMAT,'runtime':runtime_fingerprint(),'config':{'research_question':plan['name'],'data':{k:prepared['candidates'][0]['factor_spec'][k] for k in ('symbols','start','end','timeframe')}},'plan':plan,
+            manifest={'format':prepared['format'],'runtime':runtime_fingerprint(),'computation_runtime':computation_fingerprint(),
+                'config':{'research_question':plan['name'],'data':{k:prepared['candidates'][0]['factor_spec'][k] for k in ('symbols','start','end','timeframe')}},'plan':plan,
                 'prepared_digest':state['prepared_digest'],'source_fingerprints':prepared['sources'],
                 'job_ids':[j['job_id'] for j in state['jobs']],'selection_rule':prepared['selection_rule']}
             record={'run_id':run_id,'experiment_id':digest(manifest),'created_at':now(),

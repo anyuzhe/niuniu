@@ -60,8 +60,11 @@ def compare_candidate(output, candidate_run_id, baseline_run_id, horizon):
         record,frame = _source(catalog,identifier,horizon)
         records.append(record); frames.append(frame)
     left,right = [r['manifest'] for r in records]
-    for field in ('data_snapshot','universe','runtime'):
+    for field in ('data_snapshot','universe'):
         if left.get(field)!=right.get(field): raise ValueError('两个来源不可比：'+field)
+    from quantlab.experiments.computation import archived_runtimes_compatible
+    compatible,runtime_note=archived_runtimes_compatible(left,right)
+    if not compatible:raise ValueError('两个来源不可比：runtime；'+runtime_note)
     for field in ('data','context','processor','regime','regime_filter','quantiles'):
         if left['config'].get(field)!=right['config'].get(field):
             raise ValueError('两个来源的研究条件不同：'+field)
@@ -105,6 +108,7 @@ def compare_candidate(output, candidate_run_id, baseline_run_id, horizon):
             'baseline':_finite_mean(paired,'baseline_ic'),'difference':_finite_mean(paired,'difference'),
             'weighting':'Equal common bar timestamps; both ICs must be finite at each timestamp'},
         'source_fingerprints':[digest(tree) for tree in trees],
+        'runtime_compatibility':runtime_note,
         'new_research_jobs':0,'alpha_verified':False,'p_value':None,
         'limitations':['只读共同样本诊断；不创建新研究、不自动选优、不改变因子或跟踪。',
             '低相关不是增量Alpha；IC差值没有显著性检验，不含交易成本或序贯错误率控制。',
