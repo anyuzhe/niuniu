@@ -364,3 +364,15 @@ worker页副本的清理与主库可查询是两件事。2026-09-21 19:29前，�
 最终在8b25c3f用QT_QPA_PLATFORM=offscreen启动独立原生窗口、加载验收工作空间实际Pi配置、点击结果整理按钮并发送（不是mock模型）：7次正式查询读回原finding且来源verified，文本实际显示到窗口控件。没有record_finding重复写入、没有新任务、冻结文件与研究JSON不变、Grant保持关闭，7调用/7结果，窗口回调正常排空，source_stable=true。证据artifacts/research-continuation-20260927/native-v1/acceptance-ui.json。这证明原生界面→ChatRuntime.run→真实Pi→只整理证据的链路，不是用户可见桌面的人工操作/版式验收。
 
 本轮三个代码提交06b0d0f、6a2361b、8b25c3f；当前仅文档收尾。主项目artifacts/research-continuation-20260927保留46份回归证据（73,157字节）及验证索引，复制后逐SHA核对；真实四轮共36次规范工具结果，包含首次恢复的业务失败。仍未实现无上限上下文/无人值守自动续跑/自动扩大授权，也未验证任何盈利策略；日常模型选择、数据/采集、服务和可见桌面未修改。
+
+### 2026-09-27 后续推进：原生可视化因子选择与 Factory 全流程
+
+新增注册因子/归档选择器和Factory计划表单：可按中文名/ID/因子包选定义、用原参数编辑器固定候选，从真实归档列表选择基准/控制/可选执行基准，明确日期/持有期后预检并保存pending。不再要求用户手写v2 JSON或复制UUID；原AI提案和旧DSL入口保留。普通MainWindow也能打开Factory，因子库可跳精确证据或配置候选。
+
+归档按原始experiment.json有界读取，每页最多20项、扫描60项；失败可见但不可用作已完成基准，查询/选中/分页/换根/关闭有异步失效保护，跨页目录变化要求刷新。预览与保存以expected_digest再核对prepared，任何配置/来源不一致在提案写入前拒绝；不修改原统计、审批、队列、输入冻结或晋级权限。
+
+原Factory窗口新增冻结检验摘要/完整状态页，按预设槽位显示估计值、原始/校正p值、未过条件与错误；缺失/失败保留、空值不补零、可打开实际检验证据。只展示最后保存/同步状态，不认证Alpha、不自动更新任务或晋级。
+
+最终17模块116项PASS，0失败/错误/跳过，测试前后源码/测试/JSON/MJS指纹一致6fa82d2a649a4275aff3f05b8beaa1e728cbb85206b2d242c16c70eb988044e2。独立进程以offscreen原生窗口和3证券合成夹具完成从研究实验室入口→选择器→参数→预览→pending→人工审批→真实队列/归档→摘要，预览/保存阶段均0任务、自动晋级0。验收proposal=debc0417-5626-54a5-b71d-fc7b65b74d34，run=e25bb750-6563-5a16-926c-97fd96200aa2；这是工程夹具，不是实际A股或AI盈利研究，也不是可见桌面验收。
+
+证据目录artifacts/research-visual-flow-20260927，含initial-regression失败、最终回归和native-flow/acceptance.json。旧Factory桌面测试因无关首页读默认DATA阻塞初始化，已隔离该依赖并保留原审批断言；初版对错误中文措辞的断言按真实Archive identity mismatch修正，无写入断言保留。未更改正式DATA、采集/模型配置/服务或可见桌面。

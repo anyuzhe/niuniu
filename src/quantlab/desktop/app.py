@@ -159,6 +159,14 @@ class MainWindow(QMainWindow):
         from .factor_watches import FactorWatchDialog
         self.show_dialog(FactorWatchDialog(self,selected_id))
 
+    def open_alpha_factory(self):
+        from .alpha_factory import AlphaFactoryDialog
+        self.show_dialog(AlphaFactoryDialog(self))
+
+    def new_alpha_factory(self,definition=None):
+        from .factory_builder import FactoryPlanDialog
+        self.show_dialog(FactoryPlanDialog(self,definition if isinstance(definition,dict) else None))
+
     def agent_catalog(self):
         from .agent_catalog import AgentCatalogDialog
         self.show_dialog(AgentCatalogDialog(self))
@@ -290,6 +298,13 @@ class MainWindow(QMainWindow):
         inspector.add(button('使用该定义新建实验',lambda:self.new_experiment(selected['value']),True))
         inspector.add(button('查看关联实验',lambda:self.experiments(query=(selected['value'] or {}).get('definition',selected['value'] or {}).get('factor_id',(selected['value'] or {}).get('template_id','')))))
         if kind=='theory':inspector.add(label('Theory Alpha、Ablation、OOS 与滚动结果均以实际归档为准。','muted',True))
+        if kind!='theory':
+            def evidence():
+                if selected['value'] is None:return
+                from .factor_evidence import FactorEvidenceDialog
+                self.show_dialog(FactorEvidenceDialog(self,definition=selected['value']))
+            inspector.add(button('按精确版本查询因子证据',evidence))
+            inspector.add(button('以该因子配置新Factory',lambda:self.new_alpha_factory(selected['value']) if selected['value'] is not None else None))
         split.addWidget(listing);split.addWidget(inspector);split.setSizes([950,430]);box.addWidget(split,1)
         def render():
             for i in reversed(range(listing.body.count()-1)):

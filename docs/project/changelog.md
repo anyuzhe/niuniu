@@ -2160,3 +2160,14 @@
 - 7次工具调用全部成功：get_job、get_experiment、get_research_memory×2、search_research_memory、get_research_session_grant、get_run_research_links；实际读回原finding=e40795b2-0410-4b89-a54d-5c19b308e72c并核来源，回答显示在原生控件。finding集合不变、无重复写入，无新研究/授权；研究/冻结文件SHA不变，7调用/7规范结果，回调正常排空，代码指纹前后不变。验收文件native-v1/acceptance-ui.json。
 - 主工作区已逐SHA复制regression-v1/v2/final共46文件73,157字节，verification-index.json保存清单；native-v1保留研究、首次恢复失败、修后CLI和真实UI四轮证据及脚本。真实过程累计36调用/36结果，不把第一次未保存finding算作业务通过。108是最终范围回归数量，不与此前102/103重复累加。
 - 本提交只补验收文档；代码已分别在06b0d0f、6a2361b、8b25c3f冻结与验证。主控按无并行冲突条件普通fast-forward和push，后续核对本地/远端HEAD；不重启、部署、改日常模型或扩大权限。
+
+### 2026-09-27｜[CODE/UI] 注册因子与 Factory 可视化闭环
+
+- 从main/remote/worktree一致的f285f7d继续；只在原隔离分支实现，未覆盖并行代码。新增desktop/research_picker、factory_builder，复用registry.describe、ParameterDialog和AlphaFactoryService。原普通MainWindow缺Factory入口、旧窗口只处理已有AI提案的问题已接通；旧DSL与人工审批/观察池门保持。
+- 因子按ID/名称/分类/真实pack/tags检索版本；归档选择调用research_evidence.find_research_archives，UUID目录有界分页，原始头部SHA回查，坏档保留。主控复核补上输入改变清旧选择、同目录跨页清单变化拒绝、异步迟到/关窗/换根，以及错误明细展示；不按结果排序或选赢家。
+- 表单固定1–12个规范化候选、1–5控制、基准、日期/持有期和可选成本后槽位。候选参数复制后与待添加编辑分离，语义重复改名仍拒绝。preview只读；propose新增宿主可选expected_digest，在任何提案写入前重建prepared核对，模型旧接口兼容。pending可关闭后回查；人工另行确认才入原共享队列，未开新授权。
+- 原Factory窗增加冻结槽位摘要和完整状态分区，直接投影保存的tests/decisions，不重新算p、不删除失败/缺失槽位；负值/真实零保留、空值未知。可打开选中检验的归档。旧上下文窗口不能审批、同步或打开过期引用。
+- 验收迭代保留：首个11项目标测试1个措辞断言失败（实际已拒绝坏归档且未写提案），按真实错误合同修正；首轮8模块58项中3项旧DataConnectedWorkbench测试在setUp超时，定位首页默认DATA读取，隔离该无关依赖并保留人工确认断言。该测试模块原直接导入TestCase导致9项核心测试重复收集，改为模块别名，核心9项仍独立运行。子代理7项选择器测试只算局部证据，主控另加5项边界及真实后端闭环测试。
+- 最终17模块116项PASS，0失败/错误/跳过，源/测试/JSON/MJS前后指纹6fa82d2a649a4275aff3f05b8beaa1e728cbb85206b2d242c16c70eb988044e2。覆盖旧DSL、v2普通因子、成本后槽位、保存前来源变化、审批/输入冻结、执行复算、精确证据、Playbook入口及前轮Pi/恢复配置。不是全仓库测试。
+- 独立offscreen原生UI→真实服务/队列夹具验收完成，合成3证券，无mock模型或服务、未调用研究模型；所有选择/参数经新原生控件，预览/保存0任务，人工确认后完成唯一冻结检验，自动晋级0。proposal=debc0417-5626-54a5-b71d-fc7b65b74d34；run=e25bb750-6563-5a16-926c-97fd96200aa2；原始父头部SHA=d7d1c83aa666be01bc3a41957a4714c354ad860960eacd512717bfd9c56a1f4d。保存的是验收原始快照，不是完整可搬迁复算包或实际市场Alpha结论。
+- 证据保留在artifacts/research-visual-flow-20260927/，文档更新guide/architecture/code-map和当前状态。宿主独立提交后普通fast-forward/push并核对远端SHA，不部署/重启；未改正式数据、采集、日常模型配置、服务、可见客户端或交易权限。

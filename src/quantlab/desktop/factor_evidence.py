@@ -11,7 +11,7 @@ from .business_view import BusinessDetails
 
 
 class FactorEvidenceDialog(QDialog):
-    def __init__(self, window):
+    def __init__(self, window, definition=None):
         super().__init__(window); self.window = window; self.request_generation = 0; self.offset = 0
         self.output = window.output; self.root_epoch = getattr(window, 'epoch', None)
         self.data_root = getattr(window,'data_root',None); self.closed = False; self.page_history = []
@@ -23,7 +23,7 @@ class FactorEvidenceDialog(QDialog):
         self.results = None; self.page = None; self.rows = []; self.next_offset = None
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
-        layout.addWidget(row(self.factor, self.version, button('查询', lambda: self.reload(reset=True), True)))
+        layout.addWidget(row(button('按名称选择注册因子',self.pick_factor),self.factor,self.version,button('查询',lambda:self.reload(reset=True),True)))
         layout.addWidget(self.params)
         layout.addWidget(row(button('上一页', self.previous), button('下一页', self.next),
                              button('查看所选实验的研究关联',self.open_links)))
@@ -31,6 +31,23 @@ class FactorEvidenceDialog(QDialog):
         self.finished.connect(self._finished)
         for control in (self.factor,self.version):control.textChanged.connect(self._input_changed)
         self.params.textChanged.connect(self._input_changed)
+        if definition is not None:self.use_definition(definition)
+
+    def use_definition(self,definition):
+        if not self._valid_context():return
+        d=definition.get('definition',definition)
+        self.factor.setText(d['factor_id']);self.version.setText(d['version']);self.params.clear()
+        self.status.setText('已填入精确因子ID和版本；参数留空查询各参数版本，点击查询才读取归档。')
+
+    def pick_factor(self):
+        if not self._valid_context():return
+        from .research_picker import FactorPickerDialog
+        request=self.request_generation
+        dialog=FactorPickerDialog(self.window,factor_id=self.factor.text().strip() or None,version=self.version.text().strip() or None)
+        def done(*_):
+            if self._valid_context() and request==self.request_generation and dialog.result_definition is not None:
+                self.use_definition(dialog.result_definition)
+        dialog.finished.connect(done);self.window.show_dialog(dialog)
 
     def _valid_context(self):
         return (not self.closed and not sip.isdeleted(self) and not sip.isdeleted(self.window)

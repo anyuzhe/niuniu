@@ -109,6 +109,10 @@
 
 [chat_recovery.py](../../src/quantlab/agent/chat_recovery.py) 从原会话提取历史ID与只整理结果的工具白名单；[chat_runtime.py](../../src/quantlab/agent/chat_runtime.py) 和 [chat_cli.py](../../src/quantlab/agent/chat_cli.py) 执行相同的权限收缩，桌面按钮见 [research_chat.py](../../src/quantlab/desktop/research_chat.py)。Pi预算收尾在 [pi_bridge.mjs](../../src/quantlab/devstudio/pi_bridge.mjs) 与 [pi_provider.py](../../src/quantlab/devstudio/pi_provider.py)，原生研究可以保留partial而开发任务不误报成功。测试见 [test_chat_recovery.py](../../tests/test_chat_recovery.py)、[test_chat_recovery_desktop.py](../../tests/test_chat_recovery_desktop.py)、[test_pi_budget_finalize.py](../../tests/test_pi_budget_finalize.py)。
 
+## 可视化研究与 Factory（2026-09-27）
+
+[research_picker.py](../../src/quantlab/desktop/research_picker.py) 提供注册因子和已完成归档的显式选择；[factory_builder.py](../../src/quantlab/desktop/factory_builder.py) 复用参数编辑器和原Factory服务编排固定候选计划，只预检并保存待审批提案。[alpha_factory.py](../../src/quantlab/desktop/alpha_factory.py) 保留原人工审批/同步/观察池门，并显示只读检验摘要；[research_evidence.py](../../src/quantlab/trading/research_evidence.py) 的新目录查询只读取原始头部。测试：[可视化全流程](../../tests/test_factory_visual_flow.py)、[选择器](../../tests/test_research_pickers.py)、[独立边界复核](../../tests/test_research_picker_review.py)、[摘要视图](../../tests/test_factory_result_summary.py)。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

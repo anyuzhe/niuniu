@@ -296,8 +296,10 @@ class AlphaFactoryService:
         prepared=self._prepare(plan)
         return {**prepared,'prepared_digest':digest(prepared),'new_research_jobs':0,
             'host_confirmation_required':True,'automatic_watchlist_promotion':False}
-    def propose(self,request_id,plan):
+    def propose(self,request_id,plan,*,expected_digest=None):
         canonical_id(request_id);prepared=self._prepare(plan)
+        if expected_digest is not None and (not isinstance(expected_digest,str) or expected_digest!=digest(prepared)):
+            raise ValueError('Factory预览已变化，请重新预览后再保存待审批提案')
         proposal_id=str(uuid5(NAMESPACE,'factory:'+request_id))
         with self.store.locked(proposal_id):
             path=self.store.folder(proposal_id)/'state.json'

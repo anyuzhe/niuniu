@@ -107,6 +107,12 @@ Pi传输在已有总轮次内保留最后一轮无工具收尾，宿主停止信
 
 `agent/chat_recovery.py`从原会话日志提取有界历史引用，不是第二状态库或可执行检查点。显式recovery_only只开放已有任务/研究/记忆查询和原finding保存；不能新建/批准/重跑研究、恢复Grant或触发行情联网。引用先重读真实来源，超限/缺失明确保留；长期会话仍受原上下文与事件预算限制。桌面预填和CLI共用同一模式。
 
+### 8.3 原生研究选择器与 Factory 表单
+
+`desktop/research_picker.py`只选择现有注册定义或本工作空间归档；`trading/research_evidence.find_research_archives`使用有界UUID目录/原始头部查询，不创建索引数据库。目录身份、头部SHA核对与计算兼容/数值复算分层表达；分页/搜索/换根/关闭后旧结果不得继续被使用。
+
+`desktop/factory_builder.py`把显式表单编译为原alpha-factory-plan-v2，经原normalize_plan/preview/propose保存pending。宿主可传expected_digest绑定预览；写提案前重建prepared并核对，不绕过原审批/队列/冻结/固定测试族。界面候选副本与正式登记分开，不制造第二因子池。AlphaFactoryDialog的摘要只投影保存的预设槽位/结果/decision，不重算、择优或自动晋级。
+
 ## 9. TDX个人研究采集的调度边界
 
 既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。

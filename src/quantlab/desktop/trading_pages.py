@@ -118,7 +118,8 @@ def research_lab_page(window):
     box.addWidget(experiments)
     factory=Card('Alpha Factory')
     factory.add(label('Factory必须人工核对后提交；同步结果和进入观察池仍是显式人工动作。','muted',True))
-    factory.add(row(button('安全 Alpha Factory',open_method('open_alpha_factory','Alpha Factory不可用'),True),
+    factory.add(row(button('新建可视化Factory计划',open_method('new_alpha_factory','Factory计划不可用'),True),
+                    button('安全 Alpha Factory',open_method('open_alpha_factory','Alpha Factory不可用')),
                     button('研究议程里的Factory待办',window.research_agenda)))
     box.addWidget(factory)
     watch=Card('观察池 / Watch')

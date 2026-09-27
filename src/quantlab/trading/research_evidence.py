@@ -209,6 +209,10 @@ def archive_research_reference(output, run_id: str) -> dict:
     return sanitize({
         'version': VERSION,
         'type': 'archive_research_reference',
+        'kind': record.get('kind', 'factor'),
+        'question': cfg.get('research_question'),
+        'horizons': cfg.get('horizons'),
+        'adjustment': (manifest.get('data_snapshot') or manifest.get('signal_data_snapshot') or {}).get('adjustment'),
         'status': record.get('status'),
         'metadata_only': True,
         'verification': 'original_header_sha256_only',
@@ -310,5 +314,49 @@ def find_factor_evidence(output, *, factor_id: str, factor_version: str | None =
                      'identity_note': 'metadata discovery only narrows candidates; archive references are read from experiment.json and still must be opened with fingerprint checks.'})
 
 
+def find_research_archives(output, *, query='', kind='factor', offset=0, limit=20, scan_budget=60):
+    """Bounded original-header discovery for explicit host archive selection.
+
+    No ranking by return, no database, no source-data read or compatibility
+    certification. The selected header must be rechecked when it is used.
+    """
+    from quantlab.storage.codec import digest
+    if not isinstance(query, str) or len(query) > 500:
+        raise ValueError('query must be at most 500 characters')
+    if kind not in ('', 'factor', 'execution'):
+        raise ValueError('archive kind must be factor, execution, or empty')
+    if any(type(v) is not int for v in (offset, limit, scan_budget)) or offset < 0 or not 1 <= limit <= 50 or not 1 <= scan_budget <= 500:
+        raise ValueError('invalid archive pagination')
+    if Path(output).is_symlink():
+        raise ValueError('Symlink workspace refused')
+    dirs = _candidate_run_dirs(Path(output).resolve())
+    inventory = digest([p.name for p in dirs])
+    matches, errors = [], []
+    scanned = 0
+    needle = query.strip().casefold()
+    for folder in dirs[offset:offset + scan_budget]:
+        if len(matches) + len(errors) >= limit:
+            break
+        scanned += 1
+        try:
+            reference = archive_research_reference(output, folder.name)
+            if kind and reference.get('kind') != kind:
+                continue
+            searchable = {'run_id':folder.name, 'question':reference.get('question'),
+                          'identity':reference['rule_identity'], 'range':reference['range']}
+            if needle and needle not in encode(searchable).casefold():
+                continue
+            matches.append(reference)
+        except (ValueError, TypeError, KeyError, AttributeError, OSError) as exc:
+            errors.append({'run_id':folder.name, 'error':type(exc).__name__+': '+str(exc)[:240]})
+    next_offset = offset + scanned if offset + scanned < len(dirs) else None
+    return sanitize({'type':'research_archive_selection', 'verification':'original_header_sha256_only',
+                     'matches':matches, 'errors':errors, 'offset':offset, 'next_offset':next_offset,
+                     'has_more':next_offset is not None, 'scanned':scanned, 'scan_budget':scan_budget,
+                     'inventory_digest':inventory, 'incomplete':bool(errors or next_offset is not None),
+                     'inventory_note':'Directory-name inventory, not a frozen content snapshot. Recheck selected source bytes.',
+                     'selection_note':'Only explicit completed selections may be used. Actual Factory compatibility is checked by its existing preview.'})
+
+
 __all__ = ['VERSION', 'sanitize', 'rule_identity', 'candidate_rule_evidence', 'candidate_prompt_payload',
-           'archive_research_reference', 'find_factor_evidence', 'bounded_json']
+           'archive_research_reference', 'find_factor_evidence', 'find_research_archives', 'bounded_json']
