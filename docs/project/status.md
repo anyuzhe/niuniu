@@ -384,3 +384,9 @@ worker页副本的清理与主库可查询是两件事。2026-09-21 19:29前，�
 新增evidence只读助手模式与CLI --evidence-only，实际API和dispatcher双重白名单，禁用queue_factory、写记忆/提案、提交/同步/晋级和实时行情；正常会话日志仍留存。点击报告中的AI解读仅预填ID/hash，保留已有忙会话、未自动发送。原研究模式及授权门未放宽，普通/数据版窗口均验证接通。Factory已人工晋级的候选可直接打开原Watch，不新增观察池或自动刷新。
 
 最终20模块146项PASS，0失败/错误/跳过；源码/测试/JSON/MJS指纹前后一致d2485a4250f0c059c1bc9840083629ddf91d486676beb578a217b99e19149ac3。报告内核、分页、重复/源变化/无效数值、导出拒绝覆盖、原生UI、授权/输入冻结/旧Factory与恢复均覆盖；不是全仓库或真实模型验收。日志artifacts/factory-evidence-review-20260927/final-regression，真实模型解读另记。
+
+在代码提交4723707上完成真实Pi离屏解读验收：读取现有CORE的pi_sdk/openai-codex/gpt-6-luna配置，只在独立合成工作空间配置局部预算。5证券合成软件夹具的2候选Factory先由工程测试产生，再由原生报告窗口→ID/hash草稿→evidence模式→正式get_alpha_factory_report读取，模型没有被注入预设统计答案，也没有负责生成这份工程研究。实际1调用/1规范结果，无工具错误；双方候选全读且请求绑定报告指纹734091171f78f491ee398eef607dddcda854b5f2e382accde94b109fadf177af。
+
+AI回答明确这是合成报告，保留两项负估计、test_status=unavailable、p/Holm缺失、未做成本后检验及不能认证Alpha；文字实际回到原生控件。研究文件及合成输入SHA不变，无UI执行队列、无新finding/提案/观察池，原日常模型配置SHA不变、回调正常排空、源码未变。验收proposal=c1bb1362-a87c-5e24-a4e9-82e96502c460，result run=82c0b381-d62d-5cda-bc25-386cf9d9d3a1。证据native-v1/acceptance.json、answer.txt、report.json和journal.json，不是可见桌面/真实市场盈利验收。
+
+本轮123份证据文件共1,958,559字节已逐SHA核对复制到主项目artifacts/factory-evidence-review-20260927，transfer-index.json保存清单；不随代码推送。当前仅文档收尾，主控普通fast-forward/push后核本地与远端SHA。

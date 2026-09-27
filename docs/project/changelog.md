@@ -2180,3 +2180,10 @@
 - desktop/factory_report从真实来源生成文本/JSON，导出前重核digest且只创建新文件；不覆盖旧档、不是完整复现包。Factory窗口接报告/AI按钮和已晋级Watch跳转；AI仅获得ID/hash草稿，不自动请求模型或填入开发者数值结论。忙会话不覆盖，换工作空间/关闭后迟到响应不使用。
 - 验收：主控31项目标回归后补数据版窗口覆盖，最终20模块146项PASS，0失败/错误/跳过；前后源码/测试/JSON/MJS指纹d2485a4250f0c059c1bc9840083629ddf91d486676beb578a217b99e19149ac3。子代理8项报告测试+9项旧Factory仅局部依据，未重复累加；主控新增9项报告边界、7项profile、8项桌面路径。首次profile测试误以无queue配置的研究模式应暴露submit，按既有条件提供未调用queue fixture后修复，不改真实授权校验。原失败与工具会话输入错误保留。
 - 本提交先冻结代码供真实Pi只读解读验收；当前未把合成统计或mock UI当真实模型证据。未改正式DATA/采集/全局模型/服务/Runner或可见客户端，无新交易权限。
+
+### 2026-09-27｜[CODE/AI/UI] 报告窗口真实Pi只读解读验收
+
+- 在4723707冻结代码上，工程测试用5证券合成数据、两个固定候选建立一份Factory；它不是用户历史行情或自主Alpha发现。原生offscreen窗口读取报告、点击AI只读解读并经现有Pi模型配置发送，未mock Provider、未注入数值答案，没占用可见桌面。配置只写独立验收工作空间，原CORE文件SHA前后相同。
+- 模型openai-codex/gpt-6-luna仅调用一次get_alpha_factory_report，expected_digest精确绑定734091171f78f491ee398eef607dddcda854b5f2e382accde94b109fadf177af；1调用/1结果，无工具错误、2候选全读，完成答复显示到窗口。父run=82c0b381-d62d-5cda-bc25-386cf9d9d3a1，proposal=c1bb1362-a87c-5e24-a4e9-82e96502c460。主控逐项对照answer.txt与report.json：负估计、统计unavailable、p/Holm空、无成本检验和非Alpha边界均未被改成通过。
+- 只读解读前后研究文件和合成输入全SHA一致，UI未获取执行队列，没有新研究、finding、提案或观察池；回调正常排空，source_stable=true。记录在artifacts/factory-evidence-review-20260927/native-v1/acceptance.json；这是原生UI→真实模型→报告工具的工程验收，不是可见桌面布局或市场策略验证。
+- 主项目已核SHA复制123份证据1,958,559字节，含局部与最终回归、测试脚本、报告与合成输入；transfer-index.json仅本机留存，不能当作另一套研究权威库。当前提交只更新验收文档，不改变146项测试与真实Pi验收覆盖的源码；宿主按仓库约定普通合入与push，不自动部署或重启。
