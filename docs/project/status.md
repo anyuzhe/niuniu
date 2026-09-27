@@ -360,3 +360,7 @@ worker页副本的清理与主库可查询是两件事。2026-09-21 19:29前，�
 在6a2361b重新通过正式CLI恢复原会话，8次调用无错误完成finding保存，ID=e40795b2-0410-4b89-a54d-5c19b308e72c，父假设865e011b-7f3d-4cd0-97bd-8cc2cfb452a2，引用原run且source_integrity=verified/claim_verified=false。结论为contradicted草稿，保留负结果；研究文件与输入副本SHA不变，无新任务/新授权。三轮累计29调用/29结果，保留第一次未保存finding的失败验收，不抹成首轮成功。
 
 补齐原研究助手ModelSettings遗漏的Pi选项、pi_path保存/启用、上游发送目的地说明和单模型连接检查显示；不改用户日常配置。新增5项测试含真实Node假模型经原生GUI适配层显示partial、Pi配置往返、密钥清空和许可重置、过期窗口不发连接请求。最终14模块108项全部PASS，0失败/错误/跳过，前后源码/测试/JSON/MJS指纹db68bef01de57cf86350dab6c5a5380e1806315231c78051eefc537f35698f36，日志regression-final。实际模型经离屏界面的进一步读回另记。
+
+最终在8b25c3f用QT_QPA_PLATFORM=offscreen启动独立原生窗口、加载验收工作空间实际Pi配置、点击结果整理按钮并发送（不是mock模型）：7次正式查询读回原finding且来源verified，文本实际显示到窗口控件。没有record_finding重复写入、没有新任务、冻结文件与研究JSON不变、Grant保持关闭，7调用/7结果，窗口回调正常排空，source_stable=true。证据artifacts/research-continuation-20260927/native-v1/acceptance-ui.json。这证明原生界面→ChatRuntime.run→真实Pi→只整理证据的链路，不是用户可见桌面的人工操作/版式验收。
+
+本轮三个代码提交06b0d0f、6a2361b、8b25c3f；当前仅文档收尾。主项目artifacts/research-continuation-20260927保留46份回归证据（73,157字节）及验证索引，复制后逐SHA核对；真实四轮共36次规范工具结果，包含首次恢复的业务失败。仍未实现无上限上下文/无人值守自动续跑/自动扩大授权，也未验证任何盈利策略；日常模型选择、数据/采集、服务和可见桌面未修改。

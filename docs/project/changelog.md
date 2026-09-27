@@ -2153,3 +2153,10 @@
 - 原生CLI修后复验在6a2361b完成：8次工具调用无错误，保存finding=e40795b2-0410-4b89-a54d-5c19b308e72c，原hypothesis=865e011b-7f3d-4cd0-97bd-8cc2cfb452a2，原run=e38604ac-4763-4ed5-b83b-82a40862bf6f。assessment=contradicted仍是待复核草稿，不是统计显著性/Alpha判断。任务/实验/冻结输入SHA未变、Grant仍撤销、未新建研究，原生三轮29调用/29结果一致。证明见native-v1/acceptance-recover-2.json；首次失败完整保留。
 - 发现desktop/model_settings.py仅列3种传输，已配置pi_sdk不能在研究助手界面正常收集配置；新增Pi下拉与pi_path，同原ModelConfig往返，非API模式禁用URL/Key并清除临时Key。research_chat发送许可准确显示Pi上游模型而不是无关base_url，模型/路径变化重置许可；probe只说明模型/认证可用，不误报0个模型或真实推理已通过。没有更改六角色、全局配置或已有授权。
 - 新增test_model_settings_pi的5项离屏测试，其中真实Node+fake ModelRuntime通过原生窗口send→ChatRuntime.run适配链验证partial可见且无研究提交。14模块108项最终回归PASS，0失败/错误/跳过，冻结源码/测试/JSON/MJS指纹db68bef01de57cf86350dab6c5a5380e1806315231c78051eefc537f35698f36，逐模块日志在regression-final；不是全仓库测试。后续离屏界面真实模型读回单独记录。
+
+### 2026-09-27｜[CODE/AI/UI] 原生离屏窗口真实Pi读回验收收尾
+
+- 在8b25c3f启动独立offscreen QApplication/MainWindow，读取验收工作空间的真实pi_sdk模型配置（openai-codex/gpt-6-luna），按原界面“整理已有结果（不重跑）”预填、许可并发送。未注入mock Provider/答案，未占用用户可见桌面或键鼠；窗口构造不传行情根，避免自动首页读正式DATA。
+- 7次工具调用全部成功：get_job、get_experiment、get_research_memory×2、search_research_memory、get_research_session_grant、get_run_research_links；实际读回原finding=e40795b2-0410-4b89-a54d-5c19b308e72c并核来源，回答显示在原生控件。finding集合不变、无重复写入，无新研究/授权；研究/冻结文件SHA不变，7调用/7规范结果，回调正常排空，代码指纹前后不变。验收文件native-v1/acceptance-ui.json。
+- 主工作区已逐SHA复制regression-v1/v2/final共46文件73,157字节，verification-index.json保存清单；native-v1保留研究、首次恢复失败、修后CLI和真实UI四轮证据及脚本。真实过程累计36调用/36结果，不把第一次未保存finding算作业务通过。108是最终范围回归数量，不与此前102/103重复累加。
+- 本提交只补验收文档；代码已分别在06b0d0f、6a2361b、8b25c3f冻结与验证。主控按无并行冲突条件普通fast-forward和push，后续核对本地/远端HEAD；不重启、部署、改日常模型或扩大权限。
