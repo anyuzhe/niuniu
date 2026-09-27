@@ -376,3 +376,11 @@ worker页副本的清理与主库可查询是两件事。2026-09-21 19:29前，�
 最终17模块116项PASS，0失败/错误/跳过，测试前后源码/测试/JSON/MJS指纹一致6fa82d2a649a4275aff3f05b8beaa1e728cbb85206b2d242c16c70eb988044e2。独立进程以offscreen原生窗口和3证券合成夹具完成从研究实验室入口→选择器→参数→预览→pending→人工审批→真实队列/归档→摘要，预览/保存阶段均0任务、自动晋级0。验收proposal=debc0417-5626-54a5-b71d-fc7b65b74d34，run=e25bb750-6563-5a16-926c-97fd96200aa2；这是工程夹具，不是实际A股或AI盈利研究，也不是可见桌面验收。
 
 证据目录artifacts/research-visual-flow-20260927，含initial-regression失败、最终回归和native-flow/acceptance.json。旧Factory桌面测试因无关首页读默认DATA阻塞初始化，已隔离该依赖并保留原审批断言；初版对错误中文措辞的断言按真实Archive identity mismatch修正，无写入断言保留。未更改正式DATA、采集/模型配置/服务或可见桌面。
+
+### 2026-09-27 后续推进：Factory证据报告与只读AI解读
+
+新增同源Factory报告内核、分页工具、原生报告窗口、Markdown/JSON新文件导出和AI只读草稿跳转。报告按原固定候选/检验槽位显示范围、基准/控制、版本/参数、p与Holm值、失败/未知和限制；成本计划与实际完成/有p值数量分开。状态checksum/prepared_digest和完成父归档身份/manifest/来源绑定/结果一致性先核对，返回前再检查源SHA。重复/非计划结果、无效JSON/非有限数或读取中变化拒绝，缺失槽位不能继承推荐。没有底层Parquet深验或数值重算。
+
+新增evidence只读助手模式与CLI --evidence-only，实际API和dispatcher双重白名单，禁用queue_factory、写记忆/提案、提交/同步/晋级和实时行情；正常会话日志仍留存。点击报告中的AI解读仅预填ID/hash，保留已有忙会话、未自动发送。原研究模式及授权门未放宽，普通/数据版窗口均验证接通。Factory已人工晋级的候选可直接打开原Watch，不新增观察池或自动刷新。
+
+最终20模块146项PASS，0失败/错误/跳过；源码/测试/JSON/MJS指纹前后一致d2485a4250f0c059c1bc9840083629ddf91d486676beb578a217b99e19149ac3。报告内核、分页、重复/源变化/无效数值、导出拒绝覆盖、原生UI、授权/输入冻结/旧Factory与恢复均覆盖；不是全仓库或真实模型验收。日志artifacts/factory-evidence-review-20260927/final-regression，真实模型解读另记。

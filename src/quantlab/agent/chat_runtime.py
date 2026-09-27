@@ -61,6 +61,11 @@ def probe_model(config,key='',*,allow_send=False,stop=None):
 class ChatRuntime:
     def __init__(self,output,data_root=None,queue_factory=None,*,live_quote_service=None,fuyao_client=None,local_data_only=False,research_spec=None,allow_spec_tests=False,spec_source_workspace=None,rights_candidate_binding=None,rights_evidence_binding=None,version_ledger_binding=None,data_catalog_path=None,research_data_provider=None,tool_profile='research'):
         output=resolve_research_output(output)
+        if type(local_data_only) is not bool:raise ValueError('local_data_only 必须为布尔值')
+        if tool_profile not in ('research','everyday','evidence'):raise ValueError('tool_profile必须为research、everyday或evidence')
+        if tool_profile=='evidence':
+            if research_spec or allow_spec_tests:raise ValueError('锁定规格或规格测试不与只读解读模式混用')
+            local_data_only=True;queue_factory=None
         if research_spec:local_data_only=True
         self.research_spec=research_spec
         if type(local_data_only) is not bool: raise ValueError("local_data_only 必须为布尔值")
@@ -94,17 +99,20 @@ class ChatRuntime:
             self.api=ResearchDataAPI(self.api,provider=research_data_provider,data_catalog_path=data_catalog_path)
         from quantlab.agent.research_spec_tools import ResearchSpecAPI
         self.api=ResearchSpecAPI(self.api,output,data_root,active_spec=research_spec,allow_tests=allow_spec_tests,source_workspace=spec_source_workspace)
-        if tool_profile not in ('research','everyday'):raise ValueError('tool_profile 必须为 research 或 everyday')
         if tool_profile=='everyday' and research_spec:raise ValueError('锁定研究规格的会话不能使用日常模式')
         self.tool_profile=tool_profile
         if not research_spec:
             from quantlab.agent.home_tools import HomeAPI,ProfileAPI,EVERYDAY_TOOLS
             self.api=HomeAPI(self.api,output,data_catalog_path=data_catalog_path)
             if tool_profile=='everyday':self.api=ProfileAPI(self.api,EVERYDAY_TOOLS)
+            if tool_profile=='evidence':
+                from quantlab.agent.evidence_review import EvidenceReviewAPI
+                self.api=EvidenceReviewAPI(self.api)
     def send(self,cid,text,config,*,api_key='',allow_send=False,stop=None,emit=None,provider=None,recovery_only=False):
         if allow_send is not True:raise ModelError('尚未确认将对话和研究摘要发送到所选模型服务')
         if not isinstance(config,ModelConfig):raise ValueError('模型配置类型错误')
         if type(recovery_only) is not bool:raise ValueError('recovery_only必须为布尔值')
+        if recovery_only and self.tool_profile=='evidence':raise ValueError('只读解读不与可补存finding的恢复模式混用')
         if not isinstance(text,str) or not text.strip() or len(text)>16000:raise ValueError('请输入 1–16000 字的消息')
         stop=stop or Event();emit=emit or (lambda *_:None)
         def clean(value):
@@ -118,11 +126,13 @@ class ChatRuntime:
         memory=AgentMemoryLoader().load('chief_researcher')
         memory_meta={k:v for k,v in memory.items() if k!='text'}
         base_system=SYSTEM+'\n\nGit-first Agent Operating Memory：\n'+memory['text']
-        if self.tool_profile=='everyday':
-            # Everyday questions only need the core rules, not the research/governance contracts.
+        if self.tool_profile in ('everyday','evidence'):
+            # Read-only interpretation does not need the proposal/governance tool instructions.
             core=re.search(r'## MEMORY FILE: agent_memory/rules/core\.md\n(.*?)(?=\n## MEMORY FILE: |\Z)',memory['text'],re.S)
-            base_system=EVERYDAY_SYSTEM+'\n\n基本规则：\n'+(core.group(1).strip() if core else '')
-        base_system+='\n本地数据检查使用list_local_market_data/inspect_local_market_data；宿主已授权自主选择范围时，在真实目录/Grant内选取，不要求用户提供因子答案。研究前先记录可证伪假设，研究后检查真实证据并保存结论草稿。'
+            from quantlab.agent.evidence_review import EVIDENCE_SYSTEM
+            base_system=(EVIDENCE_SYSTEM if self.tool_profile=='evidence' else EVERYDAY_SYSTEM)+'\n\n基本规则：\n'+(core.group(1).strip() if core else '')
+        if self.tool_profile!='evidence':
+            base_system+='\n本地数据检查使用list_local_market_data/inspect_local_market_data；宿主已授权自主选择范围时，在真实目录/Grant内选取，不要求用户提供因子答案。研究前先记录可证伪假设，研究后检查真实证据并保存结论草稿。'
         if not self.research_spec and self.tool_profile=='research':
             base_system+='\n产品需要数据时先用list_data_catalog查看DATA清单，使用get_ready_data_source取得明确READY入口。DATA对正确性、来源、版本、单位、覆盖和PIT资格负责；不要重新裁决或重算验证。NOT_READY/REVIEW_REQUIRED/DEPRECATED不作为正式输入，不扫描数据根找替代项，也不自己直连第三方数据API顶上。'
         if not self.research_spec and not self.local_data_only and self.tool_profile=='research':
@@ -180,6 +190,9 @@ class ChatRuntime:
             messages.append({'role':'user','content':clean(text)})
             tid=self.store.begin(cid,clean(text),asdict(config));evidence=[];calls=0;failures=0
             schema_list=[s for s in self.api.schemas() if not recovery_only or s['name'] in RECOVERY_TOOLS]
+            if self.tool_profile=='evidence':
+                from quantlab.agent.evidence_review import EVIDENCE_TOOLS
+                schema_list=[s for s in schema_list if s['name'] in EVIDENCE_TOOLS]
             schemas={s['name']:s for s in schema_list}
             names=set(schemas)
             def record(kind,payload):
@@ -295,7 +308,7 @@ class ChatRuntime:
                 result=(provider or provider_for(config,api_key)).run(system,messages,schema_list,dispatch,provider_event,stop)
                 if stop.is_set():raise ChatStopped('已停止助手')
                 result=clean(result);result.update(evidence=evidence,turn_id=tid,conversation_id=cid,tool_calls=calls,
-                    host_live_quote_queries=host_live_quote_queries,agent_memory=memory_meta,recovery_only=recovery_only)
+                    host_live_quote_queries=host_live_quote_queries,agent_memory=memory_meta,recovery_only=recovery_only,tool_profile=self.tool_profile)
                 status='partial' if result.get('needs_followup') is True else 'completed'
                 result['status']=status
                 self.store.finish(tid,status,result['text'],{k:v for k,v in result.items() if k!='text'})
@@ -310,7 +323,7 @@ class ChatRuntime:
                     raise ChatStopped('已停止助手') from None
                 result=clean(exc.result)
                 result.update(status='partial',needs_followup=True,evidence=evidence,tool_calls=calls,
-                    turn_id=tid,conversation_id=cid,recovery_only=recovery_only,
+                    turn_id=tid,conversation_id=cid,recovery_only=recovery_only,tool_profile=self.tool_profile,
                     host_live_quote_queries=host_live_quote_queries,agent_memory=memory_meta)
                 self.store.finish(tid,'partial',result['text'],{k:v for k,v in result.items() if k!='text'})
                 return result

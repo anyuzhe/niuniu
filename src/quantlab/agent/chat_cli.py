@@ -18,6 +18,8 @@ def headless_chat_runtime(output, data_root=None, *, allow_granted_research=Fals
     """
     if type(allow_granted_research) is not bool:
         raise ValueError('allow_granted_research 必须为布尔值')
+    if allow_granted_research and runtime_options.get('tool_profile')=='evidence':
+        raise ValueError('只读解读模式不能启用研究执行队列')
     if allow_granted_research and (data_root is None or not Path(data_root).is_dir()):
         raise ValueError('后台授权研究需要有效 --data-root')
     queue = None
@@ -46,6 +48,7 @@ def main(argv=None):
     p.add_argument('--model');p.add_argument('--base-url');p.add_argument('--effort');p.add_argument('--codex-path')
     p.add_argument('--session');p.add_argument('--ask');p.add_argument('--probe',action='store_true')
     p.add_argument('--recover-results',action='store_true',help='整理指定会话已有证据并补存结论；不提交、批准或重跑研究')
+    p.add_argument('--evidence-only',action='store_true',help='只读解释已有研究证据；不写研究记忆、提案或执行研究')
     p.add_argument('--list-sessions',action='store_true');p.add_argument('--gui',action='store_true')
     p.add_argument('--accept-model-service',action='store_true',help='明确允许向所选服务发送对话与工具摘要')
     p.add_argument('--allow-granted-research',action='store_true',help='仅接入后台共享任务队列；仍须已有有效 Research Session Grant，不创建授权')
@@ -54,6 +57,10 @@ def main(argv=None):
     p.add_argument('--allow-spec-tests',action='store_true',help='只许可至多3次固定规格测试/字段诊断，不建立通用研究授权')
     p.add_argument('--spec-source-workspace',help='宿主指定另一个工作空间的只读行情归档；仅规格会话，不暴露任意路径')
     a=p.parse_args(argv)
+    if a.evidence_only:
+        if a.recover_results or a.allow_granted_research or a.allow_spec_tests or a.research_spec or a.gui:
+            p.error('--evidence-only不与恢复写入、执行开关、锁定规格或GUI模式混用')
+        a.local_data_only=True
     if a.recover_results:
         if not a.session or a.gui or a.probe or a.list_sessions or a.allow_granted_research or a.allow_spec_tests:
             p.error('--recover-results需要--session，且不与GUI/probe/list/研究执行开关混用')
@@ -76,7 +83,7 @@ def main(argv=None):
         config=replace(config,**{k:getattr(a,k) for k in ('provider','model','base_url','effort','codex_path') if getattr(a,k) is not None})
         if a.probe:result=probe_model(config,allow_send=a.accept_model_service)
         else:
-            with headless_chat_runtime(root,a.data_root,allow_granted_research=a.allow_granted_research,local_data_only=a.local_data_only,research_spec=a.research_spec,allow_spec_tests=a.allow_spec_tests,spec_source_workspace=a.spec_source_workspace) as runtime:
+            with headless_chat_runtime(root,a.data_root,allow_granted_research=a.allow_granted_research,local_data_only=a.local_data_only,research_spec=a.research_spec,allow_spec_tests=a.allow_spec_tests,spec_source_workspace=a.spec_source_workspace,tool_profile='evidence' if a.evidence_only else 'research') as runtime:
                 if a.list_sessions:result={'conversations':runtime.store.conversations()}
                 else:
                     if not a.ask:p.error('提供 --ask、--probe、--list-sessions 或 --gui')

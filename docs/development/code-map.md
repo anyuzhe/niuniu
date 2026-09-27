@@ -113,6 +113,10 @@
 
 [research_picker.py](../../src/quantlab/desktop/research_picker.py) 提供注册因子和已完成归档的显式选择；[factory_builder.py](../../src/quantlab/desktop/factory_builder.py) 复用参数编辑器和原Factory服务编排固定候选计划，只预检并保存待审批提案。[alpha_factory.py](../../src/quantlab/desktop/alpha_factory.py) 保留原人工审批/同步/观察池门，并显示只读检验摘要；[research_evidence.py](../../src/quantlab/trading/research_evidence.py) 的新目录查询只读取原始头部。测试：[可视化全流程](../../tests/test_factory_visual_flow.py)、[选择器](../../tests/test_research_pickers.py)、[独立边界复核](../../tests/test_research_picker_review.py)、[摘要视图](../../tests/test_factory_result_summary.py)。
 
+## Factory报告与只读解读（2026-09-27）
+
+[factory_report.py](../../src/quantlab/agent/factory_report.py) 读取有界状态/父归档并生成同源报告；[alpha_factory_tools.py](../../src/quantlab/agent/alpha_factory_tools.py) 提供分页只读查询。[evidence_review.py](../../src/quantlab/agent/evidence_review.py) 定义无写入/执行的独立助手模式，[桌面报告](../../src/quantlab/desktop/factory_report.py) 负责展示、显式新文件导出与ID/hash草稿跳转。测试：[报告内核](../../tests/test_factory_report.py)、[独立边界复核](../../tests/test_factory_report_review.py)、[只读profile](../../tests/test_evidence_review.py)、[桌面/导出/Watch跳转](../../tests/test_factory_report_desktop.py)。没有新的统计引擎、结果数据库或自动晋级权限。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

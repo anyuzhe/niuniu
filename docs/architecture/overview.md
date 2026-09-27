@@ -113,6 +113,12 @@ Pi传输在已有总轮次内保留最后一轮无工具收尾，宿主停止信
 
 `desktop/factory_builder.py`把显式表单编译为原alpha-factory-plan-v2，经原normalize_plan/preview/propose保存pending。宿主可传expected_digest绑定预览；写提案前重建prepared并核对，不绕过原审批/队列/冻结/固定测试族。界面候选副本与正式登记分开，不制造第二因子池。AlphaFactoryDialog的摘要只投影保存的预设槽位/结果/decision，不重算、择优或自动晋级。
 
+### 8.4 Factory报告与只读解读
+
+`agent/factory_report.py`将已有Factory状态与完成父归档投影为有界report-v1，SHA/manifest/prepared及固定槽位一致性校验和返回前复查不读取或重算源行情。report_digest绑定状态和父归档字节，与分页/时钟无关；成本计划与实际取得证据分开，重复/未计划结果拒绝，缺失槽位不删除。完整UI最多12候选，正式get_alpha_factory_report工具最多6；工具不再二次compact破坏该已受限报告。
+
+`agent/evidence_review.py`定义独立只读profile，ChatRuntime在初始化禁用行情与queue_factory，并在API层和派发schema层执行白名单。页面只提供来源ID/hash，不自动调用模型；现有研究profile、Grant和P10权限未改变。桌面factory_report和CLI的--evidence-only消费同一读取服务；导出只创建新文件，不覆盖权威状态或承诺可搬迁复算。对话日志与研究事实分开。
+
 ## 9. TDX个人研究采集的调度边界
 
 既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。

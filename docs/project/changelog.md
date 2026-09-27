@@ -2171,3 +2171,12 @@
 - 最终17模块116项PASS，0失败/错误/跳过，源/测试/JSON/MJS前后指纹6fa82d2a649a4275aff3f05b8beaa1e728cbb85206b2d242c16c70eb988044e2。覆盖旧DSL、v2普通因子、成本后槽位、保存前来源变化、审批/输入冻结、执行复算、精确证据、Playbook入口及前轮Pi/恢复配置。不是全仓库测试。
 - 独立offscreen原生UI→真实服务/队列夹具验收完成，合成3证券，无mock模型或服务、未调用研究模型；所有选择/参数经新原生控件，预览/保存0任务，人工确认后完成唯一冻结检验，自动晋级0。proposal=debc0417-5626-54a5-b71d-fc7b65b74d34；run=e25bb750-6563-5a16-926c-97fd96200aa2；原始父头部SHA=d7d1c83aa666be01bc3a41957a4714c354ad860960eacd512717bfd9c56a1f4d。保存的是验收原始快照，不是完整可搬迁复算包或实际市场Alpha结论。
 - 证据保留在artifacts/research-visual-flow-20260927/，文档更新guide/architecture/code-map和当前状态。宿主独立提交后普通fast-forward/push并核对远端SHA，不部署/重启；未改正式数据、采集、日常模型配置、服务、可见客户端或交易权限。
+
+### 2026-09-27｜[CODE/AI/UI] Factory报告、导出与只读证据解读
+
+- 从536ec56继续，复用原状态/父归档和工具链，不重建统计或候选库。新增agent/factory_report的有界只读报告及Markdown投影、alpha_factory_tools的get_alpha_factory_report；UI完整报告最多12候选，工具每页6、总输出限字节，后续页可用expected_digest锁定同一状态/父来源。接口不二次compact丢字段，不读原行情或执行统计。
+- 主控复核加强：有界普通文件读取、严格JSON与现有checksum、manifest/prepared/source/job/decision一致性、返回前SHA复查；重复/非计划槽位拒绝、缺失槽位撤下建议、非有限数不静默变未知。成本是否请求与实际完成/p值/失败分列；Markdown按候选分节，保留版本、原始run IDs、失败/负值/限制，外部名称不生成HTML/图片链接。
+- 新增evidence_review白名单与短系统说明，ChatRuntime显式evidence模式清除执行队列和实时数据入口，schema二次过滤防外层包装重加写工具。研究API旧功能保留，CLI --evidence-only与恢复写入/执行/锁定规格互斥；原生助手可切换到只读解读，审批/Grant/写finding恢复按钮禁用，改模式重确认发送许可。
+- desktop/factory_report从真实来源生成文本/JSON，导出前重核digest且只创建新文件；不覆盖旧档、不是完整复现包。Factory窗口接报告/AI按钮和已晋级Watch跳转；AI仅获得ID/hash草稿，不自动请求模型或填入开发者数值结论。忙会话不覆盖，换工作空间/关闭后迟到响应不使用。
+- 验收：主控31项目标回归后补数据版窗口覆盖，最终20模块146项PASS，0失败/错误/跳过；前后源码/测试/JSON/MJS指纹d2485a4250f0c059c1bc9840083629ddf91d486676beb578a217b99e19149ac3。子代理8项报告测试+9项旧Factory仅局部依据，未重复累加；主控新增9项报告边界、7项profile、8项桌面路径。首次profile测试误以无queue配置的研究模式应暴露submit，按既有条件提供未调用queue fixture后修复，不改真实授权校验。原失败与工具会话输入错误保留。
+- 本提交先冻结代码供真实Pi只读解读验收；当前未把合成统计或mock UI当真实模型证据。未改正式DATA/采集/全局模型/服务/Runner或可见客户端，无新交易权限。

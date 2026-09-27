@@ -517,7 +517,7 @@ class MainWindow(QMainWindow):
         from PyQt6 import sip
         try:
             if type(profile) is bool:profile=None  # QAction.triggered compatibility
-            if profile not in (None,'everyday','research'):raise ValueError('未知助手模式')
+            if profile not in (None,'everyday','research','evidence'):raise ValueError('未知助手模式')
             if draft is not None and (not isinstance(draft,str) or not 1<=len(draft)<=16000):
                 raise ValueError('研究草稿必须为1–16000字符')
             dialog=getattr(self,'_research_chat_dialog',None)
@@ -538,6 +538,11 @@ class MainWindow(QMainWindow):
             return True
         except Exception as error:
             self.status.setText('研究助手未打开：'+str(error));return False
+
+    def review_research_evidence(self,draft):
+        """Open an explicitly read-only profile without submitting a model turn."""
+        from .research_chat import ResearchChatDialog
+        return self._open_research_chat(ResearchChatDialog,'evidence',draft)
 
     def ask_ai(self,prompt):
         """Open the everyday assistant with page context pre-filled; the user reviews and sends."""

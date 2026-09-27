@@ -30,6 +30,7 @@ class ResearchChatDialog(QDialog):
         box=QVBoxLayout(self)
         self.profile=QComboBox();self.profile.setAccessibleName('助手模式')
         self.profile.addItem('日常：问市场、个股、我的股票','everyday');self.profile.addItem('研究：因子、实验、提案与数据治理工具','research')
+        self.profile.addItem('解读：只读已有研究证据，不新建或执行','evidence')
         self.profile.setCurrentIndex(self.profile.findData(profile));self.profile.currentIndexChanged.connect(self.change_profile)
         self.profile.setVisible(self.DEFAULT_PROFILE is None)
         box.addWidget(row(label('助手模式'),self.profile))
@@ -74,6 +75,7 @@ class ResearchChatDialog(QDialog):
         records=self.runtime.store.list()
         if not records:self.new_session()
         else:self.refresh_sessions(records[0]['id'])
+        self.update_profile_controls()
 
     def make_runtime(self,profile):
         return ChatRuntime(self.output,self.data_root,getattr(self.window,'get_research_queue',None),tool_profile=profile)
@@ -81,8 +83,17 @@ class ResearchChatDialog(QDialog):
     def change_profile(self):
         if self.busy:return
         self.runtime=self.make_runtime(self.profile.currentData())
+        self.recovery_mode.setChecked(False);self.consent.setChecked(False)
         self.input.setPlaceholderText('例如：今天市场怎么样？帮我看看 600519。我的股票有什么要注意的？'
-            if self.profile.currentData()=='everyday' else '例如：查询已有动量因子，然后为三只股票拟定一份研究提案。')
+            if self.profile.currentData()=='everyday' else '读取这份Factory报告，解释各候选的证据、失败项和限制。' if self.profile.currentData()=='evidence'
+            else '例如：查询已有动量因子，然后为三只股票拟定一份研究提案。')
+        self.update_profile_controls()
+
+    def update_profile_controls(self):
+        readonly=self.profile.currentData()=='evidence'
+        for control in (self.approvals_button,self.grant_button,self.recovery_button,self.recovery_mode):
+            control.setEnabled(not self.busy and not readonly)
+        if readonly:self.recovery_mode.setChecked(False)
 
     def prefill(self,text):
         """Put page context into the input; the user reviews it and presses send."""
@@ -91,6 +102,8 @@ class ResearchChatDialog(QDialog):
 
     def prepare_recovery(self):
         if self.busy:return
+        if self.profile.currentData()=='evidence':
+            self.status.setText('当前为只读解读；补存研究结论须由你明确切换到研究模式。');return
         if self.output!=self.window.output or self.data_root!=self.window.data_root:
             self.status.setText('工作空间已变化，请重新打开助手。');return
         from quantlab.agent.chat_recovery import RECOVERY_PROMPT
@@ -112,6 +125,7 @@ class ResearchChatDialog(QDialog):
             self.consent,self.input,self.send_button,self.open_button,self.approvals_button,self.grant_button,
             self.recovery_button,self.recovery_mode):control.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
+        self.update_profile_controls()
 
     def refresh_sessions(self,selected):
         self.sessions.blockSignals(True);self.sessions.clear()
@@ -149,6 +163,7 @@ class ResearchChatDialog(QDialog):
         self.status.setText('上轮未完成；可点击“整理已有结果（不重跑）”继续核对。' if last and
             (last.get('status')!='completed' or last.get('metadata',{}).get('needs_followup'))
             else '已读取本地会话；旧助手文字不是新的研究证据。')
+        self.update_profile_controls()
 
     def receive(self,kind,value):
         if sip.isdeleted(self):return

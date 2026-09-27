@@ -55,11 +55,15 @@ class AlphaFactoryDialog(QDialog):
         self.submit_button=button('批准并提交固定Factory',self.submit,True)
         self.sync_button=button('同步Factory结果',self.sync)
         self.open_button=button('打开Factory结果',self.open_result)
-        box.addWidget(row(self.submit_button,self.sync_button,self.open_button))
+        self.report_button=button('研究报告 / AI解读',self.open_report)
+        box.addWidget(row(self.submit_button,self.sync_button,self.open_button,self.report_button))
         self.candidates=QComboBox();self.watch_name=QLineEdit();self.watch_name.setPlaceholderText('观察池名称')
         self.promote_confirm=QCheckBox('我已复核完整Factory证据，确认只把当前推荐候选加入观察池；不创建自动刷新授权。')
         self.promote_button=button('人工加入Watchlist',self.promote)
         box.addWidget(row(self.candidates,self.watch_name));box.addWidget(self.promote_confirm);box.addWidget(self.promote_button)
+        self.promoted_watches=QComboBox();self.watch_button=button('打开已加入的观察池',self.open_promoted_watch)
+        box.addWidget(row(self.promoted_watches,self.watch_button))
+        self.promoted_watches.currentIndexChanged.connect(self.buttons)
         tabs=QTabWidget();summary=QWidget();summary_box=QVBoxLayout(summary)
         self.summary_text=label('尚未读取固定计划。','muted',True);summary_box.addWidget(self.summary_text)
         self.test_table=table(['候选','固定检验','归档状态','估计值','原始 p','Holm p','观察建议','未过条件 / 错误'],[])
@@ -93,6 +97,21 @@ class AlphaFactoryDialog(QDialog):
         try:self.window.catalog.file(run_id,'experiment.json');self.window.open_run(run_id)
         except (OSError,ValueError,KeyError,TypeError) as exc:self.status.setText('检验证据不可打开：'+str(exc))
 
+    def open_report(self):
+        if not self.valid_context() or self.busy or not self.current:return
+        from .factory_report import FactoryReportDialog
+        self.window.show_dialog(FactoryReportDialog(self.window,self.current['proposal_id']))
+
+    def open_promoted_watch(self):
+        if not self.valid_context() or self.busy or not self.current:return
+        watch_id=self.promoted_watches.currentData();proposal_id=self.current['proposal_id']
+        if not watch_id:return
+        def show(state):
+            if not any(r.get('watch_id')==watch_id for r in state.get('promotions',[])):
+                self.status.setText('观察池关联已变化，请刷新Factory后重选。');return
+            self.window.factor_watches(watch_id)
+        self.work(lambda:self.service.get(proposal_id),show)
+
     def valid_context(self):
         return (not self.closed and not sip.isdeleted(self) and not sip.isdeleted(self.window)
                 and not getattr(self.window,'closing',False) and self.output==self.window.output
@@ -107,6 +126,8 @@ class AlphaFactoryDialog(QDialog):
             for c in self.findChildren(QPushButton):c.setEnabled(False)
             return
         self.new_button.setEnabled(not self.busy)
+        self.report_button.setEnabled(not self.busy and self.current is not None)
+        self.watch_button.setEnabled(not self.busy and bool(self.promoted_watches.currentData()))
         selected=self.test_table.currentRow()
         self.evidence_button.setEnabled(not self.busy and 0<=selected<len(self.test_rows) and bool(self.test_rows[selected]['run_id']))
         status=self.current.get('status') if self.current else None
@@ -119,11 +140,11 @@ class AlphaFactoryDialog(QDialog):
         if not self.valid_context():self.status.setText('工作空间或窗口已变化，请重新打开Factory。');self.buttons();return
         self.busy=True
         for c in self.findChildren(QPushButton):c.setEnabled(False)
-        for c in (self.proposals,self.candidates,self.watch_name,self.confirm,self.promote_confirm):c.setEnabled(False)
+        for c in (self.proposals,self.candidates,self.watch_name,self.confirm,self.promote_confirm,self.promoted_watches):c.setEnabled(False)
         def finished(value,error):
             if not self.valid_context():return
             self.busy=False
-            for c in (self.proposals,self.candidates,self.watch_name,self.confirm,self.promote_confirm):c.setEnabled(True)
+            for c in (self.proposals,self.candidates,self.watch_name,self.confirm,self.promote_confirm,self.promoted_watches):c.setEnabled(True)
             self.reload_button.setEnabled(True)
             if error:self.status.setText('未完成：'+error)
             else:done(value)
@@ -142,7 +163,7 @@ class AlphaFactoryDialog(QDialog):
     def select(self):
         proposal_id=self.proposals.currentData();self.current=None
         self.render_summary(None)
-        self.confirm.setChecked(False);self.promote_confirm.setChecked(False);self.candidates.clear()
+        self.confirm.setChecked(False);self.promote_confirm.setChecked(False);self.candidates.clear();self.promoted_watches.clear()
         if not proposal_id:self.details.setPlainText('{}');self.buttons();return
         def show(value):
             if self.proposals.currentData()!=proposal_id:return
@@ -150,6 +171,10 @@ class AlphaFactoryDialog(QDialog):
             self.render_summary(value)
             names={c['candidate_id']:c.get('name',c['candidate_id'][:8]) for c in value.get('prepared',{}).get('candidates',[])}
             promoted={r['candidate_id'] for r in value.get('promotions',[])}
+            self.promoted_watches.blockSignals(True);self.promoted_watches.clear()
+            for entry in value.get('promotions',[]):
+                self.promoted_watches.addItem(names.get(entry['candidate_id'],entry['candidate_id'][:8])+' · '+entry['watch_id'][:8],entry['watch_id'])
+            self.promoted_watches.blockSignals(False)
             for cid in value.get('recommended_candidate_ids',[]):
                 if cid in promoted:continue
                 self.candidates.addItem(names.get(cid,cid[:8]),cid)
