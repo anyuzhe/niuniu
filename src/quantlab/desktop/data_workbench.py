@@ -299,11 +299,10 @@ class DataConnectedWorkbench(MainWindow):
     def open_readiness(self):
         from .refresh_readiness import RefreshReadinessDialog
         self.show_dialog(RefreshReadinessDialog(self))
-    def research_chat(self):
-        dialog=getattr(self,'_research_chat_dialog',None)
-        if dialog is None or sip.isdeleted(dialog) or dialog.output!=self.output or dialog.data_root!=self.data_root:
-            dialog=DataResearchChatDialog(self);self._research_chat_dialog=dialog;self.show_dialog(dialog)
-        else:dialog.show();dialog.raise_();dialog.activateWindow()
+    def research_chat(self, profile=None, draft=None):
+        # Daily questions use the daily tool profile; formal drafts retain the data research adapter.
+        dialog_type=ResearchChatDialog if profile=='everyday' else DataResearchChatDialog
+        return self._open_research_chat(dialog_type, profile, draft)
     def select_baostock_dataset(self,identifier):
         if self._archived_selection_pending:raise ValueError('正在核验归档输入，请先结束当前选择')
         if self.callbacks or (self.queue and any(j['status'] in ('queued','running') for j in self.queue.list())):

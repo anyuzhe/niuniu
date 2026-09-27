@@ -18,6 +18,14 @@ from test_research_chat import FakeProvider
 class ChatDesktopTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):cls.app=QApplication.instance() or QApplication([])
+    def setUp(self):
+        # These are chat/approval tests, not a DATA-READY market integration test.
+        # MainWindow(tmp,tmp) auto-opens the home page, whose default catalog otherwise
+        # points at the user's real lake. Keep the native asynchronous failure path
+        # but explicitly isolate its unrelated data dependency; no assertion is relaxed.
+        isolation=patch('quantlab.desktop.market_pages.build_market_overview',
+                        side_effect=ValueError('Isolated chat test: market dataset not configured'))
+        isolation.start();self.addCleanup(isolation.stop)
     def wait(self,predicate,seconds=8):
         end=time.monotonic()+seconds
         while time.monotonic()<end:

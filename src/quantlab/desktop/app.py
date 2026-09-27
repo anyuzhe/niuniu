@@ -493,22 +493,40 @@ class MainWindow(QMainWindow):
                 layout.addWidget(tabs);self.show_dialog(dialog)
             self.async_call(lambda:[self.catalog.record(i) for i in ids],done)
 
-    def research_chat(self):
-        from PyQt6 import sip
+    def research_chat(self, profile=None, draft=None):
         from .research_chat import ResearchChatDialog
+        return self._open_research_chat(ResearchChatDialog, profile, draft)
+
+    def _open_research_chat(self, dialog_type, profile=None, draft=None):
+        """Shared native entry for plain/data workbenches; never dispatch a model here."""
+        from PyQt6 import sip
         try:
+            if type(profile) is bool:profile=None  # QAction.triggered compatibility
+            if profile not in (None,'everyday','research'):raise ValueError('未知助手模式')
+            if draft is not None and (not isinstance(draft,str) or not 1<=len(draft)<=16000):
+                raise ValueError('研究草稿必须为1–16000字符')
             dialog=getattr(self,'_research_chat_dialog',None)
-            if dialog is not None and not sip.isdeleted(dialog) and dialog.output==self.output and dialog.data_root==self.data_root:
-                dialog.show();dialog.raise_();dialog.activateWindow();return
-            dialog=ResearchChatDialog(self);self._research_chat_dialog=dialog;self.show_dialog(dialog)
-        except Exception as error:self.status.setText('研究助手未打开：'+str(error))
+            current=dialog is not None and not sip.isdeleted(dialog)
+            if current and dialog.busy and (profile is not None or draft is not None):
+                self.status.setText('助手仍在处理原问题，未切换模式或覆盖草稿。');return False
+            if not current or type(dialog) is not dialog_type or dialog.output!=self.output or dialog.data_root!=self.data_root:
+                dialog=dialog_type(self);self._research_chat_dialog=dialog
+                self.show_dialog(dialog)
+            if profile is not None:
+                idx=dialog.profile.findData(profile)
+                fixed=getattr(dialog,'DEFAULT_PROFILE',None)
+                if idx<0 or (fixed is not None and fixed!=profile):raise ValueError('当前助手入口不支持该模式')
+                dialog.profile.setCurrentIndex(idx)
+            if draft is not None and not dialog.prefill(draft):
+                self.status.setText('助手正在处理原问题，未覆盖草稿。');return False
+            dialog.show();dialog.raise_();dialog.activateWindow()
+            return True
+        except Exception as error:
+            self.status.setText('研究助手未打开：'+str(error));return False
 
     def ask_ai(self,prompt):
-        """Open the assistant with page context pre-filled; the user reviews and sends."""
-        self.research_chat()
-        dialog=getattr(self,'_research_chat_dialog',None)
-        if dialog is not None and hasattr(dialog,'prefill') and not dialog.prefill(prompt):
-            self.status.setText('助手正在回答上一个问题，稍后再试。')
+        """Open the everyday assistant with page context pre-filled; the user reviews and sends."""
+        self.research_chat(profile='everyday',draft=prompt)
 
     def open_stock_report(self,code):
         self.pending_stock=code;self.navigate_page('stock')

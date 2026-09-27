@@ -2081,3 +2081,32 @@
 
 - 在 12 个理论信号（同一天可多次进出）和页面 5 种赚钱策略的逐笔交易上，测试输了加倍、输了 ×1.5、同一天内输了加倍、赢了加倍、赢了减半、单日止损/止盈、近期表现开关、按同时持仓数分摊、同时最多 3 笔。前后输赢几乎不相关（相关系数约 −0.08 至 +0.02）；输了加倍让上午打分每份资金 +56→+71 bp，但所需资金约 7 倍、按所需资金算的收益只有 0.4 倍；按同时持仓控仓使回撤和最差一天降到约 0.3 倍、资金效率提高 1.6–1.9 倍。记录见[日内做T 策略研究 §22](../archive/intraday/20260925-日内做T策略研究.md)。未改产品代码。
 
+
+### 2026-09-27｜[CODE] 研究实验室与候选证据阶段1（隔离worktree，待主控审查）
+
+- 类型：产品界面 / 研究证据语义 / AI工具结构化输出 / focused tests。
+- 模块：`desktop/trading_pages.py`、`trading/candidates.py`、`trading/research_evidence.py`、`desktop/market_pages.py`、`agent/home_tools.py`、`desktop/factor_evidence.py`。
+- 改动内容：研究实验室从旧研究模块按钮墙改为“研究总览/待办、因子与候选、实验与对比、Alpha Factory、观察池/Watch”分区，保留 legacy 12 模块和 Baostock 菜单兼容；缺 `DataConnectedWorkbench` 方法时明确降级不可用。今日候选历史检验改为“快速历史参考（research_only）”，保留原算法/数值，删除 t≥2 即统计稳定的过强措辞。新增统一只读证据摘要 `niuniu-research-evidence-v1`，候选规则/验证字典和归档研究引用都读时适配；缺 run_id 保持 null，不伪造。候选卡新增“证据详情”“进入正式研究”，AI prompt 与 `get_market_overview` 共用结构化摘要并在48KiB边界内保留警告。新增因子证据发现只读对话框，复用 `ArtifactCatalog` 按 factor_id/version/params 有界查询并显式保留错配/损坏错误。
+- 原因：阶段1先把日常候选、研究实验室和正式研究入口的证据语义接到已有内核，避免候选卡/AI只看到一段 text、避免把快速回看误写成有效 Alpha。
+- 关键约束：未改正式数据、采集、模型配置、服务、交易或授权；未启动可见UI；不创建第二权威库；正式研究入口只打开原生助手/提案草稿，不自动选择相似因子、不提交、不批准；因子定义与某次结果分开。
+- 测试证据：先用指定 Python 校验 `quantlab.__file__` 属于当前 worktree；`tests.test_research_evidence_phase1` 4项通过（legacy cache、样本不足/真假 run_id、候选prompt与tool结构化摘要、因子证据发现错配/损坏）；`tests.test_playbook_lab_desktop` 4项 Qt offscreen 通过（研究入口按钮可达、普通 MainWindow 不可用降级、Playbook旧入口）；`tests.test_market_overview` + `tests.test_candidates` 共11项通过；`py_compile` 覆盖新增/改动源码与测试。未运行全量重测，未做真实桌面验收。
+- Git提交：实施子任务不自行 commit/push/merge，由宿主主控审查后按用户授权提交；此处为初版记录。
+- 后续事项：阶段2/3尚未实施；主控需独立复核 diff、证据语义和是否接入更正式的提案工作流。
+
+### 2026-09-27｜[CODE] 阶段1独立复核修复轮（禁止提交/推送）
+
+- 类型：Bug 修复 / 研究证据语义 / 桌面离屏回归 / 文档限制更新。
+- 模块：`trading/research_evidence.py`、`trading/candidates.py`、`desktop/factor_evidence.py`、`desktop/market_pages.py`、`desktop/app.py`、`desktop/trading_pages.py`、相关测试。
+- 改动内容：快速候选证据不再把 valid UUID 当正式 run 链接，改列 `unverified_run_id`；旧 metadata 缺字段不再补当前 benchmark/entry_exit；新候选验证写入 method/version。限制警告不再静默 `[:12]` 截断，超预算显式 `incomplete/error`。归档研究引用改用 `load_record_fields` 读取真实 `experiment.json` 字段并附源文件 SHA256 指纹，区分旧 cfg 参数和展开参数，`ArtifactCatalog.summary` 仅作 metadata discovery。因子证据发现改为 UUID 目录有界扫描与真实 `next_offset/has_more/scanned/incomplete/errors`，拒绝 bool/float 分页和非对象参数过滤。因子证据桌面页改为 `async_call`、查询开始清旧结果、迟到/换根/失败保护、参数 JSON 过滤和打开前 run header/指纹复查。今日候选正式研究按钮改为打开研究 profile 草稿；候选 prompt 控制在 ChatRuntime 预算内并标明展示股票非全部候选；证据详情改用只读可滚动控件；零当前候选仍保留历史证据/草稿入口。研究实验室页用既有 `ResearchAgendaService` 异步读取有界待办摘要，保留 legacy 入口。
+- 原因：修复独立复核指出的候选证据伪链接、metadata 深验误称、全扫全读、UI 同步阻塞/旧链接残留、正式研究误入 everyday profile、巨型 QLabel 和研究总览空洞等阶段1缺陷。
+- 关键约束：仅保留并修复上一 Run 的 Phase1 改动；未进入阶段2；未 commit/push/merge；未改源主工作区、正式数据、服务、模型配置或可见 UI；未降低断言或用文档替代修复。
+- 测试证据：`tests.test_research_evidence_phase1` 7项通过；`tests.test_phase1_desktop_evidence` 2项 Qt offscreen 通过；`tests.test_market_overview` 6项通过；`tests.test_stock_report` 13项通过；`py_compile` 覆盖本轮改动文件。未运行全量测试，未做真实桌面/真实模型验收。
+- Git提交：修复子任务不自行 commit/push/merge；宿主主控完成最终复核后提交。
+- 后续事项：仍需主控复核 diff 与产品入口；阶段2/3 未完成。
+
+### 2026-09-27｜[CODE] 阶段1主控最终复核与验收
+
+- 独立修复：分页在返回预算耗尽前停止消费目录项，45条匹配+坏记录测试不漏项；展开参数来自manifest.parameters，费用来自manifest.execution；读取只认证原始头部SHA，不冒充全归档深验。打开前核对原指纹，输入变化/关闭/换根后迟到结果不恢复旧链接。数据版和普通版助手分别进入正确的研究/日常profile，预填草稿不发模型请求；零候选也保留证据入口。工具不再为适配体积静默丢掉候选及其警告，证据超限显式报错。
+- 最终测试：7模块33项PASS，0失败/错误/跳过，源码和测试指纹前后一致。日志与JSON在`artifacts/alpha-research-integration-20260927/phase1-validation-final.json`。首次旧聊天测试失败保留：MainWindow(tmp,tmp)自动首页读取了DATA正式目录，回调超时且Qt退出异常；诊断堆栈定位到market_overview._load_panel。已在聊天测试中显式隔离该无关数据依赖，仍走原生异步失败反馈，未放宽原断言。首次只有读取正式源，未改源数据；最终回归不再触及正式源。
+- 本阶段在独立分支提交，历史数值/正式数据/采集/服务/日常模型配置和权限未改；没有可见桌面或真实模型验收。阶段2、阶段3另行实施，不能把本阶段的模拟模型/离屏测试算作真实AI研究。
+

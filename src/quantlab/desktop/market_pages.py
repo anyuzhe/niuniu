@@ -2,9 +2,11 @@
 from datetime import datetime, timedelta, timezone
 
 from PyQt6 import sip
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QPlainTextEdit
 
 from quantlab.trading.market_overview import (MarketOverviewError, build_market_overview, latest_overview,
                                               save_overview)
+from .business_view import BusinessDetails
 from .widgets import Card, Chart, button, kpis, label, row, table
 
 BEIJING = timezone(timedelta(hours=8))
@@ -164,12 +166,58 @@ def themes_page(window):
 VERDICT_STYLE = {'positive': '✔ ', 'negative': '✘ ', 'unclear': '○ ', 'insufficient': '… '}
 
 
+def _bounded_candidate_json(overview, rule, caveats, *, max_chars=12000):
+    from quantlab.trading.research_evidence import bounded_json, candidate_prompt_payload
+    last_error = None
+    for shown in (30, 15, 8, 3, 0):
+        payload = candidate_prompt_payload(overview, rule, caveats, shown_limit=shown)
+        try:
+            text = bounded_json(payload, min(16 * 1024, max_chars))
+            if len(text) <= max_chars:
+                return text
+        except ValueError as exc:
+            last_error = exc
+    raise ValueError('候选证据超过ChatRuntime草稿预算；请缩小候选或单独查看证据详情。') from last_error
+
+
 def candidate_prompt(overview, rule):
-    names = '、'.join(f"{s['name']}（{s['code']}）" for s in rule['stocks'][:10])
-    return (f"“{rule['name']}”规则（{rule['description']}）在 {overview['trading_day']} 选出 {rule['count']} 只，"
-            f"前几只：{names}。\n历史验证：{rule['validation'].get('text')}\n"
-            '请结合今天的市场和主线，说明这批股票里哪些更值得进一步研究、为什么，以及需要注意的风险；'
-            '考虑到这条规则的历史验证结果，不要给出确定的买卖指令。')
+    from quantlab.trading.candidates import CAVEATS
+    structured = _bounded_candidate_json(overview, rule, CAVEATS)
+    return ('请基于下面JSON结构化证据解读今日候选。JSON包含原规则、当前范围、样本/参数/日期/统计/费用/限制；'
+            '它是research_only快速历史参考，不是正式Alpha。若shown_is_complete=false，说明展示股票不是全部候选。不要自动选择相似因子，不要自动批准研究。\n```json\n'
+            + structured + '\n```')
+
+
+def _formal_research_prompt(overview, rule):
+    from quantlab.trading.candidates import CAVEATS
+    text = _bounded_candidate_json(overview, rule, CAVEATS)
+    return ('为这条精确候选规则起草正式研究提案；保留原规则与当前展示范围，列出数据、样本、费用和阻断项。'
+            '只生成草稿，不提交、不批准、不替换为相似因子。展示名单不是历史完整股票池。\n```json\n' + text + '\n```')
+
+
+def _candidate_action(window, overview, rule, action):
+    try:
+        if action=='details':return _show_candidate_evidence(window,overview,rule)
+        if action=='formal':return window.research_chat(profile='research',draft=_formal_research_prompt(overview,rule))
+        return window.ask_ai(candidate_prompt(overview,rule))
+    except Exception as exc:
+        window.status.setText('候选证据操作未完成：'+str(exc))
+
+
+def _show_candidate_evidence(window, overview, rule):
+    from quantlab.trading.candidates import CAVEATS
+    from quantlab.trading.research_evidence import candidate_rule_evidence, bounded_json
+    dialog = QDialog(window); dialog.setWindowTitle(rule['name'] + ' · 证据详情'); dialog.resize(900, 720)
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(label('快速历史参考（research_only）：不等于正式Alpha、交易建议或自动批准。', 'note', True))
+    layout.addWidget(label('规则身份按key/描述/参数等字段共同识别；仅名称相同不可认定同一规则。', 'muted', True))
+    details = BusinessDetails(candidate_rule_evidence(rule, trading_day=overview.get('trading_day'),
+        sources=overview.get('sources'), caveats=CAVEATS))
+    text = QPlainTextEdit(); text.setReadOnly(True)
+    text.setPlainText(bounded_json(candidate_rule_evidence(rule, trading_day=overview.get('trading_day'),
+        sources=overview.get('sources'), caveats=CAVEATS), 64 * 1024))
+    layout.addWidget(details, 2); layout.addWidget(text, 1)
+    window.show_dialog(dialog)
 
 
 def candidates_page(window):
@@ -180,14 +228,19 @@ def candidates_page(window):
         return
     rules = overview.get('candidates')
     if not rules:
-        box.addWidget(label('当前结果是旧版本生成的，没有候选数据；点“立即更新”重新生成。', 'note', True))
+        box.addWidget(label('当前候选为0或旧结果没有候选列表；仍可使用“因子证据发现”查看历史研究归档，或打开研究助手起草新的人工审查草稿。', 'note', True))
+        box.addWidget(row(button('查看历史因子证据', lambda: window.show_dialog(__import__('quantlab.desktop.factor_evidence', fromlist=['FactorEvidenceDialog']).FactorEvidenceDialog(window))),
+                          button('正式研究草稿', lambda: window.research_chat(profile='research', draft='请基于当前市场页面起草一个正式研究提案草稿；只生成草稿，不提交、不批准。'), True)))
         return
     from quantlab.trading.candidates import CAVEATS
     for rule in rules:
         v = rule['validation']
         card = Card(f"{rule['name']} · 今日 {rule['count']} 只")
         card.add(label(rule['description'], 'muted', True))
-        verdict = label(VERDICT_STYLE.get(v['verdict'], '') + '历史验证：' + v['text'], 'note', True)
+        meanings={'positive':'探索性收益差为正','negative':'探索性收益差为负','insufficient':'样本不足','unclear':'未显示明确差异'}
+        description=meanings.get(v.get('verdict'),'未知')
+        verdict = label('快速历史参考：'+description+'；有效日期数 '+str(v.get('samples','未知'))+
+                        '。不是正式样本外或可交易Alpha认证；费用、旧版本叙述与限制见证据详情。', 'note', True)
         card.add(verdict)
         stocks = rule['stocks']
         if stocks:
@@ -197,9 +250,13 @@ def candidates_page(window):
             card.add(_tall(grid, min(len(stocks), 8)))
             more = f"（只列前 {len(stocks)} 只）" if rule['count'] > len(stocks) else ''
             card.add(row(label('双击打开个股报告' + more, 'muted'),
-                         button('问 AI 看这批股票', lambda r=rule: window.ask_ai(candidate_prompt(overview, r)))))
+                         button('证据详情', lambda r=rule: _candidate_action(window,overview,r,'details')),
+                         button('进入正式研究', lambda r=rule: _candidate_action(window,overview,r,'formal'), True),
+                         button('问 AI 看这批股票', lambda r=rule: _candidate_action(window,overview,r,'daily'))))
         else:
             card.add(label('今天没有股票符合这条规则。', 'muted'))
+            card.add(row(button('证据详情',lambda r=rule:_candidate_action(window,overview,r,'details')),
+                         button('进入正式研究',lambda r=rule:_candidate_action(window,overview,r,'formal'))))
         box.addWidget(card)
     box.addWidget(label('验证方法与局限：\n' + '\n'.join('· ' + c for c in CAVEATS), 'muted', True))
 

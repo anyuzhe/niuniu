@@ -7,7 +7,7 @@ from uuid import uuid4
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication,QPushButton,QTabWidget,QTableWidget
+from PyQt6.QtWidgets import QApplication,QPushButton,QTabWidget,QTableWidget,QLabel
 
 from quantlab.desktop.app import MainWindow
 from quantlab.desktop.playbook_lab import PlaybookLabDialog
@@ -29,12 +29,24 @@ class PlaybookLabDesktopTests(unittest.TestCase):
     def test_research_lab_has_playbook_entry_and_dialog_is_read_only_on_open(self):
         self.window.navigate_page('lab');QTest.qWait(20)
         buttons=self.window.scroll.widget().findChildren(QPushButton)
+        texts=[b.text() for b in buttons]
+        for expected in ['研究议程','受限DSL候选注册','安全 Alpha Factory','观察池 / Watch']:
+            self.assertIn(expected, texts)
+        labels=[w.text() for w in self.window.scroll.widget().findChildren(QLabel)]
+        self.assertIn('Legacy 研究模块（兼容入口，不隐藏功能）', labels)
         entry=next(b for b in buttons if b.text()=='交易知识 / Playbook Lab')
         entry.click();QTest.qWait(30)
         dialog=self.window.dialogs[-1];self.assertIsInstance(dialog,PlaybookLabDialog)
         tabs=dialog.findChild(QTabWidget);self.assertEqual(tabs.count(),5)
         self.assertEqual([tabs.tabText(i) for i in range(5)],
             ['交易知识来源','Playbook定义','案例 / 候选全集','历史验证','来源 / Playbook关系'])
+        self.assertFalse((self.root/'_jobs').exists())
+
+    def test_research_lab_data_workbench_actions_degrade_on_plain_main_window(self):
+        self.window.navigate_page('lab');QTest.qWait(20)
+        buttons=self.window.scroll.widget().findChildren(QPushButton)
+        next(b for b in buttons if b.text()=='受限DSL候选注册').click();QTest.qWait(20)
+        self.assertIn('当前窗口未加载数据工作台扩展', self.window.status.text())
         self.assertFalse((self.root/'_jobs').exists())
 
     def test_verified_source_appears_after_host_store_write(self):

@@ -49,10 +49,41 @@ def _error(tool, code, message):
 
 
 def _ok(tool, data, evidence):
-    result = {'ok': True, 'tool': tool, 'data': data, 'evidence': evidence, 'warnings': list(WARNINGS), 'error': None}
+    from quantlab.trading.research_evidence import sanitize
+    result = {'ok': True, 'tool': tool, 'data': sanitize(data), 'evidence': sanitize(evidence),
+              'warnings': list(WARNINGS), 'error': None}
     if len(encode(result).encode('utf-8')) > MAX_RESPONSE_BYTES:
-        return _error(tool, 'RESULT_TOO_LARGE', '结果过大')
+        return _error(tool, 'RESULT_TOO_LARGE', '结果过大；警告未截断，请缩小查询范围。')
     return json.loads(encode(result))
+
+
+def _market_overview_data(overview):
+    from quantlab.trading.candidates import CAVEATS
+    from quantlab.trading.research_evidence import candidate_rule_evidence, sanitize
+    candidates = []
+    for c in overview.get('candidates', []):
+        candidates.append({'key': c.get('key'), 'name': c.get('name'), 'description': c.get('description'),
+                           'count': c.get('count'),
+                           'evidence_summary': candidate_rule_evidence(c, trading_day=overview.get('trading_day'),
+                                                                       sources=overview.get('sources'), caveats=CAVEATS),
+                           'stocks': [{'code': x.get('code'), 'name': x.get('name'), 'industry': x.get('industry'),
+                                       'pct': x.get('pct'), 'reason': x.get('reason')}
+                                      for x in c.get('stocks', [])[:8]]})
+    base = {k: overview[k] for k in ('trading_day', 'summary', 'market', 'percentile', 'margin', 'caveats')}
+    base.update(ladder=overview['ladder'][:10], industries=overview['industries'][:8],
+                reasons=overview['reasons'][:8],
+                evidence_contract={'version': 'niuniu-research-evidence-v1',
+                                   'note': 'candidate evidence is structured; run_id is null when legacy quick cache has no archive run.'})
+    # All rules and their warnings remain. Only stock display rows may be shortened.
+    # If the evidence itself exceeds the budget, _ok returns an explicit error, not a false empty list.
+    for stock_limit in (8, 5, 3, 0):
+        data = {**base, 'candidates': [{**item, 'stocks': item['stocks'][:stock_limit],
+                    'stocks_display_only': True, 'shown_stocks': min(len(item['stocks']),stock_limit),
+                    'selected_count': item['count']} for item in candidates],
+                'candidate_evidence_complete': True}
+        if len(encode(sanitize(data)).encode('utf-8')) <= MAX_RESPONSE_BYTES - 2048:
+            return data
+    return data
 
 
 class HomeAPI:
@@ -93,14 +124,7 @@ class HomeAPI:
                 overview = latest_overview(self.output)
                 if overview is None:
                     return _error(name, 'NOT_BUILT', '还没有生成今日市场，请用户在“今日市场”页面生成。')
-                data = {k: overview[k] for k in ('trading_day', 'summary', 'market', 'percentile', 'margin', 'caveats')}
-                data.update(ladder=overview['ladder'][:10], industries=overview['industries'][:8],
-                            reasons=overview['reasons'][:8],
-                            candidates=[{'name': c['name'], 'description': c['description'], 'count': c['count'],
-                                         'validation': c['validation'].get('text'),
-                                         'stocks': [{'code': x['code'], 'name': x['name'], 'reason': x['reason']}
-                                                    for x in c['stocks'][:8]]}
-                                        for c in overview.get('candidates', [])])
+                data = _market_overview_data(overview)
                 return _ok(name, data, [{'kind': 'market_overview', 'trading_day': overview['trading_day']}])
             if name == 'get_stock_report':
                 from quantlab.trading.stock_report import build_stock_report

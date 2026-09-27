@@ -73,7 +73,12 @@ def _validate(features: pl.DataFrame, rule: Rule, sessions: list[date]) -> dict:
     daily = picks.join(market, on='date').filter(pl.col('count') >= MIN_SELECTED).sort('date')
     excess = (daily['picked'] - daily['market']).to_list()
     n = len(excess)
-    result = {'hold_sessions': HOLD_SESSIONS, 'cost': ROUND_TRIP_COST, 'samples': n,
+    result = {'method_id': 'market_overview_candidate_validation', 'method_version': 'quick-history-v2',
+              'hold_sessions': HOLD_SESSIONS, 'cost': ROUND_TRIP_COST, 'samples': n,
+              'min_samples': MIN_SAMPLES, 'min_selected': MIN_SELECTED,
+              'benchmark': '同日可买入可交易股票等权平均',
+              'entry_exit': '次日开盘买入，信号后第5个交易日收盘卖出',
+              'research_only': True,
               'first_day': daily['date'][0].isoformat() if n else None,
               'last_day': daily['date'][-1].isoformat() if n else None,
               'avg_selected': round(float(daily['count'].mean()), 1) if n else None}
@@ -87,9 +92,9 @@ def _validate(features: pl.DataFrame, rule: Rule, sessions: list[date]) -> dict:
     hit = sum(x > ROUND_TRIP_COST for x in excess) / n
     verdict = 'positive' if net > 0 and t >= 2 else 'negative' if net < 0 and t <= -2 else 'unclear'
     headline = {
-        'positive': '过去一年扣成本后平均跑赢全市场，统计上较稳定',
-        'negative': '过去一年扣成本后平均跑输全市场',
-        'unclear': '过去一年没有显示出稳定的优势',
+        'positive': '快速历史参考：过去一年扣成本后平均跑赢全市场（仍需正式研究复核）',
+        'negative': '快速历史参考：过去一年扣成本后平均跑输全市场',
+        'unclear': '快速历史参考：过去一年没有显示出稳定优势',
     }[verdict]
     text = (f"{headline}：入选后持有{HOLD_SESSIONS}天，平均比全市场多 {mean * 100:+.2f}%，"
             f"扣约{ROUND_TRIP_COST * 100:.1f}%往返成本后 {net * 100:+.2f}%；{hit * 100:.0f}% 的时候跑赢；"
@@ -120,6 +125,7 @@ def screen_candidates(features: pl.DataFrame, day: date, sessions: list[date]) -
         rows = picked.head(MAX_TODAY).to_dicts()
         result.append({
             'key': rule.key, 'name': rule.name, 'description': rule.description,
+            'method': 'market_overview_candidate_rule', 'method_version': 'quick-history-v2',
             'count': picked.height,
             'stocks': [{'code': r['code'], 'name': r['name'], 'industry': r['industry'], 'pct': r['pct'],
                         'ret20': r['ret20'], 'amount_ratio': r['amount_ratio'], 'streak': r['streak'],
