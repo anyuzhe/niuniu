@@ -2147,3 +2147,9 @@
 - 第一次正式CLI --recover-results在新进程完成7次只读调用，但没有写finding；模型误读根假设record.hypothesis_id=null（其实应引用record.memory_id）。验收失败保存在native-v1/acceptance-recover.json，不能用对话completed或零工具错误代替业务完成。
 - 修复research_memory.get读时返回finding_parent_id（根假设memory_id，finding则为其hypothesis_id），同步工具描述与恢复提示词；不修改数据库记录、旧ID、谱系、审批或研究数值。新增测试实际保存根假设→查询父引用→保存finding→再查根假设，验证原null父关系保留。
 - 修后13模块103项PASS，0失败/错误/跳过，前后代码/测试/计算资源指纹c66363872ddbcd4bdb07ae2ce48b2c7d3cb1a5604daf70b5c1e3983d37f8a543；日志在regression-v2。宿主独立提交后只重开原会话核对/补存，不再运行实验；修后真实验收另记。
+
+### 2026-09-27｜[CODE/AI/UI] 恢复闭环通过与Pi模型设置入口
+
+- 原生CLI修后复验在6a2361b完成：8次工具调用无错误，保存finding=e40795b2-0410-4b89-a54d-5c19b308e72c，原hypothesis=865e011b-7f3d-4cd0-97bd-8cc2cfb452a2，原run=e38604ac-4763-4ed5-b83b-82a40862bf6f。assessment=contradicted仍是待复核草稿，不是统计显著性/Alpha判断。任务/实验/冻结输入SHA未变、Grant仍撤销、未新建研究，原生三轮29调用/29结果一致。证明见native-v1/acceptance-recover-2.json；首次失败完整保留。
+- 发现desktop/model_settings.py仅列3种传输，已配置pi_sdk不能在研究助手界面正常收集配置；新增Pi下拉与pi_path，同原ModelConfig往返，非API模式禁用URL/Key并清除临时Key。research_chat发送许可准确显示Pi上游模型而不是无关base_url，模型/路径变化重置许可；probe只说明模型/认证可用，不误报0个模型或真实推理已通过。没有更改六角色、全局配置或已有授权。
+- 新增test_model_settings_pi的5项离屏测试，其中真实Node+fake ModelRuntime通过原生窗口send→ChatRuntime.run适配链验证partial可见且无研究提交。14模块108项最终回归PASS，0失败/错误/跳过，冻结源码/测试/JSON/MJS指纹db68bef01de57cf86350dab6c5a5380e1806315231c78051eefc537f35698f36，逐模块日志在regression-final；不是全仓库测试。后续离屏界面真实模型读回单独记录。

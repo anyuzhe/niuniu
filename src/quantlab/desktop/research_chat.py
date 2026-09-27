@@ -100,7 +100,10 @@ class ResearchChatDialog(QDialog):
 
     def config_changed(self):
         self.consent.setChecked(False)
-        target='Codex CLI 的 ChatGPT 登录服务' if self.settings.provider.currentData()=='codex_cli' else self.settings.fields['base_url'].text()
+        provider=self.settings.provider.currentData()
+        if provider=='codex_cli':target='Codex CLI 的 ChatGPT 登录服务'
+        elif provider=='pi_sdk':target='本机 Pi SDK 配置的上游模型服务（'+(self.settings.fields['model'].currentText() or '尚未填写模型')+'）'
+        else:target=self.settings.fields['base_url'].text()
         self.consent.setText('允许将本次对话和有限工具摘要发送至：'+target)
 
     def set_busy(self,busy):
@@ -178,6 +181,8 @@ class ResearchChatDialog(QDialog):
 
     def probe(self):
         if self.busy:return
+        if self.output!=self.window.output or self.data_root!=self.window.data_root:
+            self.status.setText('工作空间已变化，请重新打开助手；未检查连接。');return
         if not self.consent.isChecked():self.status.setText('请先确认模型数据发送目的地。');return
         try:config=self.settings.collect()
         except ValueError as error:self.status.setText(str(error));return
@@ -186,10 +191,14 @@ class ResearchChatDialog(QDialog):
         def done(info,error):
             if sip.isdeleted(self):return
             self.set_busy(False)
+            if self.output!=self.window.output or self.data_root!=self.window.data_root:
+                self.status.setText('工作空间已变化，忽略旧连接检查。');return
             if error:self.status.setText('连接检查未完成：'+error)
             else:
                 self.settings.apply_models(info);self.details.setPlainText(json.dumps(info,ensure_ascii=False,indent=2))
-                self.status.setText('连接检查完成，返回 '+str(len(info.get('models',[])))+' 个模型；列表检查不等于一次推理验收。')
+                if info.get('provider')=='pi_sdk' and info.get('available') is True:
+                    self.status.setText('Pi 已找到配置模型 '+str(info.get('pi_provider',''))+'/'+str(info.get('model',''))+'；仅检查模型与认证可用性，未执行推理或研究。')
+                else:self.status.setText('连接检查完成，返回 '+str(len(info.get('models',[])))+' 个模型；列表检查不等于一次推理验收。')
             if self.close_requested:self.close()
         self.window.async_call(lambda:make_provider(config,key).probe(stop),done,guarded=False)
 

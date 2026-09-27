@@ -356,3 +356,7 @@ worker页副本的清理与主库可查询是两件事。2026-09-21 19:29前，�
 最终范围回归13模块102项通过，0失败/错误/跳过，源码/测试/JSON/MJS指纹前后一致：3e8959b82fc3a3dbe47ced965e44bc3f4a5863c8786e4d52ef5a1baa78226de6。日志在隔离worktree的artifacts/research-continuation-20260927/regression-v1。此前Pi测试因GUI PATH无Node被跳过，修正为复用现有Pi安装定位后真实Node离线桥接测试已执行；不把跳过算通过。真实模型验收单独追加，本记录不宣称已验收实际模型。
 
 真实Pi在06b0d0f上自选方向效率lookback=20/5日标签，完成唯一研究e38604ac-4763-4ed5-b83b-82a40862bf6f；10轮预算收尾明确partial，14调用/14结果，原Grant撤销。原生CLI恢复7调用全部成功且未改研究文件，但模型误把根假设hypothesis_id=null认作缺少引用，未保存finding；该次验收明确失败，保留完整答复。现查询增加finding_parent_id并解释根假设引用memory_id，旧记录父关系未改；新增真实存储链单测后13模块103项全部通过（regression-v2），源码/测试/JSON/MJS指纹c66363872ddbcd4bdb07ae2ce48b2c7d3cb1a5604daf70b5c1e3983d37f8a543。修后仍只恢复原结果，不重新执行研究。
+
+在6a2361b重新通过正式CLI恢复原会话，8次调用无错误完成finding保存，ID=e40795b2-0410-4b89-a54d-5c19b308e72c，父假设865e011b-7f3d-4cd0-97bd-8cc2cfb452a2，引用原run且source_integrity=verified/claim_verified=false。结论为contradicted草稿，保留负结果；研究文件与输入副本SHA不变，无新任务/新授权。三轮累计29调用/29结果，保留第一次未保存finding的失败验收，不抹成首轮成功。
+
+补齐原研究助手ModelSettings遗漏的Pi选项、pi_path保存/启用、上游发送目的地说明和单模型连接检查显示；不改用户日常配置。新增5项测试含真实Node假模型经原生GUI适配层显示partial、Pi配置往返、密钥清空和许可重置、过期窗口不发连接请求。最终14模块108项全部PASS，0失败/错误/跳过，前后源码/测试/JSON/MJS指纹db68bef01de57cf86350dab6c5a5380e1806315231c78051eefc537f35698f36，日志regression-final。实际模型经离屏界面的进一步读回另记。
