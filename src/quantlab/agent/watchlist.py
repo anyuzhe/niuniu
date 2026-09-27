@@ -142,7 +142,7 @@ class WatchService:
         history = [self.store.snapshot(watch_id,key) for key in state['history'][-20:]]
         from quantlab.agent.tracking_control_store import ControlStore,control_summary
         control=control_summary(ControlStore(self.output).get(watch_id))
-        return {'definition':definition,'active':state['active'],'latest':latest,
+        return {'definition':definition,'active':state['active'],'latest':latest,'state_digest':digest(state),
             'sequential_monitor_configured':bool(definition.get('sequential_monitor')),
             'tracking_control':control,
             'source_integrity':integrity,'snapshot_count':len(state['history']),
@@ -150,7 +150,52 @@ class WatchService:
                 'as_of':r['preview']['as_of'],'change':r['change']['kind']} for r in history],
             'history_omitted':max(0,len(state['history'])-20),
             'refresh_requests':state['refresh_requests'][-20:],
+            'refresh_requests_omitted':max(0,len(state['refresh_requests'])-20),
             'automatic_tracking':bool(control['enabled']),'claim_verified':False}
+    def inspect_snapshot(self, watch_id, snapshot_id, *, expected_digest=None):
+        """Read one published snapshot and verify its own source, never latest's.
+
+        The view is a projection of existing records, not a new persisted report,
+        statistical recomputation, or permission to refresh/pause a watch.
+        """
+        if expected_digest is not None and (not isinstance(expected_digest,str) or
+                len(expected_digest)!=64 or any(c not in '0123456789abcdef' for c in expected_digest)):
+            raise ValueError('Invalid watch view digest')
+        definition,state=self.store.read(watch_id)
+        snapshot=self.store.snapshot(watch_id,snapshot_id)
+        history=state['history']
+        if snapshot_id not in history:
+            raise ValueError('Snapshot is not published in this watch history')
+        preview=snapshot['preview'];frozen=preview['source_fingerprint']
+        run_id=snapshot['source_run_id'];current=None
+        try:
+            current=digest(snapshot_tree(self.output,run_id))
+            integrity='verified' if current==frozen else 'source_changed'
+        except (OSError,ValueError,KeyError,TypeError):
+            integrity='unavailable'
+        # Do not join a historical snapshot to a newer administrative state
+        # observed half-way through the read. Old snapshots remain immutable.
+        after_definition,after_state=self.store.read(watch_id)
+        if (digest(definition)!=digest(after_definition) or digest(state)!=digest(after_state) or
+                digest(snapshot)!=digest(self.store.snapshot(watch_id,snapshot_id))):
+            raise ValueError('Watch or snapshot changed during read; refresh the selection')
+        identity={'format':'watch-snapshot-view-v1','watch_id':watch_id,'snapshot_id':snapshot_id,
+            'definition_digest':digest(definition),'state_digest':digest(state),'snapshot_digest':digest(snapshot),
+            'source_integrity':integrity,'current_source_fingerprint':current}
+        view_digest=digest(identity)
+        if expected_digest is not None and expected_digest!=view_digest:
+            raise ValueError('Watch snapshot view changed; reload before using the old evidence')
+        return {'watch_id':watch_id,'definition':definition,'active':state['active'],
+            'snapshot':snapshot,'snapshot_id':snapshot_id,'is_latest':snapshot_id==history[-1],
+            'latest_snapshot_id':history[-1],'snapshot_position':history.index(snapshot_id)+1,
+            'snapshot_count':len(history),'state_digest':digest(state),
+            'source_integrity':integrity,'source_fingerprint':frozen,'current_source_fingerprint':current,
+            'view_digest':view_digest,'verification':{
+                'level':'published_snapshot_and_own_source_bytes','snapshot_digest':digest(snapshot),
+                'source_bytes_checked':integrity=='verified','statistics_recomputed':False,
+                'note':'来源一致只表示所选快照引用的归档字节与记录指纹匹配，不证明数据正确、Strict PIT、衰减因果或未来Alpha。历史快照不继承最新快照的来源状态。'},
+            'claim_verified':False}
+
     def refresh_spec(self, watch_id, end):
         """Validate a fixed refresh without saving a proposal or starting work."""
         if self.data_root is None: raise ValueError('A data directory is required for refresh proposals')

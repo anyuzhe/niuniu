@@ -119,6 +119,12 @@ Pi传输在已有总轮次内保留最后一轮无工具收尾，宿主停止信
 
 `agent/evidence_review.py`定义独立只读profile，ChatRuntime在初始化禁用行情与queue_factory，并在API层和派发schema层执行白名单。页面只提供来源ID/hash，不自动调用模型；现有研究profile、Grant和P10权限未改变。桌面factory_report和CLI的--evidence-only消费同一读取服务；导出只创建新文件，不覆盖权威状态或承诺可搬迁复算。对话日志与研究事实分开。
 
+### 8.5 原生观察池快照与人工刷新
+
+WatchService.inspect_snapshot只接受原Watch历史中已发布的精确snapshot_id，读取时核对所选快照自己的来源树，而非复用最新快照的完整性。视图指纹绑定definition/state/snapshot及观察到的来源指纹，不持久化新状态、不重算统计。WatchStore.set_active增加可选expected_state_digest，在原锁内比较后写入；无参数旧调用保留兼容，不产生自动停用权限。
+
+FactorWatchDialog复用原归档选择器和提案进度窗口，字段与按钮按明确选择/忙状态/工作空间身份控制，历史和来源变化不自动替换。watch_snapshot_view仅投影已保存指标。ResearchAgenda保留Watch内部快照错误、标记100项扫描上限，并只按原watch_id导航。未新增模型历史快照工具；此次服务只为原生界面，原统计、刷新审批/输入冻结、跟踪授权与交易边界未变。
+
 ## 9. TDX个人研究采集的调度边界
 
 既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。

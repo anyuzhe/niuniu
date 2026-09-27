@@ -57,9 +57,13 @@ class ResearchAgendaService:
         service=WatchService(self.output,self.data_root);items=[]
         listing=service.store.list()
         for row in listing['watches'][:100]:
-            try:value=service.get(row['watch_id'])
-            except (OSError,ValueError,KeyError,TypeError):continue
             ref=[{'kind':'watch','watch_id':row['watch_id']}]
+            try:value=service.get(row['watch_id'])
+            except (OSError,ValueError,KeyError,TypeError) as error:
+                items.append(agenda_item('watch_snapshot_error',row['name'],
+                    '观察池目录存在但快照/来源核对失败：'+type(error).__name__+': '+str(error)[:200],
+                    '打开原观察池核对错误，不删除记录、不自动重算或改参数',100,ref))
+                continue
             integrity=value['source_integrity']
             if integrity!='verified':
                 items.append(agenda_item('watch_integrity',row['name'],'观察池来源状态为 '+integrity,
@@ -77,6 +81,10 @@ class ResearchAgendaService:
             elif alerts:
                 items.append(agenda_item('watch_notice',row['name'],'观察池存在 '+str(len(alerts))+' 条数据/样本提醒',
                     '查看成熟样本、水位与缺失情况',65,ref))
+        if len(listing['watches'])>100:
+            items.append(agenda_item('watch_scan_limited','观察池扫描未覆盖全部记录',
+                '本次最多核对100个观察池，另有 '+str(len(listing['watches'])-100)+' 个未核对',
+                '请在观察池目录选择未核对记录；没有待办不代表所有观察池正常',100,[]))
         if listing['unreadable']:
             items.append(agenda_item('watch_store_error','观察池存在不可读记录',str(listing['unreadable'])+' 条记录无法解析',
                 '人工核对观察池存储，不自动删除',100,[]))
@@ -170,7 +178,9 @@ class ResearchAgendaService:
         counts={}
         for row in ordered:counts[row['kind']]=counts.get(row['kind'],0)+1
         return {'generated_at':now(),'items':ordered[:limit],'total':len(ordered),'counts':counts,
+            'returned_items':min(limit,len(ordered)),'omitted_items':max(0,len(ordered)-limit),
             'new_research_jobs':0,'automatic_execution':False,
             'limitations':['Agenda只从当前工作空间持久化证据生成待办，不调用模型、不下载数据、不运行研究。',
                 '优先级是确定性工作流排序，不是收益预测或投资建议。',
+                'total只统计本次有界扫描生成的待办，不是全工作空间无遗漏健康认证；列表省略与来源扫描上限分开。',
                 '主动研究仍须通过原提案/Factory人工批准边界。']}

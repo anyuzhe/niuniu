@@ -117,6 +117,10 @@
 
 [factory_report.py](../../src/quantlab/agent/factory_report.py) 读取有界状态/父归档并生成同源报告；[alpha_factory_tools.py](../../src/quantlab/agent/alpha_factory_tools.py) 提供分页只读查询。[evidence_review.py](../../src/quantlab/agent/evidence_review.py) 定义无写入/执行的独立助手模式，[桌面报告](../../src/quantlab/desktop/factory_report.py) 负责展示、显式新文件导出与ID/hash草稿跳转。测试：[报告内核](../../tests/test_factory_report.py)、[独立边界复核](../../tests/test_factory_report_review.py)、[只读profile](../../tests/test_evidence_review.py)、[桌面/导出/Watch跳转](../../tests/test_factory_report_desktop.py)。没有新的统计引擎、结果数据库或自动晋级权限。
 
+## 观察池原生工作流（2026-09-27）
+
+[watchlist.py](../../src/quantlab/agent/watchlist.py) 的inspect_snapshot独立核对发布历史与所选来源；[watch_store.py](../../src/quantlab/agent/watch_store.py) 保留锁内可选状态指纹保护。[factor_watches.py](../../src/quantlab/desktop/factor_watches.py) 复用归档/进度窗口，[watch_snapshot_view.py](../../src/quantlab/desktop/watch_snapshot_view.py) 只显示已保存成熟/序贯值。待办错误与原Watch导航见[研究议程](../../src/quantlab/agent/research_agenda.py)和[对应窗口](../../src/quantlab/desktop/research_agenda.py)。测试：[精确快照](../../tests/test_watch_snapshot_inspection.py)、[原生流程](../../tests/test_watch_workflow_desktop.py)、[独立边界复核](../../tests/test_watch_workflow_review.py)、[待办可见性](../../tests/test_watch_agenda_visibility.py)。没有新增模型工具或统计口径。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import UUID
 import fcntl
 from quantlab.experiments.campaign_state import read_checked, write_checked
+from quantlab.storage.codec import digest
 
 
 def now(): return datetime.now(timezone.utc).isoformat()
@@ -94,10 +95,15 @@ class WatchStore:
             if len(state['refresh_requests']) >= 500: raise ValueError('Refresh request history budget reached')
             state['refresh_requests'].append(request); state['updated_at'] = now()
             write_checked(folder/'state.json',state)
-    def set_active(self, watch_id, active):
+    def set_active(self, watch_id, active, *, expected_state_digest=None):
         if type(active) is not bool: raise ValueError('Active must be boolean')
+        if expected_state_digest is not None and (not isinstance(expected_state_digest,str) or
+                len(expected_state_digest)!=64 or any(c not in '0123456789abcdef' for c in expected_state_digest)):
+            raise ValueError('Invalid expected watch state digest')
         with self.locked(watch_id) as folder:
             _, state = self.read(watch_id)
+            if expected_state_digest is not None and expected_state_digest!=digest(state):
+                raise ValueError('Watch state changed; read it again before changing active status')
             state.update(active=active,updated_at=now()); write_checked(folder/'state.json',state)
     def list(self):
         if self.root.is_symlink(): raise ValueError('Watch root symlink')

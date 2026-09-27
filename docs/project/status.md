@@ -390,3 +390,13 @@ worker页副本的清理与主库可查询是两件事。2026-09-21 19:29前，�
 AI回答明确这是合成报告，保留两项负估计、test_status=unavailable、p/Holm缺失、未做成本后检验及不能认证Alpha；文字实际回到原生控件。研究文件及合成输入SHA不变，无UI执行队列、无新finding/提案/观察池，原日常模型配置SHA不变、回调正常排空、源码未变。验收proposal=c1bb1362-a87c-5e24-a4e9-82e96502c460，result run=82c0b381-d62d-5cda-bc25-386cf9d9d3a1。证据native-v1/acceptance.json、answer.txt、report.json和journal.json，不是可见桌面/真实市场盈利验收。
 
 本轮123份证据文件共1,958,559字节已逐SHA核对复制到主项目artifacts/factory-evidence-review-20260927，transfer-index.json保存清单；不随代码推送。当前仅文档收尾，主控普通fast-forward/push后核本地与远端SHA。
+
+### 2026-09-27 后续推进：观察池手动跟踪与历史来源核对
+
+观察池初始来源留空，复用显式归档选择器、使用前核指纹，不再启动时读取全部实验。顶部切换Watch/历史快照，成熟样本和序贯表格只投影保存值，旧/最新快照分别核对自身来源。新增本地inspect_snapshot及原锁内可选state_digest暂停保护；关闭、换根、同路径替换和迟到回调不使用旧上下文。刷新任务复用原提案进度面板，先核实Watch→proposal/job关系，不自动批准、同步或重跑。
+
+研究议程新增可选择待办与精确Watch跳转，内部快照错误不再静默跳过，100项观察池扫描上限和表格省略分别提示。没有改变原统计/序贯阈值、旧Watch兼容门、审批冻结、跟踪授权或交易权限。历史快照模型工具写入被平台拦截后未重试，对应AI按钮和prompt/白名单预改已撤回；原Factory/最新Watch工具保持，未将未接通功能标为完成。
+
+最终15模块120项（120个唯一测试ID）全部PASS，0失败/错误/跳过，源码/测试/JSON/MJS前后指纹b07c80ba5581daab5a364bab493cc4d953e297932f33bdd48262623cc6ce5a55。独立offscreen原生流程用5证券合成数据完成选择器→创建Watch→pending进度→人工审批原队列→同步→历史回查。预览/创建/提案阶段0计算任务；人工批准后1任务，新增1快照，重复同步0写入；旧快照、原归档和输入SHA不变。watch=5087aad0-00ac-421f-a934-61b8b5a9e7be，refresh run=8b8117ca-0bfc-46e4-b3b0-82bb0ca1eaf0。不是实际市场/盈利/真实模型/可见桌面验收。
+
+证据artifacts/watch-workflow-20260927保留final-regression、native-flow和process-notes.json。早期待办测试错误源于健康夹具没有待办，改用明确坏快照后通过；初版UI读回与测试隔离问题由主控修复，取消的子任务不计作成功。宿主独立提交并普通推送，不部署、不重启、不改正式数据或日常模型配置。

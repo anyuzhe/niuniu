@@ -2187,3 +2187,13 @@
 - 模型openai-codex/gpt-6-luna仅调用一次get_alpha_factory_report，expected_digest精确绑定734091171f78f491ee398eef607dddcda854b5f2e382accde94b109fadf177af；1调用/1结果，无工具错误、2候选全读，完成答复显示到窗口。父run=82c0b381-d62d-5cda-bc25-386cf9d9d3a1，proposal=c1bb1362-a87c-5e24-a4e9-82e96502c460。主控逐项对照answer.txt与report.json：负估计、统计unavailable、p/Holm空、无成本检验和非Alpha边界均未被改成通过。
 - 只读解读前后研究文件和合成输入全SHA一致，UI未获取执行队列，没有新研究、finding、提案或观察池；回调正常排空，source_stable=true。记录在artifacts/factory-evidence-review-20260927/native-v1/acceptance.json；这是原生UI→真实模型→报告工具的工程验收，不是可见桌面布局或市场策略验证。
 - 主项目已核SHA复制123份证据1,958,559字节，含局部与最终回归、测试脚本、报告与合成输入；transfer-index.json仅本机留存，不能当作另一套研究权威库。当前提交只更新验收文档，不改变146项测试与真实Pi验收覆盖的源码；宿主按仓库约定普通合入与push，不自动部署或重启。
+
+### 2026-09-27｜[CODE/UI] Watch来源、精确快照和刷新工作流
+
+- 从4d4cf1f在原隔离分支继续。WatchService增加本地inspect_snapshot，校验已发布历史成员关系和该快照自己的source tree，读后重核state/definition/snapshot；返回绑定视图hash，不持久化新报告或重算指标。WatchStore.set_active保持原锁，仅新增可选expected_state_digest防过期页面写覆盖，旧调用兼容。
+- 原生观察池显式选择来源，创建/纳入前重读头部；去掉默认首项及全实验目录预读。非模态归档选择器保留异步生命周期，输出/数据根/epoch/dev/ino守卫，清空失效详情；blockSignals避免填充历史时重复触发读取。成熟窗口/序贯表格显示原值、null/负数/旧口径/样本不足，历史来源不借用latest的verified。
+- 刷新进度核对Watch中精确proposal/job后复用ProposalProgressDialog；生成提案仍pending，人工批准走原ProposalDialog/队列/冻结。重复同步原幂等行为不变；打开来源前重核视图指纹。Agenda不再忽略可列出但内部快照损坏的Watch；显示扫描/返回上限，表格只提供原watch_id导航。
+- 平台边界：新增get_factor_watch_snapshot模型工具的apply_text_edits被OpenAI拦截，未更换通道或工具重试。watch_tools.py原文件未改，evidence_review.py预改已逐字还原，UI没有未接通的AI按钮；现有最新Watch/Factory只读能力保留。此项未交付，不冒充完成。子代理在初版UI测试未完成时由宿主取消，确认terminal后独立修复与测试，不宣称子代理通过。
+- 测试：首次核心9项通过；待办5项初跑1错误因健康夹具没有待办，改用明确损坏快照而非放松断言；UI原测试隔离错误和双重快照读取修复。最终15模块120项、120唯一ID全部PASS（0失败/错误/跳过），源/测试/计算资源前后hash=b07c80ba5581daab5a364bab493cc4d953e297932f33bdd48262623cc6ce5a55；覆盖原Watch、序贯、基准换版、进度、Factory/只读解读和审批冻结。不是全仓库测试。
+- 独立offscreen原生验收：合成5证券，实际选择归档→创建Watch→提案/待批进度→明确批准→原队列1任务→同步增加1快照→再次同步0写入→精确历史回查。watch=5087aad0-00ac-421f-a934-61b8b5a9e7be，proposal=05835b4f-6632-4e28-8f4a-6a221ee11b2d，job=284e61c7-021c-414b-89fb-684275ad1c39，refresh run=8b8117ca-0bfc-46e4-b3b0-82bb0ca1eaf0。原输入/基准归档/旧快照不变，无模型调用或可见桌面动作。证据native-flow/acceptance.json；不是完整搬迁复算包或Alpha验证。
+- 当前说明更新guide/architecture/code-map/status；全部证据保留artifacts/watch-workflow-20260927，宿主复核后独立commit、普通fast-forward/push并检查远端。正式DATA、采集、Runner/服务、日常模型、统计阈值与交易权限保持不变。
