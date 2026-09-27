@@ -129,6 +129,10 @@
 
 [experiment.py](../../src/quantlab/desktop/experiment.py) 的draft_only模式只返回配置；[agent_proposals.py](../../src/quantlab/desktop/agent_proposals.py) 的open_research_draft复用原提案保存/审批入口。研究实验室和[Factory表单](../../src/quantlab/desktop/factory_builder.py)提供首次研究入口，不复制计算或授权服务。测试：[空工作空间与原生流程](../../tests/test_first_research_draft.py)、[严格资格/上下文/草稿边界](../../tests/test_first_research_review.py)，旧表单回归见[test_agent_proposals_desktop.py](../../tests/test_agent_proposals_desktop.py)。
 
+## 研究输入只读预检（2026-09-27）
+
+[local_data_readiness.py](../../src/quantlab/desktop/local_data_readiness.py) 在原实验表单内显式调用已有[local_data_tools.py](../../src/quantlab/agent/local_data_tools.py)，投影具体证券的空值与原加载错误；不是新数据Provider或资格认证。测试：[原生检查与边界](../../tests/test_local_data_readiness_desktop.py)，覆盖无自动读取、空值保留、超限/管理包拒绝、错误与过期回执。原生产校验和模型工具合同保持不变。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

@@ -2215,3 +2215,11 @@
 - 独立原生offscreen流程：合成5证券，实际点击研究实验室→因子选择器→参数编辑器→草稿→保存pending→未勾选不执行→明确批准原队列1任务→归档选择器为Factory选基准/控制→只预检无新增任务。proposal=098ae9de-5ac4-4da0-a18a-72a830b59a02；job=25ca0cbf-caf9-43b7-b1f5-402ed5319789；run=2d79b7a1-0de1-4977-88f1-8c5f5ca75130。输入/源码SHA不变，回调排空，无模型或可见桌面；工程预设因子不冒充自主研究或Alpha证据。
 - 首轮8项有1失败：无数据根时转交依赖路径的ProposalService，现改为留在原表单明确提示；没有降级Strict PIT、伪造目录或放宽批准。过程中的不支持grep结果模式、空插入参数及SHA冲突均未改变源码，修正同工具输入后重新验证；并行消息先因记录项目不一致失败，改用正确主项目会话后发出协作提示。
 - 保留artifacts/first-research-20260927的定向、最终和原生验收证据。本轮main有另一会话retail_crowding以及status/changelog/code-map未提交改动，禁止覆盖/代提交；普通推送隔离分支并核对远端，能否合入main依据最终现场状态单独报告。不修改正式数据、采集、日常模型、服务/Runner、统计及交易权限，不重试历史快照AI工具。
+
+### 2026-09-27｜[CODE/UI/ACCEPTANCE] 真实数据阻塞留痕与原生加载预检
+
+- 用户同意继续安全集成和真实数据验收。20只确定性名字典序沪深样本、2023–2025 holdout与单任务预算事前固定，完整raw原件只复制不重写。a12f122上的真实Pi模型自行选择20日动量/5日标签、先存假设并预检，唯一提交被原Provider的空量校验拒绝；9次调用9结果、没有成功入队/归档/finding，授权在finally撤销。conversation=cb8f06b2-0acc-4e65-996c-8f8f4e6311f2。保留acceptance-run.json的accepted=false及模型明确失败的回答，不再次换范围追通过。
+- 同源inspect_local_market_data确认sh.600012十行、sz.000007两行缺volume/amount，其余18只可加载。原因未确认、无停牌资格补造，没有静默填零、删行、重排时间轴或调用手工nullable研究脚本。字段与日期清单、原始副本SHA、原模型配置SHA完整保留，原Provider/审批/Grant/统计/受限历史Watch模型工具不改。
+- 新增desktop/local_data_readiness.py及ExperimentDialog显式按钮，复用原本地工具返回逐证券loadable、行数、空字段计数、错误，1–20只与1d/5m范围按原合同执行。管理包不回退、超限不截取；无因子也可检查，但不因表单打开自动读取。结果逐项核证券/范围，关闭/数据根身份变化/编辑期间返回/坏格式/读取失败不留旧成功状态。没有第二数据库或模型工具。
+- 11项新增GUI回归；最终13模块16组113项/113唯一ID全部PASS，0失败/错误/跳过。前后冻结hash=8f0a810a99172af9a1f16b4d375da6e2c725c7b00d98a85a3d7e697046e78a27。真实20只副本通过原生offscreen表单按钮显示18可加载、2阻塞、12行空值，0任务/提案/模型，文件SHA不变；这仅验收错误可视化，真实研究失败未被改判通过。一次新文件创建调用的recording_session_id拼写错误在执行前拒绝，修正后独占创建，未重复副作用。
+- 现有主目录其他会话WIP保持：在隔离toy Git库验证只向索引应用入站commit差异、工作树保留三份纯追加文档后缀，普通fast-forward不包含对方代码或后缀。真实整合必须再次核HEAD/全文件hash/索引与分支目标树一致；无强推/reset/stash，不重启或部署。提交和主线发布回执记录在artifacts/real-research-acceptance-20260927。

@@ -77,6 +77,8 @@ class ExperimentDialog(QDialog):
         self.preview=QPlainTextEdit();self.preview.setReadOnly(True);self.preview.setMaximumHeight(140);self.preview.hide();box.addWidget(self.preview)
         self.validate_button=button('校验并预览配置',self.validate)
         self.submit_button=button('填入待审批研究草稿（不执行）' if draft_only else '提交实验',self.submit,True)
+        self.data_check_button=button('检查本地行情可加载性（只读）',self.inspect_data)
+        box.addWidget(self.data_check_button)
         box.addWidget(row(button('导入实验 JSON',self.import_spec),self.validate_button,self.submit_button,button('关闭',self.close)))
         def update():
             current=self.mode.currentData();self.split.setEnabled(current=='holdout');self.schedule.setEnabled(current=='walkforward');self.grid.setEnabled(current=='sweep');self.grid_button.setEnabled(current=='sweep')
@@ -131,6 +133,24 @@ class ExperimentDialog(QDialog):
     def _finished(self,result):
         self.closed=True;self.generation+=1
         if result!=QDialog.DialogCode.Accepted:self.result_spec=None
+
+    def inspect_data(self):
+        if self.closed or not self.workspace_valid():
+            self.status.setText('表单或工作空间已变化；未读取数据。');return
+        from .local_data_readiness import LocalDataReadinessDialog
+        scope={'symbols':' '.join(v for v in re.split(r'[\s,，]+',self.symbols.text().strip()) if v),
+            'start':self.start.date().toString('yyyy-MM-dd'),'end':self.end.date().toString('yyyy-MM-dd'),
+            'timeframe':self.timeframe.currentData(),'adjustment':self.adjustment.currentData()}
+        if not scope['symbols']:
+            self.status.setText('请先明确填写要检查的证券；不会自动选择股票。');return
+        generation=self.generation
+        def current():
+            return not sip.isdeleted(self) and not self.closed and self.workspace_valid() and generation==self.generation
+        dialog=LocalDataReadinessDialog(self.window,scope,scope_current=current)
+        show=getattr(self.window,'show_dialog',None)
+        if callable(show):show(dialog)
+        else:dialog.show()
+        return dialog
 
     def pick_factor(self):
         if self.closed or not self.workspace_valid():return

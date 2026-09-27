@@ -423,3 +423,13 @@ AI回答明确这是合成报告，保留两项负估计、test_status=unavailab
 本轮124个唯一用例全部通过，0失败/错误/跳过（14个模块，17组独立进程执行）；源码/测试/JSON/MJS前后hash=36bbc56ea9c66f50e49ad1c843a5ba92f602664f984400f75914005b2cbaf13a。独立offscreen原生验收用5证券合成输入，空output→因子/参数选择→未保存草稿0任务→pending0任务→人工批准1任务→完成归档→Factory明确选择/预检0新增任务；输入与验收源码不变。proposal=098ae9de-5ac4-4da0-a18a-72a830b59a02，run=2d79b7a1-0de1-4977-88f1-8c5f5ca75130。不是AI自主选因子/实际市场/盈利或可见桌面验收。
 
 证据artifacts/first-research-20260927。发现main另有retail_crowding及重叠文档未提交工作，本轮仅在隔离分支完成；不覆盖或提交其他会话的文件。主目录若仍有冲突工作，则只普通推送本集成分支，不虚称已经合入main。
+
+### 2026-09-27 真实数据综合验收与输入阻塞可视化
+
+在a12f122提交上用现有Pi/openai-codex/gpt-6-luna真实执行一次固定范围验收：沪深各取文件名字典序前10只的完整raw日线副本（20文件2,933,620字节），2023–2025，holdout按2023训练/2024验证/2025测试、5日标签、只允许1任务。模型自行选BASE.MOMENTUM@1.0.0/lookback20并在提交前保存假设345bef4a-bbec-4ece-8d19-d92dceaedf9d；配置预检成功，但提交在输入加载阶段报Null in required bar field。9调用/9规范结果，0实际任务、0实验、0finding，Grant已撤销。该次真实研究验收失败，不能以对话completed或预检成功代替完成研究。
+
+正式本地检查确认sh.600012在2023-04-03至04-17的10条日线、sz.000007在2023-05-04及2024-07-01的2条日线同时缺volume/amount；合计12行，另外18只在同一区间可加载。未推断缺失原因，未填零、删除证券/日期、改用测试专有nullable适配器或放宽生产Provider。输入副本与日常模型配置SHA保持不变；完整日期和来源hash保留在artifacts/real-research-acceptance-20260927/data-blockers.json。
+
+新增实验表单只读输入检查，复用已有LocalMarketDataTools而不新增模型工具。113唯一用例全部PASS，0失败/错误/跳过（13模块、16进程组），源码/测试/JSON/MJS前后hash=8f0a810a99172af9a1f16b4d375da6e2c725c7b00d98a85a3d7e697046e78a27。独立offscreen窗口在同一20只真实副本上显示18可加载/2阻塞，0任务/提案/模型调用，数据SHA不变；这是阻塞可视化通过，不是holdout或Alpha通过。
+
+主线合并先在独立Git夹具验证“只暂存入站分支增量、保留其他会话未提交后缀”的fast-forward方式，再按精确HEAD/索引/所有旧文件SHA和三份文档纯追加条件检查实际工作区；不暂存或提交retail_crowding。最终合入/push及WIP保留以本轮integration回执为准，未通过条件则保持独立分支。
