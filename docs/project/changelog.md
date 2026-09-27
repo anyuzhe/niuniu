@@ -2140,3 +2140,10 @@
 - 验收：13模块102项PASS，0失败/错误/跳过，覆盖Node真实进程+假ModelRuntime、正常/停止/预算、原生Chat接线、CLI、离屏UI、研究Grant、冻结输入、记忆与Factory；前后源码/测试/计算资源指纹3e8959b82fc3a3dbe47ced965e44bc3f4a5863c8786e4d52ef5a1baa78226de6。不是全仓库或真实模型验收；真实模型另记。
 - 过程证据保留：Lexar卷不支持事务创建文件，原事务已完整回滚并核对SHA后用独占创建；一次观察报告目录不存在；首轮桥接测试缺Node PATH跳过，修正定位后最终全部执行。未隐瞒或抹除失败/跳过记录。
 - 提交状态：宿主独立提交本改动以冻结真实模型验收代码，最终普通fast-forward/push另核对；未改正式数据、采集、Runner/服务、日常模型配置或可见UI。
+
+### 2026-09-27｜[CODE/AI] 真实恢复验收暴露的根假设引用歧义
+
+- 在06b0d0f执行真实Pi自选研究：现有模型openai-codex/gpt-6-luna，局部验收预算16→10轮/24→20工具，一项研究授权。14次调用无错误，唯一job/run完成，最后一轮生成有证据的partial并明确finding尚未保存；Grant撤销、代码与输入副本SHA稳定。run=e38604ac-4763-4ed5-b83b-82a40862bf6f；AI选择方向效率而非开发者指定，负方向结果保留且没有换参重跑。
+- 第一次正式CLI --recover-results在新进程完成7次只读调用，但没有写finding；模型误读根假设record.hypothesis_id=null（其实应引用record.memory_id）。验收失败保存在native-v1/acceptance-recover.json，不能用对话completed或零工具错误代替业务完成。
+- 修复research_memory.get读时返回finding_parent_id（根假设memory_id，finding则为其hypothesis_id），同步工具描述与恢复提示词；不修改数据库记录、旧ID、谱系、审批或研究数值。新增测试实际保存根假设→查询父引用→保存finding→再查根假设，验证原null父关系保留。
+- 修后13模块103项PASS，0失败/错误/跳过，前后代码/测试/计算资源指纹c66363872ddbcd4bdb07ae2ce48b2c7d3cb1a5604daf70b5c1e3983d37f8a543；日志在regression-v2。宿主独立提交后只重开原会话核对/补存，不再运行实验；修后真实验收另记。

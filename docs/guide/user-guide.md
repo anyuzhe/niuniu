@@ -275,6 +275,8 @@ Pi 在原有轮次/工具/上下文硬预算内预留最后一轮无工具收尾
 
 历史引用从原追加式会话日志提取，去重后最多给模型30个ID；省略情况明确标注，不重放旧数值或外部指令、不建立第二状态库。先前失败/暂停不会导致自动重跑。已有finding应读回而不是重复保存；finding的statement/limitations/next_action必须为1–4000字符字符串，不能用数组或对象。超长历史仍遵守原会话预算，恢复按钮不是无限上下文。
 
+假设查询返回`finding_parent_id`，保存结论时把它填入`finding_json.hypothesis_id`。根假设的`record.hypothesis_id=null`只表示没有父假设，它自身的`record.memory_id`就是有效引用；不能因此新建另一条假设或放弃保存。该字段是读取时的明确指引，不修改原记忆的父子关系。
+
 CLI同源入口：`python -m quantlab.agent.chat_cli --output /path/to/workspace --session <原会话UUID> --recover-results --accept-model-service`。它复用该工作空间现有模型配置；`--recover-results`不能与`--allow-granted-research`等执行开关混用，允许模型服务不等于允许联网获取行情。返回JSON中的`status=partial`明确表示本轮未完成，不能只看进程退出码推断研究成功。
 
 ### 策略工作台：编辑、版本差异与结果对照

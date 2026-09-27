@@ -12,7 +12,8 @@ RECOVERY_TOOLS = frozenset({
 })
 RECOVERY_PROMPT = ('请整理这个会话已经产生的研究结果。先核对已有 job/run 和研究记忆，'
                    '实验已完成就不要重跑；对原假设尚未保存的结论核对证据后补存 finding，'
-                   '已有结论则读回核验，不重复保存。报告已完成、未完成和限制。'
+                   '已有结论则读回核验，不重复保存。保存finding时hypothesis_id引用假设查询的finding_parent_id，'
+                   '即根假设的record.memory_id；record.hypothesis_id=null仅表示无父假设，不是缺少ID。报告已完成、未完成和限制。'
                    '本轮禁止新建、提交、批准或重跑研究，也不创建新假设。')
 _REFERENCE_IDS = {'experiment':'run_id', 'job':'job_id', 'memory':'memory_id',
                   'proposal':'proposal_id', 'research_session_grant':'grant_id'}

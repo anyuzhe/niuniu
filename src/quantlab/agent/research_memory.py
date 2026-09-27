@@ -107,6 +107,11 @@ class ResearchMemory:
             definition_current = (digest(asdict(factor.definition))==record['definition_hash'] and
                                   self.registry.code_hash(factor)==record['factor_code_hash'])
         except (ValueError,KeyError,TypeError): definition_current = False
+        # Root hypotheses deliberately have no parent hypothesis_id. Expose the
+        # exact writable reference separately, without rewriting stored lineage.
+        finding_parent_id=record['memory_id'] if record['kind']=='hypothesis' else record['hypothesis_id']
         return {'record':record, 'source_integrity':state, 'evidence_checks':checks,
+                'finding_parent_id':finding_parent_id,
+                'finding_parent_note':'record_finding.finding_json.hypothesis_id应使用finding_parent_id。根假设使用其record.memory_id；record.hypothesis_id为null只表示它没有父假设，不表示缺少可引用的假设编号。',
                 'factor_definition_current':definition_current, 'claim_verified':False,
                 'warning':'校验只证明引用与归档一致，不证明文字解释、统计假设或未来盈利；分类均为待复核草稿。'}

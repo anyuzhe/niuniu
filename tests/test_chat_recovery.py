@@ -124,6 +124,25 @@ class ChatRecoveryTests(unittest.TestCase):
         self.assertTrue(provider.tools <= RECOVERY_TOOLS)
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             main(['--output',str(self.root),'--session',self.cid,'--recover-results','--allow-granted-research'])
+    def test_root_hypothesis_exposes_exact_finding_parent_without_rewriting_lineage(self):
+        from test_research_memory import hypothesis,finding
+        from test_context_experiments import ContextProvider,context_config,runner
+        from dataclasses import replace
+        api=self.runtime.api
+        saved=api.call('record_hypothesis',{'request_id':str(uuid4()),'hypothesis_json':json.dumps(hypothesis())})
+        self.assertTrue(saved['ok'],saved)
+        hid=saved['data']['record']['memory_id']
+        self.assertIsNone(saved['data']['record']['hypothesis_id'])
+        self.assertEqual(saved['data']['finding_parent_id'],hid)
+        read=api.call('get_research_memory',{'memory_id':hid})
+        self.assertEqual(read['data']['finding_parent_id'],hid)
+        source=runner(ContextProvider(),self.root).run(replace(context_config(),context=None,replay=True))
+        written=api.call('record_finding',{'request_id':str(uuid4()),'finding_json':json.dumps(finding(read['data']['finding_parent_id'],source.run_id))})
+        self.assertTrue(written['ok'],written)
+        self.assertEqual(written['data']['finding_parent_id'],hid)
+        root=api.call('get_research_memory',{'memory_id':hid})
+        self.assertIsNone(root['data']['record']['hypothesis_id'])
+        self.assertNotEqual(written['data']['record']['memory_id'],hid)
     def test_memory_text_contract_is_explicit_without_relaxing_validation(self):
         description=next(t['description'] for t in MEMORY_TOOLS if t['name']=='record_finding')
         self.assertIn('limitations',description);self.assertIn('4000',description);self.assertIn('不是数组',description)
