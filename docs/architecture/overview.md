@@ -125,6 +125,12 @@ WatchService.inspect_snapshot只接受原Watch历史中已发布的精确snapsho
 
 FactorWatchDialog复用原归档选择器和提案进度窗口，字段与按钮按明确选择/忙状态/工作空间身份控制，历史和来源变化不自动替换。watch_snapshot_view仅投影已保存指标。ResearchAgenda保留Watch内部快照错误、标记100项扫描上限，并只按原watch_id导航。未新增模型历史快照工具；此次服务只为原生界面，原统计、刷新审批/输入冻结、跟踪授权与交易边界未变。
 
+### 8.6 研究议程的类型化证据导航
+
+`desktop/agenda_navigation.py`从实际agenda evidence生成按原顺序保留的显式选项，仅接受固定类型及规范ID；名称、说明、外部路径或action文字不得选择可执行函数。打开前按对应原服务重新读取精确对象，不建立第二结果库。原Factory/增量包/DSL/普通提案仍在自己的人工操作窗口，job和已注册DSL只读展示；普通factor保持版本及参数，不自动触发查询。
+
+研究议程按冻结candidate_kind/旧candidate_ids区分普通因子与DSL；增量包使用独立引用类型，旧agenda的proposal仅在明确incremental待办种类下兼容转换。最多200条记忆扫描未完时不把缺失于本页解释为无结论。原统计、模型工具、权限和任务状态未改变。原生路由以选择代次及工作空间身份拒绝过期回执，新增接入页面补充关窗/换根保护。
+
 ## 9. TDX个人研究采集的调度边界
 
 既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。

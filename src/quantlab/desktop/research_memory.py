@@ -1,4 +1,5 @@
 """Browse durable research notes and re-check their actual source archives."""
+from pathlib import Path
 from PyQt6 import sip
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog,QVBoxLayout,QLineEdit,QComboBox,QCheckBox,QListWidget,QListWidgetItem
@@ -20,6 +21,9 @@ class ResearchMemoryDialog(QDialog):
         super().__init__(window)
         self.window=window; self.service=ResearchMemory(window.output)
         self.offset=0; self.total=0; self.generation=0; self.current=None
+        self.output=window.output;self.data_root=getattr(window,'data_root',None);self.epoch=getattr(window,'epoch',None);self.closed=False
+        stat=Path(self.output).stat();self.workspace_identity=(stat.st_dev,stat.st_ino)
+        self.finished.connect(lambda *_:setattr(self,'closed',True))
         self.setWindowTitle('结构化研究记忆 · 假设、结论与证据'); self.resize(1060,820)
         box=QVBoxLayout(self)
         box.addWidget(label('这里保存研究笔记，不是聊天摘要。支持/反对均为待复核解释；来源校验不代表Alpha成立。通过聊天保存新记录，修订不会覆盖旧记录。','note',True))
@@ -44,6 +48,14 @@ class ResearchMemoryDialog(QDialog):
         if selected_id: self.load(selected_id)
         else: self.search()
 
+    def valid_context(self):
+        if self.closed or sip.isdeleted(self) or getattr(self.window,'closing',False):return False
+        if self.output!=self.window.output or self.data_root!=getattr(self.window,'data_root',None) or self.epoch!=getattr(self.window,'epoch',None):return False
+        try:
+            stat=Path(self.output).stat();return self.workspace_identity==(stat.st_dev,stat.st_ino)
+        except OSError:return False
+    def closeEvent(self,event):self.closed=True;self.generation+=1;super().closeEvent(event)
+
     def search(self):
         self.offset=0; self.refresh()
 
@@ -51,13 +63,15 @@ class ResearchMemoryDialog(QDialog):
         self.offset=max(0,self.offset+delta); self.refresh()
 
     def refresh(self):
+        if not self.valid_context():return
         self.generation+=1; generation=self.generation
         args=dict(query=self.query.text().strip(),factor_id=self.factor.text().strip(),kind=self.kind.currentData(),include_superseded=self.history.isChecked(),offset=self.offset,limit=20)
         self.current=None; self.sources.clear(); self.details.setPlainText('{}')
+        self.listing.blockSignals(True);self.listing.clear();self.listing.blockSignals(False)
         self.previous.setEnabled(False); self.following.setEnabled(False)
         self.status.setText('正在检索结构化记录…')
         def done(result,error):
-            if sip.isdeleted(self) or generation!=self.generation: return
+            if not self.valid_context() or generation!=self.generation:return
             if error: self.status.setText('检索未完成：'+error); return
             self.listing.clear(); self.total=result['total']
             for record in result['records']:
@@ -68,10 +82,11 @@ class ResearchMemoryDialog(QDialog):
         self.window.async_call(lambda:self.service.store.search(**args),done,guarded=False)
 
     def load(self, memory_id):
+        if not self.valid_context():return
         self.generation+=1; generation=self.generation
-        self.current=None; self.sources.clear(); self.status.setText('正在读取记录并核对归档…')
+        self.current=None;self.sources.clear();self.details.setPlainText('{}');self.status.setText('正在读取记录并核对归档…')
         def done(result,error):
-            if sip.isdeleted(self) or generation!=self.generation: return
+            if not self.valid_context() or generation!=self.generation:return
             if error: self.details.setPlainText('{}'); self.status.setText('记忆不可读取：'+error); return
             self.current=result['record']; self.details.setPlainText(encode(result))
             states={'verified':'引用与当前归档一致','no_evidence':'尚无实验证据的假设','source_changed':'来源已变化，不可当作当前事实','unavailable':'来源缺失或无法核验'}
@@ -90,6 +105,7 @@ class ResearchMemoryDialog(QDialog):
         else: self.status.setText('当前记录没有该关联。')
 
     def open_source(self):
+        if not self.valid_context():return
         item=self.sources.currentItem()
         if item is None: self.status.setText('请先选择实际实验引用。'); return
         run_id=item.data(Qt.ItemDataRole.UserRole)

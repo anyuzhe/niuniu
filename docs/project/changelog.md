@@ -2197,3 +2197,12 @@
 - 测试：首次核心9项通过；待办5项初跑1错误因健康夹具没有待办，改用明确损坏快照而非放松断言；UI原测试隔离错误和双重快照读取修复。最终15模块120项、120唯一ID全部PASS（0失败/错误/跳过），源/测试/计算资源前后hash=b07c80ba5581daab5a364bab493cc4d953e297932f33bdd48262623cc6ce5a55；覆盖原Watch、序贯、基准换版、进度、Factory/只读解读和审批冻结。不是全仓库测试。
 - 独立offscreen原生验收：合成5证券，实际选择归档→创建Watch→提案/待批进度→明确批准→原队列1任务→同步增加1快照→再次同步0写入→精确历史回查。watch=5087aad0-00ac-421f-a934-61b8b5a9e7be，proposal=05835b4f-6632-4e28-8f4a-6a221ee11b2d，job=284e61c7-021c-414b-89fb-684275ad1c39，refresh run=8b8117ca-0bfc-46e4-b3b0-82bb0ca1eaf0。原输入/基准归档/旧快照不变，无模型调用或可见桌面动作。证据native-flow/acceptance.json；不是完整搬迁复算包或Alpha验证。
 - 当前说明更新guide/architecture/code-map/status；全部证据保留artifacts/watch-workflow-20260927，宿主复核后独立commit、普通fast-forward/push并检查远端。正式DATA、采集、Runner/服务、日常模型、统计阈值与交易权限保持不变。
+
+### 2026-09-27｜[CODE/UI] 研究待办的精确引用导航与身份修正
+
+- 从20d7a329在原隔离分支继续。新增desktop/agenda_navigation的固定类型/规范UUID/精确因子参数合同，先按原服务只读核对来源，再由UI线程打开原Factory/记忆/因子证据/实验/DSL/增量包/提案页面。任务与已注册DSL显示精确只读记录。证据选项按原顺序去重，多引用不猜测；路径、名称和action文字不能决定执行函数。未注册类型和坏引用保留错误，不回退同名对象。
+- 修复research_agenda把所有Factory推荐标为DSL的问题：普通注册因子保留factor_id/version/parameters，旧DSL只在原candidate_ids成员内标DSL；候选缺失/类型不明产生错误待办。增量证据包独立类型，旧agenda proposal仅在明确incremental待办种类下兼容转换。记忆扫描200条未完时用hypothesis_review_needed而非断言无finding，并输出memory_scan_limited；不新增研究或数据库。
+- ResearchAgendaDialog增加具体引用选择与重读、选择代次/工作空间身份检查、格式异常释放忙状态；旧Watch快捷入口保持并加坏引用容错。DSL精确待注册项不匹配时取消选择、确认框不继承；新接入的DSL/增量/记忆窗口补关窗/换根保护。原生导航不批准、注册、提交/同步或改变待办状态，原用户明确确认动作保持可用。
+- 验收：7项身份、8项原生目标、7项边界测试；最终连同旧模块共17模块115项、115唯一ID全部PASS，0失败/错误/跳过。代码/测试/JSON/MJS冻结指纹054e4d2595fbdb9976e4a5d44a47f912679c405973a433d58eb8cb781df9f8ce。原生测试用合成夹具与原服务核对精确目标、来源不变及未确认0任务，并回归旧显式注册/执行；没有真实模型或可见桌面操作，不是Alpha验证。
+- 失败保留：首轮114项有DSL/增量旧数据版宿主的4个首页初始化超时，以及新增上下文检查对无data_root轻量宿主的2个兼容错误。前者按既有Factory测试隔离无关build_market_overview，后者恢复可选属性兼容，原审批/执行断言未放宽；修复期间源码变化，首轮明确不是冻结验收。创建文件的事务因Lexar不支持操作回滚，确认未创建后使用独占新建；一次读取预算低于工具下限在执行前被拒，修正参数后重读。
+- 证据保存在artifacts/agenda-workflow-20260927/regression-v1及final-regression；原研究议程测试改用模块别名避免重复收集另一个TestCase。6项受保护统计/Factory/Watch/模型工具文件与基线逐字一致；不重试历史快照模型工具，不改正式DATA、采集、日常模型、Runner/服务、交易或部署。宿主独立提交、普通fast-forward/push并核对远端SHA；文档与代码一起交付。

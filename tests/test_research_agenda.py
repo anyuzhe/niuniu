@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from test_alpha_factory import AlphaFactoryTests
+import test_alpha_factory
 from quantlab.agent.research_agenda import ResearchAgendaService
 from quantlab.agent.research_memory import ResearchMemory
 from quantlab.agent.market_data_tools import MarketDataResearchAPI
@@ -11,7 +11,7 @@ from quantlab.agent.market_data_tools import MarketDataResearchAPI
 
 class ResearchAgendaTests(unittest.TestCase):
     def setUp(self):
-        self.fx=AlphaFactoryTests();self.fx.setUp();self.addCleanup(self.fx.doCleanups)
+        self.fx=test_alpha_factory.AlphaFactoryTests();self.fx.setUp();self.addCleanup(self.fx.doCleanups)
         self.agenda=ResearchAgendaService(self.fx.output,self.fx.fx.root)
     def test_registered_unresearched_candidate_is_suggested_read_only(self):
         before=list(self.fx.output.glob('_jobs/*.json'))

@@ -1,3 +1,5 @@
+from pathlib import Path
+from uuid import UUID
 from PyQt6 import sip
 from PyQt6.QtWidgets import QDialog,QVBoxLayout,QComboBox,QCheckBox,QPushButton
 from quantlab.agent.dsl_candidates import DslCandidateService
@@ -6,8 +8,13 @@ from .business_view import BusinessDetails
 from .widgets import label,button,row
 
 class DslCandidateDialog(QDialog):
-    def __init__(self,window):
+    def __init__(self,window,selected_request_id=None):
         super().__init__(window);self.window=window;self.service=DslCandidateService(window.output);self.busy=False
+        self.output=window.output;self.data_root=window.data_root;self.epoch=getattr(window,'epoch',None);self.closed=False
+        stat=Path(self.output).stat();self.workspace_identity=(stat.st_dev,stat.st_ino)
+        self.selected_request_id=selected_request_id
+        if selected_request_id is not None and str(UUID(selected_request_id))!=selected_request_id:raise ValueError('需要精确DSL提案UUID')
+        self.finished.connect(lambda *_:setattr(self,'closed',True))
         self.setWindowTitle('受限DSL候选注册');self.resize(1050,820)
         box=QVBoxLayout(self)
         box.addWidget(label('模型只能验证和保存候选提案；这里人工注册。注册不执行Alpha研究，也不生成任意Python。','note',True))
@@ -20,35 +27,54 @@ class DslCandidateDialog(QDialog):
         self.status=label('注册后仍需用原研究提案/审批验证Alpha。','muted',True);box.addWidget(self.status)
         self.pending.currentIndexChanged.connect(self.select_pending);self.confirm.toggled.connect(self.buttons)
         self.buttons();self.reload()
-    def buttons(self):self.register_button.setEnabled(not self.busy and self.pending.currentData() is not None and self.confirm.isChecked())
+    def valid_context(self):
+        if self.closed or sip.isdeleted(self) or getattr(self.window,'closing',False):return False
+        if self.output!=self.window.output or self.data_root!=self.window.data_root or self.epoch!=getattr(self.window,'epoch',None):return False
+        try:
+            stat=Path(self.output).stat();return self.workspace_identity==(stat.st_dev,stat.st_ino)
+        except OSError:return False
+    def buttons(self):self.register_button.setEnabled(self.valid_context() and not self.busy and self.pending.currentData() is not None and self.confirm.isChecked())
+    def closeEvent(self,event):self.closed=True;super().closeEvent(event)
     def work(self,fn,done):
-        if self.busy:return
+        if self.busy or not self.valid_context():return
         self.busy=True
         for c in [*self.findChildren(QPushButton),self.pending,self.registered,self.confirm]:c.setEnabled(False)
         def finished(value,error):
             if sip.isdeleted(self):return
             self.busy=False
+            if not self.valid_context():return
             for c in [*self.findChildren(QPushButton),self.pending,self.registered,self.confirm]:c.setEnabled(True)
-            if error:self.status.setText('未完成：'+error)
+            if error:
+                self.pending.blockSignals(True);self.pending.clear();self.pending.blockSignals(False)
+                self.registered.clear();self.confirm.setChecked(False);self.details.setPlainText('{}')
+                self.status.setText('未完成：'+str(error))
             else:done(value)
             self.buttons()
-        self.window.async_call(fn,finished,guarded=False)
+        def guarded():
+            if not self.valid_context():raise ValueError('原DSL窗口上下文已变化')
+            return fn()
+        self.window.async_call(guarded,finished,guarded=False)
     def reload(self):
         def show(value):
-            pending,registered=value;self.pending.clear();self.registered.clear()
+            pending,registered=value;self.pending.blockSignals(True);self.pending.clear();self.registered.clear()
             for p in pending['proposals']:
                 self.pending.addItem(p['plan']['name']+' · '+p['request_id'][:8],p['request_id'])
             for c in registered['candidates']:
                 self.registered.addItem(c['name']+' · '+c['candidate_id'][:8],c['candidate_id'])
-            self.confirm.setChecked(False);self.select_pending()
+            if self.selected_request_id is not None:self.pending.setCurrentIndex(self.pending.findData(self.selected_request_id))
+            self.pending.blockSignals(False);self.confirm.setChecked(False);self.select_pending()
             self.status.setText(f"待注册 {len(pending['proposals'])} 项；已注册 {registered['total']} 项。")
+            if self.selected_request_id is not None and self.pending.currentData()!=self.selected_request_id:
+                self.status.setText('指定DSL提案已不在待注册目录；未改选其他提案。')
         self.work(lambda:(self.service.pending(),self.service.list(limit=100)),show)
     def select_pending(self):
+        if not self.valid_context():return
         request_id=self.pending.currentData();self.confirm.setChecked(False)
         if not request_id:self.details.setPlainText('{}');return
         try:self.details.setPlainText(encode(self.service.proposal(request_id)))
         except Exception as error:self.status.setText(str(error))
     def register(self):
+        if self.busy or not self.valid_context():return
         request_id=self.pending.currentData()
         if not request_id or not self.confirm.isChecked():return
         proposal=self.service.proposal(request_id)

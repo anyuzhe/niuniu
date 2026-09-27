@@ -121,6 +121,10 @@
 
 [watchlist.py](../../src/quantlab/agent/watchlist.py) 的inspect_snapshot独立核对发布历史与所选来源；[watch_store.py](../../src/quantlab/agent/watch_store.py) 保留锁内可选状态指纹保护。[factor_watches.py](../../src/quantlab/desktop/factor_watches.py) 复用归档/进度窗口，[watch_snapshot_view.py](../../src/quantlab/desktop/watch_snapshot_view.py) 只显示已保存成熟/序贯值。待办错误与原Watch导航见[研究议程](../../src/quantlab/agent/research_agenda.py)和[对应窗口](../../src/quantlab/desktop/research_agenda.py)。测试：[精确快照](../../tests/test_watch_snapshot_inspection.py)、[原生流程](../../tests/test_watch_workflow_desktop.py)、[独立边界复核](../../tests/test_watch_workflow_review.py)、[待办可见性](../../tests/test_watch_agenda_visibility.py)。没有新增模型工具或统计口径。
 
+## 研究待办证据导航（2026-09-27）
+
+[agenda_navigation.py](../../src/quantlab/desktop/agenda_navigation.py) 将类型化ID映射到原服务读取和原生页面；[研究议程界面](../../src/quantlab/desktop/research_agenda.py) 明确选中引用后才跳转，不自动处理待办。身份与有限扫描语义在[research_agenda.py](../../src/quantlab/agent/research_agenda.py)。测试：[类型/来源](../../tests/test_agenda_navigation.py)、[原生目标页面](../../tests/test_agenda_navigation_desktop.py)、[边界复核](../../tests/test_agenda_navigation_review.py)。无新模型工具、授权、任务或结果数据库。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

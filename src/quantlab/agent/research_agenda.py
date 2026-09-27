@@ -25,21 +25,29 @@ class ResearchAgendaService:
         self.output=Path(output).resolve();self.data_root=data_root
         if not self.output.is_dir():raise ValueError('研究工作空间不存在')
     def _memory_items(self):
-        store=MemoryStore(self.output);records=[]
+        store=MemoryStore(self.output);records=[];has_more=False
         try:
             offset=0
             while len(records)<200:
                 page=store.search('',include_superseded=False,offset=offset,limit=20)
                 records.extend(page['records'])
-                if page['next_offset'] is None:break
+                has_more=page['next_offset'] is not None
+                if not has_more:break
                 offset=page['next_offset']
         except MemoryError as error:
             if error.code=='NOT_FOUND':return []
             raise
         findings={r['hypothesis_id'] for r in records if r['kind']=='finding' and r.get('hypothesis_id')}
-        return [agenda_item('open_hypothesis',r['title'],'研究假设尚无当前结论记录',
-            '为该假设设计固定研究或证据包',60,[{'kind':'memory','memory_id':r['memory_id']}])
+        items=[agenda_item('hypothesis_review_needed' if has_more else 'open_hypothesis',r['title'],
+            '本次有限扫描未找到关联结论；记录未查完，不能认定尚无结论' if has_more else '研究假设尚无当前结论记录',
+            '先查原假设及关联结论，不因待办自动重复研究' if has_more else '为该假设设计固定研究或证据包',
+            60,[{'kind':'memory','memory_id':r['memory_id']}])
             for r in records if r['kind']=='hypothesis' and r['memory_id'] not in findings]
+        if has_more:
+            items.append(agenda_item('memory_scan_limited','研究记忆扫描未覆盖全部记录',
+                '本次最多读取200条当前记录；未扫描记录可能含已有结论',
+                '在研究记忆中按精确假设核对；不把缺席于本页当成不存在',80,[]))
+        return items
 
     def _job_items(self):
         rows=[];folder=self.output/'_jobs'
@@ -142,12 +150,26 @@ class ResearchAgendaService:
                     '等待原任务终态后同步Factory；不要另开重复Factory',55,ref))
             elif state['status']=='completed':
                 promoted={r['candidate_id'] for r in state.get('promotions',[])}
+                candidates={r['candidate_id']:r for r in state['prepared'].get('candidates',[])}
                 for cid in state.get('recommended_candidate_ids',[]):
-                    if cid not in promoted:
-                        items.append(agenda_item('factory_watchlist_candidate','Factory候选 '+cid[:8],
-                            '候选满足本轮预先冻结的观察池规则，但尚未人工加入Watchlist',
-                            '人工复核完整证据后决定是否进入观察池；不会自动授权刷新',88,
-                            [*ref,{'kind':'dsl_candidate','candidate_id':cid}]))
+                    if cid in promoted:continue
+                    candidate=candidates.get(cid)
+                    if candidate is None:
+                        items.append(agenda_item('factory_candidate_error','Factory候选身份缺失',
+                            '保存的推荐编号不在冻结候选中：'+str(cid),
+                            '打开原Factory核对；不按名称猜测候选',100,ref));continue
+                    if candidate.get('candidate_kind')=='registered_factor':
+                        detail={'kind':'factor','factor_id':candidate['factor_id'],
+                                'version':candidate['version'],'parameters':candidate['parameters']}
+                    elif cid in state['prepared']['plan'].get('candidate_ids',[]):
+                        detail={'kind':'dsl_candidate','candidate_id':cid}
+                    else:
+                        items.append(agenda_item('factory_candidate_error','Factory候选类型无法核对',
+                            '候选不是已声明的注册因子或旧DSL计划成员：'+str(cid),
+                            '打开原Factory核对；不猜测类型或映射到同名因子',100,ref));continue
+                    items.append(agenda_item('factory_watchlist_candidate',candidate.get('name') or 'Factory候选 '+cid[:8],
+                        '候选满足本轮预先冻结的观察池规则，但尚未人工加入Watchlist',
+                        '人工复核完整证据后决定是否进入观察池；不会自动授权刷新',88,[*ref,detail]))
         if rows['errors']:
             items.append(agenda_item('factory_store_error','Alpha Factory存在不可读记录',str(len(rows['errors']))+' 条记录无法解析',
                 '人工核对Factory存储，不自动删除',100,[]))
@@ -158,10 +180,10 @@ class ResearchAgendaService:
             if state['status']=='pending':
                 items.append(agenda_item('incremental_approval','候选增量证据包',
                     '固定增量证据计划等待宿主确认','核对候选、控制因子、训练截止和检验族后决定是否执行',90,
-                    [{'kind':'proposal','proposal_id':state['proposal_id']}]))
+                    [{'kind':'incremental_evidence','proposal_id':state['proposal_id']}]))
             elif state['status']=='running':
                 items.append(agenda_item('incremental_running','候选增量证据包','证据包处于运行/恢复状态',
-                    '优先收口原证据包，不按结果另起重复测试',50,[{'kind':'proposal','proposal_id':state['proposal_id']}]))
+                    '优先收口原证据包，不按结果另起重复测试',50,[{'kind':'incremental_evidence','proposal_id':state['proposal_id']}]))
         if rows['errors']:
             items.append(agenda_item('incremental_store_error','增量证据存在不可读记录',str(len(rows['errors']))+' 条记录无法解析',
                 '人工核对证据包存储',100,[]))

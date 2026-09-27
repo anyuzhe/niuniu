@@ -2,6 +2,7 @@ import os,time
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 from uuid import uuid4
 import unittest
+from unittest.mock import patch
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtTest import QTest
 import test_restricted_dsl as fixtures
@@ -20,6 +21,9 @@ class DslCandidateDesktopTests(unittest.TestCase):
             QTest.qWait(10)
         self.fail('Qt callback timeout')
     def setUp(self):
+        isolation=patch('quantlab.desktop.market_pages.build_market_overview',
+                        side_effect=ValueError('Isolated DSL test: market overview is unrelated'))
+        isolation.start();self.addCleanup(isolation.stop)
         self.fx=fixtures.RestrictedDslTests();self.fx.setUp();self.source=self.fx.source()
         self.service=DslCandidateService(self.fx.output);self.request=str(uuid4())
         self.service.propose(self.request,'桌面DSL候选',fixtures.sample_ast(),self.source.run_id)

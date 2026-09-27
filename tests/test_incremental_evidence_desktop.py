@@ -22,6 +22,9 @@ class IncrementalEvidenceDesktopTests(unittest.TestCase):
             QTest.qWait(10)
         self.fail('Qt callback timeout')
     def setUp(self):
+        isolation=patch('quantlab.desktop.market_pages.build_market_overview',
+                        side_effect=ValueError('Isolated evidence test: market overview is unrelated'))
+        isolation.start();self.addCleanup(isolation.stop)
         self.fx=fixtures.CandidateReviewTests();self.fx.setUp();self.addCleanup(self.fx.doCleanups)
         self.service=IncrementalEvidenceService(self.fx.output)
         plan={'candidate_run_id':self.fx.a.run_id,'control_run_ids':[self.fx.b.run_id],
