@@ -125,6 +125,10 @@
 
 [agenda_navigation.py](../../src/quantlab/desktop/agenda_navigation.py) 将类型化ID映射到原服务读取和原生页面；[研究议程界面](../../src/quantlab/desktop/research_agenda.py) 明确选中引用后才跳转，不自动处理待办。身份与有限扫描语义在[research_agenda.py](../../src/quantlab/agent/research_agenda.py)。测试：[类型/来源](../../tests/test_agenda_navigation.py)、[原生目标页面](../../tests/test_agenda_navigation_desktop.py)、[边界复核](../../tests/test_agenda_navigation_review.py)。无新模型工具、授权、任务或结果数据库。
 
+## 首个待审批研究（2026-09-27）
+
+[experiment.py](../../src/quantlab/desktop/experiment.py) 的draft_only模式只返回配置；[agent_proposals.py](../../src/quantlab/desktop/agent_proposals.py) 的open_research_draft复用原提案保存/审批入口。研究实验室和[Factory表单](../../src/quantlab/desktop/factory_builder.py)提供首次研究入口，不复制计算或授权服务。测试：[空工作空间与原生流程](../../tests/test_first_research_draft.py)、[严格资格/上下文/草稿边界](../../tests/test_first_research_review.py)，旧表单回归见[test_agent_proposals_desktop.py](../../tests/test_agent_proposals_desktop.py)。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

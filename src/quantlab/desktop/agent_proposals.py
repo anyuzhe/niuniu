@@ -1,5 +1,6 @@
 """Human proposal review; approval is never a model-facing tool."""
 import json
+from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
 from PyQt6 import sip
@@ -13,7 +14,8 @@ from .widgets import label,button,row
 
 
 class ProposalDialog(QDialog):
-    def __init__(self, window, selected_id=None):
+    def __init__(self, window, selected_id=None, *, draft_spec=None):
+        if selected_id is not None and draft_spec is not None:raise ValueError('不能同时指定已保存提案与新草稿')
         self.requested_selection=selected_id
         super().__init__(window);self.window=window;self.selected=None;self.busy=False
         self.service=ProposalService(window.output,window.data_root);self.request_id=str(uuid4())
@@ -21,6 +23,9 @@ class ProposalDialog(QDialog):
         self._result_generation=0;self._result_binding=None
         output_stat=self.service.output.stat()
         self._output_identity=(output_stat.st_dev,output_stat.st_ino)
+        try:
+            root_stat=self.service.data_root.stat();self._form_root_identity=(root_stat.st_dev,root_stat.st_ino)
+        except OSError:self._form_root_identity=None
         self.setWindowTitle('研究提案与人工批准');self.resize(1080,860)
         box=QVBoxLayout(self)
         box.addWidget(label('草稿 → 预检 → 保存固定提案 → 人工批准 → 原任务队列。聊天助手只能生成提案，批准在此进行。','note',True))
@@ -44,7 +49,9 @@ class ProposalDialog(QDialog):
         self.open_button=button('在原工作台打开实际结果',self.open_result);self.run_id=None;box.addWidget(self.open_button)
         self.status=label('策略包校验不是授权；正式提案还须核对数据资格，批准时冻结实际输入字节，再交给原任务队列。','muted',True);box.addWidget(self.status)
         self.listing.currentItemChanged.connect(self.select);self.confirm.toggled.connect(self.actions)
-        self.draft.textChanged.connect(self.draft_changed);self.actions();self.refresh()
+        self.draft.textChanged.connect(self.draft_changed);self.actions()
+        if draft_spec is not None:self.apply_form_draft(deepcopy(draft_spec))
+        self.refresh()
 
     def actions(self):
         self.approve_button.setEnabled(not self.busy and self.selected is not None and self.confirm.isChecked()
@@ -302,15 +309,65 @@ class ProposalDialog(QDialog):
         except (ValueError,TypeError,KeyError,OSError) as error:
             self.status.setText('策略包未导入：'+str(error))
 
+    def _form_context_valid(self):
+        if not self._result_context_valid() or getattr(self.window,'data_root',None) is None:return False
+        try:
+            root=Path(self.window.data_root).resolve();info=root.stat()
+            return root==self.service.data_root and self._form_root_identity==(info.st_dev,info.st_ino)
+        except OSError:return False
+
     def edit_form(self):
-        from .experiment import ExperimentDialog
-        dialog=ExperimentDialog(self.window);dialog.setWindowTitle('填写研究提案草稿（不运行）')
-        dialog.submit_button.clicked.disconnect();dialog.submit_button.setEnabled(True)
-        dialog.submit_button.setText('填入提案草稿（不提交任务）')
-        def collect():
-            try:
-                spec=dialog.collect();self.service.preview(spec)
-                self.draft.setPlainText(encode(spec));dialog.accept()
-            except Exception as error:dialog.status.setText('提案预检未通过：'+str(error))
-        dialog.submit_button.clicked.connect(collect)
-        dialog.exec();self.raise_();self.activateWindow()
+        if self.busy or not self._form_context_valid():
+            self.status.setText('提案工作空间或数据根已变化，或正在处理；未打开草稿表单。');return
+        original=self.draft.toPlainText();generation=self._input_check_generation
+        try:
+            initial=parse_spec(original) if original.strip() else None
+            def receive(spec):
+                if (self.busy or not self._form_context_valid() or self._input_check_generation!=generation
+                        or self.draft.toPlainText()!=original):
+                    raise ValueError('原提案草稿或选择已变化；没有覆盖较新的编辑')
+                self.apply_form_draft(spec)
+            return open_research_draft(self.window,initial_spec=initial,receive=receive)
+        except (ValueError,TypeError,KeyError,OSError) as error:
+            self.status.setText('表单未打开，原草稿保留：'+str(error))
+
+    def apply_form_draft(self,spec):
+        if self.busy or not self._form_context_valid():raise ValueError('原提案窗口或数据根已失效，或正在处理')
+        from quantlab.workbench.jobs import prepare
+        prepare(spec)
+        self.listing.setCurrentRow(-1);self.selected=None;self.run_id=None
+        self.draft.setPlainText(encode(spec));self.confirm.setChecked(False);self.actions()
+        self.status.setText('配置已填入草稿；未保存、未核验数据资格、未批准、未运行。先预检/保存，再明确批准。')
+
+
+def open_research_draft(window,*,definition=None,initial_spec=None,receive=None):
+    """Open a configuration-only form. Acceptance transfers a draft, never work.
+
+    The default destination is the existing human ProposalDialog. A caller
+    editing an existing draft supplies its guarded receiver instead.
+    """
+    from .experiment import ExperimentDialog
+    if getattr(window,'closing',False):raise ValueError('工作窗口正在关闭')
+    dialog=ExperimentDialog(window,definition=definition,draft_only=True)
+    try:
+        if initial_spec is not None:dialog.apply_spec(deepcopy(initial_spec))
+    except Exception:
+        dialog.reject();dialog.deleteLater();raise
+    def deliver(result):
+        status=getattr(window,'status',dialog.status)
+        if result!=QDialog.DialogCode.Accepted or dialog.result_spec is None:return
+        if not dialog.workspace_valid():
+            status.setText('工作空间已变化，研究草稿未转入新工作空间。');return
+        try:
+            spec=deepcopy(dialog.result_spec)
+            if receive is not None:receive(spec)
+            else:
+                proposal=ProposalDialog(window,draft_spec=spec)
+                window.show_dialog(proposal)
+        except (ValueError,TypeError,KeyError,OSError,RuntimeError) as error:
+            status.setText('草稿未应用：'+str(error)+'；没有保存或运行研究。')
+    dialog.finished.connect(deliver)
+    show=getattr(window,'show_dialog',None)
+    if callable(show):show(dialog)
+    else:dialog.show()
+    return dialog

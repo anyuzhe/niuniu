@@ -111,8 +111,13 @@ def research_lab_page(window):
                     button('候选增量证据包',open_method('open_incremental_evidence','增量证据不可用'))))
     box.addWidget(factors)
     experiments=Card('实验与对比')
+    def first_research():
+        if window.closing or window.epoch!=page_epoch:return
+        from .agent_proposals import open_research_draft
+        open_research_draft(window)
+    experiments.add(button('新建待审批研究（无需已有实验）',first_research,True))
     experiments.add(label('实验中心、回测和结果对比继续复用原内核；不创建第二权威库。','muted',True))
-    experiments.add(row(button('新建实验',window.new_experiment,True),button('实验中心',open_legacy(7)),
+    experiments.add(row(button('新建实验（原直接提交入口）',window.new_experiment),button('实验中心',open_legacy(7)),
                         button('策略回测',open_legacy(9)),button('结果对比',open_legacy(10)),
                         button('归档日线研究输入',open_method('open_archived_daily_dataset','归档输入不可用'))))
     box.addWidget(experiments)

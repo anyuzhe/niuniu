@@ -69,18 +69,11 @@ class ProposalDesktopTests(unittest.TestCase):
 
     def test_original_business_form_only_fills_draft(self):
         from quantlab.desktop.experiment import ExperimentDialog
-        failures=[]
-        def fill():
-            modal=QApplication.activeModalWidget()
-            try:
-                self.assertIsInstance(modal,ExperimentDialog);modal.apply_spec(self.spec)
-                QTest.mouseClick(modal.submit_button,Qt.MouseButton.LeftButton)
-                if modal.isVisible():raise AssertionError(modal.status.text())
-            except Exception as error:
-                failures.append(error)
-                if modal:modal.reject()
-        QTimer.singleShot(0,fill);self.dialog.edit_form()
-        self.assertFalse(failures,failures)
+        form=self.dialog.edit_form();self.addCleanup(form.close)
+        self.assertIsInstance(form,ExperimentDialog);self.assertTrue(form.draft_only)
+        form.apply_spec(self.spec)
+        QTest.mouseClick(form.submit_button,Qt.MouseButton.LeftButton)
+        self.assertFalse(form.isVisible(),form.status.text())
         self.assertEqual(prepare(json.loads(self.dialog.draft.toPlainText())).preview(),prepare(self.spec).preview())
         self.assertIsNone(self.window.queue);self.assertEqual(self.dialog.service.store.list(),[])
 

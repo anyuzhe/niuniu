@@ -1,6 +1,8 @@
 """Native research configuration dialog; delegates validation/execution to existing core."""
 import json
 import re
+from copy import deepcopy
+from PyQt6 import sip
 from pathlib import Path
 from uuid import uuid4
 from PyQt6.QtCore import QDate,Qt
@@ -12,11 +14,18 @@ from .app import MODES
 
 
 class ExperimentDialog(QDialog):
-    def __init__(self,window,definition=None,mode='single'):
-        super().__init__(window);self.window=window;self.job_id=None;self.last_spec=None;self.setWindowTitle('新建研究实验');self.resize(1020,860)
-        box=QVBoxLayout(self);box.addWidget(label('新建研究实验','heroTitle'));box.addWidget(label('配置 → 校验 → 本地执行 → 实验归档','muted'))
+    def __init__(self,window,definition=None,mode='single',*,draft_only=False):
+        if type(draft_only) is not bool:raise ValueError('draft_only须为布尔值')
+        super().__init__(window);self.window=window;self.job_id=None;self.last_spec=None
+        self.draft_only=draft_only;self.result_spec=None;self.closed=False;self.generation=0
+        self._output=Path(window.output).resolve();self._root=Path(window.data_root).resolve() if window.data_root else None
+        self._epoch=getattr(window,'epoch',None)
+        self._output_identity=self.path_identity(self._output);self._root_identity=self.path_identity(self._root)
+        self.setWindowTitle('新建待审批研究草稿' if draft_only else '新建研究实验');self.resize(1020,860)
+        box=QVBoxLayout(self);box.addWidget(label('新建待审批研究草稿' if draft_only else '新建研究实验','heroTitle'))
+        box.addWidget(label('填写配置 → 仅校验 → 原提案窗口保存 → 人工批准时冻结输入；此表单绝不提交任务。' if draft_only else '配置 → 校验 → 本地执行 → 实验归档','muted'))
         scroll=QScrollArea();scroll.setWidgetResizable(True);form_widget=QWidget();form=QFormLayout(form_widget);form.setSpacing(12);scroll.setWidget(form_widget);box.addWidget(scroll,1)
-        latest=window.last_records[0] if window.last_records else {}
+        latest=window.last_records[0] if window.last_records and not draft_only else {}
         self.question=QLineEdit('牛牛桌面因子研究');form.addRow('研究问题',self.question)
         self.symbols=QLineEdit(' '.join(latest.get('symbols',[])));self.symbols.setPlaceholderText('sh.600000 sz.000001');form.addRow('证券代码（空格或逗号分隔）',self.symbols)
         self.start=QDateEdit();self.end=QDateEdit()
@@ -31,7 +40,8 @@ class ExperimentDialog(QDialog):
         self.target=QComboBox();self.definitions=window.factors+window.theories
         for v in self.definitions:
             d=v.get('definition',v);self.target.addItem(d.get('name_cn',d.get('name',''))+' · '+d.get('factor_id',d.get('template_id','')))
-        form.addRow('因子 / 固定研究模板',self.target)
+        self.pick_factor_button=button('按名称选择因子',self.pick_factor)
+        form.addRow('因子 / 固定研究模板',row(self.target,self.pick_factor_button))
         self.mode=QComboBox()
         for key,title in MODES:self.mode.addItem(title,key)
         self.mode.setCurrentIndex(self.mode.findData(mode));form.addRow('研究方式',self.mode)
@@ -65,16 +75,19 @@ class ExperimentDialog(QDialog):
         form.addRow(label('行情只读。研究标签与成交收益分开；规则、成本与历史资格来源以保存的配置为准。','note',True))
         self.status=label('尚未校验','muted',True);box.addWidget(self.status)
         self.preview=QPlainTextEdit();self.preview.setReadOnly(True);self.preview.setMaximumHeight(140);self.preview.hide();box.addWidget(self.preview)
-        self.validate_button=button('校验并预览配置',self.validate);self.submit_button=button('提交实验',self.submit,True)
+        self.validate_button=button('校验并预览配置',self.validate)
+        self.submit_button=button('填入待审批研究草稿（不执行）' if draft_only else '提交实验',self.submit,True)
         box.addWidget(row(button('导入实验 JSON',self.import_spec),self.validate_button,self.submit_button,button('关闭',self.close)))
         def update():
             current=self.mode.currentData();self.split.setEnabled(current=='holdout');self.schedule.setEnabled(current=='walkforward');self.grid.setEnabled(current=='sweep');self.grid_button.setEnabled(current=='sweep')
             self.action_config.setEnabled(current=='execution');self.theory_button.setEnabled(current=='theory_study')
             self.price_mode.setEnabled(current=='execution')
             self.action_config.setText('配置公司行动与费用' if self.price_mode.currentData()=='account' else '配置历史费用规则')
-            self.parameters.setEnabled('definition' in self.definitions[self.target.currentIndex()]);self.parameter_button.setEnabled('definition' in self.definitions[self.target.currentIndex()])
+            index=self.target.currentIndex();has_factor=0<=index<len(self.definitions) and 'definition' in self.definitions[index]
+            self.parameters.setEnabled(has_factor);self.parameter_button.setEnabled(has_factor)
         def select():
-            chosen=self.definitions[self.target.currentIndex()];self.parameters.setPlainText(json.dumps(chosen.get('defaults',{}),ensure_ascii=False,indent=2));update()
+            index=self.target.currentIndex();chosen=self.definitions[index] if 0<=index<len(self.definitions) else {}
+            self.parameters.setPlainText(json.dumps(chosen.get('defaults',{}),ensure_ascii=False,indent=2));update()
         self.target.currentIndexChanged.connect(select);self.mode.currentIndexChanged.connect(update)
         self.price_mode.currentIndexChanged.connect(update)
         if definition in self.definitions:self.target.setCurrentIndex(self.definitions.index(definition))
@@ -92,8 +105,51 @@ class ExperimentDialog(QDialog):
             control.valueChanged.connect(self.invalidate_preview)
         for control in (self.replay,self.audit,self.expanding):
             control.toggled.connect(self.invalidate_preview)
-        if not window.data_root:self.submit_button.setEnabled(False);self.status.setText('未指定数据目录，可校验配置；启动时使用 --data-root 启用执行。')
+        if draft_only and definition is None:
+            self.target.setCurrentIndex(-1);self.question.clear()
+        if not window.data_root and not draft_only:
+            self.submit_button.setEnabled(False);self.status.setText('未指定数据目录，可校验配置；启动时使用 --data-root 启用执行。')
+        if draft_only:self.status.setText('请明确选择因子、股票与日期。这里仅生成草稿；没有读取行情、保存提案或运行研究。')
+        self.finished.connect(self._finished)
         for control in self.findChildren(QComboBox):control.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    @staticmethod
+    def path_identity(path):
+        if path is None:return None
+        try:
+            info=Path(path).stat();return info.st_dev,info.st_ino
+        except OSError:return None
+
+    def workspace_valid(self):
+        if sip.isdeleted(self.window) or getattr(self.window,'closing',False):return False
+        root=Path(self.window.data_root).resolve() if self.window.data_root else None
+        return (Path(self.window.output).resolve()==self._output and root==self._root
+            and getattr(self.window,'epoch',None)==self._epoch
+            and self._output_identity is not None and self.path_identity(self._output)==self._output_identity
+            and self.path_identity(self._root)==self._root_identity)
+
+    def _finished(self,result):
+        self.closed=True;self.generation+=1
+        if result!=QDialog.DialogCode.Accepted:self.result_spec=None
+
+    def pick_factor(self):
+        if self.closed or not self.workspace_valid():return
+        from .research_picker import FactorPickerDialog
+        generation=self.generation;dialog=FactorPickerDialog(self.window)
+        def selected(*_):
+            if self.closed or not self.workspace_valid() or generation!=self.generation:return
+            if dialog.result_definition is None:return
+            try:self.use_factor(dialog.result_definition)
+            except (ValueError,KeyError,TypeError) as error:self.status.setText('因子未采用：'+str(error))
+        dialog.finished.connect(selected);self.window.show_dialog(dialog)
+
+    def use_factor(self,definition):
+        if self.closed or not self.workspace_valid():raise ValueError('研究表单工作空间已变化')
+        wanted=definition['definition']
+        index=next((i for i,row_ in enumerate(self.definitions) if row_.get('definition',{}).get('factor_id')==wanted['factor_id']
+                    and row_.get('definition',{}).get('version')==wanted['version']),None)
+        if index is None:raise ValueError('本表单没有该精确因子版本，不按名称替代')
+        self.target.setCurrentIndex(index)
 
     def edit_theory(self):
         from .theory_editor import TheoryDialog
@@ -144,6 +200,7 @@ class ExperimentDialog(QDialog):
         finally:self.raise_();self.activateWindow()
 
     def invalidate_preview(self):
+        self.generation+=1;self.result_spec=None
         self.preview.clear();self.preview.hide()
         self.status.setText('配置已修改，请重新校验。'+(' 未指定行情数据目录，暂不能执行。' if not self.window.data_root else ''))
 
@@ -183,6 +240,8 @@ class ExperimentDialog(QDialog):
         self.invalidate_preview();self.status.setText('配置已导入，请核对股票、日期和成本后校验提交。')
 
     def collect(self):
+        if self.draft_only and (self.closed or not self.workspace_valid()):raise ValueError('草稿窗口或工作空间已变化，请重新打开')
+        if not 0<=self.target.currentIndex()<len(self.definitions):raise ValueError('请明确选择一个因子或固定研究模板')
         advanced=json.loads(self.advanced.toPlainText())
         if not isinstance(advanced,dict):raise ValueError('扩展配置必须是 JSON 对象')
         protected={'question','symbols','start','end','timeframe','adjustment','mode','factor','version','parameters','theory','theory_version','horizons','quantiles','replay','sequence_audit','qualification'}
@@ -208,18 +267,26 @@ class ExperimentDialog(QDialog):
             spec=self.collect();result=prepare(spec)
             universe_name={'explicit':'指定股票','listing':'按上市日期筛选（回顾性）','pit':'历史可用资格'}.get(result.universe.mode,result.universe.mode)
             summary=[self.question.text(),f'证券：{len(result.config.data.symbols)} 只　期间：{spec["start"]} 至 {spec["end"]}',f'方式：{self.mode.currentText()}　周期：{self.timeframe.currentText()}　价格：{self.adjustment.currentText()}',f'因子：{self.target.currentText()}',f'持有期：{self.horizons.text()}　分位组：{self.quantiles.value()}',f'股票资格：{universe_name}　数据资格要求：{self.qualification.currentText()}　保存回放：{"是" if result.config.replay else "否"}']
-            if self.window.data_root:
+            if self.window.data_root and not self.draft_only:
                 from quantlab.data.qualification import qualify_spec
                 qualification=qualify_spec(self.window.data_root,spec)
                 summary.append('资格状态：'+qualification['status'])
                 if not qualification['qualified']:raise ValueError('数据资格未满足：'+', '.join(qualification.get('blockers',[])[:8]))
-            elif spec.get('qualification')!='research_only':raise ValueError('严格/回顾性资格校验需要数据目录')
+            elif not self.draft_only and spec.get('qualification')!='research_only':raise ValueError('严格/回顾性资格校验需要数据目录')
             if result.execution:summary.append(f'初始资金：{result.execution.initial_cash:,.2f} 元　最多入选：{result.execution.top_n} 只　佣金：{result.execution.commission_bps} 万分之一　滑点：{result.execution.slippage_bps} 万分之一')
-            self.preview.setPlainText('\n'.join(summary));self.preview.show();self.status.setText('配置与数据资格校验通过；未执行实验。' if self.window.data_root and spec.get('qualification')!='research_only' else '配置校验通过。尚未读取行情或执行实验。');return True
+            self.preview.setPlainText('\n'.join(summary));self.preview.show()
+            self.status.setText('仅配置校验通过；未读取行情或核验数据资格，保存与批准仍走原提案流程。' if self.draft_only else
+                ('配置与数据资格校验通过；未执行实验。' if self.window.data_root and spec.get('qualification')!='research_only' else '配置校验通过。尚未读取行情或执行实验。'))
+            return True
         except Exception as exc:
             self.preview.clear();self.preview.hide();self.status.setText('配置错误：'+str(exc));return False
 
     def submit(self):
+        if self.draft_only:
+            if not self.validate():return
+            if self._root is None or self._root_identity is None:
+                self.status.setText('配置草稿保留。尚未指定有效行情目录，不能转入待审批流程；配置数据根后重新打开。未保存、未运行。');return
+            self.result_spec=deepcopy(self.collect());self.accept();return
         if not self.validate():return
         spec=self.collect()
         if not self.window.data_root:self.status.setText('请指定行情数据目录。');return

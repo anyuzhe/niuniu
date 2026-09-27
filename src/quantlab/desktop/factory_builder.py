@@ -40,6 +40,8 @@ class FactoryPlanDialog(QDialog):
         self.clear_controls_button=button('清空控制因子',self.clear_controls)
         self.execution_button=button('选择执行基准',lambda:self.pick_archive('execution'))
         form.addRow(row(self.baseline_button,self.baseline_text))
+        self.first_research_button=button('没有基准？先创建待审批研究',self.start_first_research)
+        form.addRow(self.first_research_button)
         form.addRow(row(self.control_button,self.clear_controls_button,self.control_text))
         self.require_net=QCheckBox('同时检验成本后净收益增量（需要匹配的 execution 归档）')
         form.addRow(self.require_net);form.addRow(row(self.execution_button,self.execution_text));layout.addWidget(sources)
@@ -74,7 +76,7 @@ class FactoryPlanDialog(QDialog):
         self.finished.connect(self._finished)
         self.inputs=[self.name,self.train_end,self.evaluation_start,self.horizon,self.alpha,self.common_ratio,self.correlation,self.positive,self.require_net]
         self.editables=[*self.inputs,self.candidate_name,self.candidate_table,self.factor_button,self.params_button,self.add_button,self.remove_button,
-            self.baseline_button,self.control_button,self.clear_controls_button,self.execution_button]
+            self.baseline_button,self.control_button,self.clear_controls_button,self.execution_button,self.first_research_button]
         for control in (self.name,self.train_end,self.evaluation_start):control.textChanged.connect(self.invalidate)
         self.horizon.currentIndexChanged.connect(self.invalidate)
         for control in (self.alpha,self.common_ratio,self.correlation):control.valueChanged.connect(self.invalidate)
@@ -131,6 +133,12 @@ class FactoryPlanDialog(QDialog):
     def reference_text(ref):
         identity=ref['rule_identity'];scope=ref['range']
         return f"{ref.get('question') or '未命名'} · {identity.get('factor_id')}@{identity.get('factor_version')} · {scope.get('start')} → {scope.get('end')} · {ref['source']['run_id']}"
+
+    def start_first_research(self):
+        if not self.valid() or self.busy:return
+        from .agent_proposals import open_research_draft
+        open_research_draft(self.window)
+        self.status.setText('已打开配置草稿；原Factory计划保留。正式研究经保存/批准/归档后，再明确选择基准，不自动套用新结果。')
 
     def pick_archive(self,role):
         if not self.valid() or self.busy:return
