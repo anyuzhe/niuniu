@@ -14,6 +14,10 @@
 - [威克夫 A–E：可复现 OHLCV 规则链 v1](theories/威克夫_AE规则与因子链路.md)
 - [Chan 包含与 ICT OB：明确规则 1.0.0](theories/理论扩展规则_Chan包含与ICT_OB.md)
 - [跨实验固定检验族：本地登记与 Holm 校正 1.1.0](theories/跨实验试验登记与Holm校正规则.md)
+- [Retail Crowding V1 冻结规格 1.0.0](retail-crowding-v1.json)：固定 MOM1/3/5/10/20、成交量/成交额异常与 RC1 公式、时间分割和统计检验族；不含逐笔散户流与关注度数据。
+- [Retail Crowding V1 冻结规格 1.0.1](retail-crowding-v1.0.1.json)：公式、方向、日期和240项Holm族不变；仅修正999次置换无法达到首档Holm阈值的统计分辨率，并固化既有nullable-volume研究口径。当前执行版本。
+- [Retail Crowding V1 残差增量规格 1.0.0](retail-crowding-v1.1-residual.json)：固定 MOM20 + VolumeShock20 + AmountShock20 控制，只用≤2022拟合，2023–2026检验5个残差IC期限。
+- [Retail Microstructure V2 数据合同 0.1.0](retail-microstructure-v2.json)：固定逐笔买卖失衡、小单代理与120日覆盖门；当前只构建特征，不做收益推断。
 
 ## DATA / CODE 协作
 

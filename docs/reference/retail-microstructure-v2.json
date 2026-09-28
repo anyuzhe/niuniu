@@ -1,0 +1,41 @@
+{
+  "spec_id": "retail-microstructure-v2",
+  "version": "0.1.0",
+  "frozen_date": "2026-09-28",
+  "scope": "TDX personal-research trade archive feature contract only; no return inference until coverage gate is ready.",
+  "source": {
+    "table": "tdx_trades_compacted",
+    "qualification": "vendor_observation_personal_research_not_pit",
+    "volume_unit": "lots_provider",
+    "notional_proxy_unit": "provider_lot_price_units_not_RMB"
+  },
+  "valid_directional_record": "side in {buy,sell} and price>0 and volume>0",
+  "features": {
+    "buy_imbalance_proxy": "(sum_buy(price*volume)-sum_sell(price*volume))/(sum_buy+sum_sell)",
+    "volume_imbalance": "(buy_volume_lots-sell_volume_lots)/(buy_volume_lots+sell_volume_lots)",
+    "avg_lots_per_order_proxy": "volume/order_count when order_count>0",
+    "small_order_threshold": "within each symbol-day, 20th percentile of avg_lots_per_order_proxy",
+    "small_order_notional_share": "notional proxy from records at/below the small-order threshold divided by all directional notional proxy",
+    "small_order_buy_imbalance": "buy-sell notional imbalance inside the small-order proxy subset"
+  },
+  "coverage_gate": {
+    "small_order_quantile": 0.2,
+    "min_qualified_days": 120,
+    "min_symbols_per_day": 3000,
+    "relative_full_market_ratio": 0.9,
+    "qualified_day": "feature_symbols >= max(3000, ceil(max_feature_symbols_in_scope*0.9))"
+  },
+  "missing_policy": {
+    "no_directional_trade": "no feature row",
+    "directional_trade_but_no_positive_order_count": "BuyImbalance remains available; small-order fields remain null",
+    "neutral_or_status_side": "excluded from directional metrics, retained in quality counts",
+    "nonpositive_volume": "excluded from directional metrics, retained in quality counts"
+  },
+  "inference_policy": "require_inference_ready must pass before any return-predictive significance study is launched.",
+  "limitations": [
+    "No claim that the small-order proxy identifies retail investors.",
+    "No claim that price*provider_lots is RMB turnover.",
+    "Coverage is a collected cross-section completeness proxy, not Strict PIT or vendor-history completeness.",
+    "Attention/search/forum data are not part of V2."
+  ]
+}

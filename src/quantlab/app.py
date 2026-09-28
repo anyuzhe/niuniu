@@ -32,6 +32,7 @@ from quantlab.factors.chan_classic import classic_chan_pack
 from quantlab.factors.chan_multiscale import classic_multiscale_pack
 from quantlab.factors.combinations import combination_pack
 from quantlab.factors.restricted_dsl import restricted_dsl_pack
+from quantlab.factors.retail_crowding import retail_crowding_pack
 from quantlab.storage.experiments import LocalExperimentStore
 
 
@@ -63,6 +64,7 @@ def default_registry() -> FactorRegistry:
     registry.register_pack(classic_multiscale_pack())
     for pack in alpha_packs():registry.register_pack(pack)
     registry.register_pack(restricted_dsl_pack())
+    registry.register_pack(retail_crowding_pack())
     registry.register_pack(combination_pack(registry))
     return registry
 

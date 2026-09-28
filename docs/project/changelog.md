@@ -2223,3 +2223,27 @@
 - 新增desktop/local_data_readiness.py及ExperimentDialog显式按钮，复用原本地工具返回逐证券loadable、行数、空字段计数、错误，1–20只与1d/5m范围按原合同执行。管理包不回退、超限不截取；无因子也可检查，但不因表单打开自动读取。结果逐项核证券/范围，关闭/数据根身份变化/编辑期间返回/坏格式/读取失败不留旧成功状态。没有第二数据库或模型工具。
 - 11项新增GUI回归；最终13模块16组113项/113唯一ID全部PASS，0失败/错误/跳过。前后冻结hash=8f0a810a99172af9a1f16b4d375da6e2c725c7b00d98a85a3d7e697046e78a27。真实20只副本通过原生offscreen表单按钮显示18可加载、2阻塞、12行空值，0任务/提案/模型，文件SHA不变；这仅验收错误可视化，真实研究失败未被改判通过。一次新文件创建调用的recording_session_id拼写错误在执行前拒绝，修正后独占创建，未重复副作用。
 - 现有主目录其他会话WIP保持：在隔离toy Git库验证只向索引应用入站commit差异、工作树保留三份纯追加文档后缀，普通fast-forward不包含对方代码或后缀。真实整合必须再次核HEAD/全文件hash/索引与分支目标树一致；无强推/reset/stash，不重启或部署。提交和主线发布回执记录在artifacts/real-research-acceptance-20260927。
+
+
+### 2026-09-27｜[CODE/RESEARCH] Retail Crowding V1 冻结实现与首轮扩大验证
+
+- 用户要求开始验证“散户趋同/拥挤后反转”相关因子。新增 RetailCrowdingPack：复用既有 BASE.MOMENTUM 的 MOM1/3/5/10/20，新增 RETAIL.VOLUME_SHOCK_20、RETAIL.AMOUNT_SHOCK_20 和等权 RETAIL.CROWDING_V1。所有滚动基准只看当前日前的20根，零方差/缺失输出null，不执行任意代码。
+- 新增宿主研究入口 scripts/research/retail_crowding_v1.py，用 DATA registry 当前 qfq、listing universe、HoldoutRunner、TrialRegistry、Bootstrap/Permutation/Holm；不是牛牛自主研究、不会联网下载或交易。qfq真实空量使第一条生产Provider smoke按设计失败后，复用既有 normalize_research_frame research-only口径：保留空量行和时间轴、信号日屏蔽，价格/时间/复权继续fail-closed，不修改生产MQC校验。400股中86证券共847个空量/空额行按此处理。
+- 冻结V1.0.0后，12股smoke2完成8因子/240槽；100股pilot暴露统计设计缺陷：999次Monte Carlo最小p=0.001，无法达到240项Holm首档0.0002083。原V1.0.0及结果保留，未把0个Holm拒绝解释成负证据。V1.0.1仅把permutation提高到9999并固化nullable口径；因子公式、方向、日期、期限和检验族不变，runner会检查Monte Carlo分辨率是否足以触达首档Holm。
+- V1.0.1 四板块各100只确定性SHA样本（400只，symbols SHA 78ca7b57...b2ff5b5c）完成，240/240检验槽有p值，129项全族Holm拒绝。RC1最终test段1/3/5/10/20日Rank IC为 −0.0372/−0.0327/−0.0333/−0.0381/−0.0365，Holm p为0.024/0.024/0.0357/0.0357/0.0266；Q10−Q1均为负。MOM20、VolumeShock、AmountShock在多期限相当或更强，因此不宣称RC1独立Alpha或散户因果；下一步应做预先固定控制的样本外残差研究。
+- 权威本机证据：artifacts/retail-crowding-v1.0.1-pilot400-20260927/，TrialRegistry 20a6947cc107d9be8a6e554109013ca083a6fe5a655b2c4f7fd09192e817b709，RC1 parent run 63e754f7-56b0-46de-b376-150d1db32186；详细报告见 docs/archive/testing/20260927-Retail-Crowding-V1验证.md。这些是回顾性gross预测统计，不是Strict PIT、成交回测或盈利认证。
+- 最终代码在2026-09-28对同一400股重新完整执行；新输出 artifacts/retail-crowding-v1.0.1-pilot400-final-20260928/ 与前一400股运行的 symbols SHA、240项检验签名、129项Holm拒绝及RC1全部数值逐项一致，确认后补的“解析字节=记录SHA字节”完整性加强未改变研究结果。
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Crowding V1 固定控制残差增量验证
+
+- 在查看任何残差结果前新增冻结规格 retail-crowding-v1.1-residual.json：候选RC1，控制固定为MOM20/VolumeShock20/AmountShock20，400股样本SHA沿用V1.0.1；≤2022拟合、2023–2026 held-out，1/3/5/10/20五项Pearson residual IC统一Holm，9999次/20日block permutation。
+- 新增宿主入口 scripts/research/retail_crowding_residual_v1.py，先用同一Research Lab生成4个源因子完整观测，再调用既有 residual_alpha；源 experiment 必须同一 data snapshot/universe。第一次直接脚本执行因仓库根不在 scripts import path 而在读数据前失败，修正显式仓库根后执行；冻结规格未变。
+- 最终样本外残差IC：+0.0145/+0.0048/−0.0010/−0.0080/−0.0087；Holm p=0.018/1/1/1/1。没有任何期限支持预登记负方向的显著增量，T+1显著反向。描述性训练/样本外方差解释约99.26%/90.76%。结论：V1价量拥挤关联可复现，但RC1独立增量Alpha不获支持，不继续通过调权追显著性。
+- 首次成功结果 artifacts/retail-crowding-residual-v1-20260928/；加入source identity fail-closed与描述性诊断后最终重跑 artifacts/retail-crowding-residual-v1-final-20260928/，五项检验签名逐项一致。不是Strict PIT、因果散户证据、成交回测或盈利认证。
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Microstructure V2 逐笔特征与覆盖门
+
+- V1残差未显示独立增量后，不再调RC1权重。冻结 retail-microstructure-v2.json：TDX trades 仅按 personal-research 资格使用，volume只认 lots_provider，price×volume 明确不是人民币金额。
+- 新增 data/retail_microstructure.py：方向记录只接受buy/sell+正价格+正量；BuyImbalance/VolumeImbalance独立于order_count可算。小单代理使用 volume/order_count 的股日20%分位，order_count不可用时小单字段null但不删除方向特征；neutral/status/零量保留质量计数。覆盖门按可算方向特征证券数，要求≥max(3000,当前范围最大feature symbols×90%)且至少120个合格日，未满足时 require_inference_ready 明确拒绝。
+- 新增 scripts/research/retail_microstructure_v2.py，只生成coverage/feature parquet/manifest，固定 inference_performed=false；没有联网、没有写canonical lake、没有收益检验。初版小单阈值inner join会丢失无order_count股票，真实预览发现后拆成方向聚合+小单left join；BuyImbalance覆盖由5209提升到5553只，小单缺失344只保持null。
+- canonical真实预览：14,043,754条、5日期；2026-09-17原始5562只/方向特征5553只，09-16为833只，其余3天为单股测试。最终只有1/120合格日，状态INSUFFICIENT_COVERAGE；输出 artifacts/retail-microstructure-v2-preview-final-20260928/ 共6389行，比例字段边界检查0异常。没有据此声称V2因子有效或无效。

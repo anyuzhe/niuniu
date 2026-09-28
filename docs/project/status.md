@@ -433,3 +433,20 @@ AI回答明确这是合成报告，保留两项负估计、test_status=unavailab
 新增实验表单只读输入检查，复用已有LocalMarketDataTools而不新增模型工具。113唯一用例全部PASS，0失败/错误/跳过（13模块、16进程组），源码/测试/JSON/MJS前后hash=8f0a810a99172af9a1f16b4d375da6e2c725c7b00d98a85a3d7e697046e78a27。独立offscreen窗口在同一20只真实副本上显示18可加载/2阻塞，0任务/提案/模型调用，数据SHA不变；这是阻塞可视化通过，不是holdout或Alpha通过。
 
 主线合并先在独立Git夹具验证“只暂存入站分支增量、保留其他会话未提交后缀”的fast-forward方式，再按精确HEAD/索引/所有旧文件SHA和三份文档纯追加条件检查实际工作区；不暂存或提交retail_crowding。最终合入/push及WIP保留以本轮integration回执为准，未通过条件则保持独立分支。
+
+
+### 2026-09-27 Retail Crowding V1：冻结因子与400股扩大验证
+
+新增 RETAIL.VOLUME_SHOCK_20、RETAIL.AMOUNT_SHOCK_20、RETAIL.CROWDING_V1 并注册到正式因子目录；公式、2010–2026时间分割、T+1/3/5/10/20 与240项TrialRegistry检验族固定在参考规格。第一版999次置换无法达到 0.05/240 的Holm首档阈值，原V1.0.0及100股pilot保留；V1.0.1仅把置换提高到9999并固化已有research-only nullable-volume口径，没有按收益结果换公式/方向/日期。
+
+V1.0.1 按四板块各100只的确定性分层样本完成400股扩大验证，240/240槽位有可用p值。RC1在2023–2026历史样本外的1/3/5/10/20日Rank IC约为 −0.0372/−0.0327/−0.0333/−0.0381/−0.0365，五项均通过全族Holm；Q10−Q1约 −0.059%/−0.193%/−0.354%/−0.606%/−0.886%。但MOM20、成交量/成交额异常的若干期限同样或更强，因此当前只支持“拥挤/反转关联”，不证明散户因果、RC1独立Alpha或可成交收益。完整过程、失败留痕和限制见[Retail Crowding V1验证](../archive/testing/20260927-Retail-Crowding-V1验证.md)。
+
+
+### 2026-09-28 Retail Crowding V1 第二阶段：残差增量未获支持
+
+按第一阶段后已明确的控制组 MOM20 + VolumeShock20 + AmountShock20 事前冻结残差规格；≤2022只拟合因子间线性投影，2023–2026评价，1/3/5/10/20五项残差Pearson IC统一Holm。结果为 +0.0145/+0.0048/−0.0010/−0.0080/−0.0087；没有一项同时满足“负方向+Holm显著”，T+1反而显著为正（Holm p=0.018）。训练/样本外描述性方差解释约99.26%/90.76%。因此当前判断是：价量拥挤/反转关联存在，但RC1没有已验证的独立增量Alpha，不再通过调权继续追V1显著性；下一步只值得补真正新增信息的逐笔散户流/小单与Attention数据。完整记录仍见[Retail Crowding V1验证](../archive/testing/20260927-Retail-Crowding-V1验证.md)。
+
+
+### 2026-09-28 Retail Microstructure V2：特征已接通，历史覆盖不足而阻断推断
+
+新增只读 TDX 逐笔微观结构特征：BuyImbalanceProxy、VolumeImbalance、SmallOrderNotionalShare、SmallOrderBuyImbalance。因为 provider volume 只认证为 lots_provider，所有名义值明确是比例代理而非人民币；小单按每股每天 volume/order_count 的底部20%定义，没有正order_count时只留空小单字段。覆盖门要求至少120个近全市场有效日，且每日feature symbols≥max(3000,最大覆盖×90%)。当前5个有数据日期中仅2026-09-17合格：原始5562只、5553只可算方向特征，最终状态1/120、INSUFFICIENT_COVERAGE，因此没有运行任何未来收益显著性研究。预览证据 artifacts/retail-microstructure-v2-preview-final-20260928/；V2合同见[retail-microstructure-v2.json](../reference/retail-microstructure-v2.json)。
