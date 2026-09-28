@@ -2314,4 +2314,4 @@
 
 - 在跨worker scope一致性修正后，增加 reviewed-scope apply 模式：必须持有 TDX writer lease，且 STOP 存在、无 RUNNING/STORED、current scope ID、proposed scope ID 与 trade queue snapshot 均与刚生成的 preview 完全一致；任何队列/配置变化都拒绝。
 - apply 只写 reviewed collection scope、调用 apply_collection_scope 并写 retail-phasea-scope-receipt.json；明确不删除 STOP、不 resume/autoresume、不访问网络。receipt 记录 before/after queue snapshot、scope identity、实际变更数与安全状态。
-- 新增正常 apply 与 stale queue fail-closed 两项测试；连同 scheduler/lake/distributed/V2/planner 完整回归共83项全部PASS。该能力只用于先把三台worker配置到同一Phase-A scope，HomePc未完成预检前仍不允许启动采集。
+- queue snapshot 现在覆盖 proposed scope 会修改的全部 family，非 trades 队列变化也会 fail-closed；新增对应回归后，scheduler/lake/distributed/V2/planner 完整回归共84项全部PASS。该能力只用于先把三台worker配置到同一Phase-A scope，HomePc未完成预检前仍不允许启动采集。

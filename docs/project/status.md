@@ -505,4 +505,4 @@ V2 当前只有1/120个近全市场逐笔日。原TDX plan本身具备完整交�
 
 ### 2026-09-28 Retail Trades Phase A：reviewed scope 可安全写入，仍不启动采集
 
-Phase A 工具新增 guarded apply：必须 STOP 存在、无 RUNNING/STORED、current/proposed scope ID 与 trade queue snapshot 均与刚生成的 preview 完全一致，并持有原 TDX writer lease 才能写入 reviewed scope；任何队列变化均 fail-closed。apply 只写 scope、调用 apply_collection_scope 并记录 receipt，不解除 STOP、不 resume、不联网。加入正常 apply 与 stale queue 拒绝测试后，TDX scheduler/lake/distributed/V2/planner 完整回归 83 项全部通过。该能力用于先把 Mac/601/HomePc 配置到同一安全 scope，三机全部预检完成前仍不得启动 Phase A。
+Phase A 工具新增 guarded apply：必须 STOP 存在、无 RUNNING/STORED、current/proposed scope ID 与 trade queue snapshot 均与刚生成的 preview 完全一致，并持有原 TDX writer lease 才能写入 reviewed scope；任何队列变化均 fail-closed。apply 只写 scope、调用 apply_collection_scope 并记录 receipt，不解除 STOP、不 resume、不联网。queue snapshot 覆盖 proposed scope 会修改的全部 family，非 trades 队列变化也会拒绝；TDX scheduler/lake/distributed/V2/planner 完整回归 84 项全部通过。该能力用于先把 Mac/601/HomePc 配置到同一安全 scope，三机全部预检完成前仍不得启动 Phase A。

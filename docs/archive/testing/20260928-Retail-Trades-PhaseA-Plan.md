@@ -187,6 +187,7 @@ HomePc WebCodex tunnel 超过 300 秒未在线，因此没有换用其他远控�
 
 1. 指纹完全匹配时，scope 被写入、旧 scope skip 可恢复为 PENDING，但 STOP 仍存在；
 2. preview 之后 queue 任意变化时，apply 必须 fail-closed，旧 scope 保持不变；
-3. 加入这两项后，TDX scheduler/lake/distributed/V2/planner 完整回归为 83 项，全部通过。
+3. queue snapshot 覆盖 proposed scope 能修改的全部 family（bars_1m / bars_5m / bars_daily / opening_match / trades），非 trades 队列变化同样会使 apply fail-closed。
+4. 加入这些保护后，TDX scheduler/lake/distributed/V2/planner 完整回归为 84 项，全部通过。
 
 该能力仅用于把 worker 安全配置到同一 reviewed scope；它本身不启动 Phase A 采集。

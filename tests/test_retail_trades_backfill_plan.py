@@ -146,6 +146,18 @@ class RetailTradesBackfillPlanTests(unittest.TestCase):
         self.assertEqual(current["scope_id"],old["scope_id"])
         self.assertTrue((lake.base/"STOP").exists())
 
+    def test_reviewed_apply_rejects_stale_excluded_family_queue_change(self):
+        lake,_,old=self.prepare_phasea_worker()
+        preview=build_preview(self.worker,"2026-01-10")
+        lake.enqueue(self.pid,"bars_daily","sh.600000","2026-01-24",0,priority=100)
+        with self.assertRaisesRegex(ValueError,"queue changed"):
+            apply_reviewed_scope(
+                self.worker,"2026-01-10",preview["proposed_scope"]["scope_id"],
+                old["scope_id"],preview["queue_snapshot"])
+        current=json.loads((lake.base/COLLECTION_SCOPE).read_text())
+        self.assertEqual(current["scope_id"],old["scope_id"])
+        self.assertTrue((lake.base/"STOP").exists())
+
     def test_build_plan_is_dry_run_and_lifecycle_bounded(self):
         queue=self.worker/"catalog/tdx_ingestion.sqlite3"
         before=queue.read_bytes()

@@ -53,19 +53,25 @@ def build_preview(worker_root,floor):
     proposed=proposed_phasea_scope(pid,floor)
 
     con=sqlite3.connect(str(lake.queue));con.row_factory=sqlite3.Row
-    rows=[dict(r) for r in con.execute("""
+    trade_rows=[dict(r) for r in con.execute("""
       SELECT * FROM jobs
       WHERE plan_id=? AND family='trades' AND state IN ('PENDING','SKIPPED_POLICY','ERROR')
       ORDER BY job_id
     """,(pid,))]
+    affected_families=sorted(set(proposed["excluded_families"])|set(proposed.get("family_history_floors",{})))
+    marks=",".join("?" for _ in affected_families)
+    scope_rows=[dict(r) for r in con.execute(
+        "SELECT * FROM jobs WHERE plan_id=? AND family IN ("+marks+") "
+        "AND state IN ('PENDING','SKIPPED_POLICY') ORDER BY job_id",
+        (pid,*affected_families))]
     inflight=con.execute(
         "SELECT count(*) FROM jobs WHERE plan_id=? AND state IN ('RUNNING','STORED')",(pid,)
     ).fetchone()[0]
     con.close()
-    queue_snapshot=digest(rows)
+    queue_snapshot=digest(scope_rows)
 
     restore=[];skip=[];untouched_errors=0
-    for job in rows:
+    for job in trade_rows:
         if job["state"]=="ERROR":
             untouched_errors+=1
             continue
@@ -97,6 +103,8 @@ def build_preview(worker_root,floor):
         "proposed_scope":proposed,
         "phasea_floor":floor,
         "queue_snapshot":queue_snapshot,
+        "queue_snapshot_families":affected_families,
+        "queue_snapshot_rows":len(scope_rows),
         "inflight_jobs":inflight,
         "restore_scope_skipped_trade_seeds":len(restore),
         "skip_pending_below_floor":len(skip),
@@ -124,7 +132,7 @@ def apply_reviewed_scope(worker_root,floor,expected_proposed_scope_id,
         if preview["current_scope_id"]!=expected_current:
             raise ValueError("Phase-A current scope changed since review")
         if preview["queue_snapshot"]!=expected_queue_snapshot:
-            raise ValueError("Phase-A trade queue changed since review")
+            raise ValueError("Phase-A scope queue changed since review")
         if not preview["stop_exists"]:
             raise ValueError("Phase-A scope apply requires STOP to remain present")
         if preview["inflight_jobs"]:
