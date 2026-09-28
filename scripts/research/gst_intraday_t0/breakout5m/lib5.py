@@ -5,6 +5,8 @@ H=os.environ['HOME']
 TICK=0.01
 _mk={}
 def market():
+    if not _mk and not os.path.exists(f'{H}/mnt/lake/silver/market_intraday_breadth'):
+        return None  # MKT_FALLBACK: lake not mounted -> equal-weight of the loaded universe
     if not _mk:
         c=duckdb.connect()
         r=c.execute(f"""select date::varchar d, replace(time,':','') t, ew_ret_prev_close x, up_count*1.0/n_stocks u
@@ -49,6 +51,13 @@ def load(yr):
     dv20=np.nansum(vs20,1); dv20[bad]=np.nan
     iny=z['iny']&ok&~np.isnan(pc)
     M=market()
+    if M is None:
+        ret=C/np.r_[np.nan,C[:-1,-1]][:,None]-1
+        ret[np.r_[True,code[1:]!=code[:-1]]]=np.nan
+        M={'d':[],'t':[],'x':[],'u':[]}
+        for d in np.unique(date):
+            ix=np.flatnonzero(date==d); m=np.nanmean(ret[ix],0); u=np.nanmean(ret[ix]>0,0)
+            for j,sl in enumerate(slots): M['d'].append(d); M['t'].append(sl); M['x'].append(m[j]); M['u'].append(u[j])
     mret=np.full((n,48),np.nan); mup=np.full((n,48),np.nan)
     dates=np.unique(date); mk=list(M)
     tbl={}
