@@ -54,6 +54,18 @@ def free_days(symbol: str, day: date) -> int:
     return 5 if day >= date(2023, 4, 10) else 1
 
 
+def _clock_seconds(stamp: str):
+    """'H:MM:SS.sss' from pytdx -> seconds since midnight; None when malformed (pytdx garbles some)."""
+    try:
+        h, m, sec = str(stamp).split(":")
+        h, m, sec = int(h), int(m), float(sec)
+    except ValueError:
+        return None
+    if not (0 <= h < 24 and 0 <= m < 60 and 0 <= sec < 60):
+        return None
+    return h * 3600 + m * 60 + sec
+
+
 def round_price(value: float) -> float:
     import math
     return math.floor(value * 100 + 0.5 + 1e-6) / 100
@@ -180,12 +192,13 @@ class LiveBreadth:
             tlu += float(q.get("high") or 0) >= hi - 1e-6
             tld += 0 < float(q.get("low") or 0) <= lo + 1e-6
         import statistics
-        as_of = max(stamps) if stamps else None
-        latency = None
-        if as_of and len(as_of) >= 8:
-            h, m, s = as_of[:8].split(":")
-            server = captured_at.replace(hour=int(h), minute=int(m), second=int(float(s)), microsecond=0)
-            latency = round((captured_at - server).total_seconds(), 1)
+        seconds = [t for t in (_clock_seconds(x) for x in stamps) if t is not None]
+        as_of = latency = None
+        if seconds:
+            last = max(seconds)
+            as_of = f"{int(last // 3600):02d}:{int(last % 3600 // 60):02d}:{last % 60:06.3f}"
+            now_s = captured_at.hour * 3600 + captured_at.minute * 60 + captured_at.second
+            latency = round(now_s - last, 1)
         return {"date": self.today, "time": captured_at.strftime("%H:%M"), "n_stocks": n,
                 "ew_ret_prev_close": sum(rets) / n if n else None,
                 "ew_ret_open": sum(rets_open) / len(rets_open) if rets_open else None,
@@ -224,4 +237,70 @@ class LiveBreadth:
             self.api = None
 
 
-__all__ = ["LiveBreadth", "limit_pct", "free_days"]
+__all__ = ["LiveBreadth", "LiveQuotes", "limit_pct", "free_days"]
+
+
+LIVE_QUOTES = "lake/bronze/provider=tdx/live_quotes"
+INDEX_CODES = {"sh.000001": "上证指数", "sh.000300": "沪深300", "sh.000905": "中证500", "sh.000852": "中证1000",
+               "sz.399001": "深证成指", "sz.399006": "创业板指"}
+
+
+class LiveQuotes:
+    """Per-minute level-1 quotes (price, 5-level book) for the selected ETFs and the main indices.
+
+    Writes one row per instrument per minute to
+    ``<data-root>/lake/bronze/provider=tdx/live_quotes/date=YYYY-MM-DD.parquet``:
+    ``time, symbol, kind(etf|index), price, last_close, open, high, low, volume(shares; index: vendor
+    units), amount(yuan), bid1..5, bid_vol1..5, ask1..5, ask_vol1..5 (vol in shares), servertime,
+    captured_at``.  ETF quote prices are corrected for the pytdx 3-decimal scaling.
+    """
+
+    def __init__(self, data_root: Path, breadth: "LiveBreadth"):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+        from collect.tdx_etf import selected
+        self.data_root = Path(data_root)
+        self.breadth = breadth                  # shares its TDX connection
+        self.etfs = {e["symbol"]: int(e["decimal_point"]) for e in selected(self.data_root)}
+        self.targets = [(s, "etf") for s in self.etfs] + [(s, "index") for s in INDEX_CODES]
+
+    def record(self) -> int:
+        import pandas as pd
+        from collect.tdx_etf import scale_quote
+        started = datetime.now(TZ)
+        b = self.breadth
+        if b.api is None:
+            b._connect()
+        rows = []
+        for i in range(0, len(self.targets), BATCH):
+            chunk = self.targets[i:i + BATCH]
+            quotes = b.api.get_security_quotes([(MARKET[s[:2]], s[3:]) for s, _ in chunk]) or []
+            by_code = {(q.get("market"), str(q.get("code"))): q for q in quotes}
+            for symbol, kind in chunk:
+                q = by_code.get((MARKET[symbol[:2]], symbol[3:]))
+                if not q:
+                    continue
+                if kind == "etf":
+                    q = scale_quote(q, self.etfs[symbol])
+                row = {"time": started.strftime("%H:%M"), "symbol": symbol, "kind": kind,
+                       "price": q.get("price"), "last_close": q.get("last_close"), "open": q.get("open"),
+                       "high": q.get("high"), "low": q.get("low"),
+                       "volume": float(q.get("vol") or 0) * (100 if kind == "etf" else 1), "amount": q.get("amount"),
+                       "servertime": str(q.get("servertime")), "captured_at": started.isoformat(timespec="seconds")}
+                for side in ("bid", "ask"):
+                    for level in range(1, 6):
+                        row[f"{side}{level}"] = q.get(f"{side}{level}")
+                        row[f"{side}_vol{level}"] = float(q.get(f"{side}_vol{level}") or 0) * 100
+                rows.append(row)
+        path = self.data_root / LIVE_QUOTES / f"date={started.date().isoformat()}.parquet"
+        frame = pd.DataFrame(rows)
+        if path.is_file():
+            old = pd.read_parquet(path)
+            frame = pd.concat([old[old["time"] != started.strftime("%H:%M")], frame], ignore_index=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        buf = io.BytesIO()
+        frame.to_parquet(buf, index=False)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_bytes(buf.getvalue())
+        os.replace(tmp, path)
+        return len(rows)

@@ -238,10 +238,24 @@ def main(argv=None) -> int:
         live = LiveBreadth(data_root)
     except Exception as error:
         print(f"全市场情绪（实时）初始化失败，本日不记录：{error}", flush=True)
+    quotes = None
+    if live is not None:
+        try:
+            from quantlab.data.market_breadth_live import LiveQuotes
+            quotes = LiveQuotes(data_root, live)
+        except Exception as error:
+            print(f"ETF/指数实时报价初始化失败，本日不记录：{error}", flush=True)
     live_receipt = data_root / "lake/silver/market_intraday_breadth/freq=live/_receipts" / f"{today}.json"
     live_log = {"date": today, "ok": 0, "failed": 0, "last_error": None}
 
     def record_live():
+        if quotes is not None:
+            try:
+                live_log["quote_rows"] = quotes.record()
+                live_log["quotes_ok"] = live_log.get("quotes_ok", 0) + 1
+            except Exception as error:
+                live_log["quotes_failed"] = live_log.get("quotes_failed", 0) + 1
+                live_log["quotes_last_error"] = f"{type(error).__name__}: {error}"[:300]
         try:
             row = live.record()
             live_log["ok"] += 1
