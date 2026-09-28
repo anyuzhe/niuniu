@@ -1,0 +1,224 @@
+{
+  "format": "niuniu-dip-research-pilot-v1",
+  "created_at": "2026-09-28T05:12:17.940410+00:00",
+  "status": "frozen_before_computation",
+  "topic": "日线下跌后反弹质量与下行风险",
+  "source": "native Niuniu assistant hypothesis records; host only fixes execution/data budget",
+  "conversation_id": "b459cb68-5cc7-4aba-a9b3-7754f8816a1a",
+  "candidate_ceiling": 12,
+  "first_batch_candidates": 1,
+  "primary_horizon": 5,
+  "auxiliary_horizons": [
+    3,
+    10
+  ],
+  "data": {
+    "dataset_id": "1919e7672c672083b8646e82c90023d3b2f753f6d1e0851c85c1f2156eb2fa62",
+    "qualification": "research_only",
+    "already_seen": true,
+    "blind_holdout": false,
+    "rows": 14540,
+    "suspended_rows": 12,
+    "uses_raw_prices": true
+  },
+  "studies": [
+    {
+      "role": "baseline",
+      "hypothesis_id": "0d0cd4a1-4bff-41d5-86f9-7e566d6c26c2",
+      "hypothesis_record_digest": "30360b45eaa89b0d939bb63a26332e4dbce9cd003de9eae6677ab236fe7e12b5",
+      "title": "DIPV1 基准：20日下跌事件",
+      "spec": {
+        "question": "DIPV1 基准：20日下跌事件；DIPV1已见样本分期探索，非盲测/成交收益",
+        "symbols": [
+          "sh.600000",
+          "sh.600004",
+          "sh.600006",
+          "sh.600007",
+          "sh.600008",
+          "sh.600009",
+          "sh.600010",
+          "sh.600011",
+          "sh.600012",
+          "sh.600015",
+          "sz.000001",
+          "sz.000002",
+          "sz.000006",
+          "sz.000007",
+          "sz.000008",
+          "sz.000009",
+          "sz.000010",
+          "sz.000011",
+          "sz.000012",
+          "sz.000014"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "raw",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      },
+      "spec_digest": "98e609d79d6fd448410d950c5aea3e77a6bf7692e8281c336212c673c32478a3"
+    },
+    {
+      "role": "candidate",
+      "hypothesis_id": "a983d337-2ed1-40b6-89dd-d26050b20235",
+      "hypothesis_record_digest": "c67145abd256e452549b4d46eb1ede84d32dce3a4db605f27018a345f262acb9",
+      "title": "DIPV1 候选：下跌中方向效率不极端",
+      "spec": {
+        "question": "DIPV1 候选：下跌中方向效率不极端；DIPV1已见样本分期探索，非盲测/成交收益",
+        "symbols": [
+          "sh.600000",
+          "sh.600004",
+          "sh.600006",
+          "sh.600007",
+          "sh.600008",
+          "sh.600009",
+          "sh.600010",
+          "sh.600011",
+          "sh.600012",
+          "sh.600015",
+          "sz.000001",
+          "sz.000002",
+          "sz.000006",
+          "sz.000007",
+          "sz.000008",
+          "sz.000009",
+          "sz.000010",
+          "sz.000011",
+          "sz.000012",
+          "sz.000014"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              },
+              {
+                "input": "efficiency",
+                "op": "gt",
+                "value": -0.5
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "raw",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      },
+      "spec_digest": "1236eddba610342fe001e61d0bdcc0af1e7ba50bbd64a57cd45a5553f303d530"
+    }
+  ],
+  "excluded_hypotheses": [
+    {
+      "hypothesis_id": "9be624a7-535c-4ce7-ae28-640942968cb3",
+      "reason": "Assistant excluded prior draft before looking at returns: does not explicitly include the frozen common baseline. Original record retained."
+    }
+  ],
+  "invalid_registration_attempts": 3,
+  "readout": {
+    "method": "nested_event_review_v1",
+    "comparisons": "same phase/horizon baseline and candidate; 3 phases x 3 horizons; all 9 retained",
+    "return_weighting": "equal matched dates, equal within date; show non-selection dates separately",
+    "tail_weighting": "event equal; worst ceil(0.05*n) finite outcomes; no iid assumption",
+    "risk": "saved MAE, null paths counted and not imputed",
+    "p_value": null,
+    "execution_costs_modelled": false,
+    "status": "exploratory descriptive only; no winner/promotion/Alpha certification",
+    "future_confirmation": "requires separately frozen adequate research data, disclosed prior exposure, finite test family and cost validation; not authorized by this pilot"
+  },
+  "limits": {
+    "max_jobs": 2,
+    "max_total_leaf_studies": 6,
+    "max_active_jobs": 1,
+    "no_new_candidates_after_execution": true
+  },
+  "protocol_digest": "9dd5af2be6aeda53a91c8ac548035af50afd0cb62fdd446dac18d721cc78fbda"
+}

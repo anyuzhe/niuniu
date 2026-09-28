@@ -133,6 +133,10 @@
 
 [local_data_readiness.py](../../src/quantlab/desktop/local_data_readiness.py) 在原实验表单内显式调用已有[local_data_tools.py](../../src/quantlab/agent/local_data_tools.py)，投影具体证券的空值与原加载错误；不是新数据Provider或资格认证。测试：[原生检查与边界](../../tests/test_local_data_readiness_desktop.py)，覆盖无自动读取、空值保留、超限/管理包拒绝、错误与过期回执。原生产校验和模型工具合同保持不变。
 
+## 条件事件比较与抄底研究（2026-09-28）
+
+[conditional_events.py](../../src/quantlab/agent/conditional_events.py) 只描述已有布尔研究的嵌套事件，在 [candidate_review.py](../../src/quantlab/agent/candidate_review.py) 完成原数据/身份/标签核对后使用；接线复用 [market_data_tools.py](../../src/quantlab/agent/market_data_tools.py) 的 compare_factor_candidates，不新增模型执行工具。测试 [test_conditional_event_review.py](../../tests/test_conditional_event_review.py) 覆盖日期配对、缺失/尾部、非嵌套拒绝及原生归档/冻结研究合同。首轮 [抄底探索规格](../reference/dip-factor-research-v1.json) 是已见20股上的固定探索，不是盲测或策略推荐。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

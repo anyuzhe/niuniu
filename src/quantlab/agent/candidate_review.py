@@ -25,6 +25,8 @@ def _source(catalog, run_id, horizon):
     columns = [*KEYS,'available_at','value',f'forward_{horizon}',f'label_end_{horizon}']
     if set(columns)-set(lazy.collect_schema().names()):
         raise ValueError('来源缺少因子值或标签结束时间；请保留冻结输入重新运行该研究')
+    # Optional saved risk metric; never recalculate a label or fill missing paths.
+    if f'mae_{horizon}' in lazy.collect_schema().names():columns.append(f'mae_{horizon}')
     frame = lazy.select(columns).collect().sort(KEYS)
     if any(frame[k].null_count() for k in (*KEYS,'available_at')):
         raise ValueError('来源的证券或时间键有空值')
@@ -71,7 +73,8 @@ def compare_candidate(output, candidate_run_id, baseline_run_id, horizon):
     label = f'forward_{horizon}'; endpoint = f'label_end_{horizon}'
     common = frames[0].rename({'value':'candidate'}).join(
         frames[1].rename({'value':'baseline','available_at':'baseline_available_at',
-            label:'baseline_label',endpoint:'baseline_label_end'}),on=KEYS,validate='1:1')
+            label:'baseline_label',endpoint:'baseline_label_end',
+            **({f'mae_{horizon}':f'baseline_mae_{horizon}'} if f'mae_{horizon}' in frames[1].columns else {})}),on=KEYS,validate='1:1')
     if not common[label].equals(common['baseline_label']):
         raise ValueError('相同证券/时间的收益标签不一致，拒绝选择性删除后比较')
     if not common[endpoint].equals(common['baseline_label_end']):
@@ -115,5 +118,16 @@ def compare_candidate(output, candidate_run_id, baseline_run_id, horizon):
             '只在两个因子同时有有限值的共同样本计算；覆盖损失单独报告，不补零。',
             '采用来源已保存的完整日期范围；不复用越过截止日期的未来标签。',
             '来源指纹记录本次读取的证据树，并不认证严格PIT、原始数据真实性或历史首次可用时间。']}
+    if all(r['manifest'].get('factor',{}).get('factor_type')=='boolean' for r in records):
+        risk=f'mae_{horizon}';baseline_risk='baseline_'+risk
+        risk_available=risk in common.columns and baseline_risk in common.columns
+        if risk_available:
+            for column in (risk,baseline_risk):
+                if common.filter(pl.col(column).is_not_null() & (~pl.col(column).is_finite() | (pl.col(column)>0))).height:
+                    raise ValueError('已保存MAE包含非有限或正值，拒绝条件风险比较')
+            if not common[risk].equals(common[baseline_risk]):
+                raise ValueError('相同观测的MAE不一致，拒绝选择性删除后比较')
+        from quantlab.agent.conditional_events import conditional_event_review
+        result['conditional_events']=conditional_event_review(common,horizon,risk_available=risk_available)
     for tree in trees: verify_tree(catalog.root,tree)
     return json.loads(encode(result))

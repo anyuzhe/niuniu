@@ -524,3 +524,11 @@ Phase A reviewed scope 已在 Mac shard0 与 601 shard2 通过 guarded apply 写
 执行前进一步收紧 collection scope：Phase A 现在严格 trades-only，TDX FAMILIES 中除 trades 外其余12类全部 excluded；scope ID 为 a4f26280051643665304d1a2f80ac630d1779227dcd5f0e4197d7928c4d1cc93，trades floor 仍为2026-08-21。三个本地 worker guarded apply 后 STOP 均保持、inflight=0，PENDING 只剩 trades：shard0=1882、shard1=1877、shard2=1813。额外 scope 变更分别跳过1880/1864/1812个非-trades PENDING，避免 Runner 顺手采 auction/limit_ladder 等无关数据。
 
 新增 scripts/research/retail_trades_mac_serial.py：默认仅dry-run；只有 --execute + --personal-research-only 才联网。它要求3个逻辑worker共享plan/policy/cluster/scope、覆盖全部shard、STOP存在、无AUTO_HALT/无inflight、无非-trades PENDING；每个shard批次在writer lease下运行，并在finally无条件恢复STOP。真实dry-run已通过，focused安全回归21项全部PASS；完整TDX/V2/PhaseA相关回归87项全部PASS。下一步为提交该版本后，对0→1→2各做小流量smoke，再决定扩大批次。
+
+### 2026-09-28 抄底因子自主研究 V1：首批假设冻结
+
+用户同意启动日线下跌后反弹研究。原生Pi/openai-codex/gpt-6-luna在无执行Grant时23次工具调用登记3条假设：最终选定共同基准0d0cd4a1-4bff-41d5-86f9-7e566d6c26c2及候选a983d337-2ed1-40b6-89dd-d26050b20235；较早草稿9be624a7-535c-4ce7-ae28-640942968cb3由助手在看收益前明确排除。三个INVALID_FACTOR登记失败保留。共同基准为20日动量<-10%且有符号方向效率<0，候选增加效率>-0.5，均由助手自行读取定义后提出，不是宿主指定答案。
+
+冻结规格docs/reference/dip-factor-research-v1.json绑定上述记忆、原20股已见v3输入、5日主要/3与10日辅助、两个holdout任务和全部9个分期/期限比较；不宣称盲测、PIT、显著性或成本后收益。新增conditional_events只读摘要接入现有compare_factor_candidates，比较共同下跌事件、相同日期收益、保存MAE及尾部损失；不新建模型工具、计算队列或授权。先完成回归与提交再让牛牛执行该固定探索，真实结果另记。
+
+最终13模块127唯一用例全部通过，0失败/错误/跳过，源码/测试及冻结协议JSON前后指纹7456646d35a0cdbd0cca8e9dbb5e1fb0a31bbcc91dd4f4e346d5539dc5f40bb5；不是全仓回归或独立收益验证。日志artifacts/dip-factor-research-v1-20260928/regression。原生探索尚未执行，本条不宣称发现Alpha。

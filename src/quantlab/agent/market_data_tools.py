@@ -13,7 +13,7 @@ from quantlab.trading.market_snapshot import MarketSnapshotError,MarketSnapshotS
 TOOLS=[
     schema('list_baostock_series','只读查询人工建立的数据更新通道；不接入批次或授权研究。',{'offset':OFFSET,'limit':LIMIT}),
     schema('get_baostock_series','读取通道发布链和当前批次身份；只核对发布记录，不认证全部数据文件或PIT。',{'series_id':TEXT}),
-    schema('compare_factor_candidates','只读对照两个真实单因子归档：相同数据/股票池/处理条件，在共同成熟样本比较Rank IC并单独计算因子相关性；没有显著性或Alpha认证，不创建任务。',{'candidate_run_id':TEXT,'baseline_run_id':TEXT,'horizon':{'type':'integer','minimum':1,'maximum':1000}}),
+    schema('compare_factor_candidates','只读对照两个真实单因子归档（父研究先选择同阶段子run）：同数据/股票池/条件比较Rank IC；若双方为布尔事件，conditional_events在baseline=1内报告候选筛中/未筛中、相同日期等权收益差、已存MAE与最差5%事件损失。空值不填零，无候选日期单列，非嵌套事件不冒充过滤。纯描述、无p值/成本/Alpha认证，不创建任务。',{'candidate_run_id':TEXT,'baseline_run_id':TEXT,'horizon':{'type':'integer','minimum':1,'maximum':1000}}),
     schema('get_tracking_control','只读查询宿主预授权的自动跟踪状态、预算和应用内提醒；不启用、修改、撤销或执行任务。',{'watch_id':TEXT}),
     schema('list_baostock_imports','查询实际Baostock导入批次；失败和空响应不隐藏。不联网下载。',{'offset':OFFSET,'limit':LIMIT}),
     schema('get_baostock_import','核对一个批次的响应校验值和数据覆盖。抓取成功不等于PIT或真实交易规则认证。',{'import_id':TEXT}),

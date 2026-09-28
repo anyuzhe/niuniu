@@ -2332,3 +2332,11 @@
 - worker-1/2 Phase-A preview最初在SQLite大ORDER BY上报unable to open database file；直接rw打开数据库正常，定位为外置卷上的SQLite临时排序文件依赖。preview改为SQLite只过滤、Python按job_id稳定排序后，worker-1/2真实preview通过；snapshot语义不变。
 - 新增scripts/research/retail_trades_mac_serial.py：默认dry-run；只有--execute与--personal-research-only同时存在才联网。preflight要求三worker共享plan/policy/cluster/scope且完整覆盖0/1/2，STOP存在、无AUTO_HALT/inflight、无非-trades PENDING。单shard批次在writer lease内临时移除STOP，并在finally中无条件恢复；若Runner HALTED则不继续后续shard。
 - 真实Mac-only dry-run通过；新增正常结束/异常两类STOP恢复测试。focused Phase-A/scheduler 21项全部PASS，TDX scheduler/lake/distributed/V2/PhaseA完整相关回归87项全部PASS。此提交前尚未启动新的TDX网络采集；下一步仅做0→1→2的小流量smoke，验证真实网络、分页、落盘与STOP恢复后再扩大。
+
+### 2026-09-28｜[CODE/RESEARCH] 抄底自主研究首批假设与条件事件对照
+
+- 用户同意按日线抄底自主研究V1开始。主线8d2c761、隔离feat/dip-factor-research-v1-20260928；managed worktree根不可用且无副作用后复用原空闲隔离worktree，不影响main另两份WIP或逐笔采集。原生牛牛Pi/openai-codex/gpt-6-luna在无执行Grant时23调用/23结果读取旧结论、输入包和实际因子定义，登记3条假设；3次INVALID_FACTOR保留。助手最终选择1基准+1过滤候选，排除一条未显式包含最终基准的早期草稿，未看新结果后择优。
+- 冻结规格docs/reference/dip-factor-research-v1.json：baseline=0d0cd4a1-4bff-41d5-86f9-7e566d6c26c2，candidate=a983d337-2ed1-40b6-89dd-d26050b20235；先前已见20股2023–2025/v3/raw/research_only，主要5日、辅助3/10，两个holdout任务，3阶段×3期限全部保留。仅工程/描述性探索，独立验证/成本回测未完成，不扩张为12条盈利候选。
+- 新增agent/conditional_events.py并接入原candidate_review/compare_factor_candidates；只读已有完整归档与观测。布尔候选仅在共同baseline=1内比较，非嵌套拒绝伪装过滤，missing不当0；相同日期等权收益及MAE差、无筛中日期、原始事件数/成熟数、最差ceil(5%×n)事件尾部指标分层。MAE来源矛盾/正值/非有限拒绝，缺字段则不可用；既有数值IC比较不变，没有新模型工具、数据库、研究队列或交易权限。
+- 初轮24项条件/候选测试PASS；完整范围回归另记。新增17项覆盖日期权重、配对缺失、无触发/无对照、尾部计数、真实归档/API、原文件不变及冻结规格完整性。代码先提交冻结再进行原生实际探索；结果与失败证据放artifacts/dip-factor-research-v1-20260928。不改统计引擎、标签、审批、Grant、采集或日常模型配置。
+- 最终13模块127唯一用例全部PASS，0失败/错误/跳过，前后源码/测试/协议JSON指纹7456646d35a0cdbd0cca8e9dbb5e1fb0a31bbcc91dd4f4e346d5539dc5f40bb5。首次diff检查仅发现两份追加文档末尾空行，修正文档；新managed根不可用、两个猜测源码路径不存在、一次读取预算低于schema下限均为无副作用工具失败，未当作业务成功。
