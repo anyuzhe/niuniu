@@ -4,7 +4,7 @@
 
 本文件是 **DATA → CODE 的唯一日常数据交接入口**。DATA 负责数据本身；CODE 只负责使用 DATA 已交付的数据。
 
-最近一次 DATA 审查：2026-09-26（开放全市场 5 分钟情绪 `market_intraday_breadth_5m`（2020 年起，含退市股）、全市场 1 分钟情绪 `market_intraday_breadth` 与通达信个股、指数分钟线；此前 2026-09-25：开放 16 只股票日内回测数据库 `gst_intraday`；开放数据中心三个接口与封存；此前 2026-09-24：开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
+最近一次 DATA 审查：2026-09-28（开放 ETF 分钟线/日线/净值、事件日历、盘中实时情绪与 ETF 实时报价，盘中接口实测；此前 2026-09-26：开放全市场 5 分钟情绪 `market_intraday_breadth_5m`（2020 年起，含退市股）、全市场 1 分钟情绪 `market_intraday_breadth` 与通达信个股、指数分钟线；此前 2026-09-25：开放 16 只股票日内回测数据库 `gst_intraday`；开放数据中心三个接口与封存；此前 2026-09-24：开放实时行情 `realtime_quote`、`market_snapshot` 与扶摇 `fuyao_context`；此前 2026-09-23 第 3 批新增公开来源文件数据 17 项、研究查询 API 7 项）。文件型数据的机器可读同源清单是数据根里的 `catalog/dataset_registry.json`（注册表，见[数据与证据 §16](../guide/data-and-evidence.md)）；本表与注册表由 DATA 同步维护，二者不一致时以 DATA 更正为准，CODE 不自行取舍。
 
 ## 1. 责任边界
 
@@ -190,7 +190,7 @@ result.to_dict()   # 可直接 JSON 序列化
 | `sector_board_snapshot` | API | 同花顺概念、行业板块行情榜 | `SectorIntradayProvider.board_snapshot(types=["concept","industry"])`；采样走势用 `board_series(code)` | 每个板块：`code, name, type(concept/industry), last, change, change_pct, amount, volume, previous_close, open, high, low, as_of, constituent_count, board_class, label_reason`，按涨跌幅从高到低；整体：`as_of, age_seconds, market_status, completeness, missing, counts, cache, stale, constituent_counts_date, board_class_version` | 盘中看盘与 AI 解读。`market_status` 取值：`PREOPEN / OPENING_AUCTION / TRADING / MIDDAY_BREAK / CLOSING_AUCTION / CLOSED / NON_TRADING_DAY`。2026-09-28 盘中实测延迟 0–2 秒、10 秒/5 秒刷新不限流，见上 | `READY` | 10 秒刷新；显示 `as_of`、`age_seconds`，`stale=true` 时标明是旧数据 |
 | `sector_board_members` | API | 单个板块的当前成分股行情 | `SectorIntradayProvider.board_members(code)`，`code` 取自板块榜 | 每只：`symbol, name, last, change_pct, amount, volume, previous_close, open, high, low, as_of, status(trading/no_trade_today/withheld_source_mismatch), limit_status, limit_up_price, limit_down_price, limit_check, cross_check`；整体同上，另有 `counts`（涨停/跌停/炸板/暂不输出只数） | 当前成分，不代表历史成分。2026-09-28 盘中实测延迟 0–2 秒、10 秒/5 秒刷新不限流，见上 | `READY` | 只刷新用户打开的那个板块，5 秒刷新；`withheld_source_mismatch` 的股票不显示价格 |
 | `sector_board_constituents` | FILE | 同花顺概念、行业板块的每日成分快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_constituents/date=YYYY-MM-DD.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每行一个（板块, 股票）：`board_code, board_name, board_type, symbol, name, observed_at` | 当天的当前成分，不代表历史成分。2026-09-24 起，710 个板块、80,701 行。由盘中记录器在开盘前、午休和每分钟的空闲时间分段刷新（不耽误板块记录），收盘后日常更新也会补做当天的；两者都没运行的日子沿用上一天 | `READY` | 要查“某只股票属于哪些板块”时读这里；板块成分行情仍用 `sector_board_members` |
-| `sector_board_intraday` | FILE | 盘中每分钟的全部板块行情记录 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_intraday/date=YYYY-MM-DD/HHMMSS.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每个文件是一分钟的全部板块，列同 `sector_board_snapshot` 的板块行，另有 `market_status, snapshot_as_of, stale` | 需要 Mac 在交易时间运行记录器（`artifacts/run-sector-recorder.command`），没运行的时段没有数据，也不能补；同一时间只允许一个记录器（`catalog/jobs/sector_recorder.lock`），第二个会直接退出 | `NOT_READY` | 有了首日数据并核对后改 `READY` |
+| `sector_board_intraday` | FILE | 盘中每分钟的全部板块行情记录 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_intraday/date=YYYY-MM-DD/HHMMSS.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每个文件是一分钟的全部板块，列同 `sector_board_snapshot` 的板块行，另有 `market_status, snapshot_as_of, stale` | 需要 Mac 在交易时间运行记录器（`artifacts/run-sector-recorder.command`），没运行的时段没有数据，也不能补；同一时间只允许一个记录器（`catalog/jobs/sector_recorder.lock`），第二个会直接退出。2026-09-28 首日：09:18–15:01 共 251 个文件，全部成功、无过期；有 3 处两次采样间隔约 1.5 分钟（10:55、11:04、11:06，当时同一循环里的全市场采集较慢），没有整分钟以上的断档 | `READY` | 按文件名时间读取；没开记录器的日子没有文件，照实显示 |
 
 ### 3.5 数据中心接口（API，2026-09-25 开放）
 
@@ -234,7 +234,7 @@ result.to_dict()   # 可直接 JSON 序列化
 | `day_seals` | FILE | 每天的封存清单 | `/Volumes/Lexar/niuniu-data/catalog/seals/YYYY-MM-DD.json`，核对结果在 `_verify/`，历次版本在 `_history/`，撤销的在 `_revoked/` | 每个条目：`dataset_id, dir, source, observed_at, receipt, sealed_at, files[path, bytes, sha256, rows]`；另有 `pending, missing, not_in_scope, totals, revision` | 2026-09-24 起 | `READY` | 复现某一天时按清单取文件并核对校验码 |
 | `hot_rank_ths` | FILE | 同花顺个股人气榜（日榜前 100） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=ths/hot_rank_day` | 当天观察；`rank, code, name, heat, change_pct, rank_change, concept_tags(JSON), popularity_tag, analyse_title, analyse` | 2026-09-25 起，由 `daily_close_update` 当天采集，不能回补 | `READY` | 上榜原因是供应商 AI 摘要原文 |
 | `hot_rank_em` | FILE | 东财人气榜前 100 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/hot_rank` | 当天观察；`rank, code, market, rank_change, rank_change_history` | 同上 | `READY` | 只有排名，名称和价格请连日K或实时报价 |
-| `stock_intraday_snapshot` | FILE | 全市场个股盘中快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/stock_intraday_snapshot/date=YYYY-MM-DD/HHMM.parquet`，回执 `_receipts/YYYY-MM-DD.json` | 每个时点一个文件（09:25、10:00、11:30、14:00、14:57、15:00，各在时点后约 30 秒取，最晚到仍能代表该时点的截止：09:25→09:30、10:00→10:05、11:30→13:00、14:00→14:05、14:57→15:00、15:00→15:20；过了截止没取到的在回执记 `missed`，不再以该时点补取；回执另有 `due_at`、`delay_seconds`）；每只：`symbol, last, change, change_pct, previous_close, open, high, low, volume(股), amount(元), as_of, status, slot` | 在市 A 股加北交所约 5,570 只，一次约 10 秒；每次抽 200 只用腾讯核对，结果写在回执。由盘中记录器采集，记录器没开的时点没有数据 | `NOT_READY` | 首个交易日（2026-09-28）有数据并核对后改 `READY` |
+| `stock_intraday_snapshot` | FILE | 全市场个股盘中快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/stock_intraday_snapshot/date=YYYY-MM-DD/HHMM.parquet`，回执 `_receipts/YYYY-MM-DD.json` | 每个时点一个文件（09:25、10:00、11:30、14:00、14:57、15:00，各在时点后约 30 秒取，最晚到仍能代表该时点的截止：09:25→09:30、10:00→10:05、11:30→13:00、14:00→14:05、14:57→15:00、15:00→15:20；过了截止没取到的在回执记 `missed`，不再以该时点补取；回执另有 `due_at`、`delay_seconds`）；每只：`symbol, last, change, change_pct, previous_close, open, high, low, volume(股), amount(元), as_of, status, slot` | 在市 A 股加北交所约 5,570 只，一次约 10 秒；每次抽 200 只用腾讯核对，结果写在回执。由盘中记录器采集，记录器没开的时点没有数据。2026-09-28 首日六个时点全部取到（各在时点后 1–16 秒完成，5,573 只）；腾讯抽样一致率：09:25、11:30、14:57、15:00 均为 200/200，10:00 为 152/200、14:00 为 174/200——连续交易时段两边取价相隔几秒，价格已经变动，不是数据错误 | `READY` | 按时点读取；某时点在回执里是 `missed` 时就是没有这个时点，不要用别的时点代替 |
 
 ### 3.6 16 只股票的日内成交与盘口（DATABASE，2026-09-25 开放）
 
@@ -302,15 +302,52 @@ result.to_dict()   # 可直接 JSON 序列化
 |---|---|---|---|---|---|---|---|
 | `market_intraday_breadth` | FILE | 全市场日内情绪，1 分钟一行 | `/Volumes/Lexar/niuniu-data/lake/silver/market_intraday_breadth/freq=1m/year=YYYY/month=MM.parquet`，构建回执在 `freq=1m/_receipts/` | 每行 `date, time('HH:MM' 结束时刻), n_stocks, ew_ret_prev_close, ew_ret_open, amt_w_ret_prev_close, median_ret_prev_close, up_count, down_count, flat_count, limit_up_count, limit_down_count, touched_limit_up_count, touched_limit_down_count, n_no_limit, n_prev_close_raw, source, version`；收益为小数，例如 0.01 表示 1% | **2026-05-21 至 2026-09-24**，共 90 个交易日、21,600 行，每个时点约 5,480–5,556 只（含北交所）。由 `scripts/derive/market_breadth.py build` 生成，约 1.5 分钟 | `READY` | 按 `date, time` 读取。只有这一段时间有 1 分钟数据；2020 年起的 5 分钟版和盘中实时版见 §4 |
 | `market_intraday_breadth_5m` | FILE | 全市场日内情绪，5 分钟一行，2020 年起 | `/Volumes/Lexar/niuniu-data/lake/silver/market_intraday_breadth/freq=5m/year=YYYY/month=MM.parquet` | 字段同 `market_intraday_breadth`；`time` 为 5 分钟结束时刻，每天 48 行（`09:35` 含开盘集合竞价，`15:00` 含收盘集合竞价） | **2020-01-02 至 2026-09-24**，1,633 个交易日。来源 Baostock 5 分钟线，**含 2020 年以来退市的 225 只**（`stock_kline_*_delisted`，昨收用交易所 `preclose`），**不含北交所**。每个时点约 3,700 只（2020 年初）到 5,210 只（2026）。和 1 分钟版重叠的日子对照，涨停家数相差 0–2 只，上涨、下跌家数少约 5%（北交所约 345 只不在内）。早年每天约 90 只取不到复权因子，用原始昨收（`n_prev_close_raw`）；复权因子更新之后的日子（目前 2026-09-24）全部是原始昨收 | `READY` | 按 `date, time` 读取；与 1 分钟版口径相同，但股票范围不同，不要把两者拼成一条序列 |
+| `market_intraday_breadth_live` | FILE | 盘中实时的全市场情绪 | `/Volumes/Lexar/niuniu-data/lake/silver/market_intraday_breadth/freq=live/date=YYYY-MM-DD.parquet`，回执 `freq=live/_receipts/YYYY-MM-DD.json`（`ok, failed, last_error, last, restarts`） | 每分钟一行，字段同 `market_intraday_breadth`，另有 `as_of`（本次报价里最新的服务器时间）、`captured_at`（采集开始时刻）、`latency_s`（采集开始减 `as_of`）、`capture_s`（一次采集用时）、`n_requested`、`n_quoted`；`time` 为采集开始的分钟；昨收取交易所给的已除权昨收；来源通达信报价，每次约 5,570 只 | 盘中记录器 09:25–11:30、13:00–15:00 每分钟一次。**2026-09-28 实测**：243 行、0 失败；`capture_s` 9–15 秒（中位数约 12 秒）；`latency_s` 中位数约 14 秒，个别到 70 秒；循环偶尔超过一分钟会跳过一个分钟标签（当天 4 次）；15:00 的一行常在 15:01 才写。当天 14:43 前的 `latency_s` 因报价时间解析问题不可信（已修正），其他字段不受影响 | `READY` | 在 10:00、10:30 读当天文件里 `time` 不晚于该时刻的最后一行，并显示 `captured_at` 与 `latency_s`；某分钟缺行或 `latency_s` 超过 60 秒时照实显示，不要用历史版补 |
+| `tdx_live_quotes` | FILE | 盘中每分钟的 ETF 与主要指数报价（含五档） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/live_quotes/date=YYYY-MM-DD.parquet` | 每行一只一分钟：`time, symbol, kind(etf/index), price, last_close, open, high, low, volume, amount, bid1…bid5, bid_vol1…bid_vol5, ask1…ask5, ask_vol1…ask_vol5, servertime, captured_at`；ETF 价格为元（已纠正 pytdx 对 3 位小数品种放大 10 倍的问题），量为份；指数只有价格有意义，指数的买卖档是供应商占位值 | 与 `market_intraday_breadth_live` 同一轮采集，2026-09-28 14:43 起；每分钟 92 条（`etf_universe` 选中的 86 只 ETF + 6 个指数）。`servertime` 对 ETF 和指数不可靠（会出现 `144:33:39` 这样的值），**时间以 `captured_at` 为准** | `READY` | 用来积累真实买卖价差；按 `time, symbol` 读取 |
 | `tdx_kline_min1` | FILE | 个股 1 分钟 K 线（含北交所） | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/kline_min1/<sh_600000>.parquet` | 每只证券一个 parquet：`date, time, code, open, high, low, close, volume(股), amount(元), fetch_ts, provider`；不复权 | 5,569 只，沪深从 2026-05-21 起完整（停牌较多的股票更早），北交所从 2026-04 起 | `READY` | 直接读取；跨日比较价格时乘 `qfq_published_f24` 的 factor |
 | `tdx_index_kline_min1` | FILE | 主要指数 1 分钟 K 线 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/index_kline_min1/<sh_000001>.parquet` | 列同上，另有 `up_count, down_count`（交易所给出的该指数成分股的上涨、下跌家数）；`volume`、`amount` 为供应商原值 | `sh.000001` 上证指数、`sh.000300` 沪深 300、`sh.000905` 中证 500、`sh.000852` 中证 1000、`sz.399001` 深证成指、`sz.399006` 创业板指；2026-05-20 起（中证 1000 从 05-08 起） | `READY` | 直接读取 |
 | `tdx_index_kline_min5` | FILE | 主要指数 5 分钟 K 线 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/index_kline_min5/<sh_000001>.parquet` | 同上 | 同上 6 个指数，2024-09 起 | `READY` | 直接读取；2024-09 以前没有来源 |
+
+### 3.8 ETF 日内数据、净值与事件日历（2026-09-28 开放）
+
+对应 CODE 需求 [20260928-ETF日内与盘中实时数据需求](data-requests/20260928-ETF日内与盘中实时数据需求.md)。ETF 行情来自通达信，只供个人研究（`research_only`）。
+
+**ETF 范围（`etf_universe`）**：
+- 通达信上沪市 51/56/58 开头、深市 159 开头的基金共 1,801 只，按近 250 个交易日成交额排序。
+- 选入 86 只，每只的入选原因写在 `reason` 列：
+  - 成交额前 50；
+  - CODE 点名的宽基；
+  - 按成交额分类别补足：行业/主题 30 只、跨境 10 只、债券 10 只、黄金 4 只。
+- 类别（`category`）是按基金简称判断的，只作筛选用：money / bond / gold / cross_border / broad / sector。
+- 可当天买卖（T+0）的是债券、黄金、跨境和货币类，股票类是 T+1。以基金合同为准。
+- 清单由 `scripts/collect/tdx_etf.py universe` 生成，可重跑；每日追加只处理 `latest.parquet` 里选中的 ETF。
+
+**时间标签与价格**：
+- 与个股分钟线相同：`time` 为 K 线结束时刻；1 分钟第一根 `09:31`、5 分钟第一根 `09:35`，都含开盘集合竞价；午休没有行；`15:00` 含收盘集合竞价。
+- 沪市 ETF 在 14:57–15:00 收盘集合竞价期间没有成交，那几根 K 线成交量为 0。
+- 价格是**不复权**的实际成交价，单位元，保留 3 位小数；成交量单位为份，成交额单位为元。
+- 分红、拆分会让价格跳变。跨日计算收益时，用 `etf_nav_daily` 的 `distribution` 列找到除息、拆分日，自己处理。
+
+**费用口径**：ETF 买卖不收印花税；过户费按交易所规定（目前沪深 ETF 均免收）；佣金按券商。这些尚未写入 `fee_schedule_history`，CODE 暂按本说明处理。
+
+**涨跌幅**：股票类 ETF 为 ±10%；跨境、债券、货币类按基金合同和交易所规定。未入库，需要时按前收自己算。
+
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `etf_universe` | FILE | ETF 清单与入选原因 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/etf_universe/latest.parquet`（历次在 `date=YYYY-MM-DD.parquet`） | `symbol, name, market, decimal_point, first_bar, amount_1y, days_1y, rank, category, selected, reason, observed_at` | 2026-09-28 首版，1,801 只，选中 86 只 | `READY` | 用 `selected=True` 取研究范围 |
+| `etf_kline_min1` | FILE | ETF 1 分钟 K 线 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=tdx/etf_kline_min1/<sh_510300>.parquet` | 列同 `tdx_kline_min1` | 86 只，2026-05-15 前后起（通达信只保留最近约 91 个交易日），每天收盘任务追加 | `READY` | 直接读取 |
+| `etf_kline_min5` | FILE | ETF 5 分钟 K 线 | `.../provider=tdx/etf_kline_min5/<code>.parquet` | 同上 | 86 只，多数从 2024-09 起（约 455 个交易日），每天追加 | `READY` | 直接读取；更早的 ETF 分钟线没有来源 |
+| `etf_kline_daily` | FILE | ETF 日线 | `.../provider=tdx/etf_kline_daily/<code>.parquet` | 同上，`time` 为当天 15:00 | 86 只，从上市起（最早 2005 年），每天追加 | `READY` | 直接读取 |
+| `etf_nav_daily` | FILE | ETF 每日单位净值、累计净值、分红与拆分 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/etf_nav/<sh_510300>.parquet` | `date, symbol, nav, acc_nav, daily_return_pct, distribution, fetch_ts`；`distribution` 为原文，例如"分红：每份派现金0.069元""拆分：每份基金份额折算…" | 85 只（`sh.511990` 华宝添益页面格式不同，未取到），从基金成立起，共约 12 万行；净值在当天晚上公布，收盘任务取到的是前一交易日及以前的净值 | `READY` | 折溢价 = 收盘价 / 当天 `nav` − 1；**没有盘中 IOPV**：交易所 IOPV 没有找到免费来源，新浪"估值"是它自己估算的，不采 |
+| `etf_info` | FILE | ETF 基本信息 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/etf_info/latest.parquet` | `symbol, name, fund_type, tracking_index, benchmark, inception_date, management_fee, custody_fee, fetch_ts` | 85 只 | `READY` | 上市日期用 `etf_kline_daily` 第一根，成立日期看 `inception_date` |
+| `event_calendar` | FILE | 事件日历 | `/Volumes/Lexar/niuniu-data/lake/silver/event_calendar/event_calendar.parquet` | 每行 `date, event, detail, rule, source`；`event` 有 `index_futures_expiry`（每月第三个周五，遇休市顺延；IM 从 2022-07-22 起）、`etf_options_expiry`（每月第四个周三，遇休市顺延；300ETF 期权从 2019-12-23 起，500ETF、创业板 ETF 期权从 2022-09-19 起）、`index_rebalance_effective`（6 月、12 月第二个周五的下一交易日）、`pre_holiday` / `post_holiday`（休市少了至少一个工作日的前后一天）、`month_end`、`quarter_end` | 2019-01-02 起，到交易日历的最后一天（参考快照当天）；全部按规则推算（`source=rule`），没有逐条核对交易所公告，调样公告日没有收录 | `READY` | 按日期关联；规则外的临时调整（例如交割日遇临时休市）以交易所公告为准 |
+
+**公告的发布时间**：`announcements_cninfo`（§3.1）里本来就有 `announcement_time_ms`（巨潮发布时间，毫秒时间戳，精确到秒），但目前只有 2026-09-17 以后的数据；更早的历史待回补。**全市场 09:25 集合竞价**：`stock_intraday_snapshot` 的 `slot=09:25` 从 2026-09-28 起有；更早的历史需要逐只逐日回补通达信成交明细，尚未做。
 
 ## 4. 尚不可用、待审查或只供 DATA 内部使用
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
 |---|---|---|---|---|---|---|---|
-| `market_intraday_breadth_live` | FILE | 盘中实时的全市场情绪 | `/Volumes/Lexar/niuniu-data/lake/silver/market_intraday_breadth/freq=live/date=YYYY-MM-DD.parquet`，回执 `freq=live/_receipts/` | 盘中记录器每分钟取一次通达信全市场报价（约 5,570 只，一次 5–7 秒），字段同 `market_intraday_breadth`，另有 `as_of`（报价服务器时间）、`captured_at`、`latency_s`（采集时刻减报价时刻）、`capture_s`、`n_requested`、`n_quoted`；昨收取交易所给的昨收（已除权），`time` 为该次采集开始的分钟 | 09:25–11:30、13:00–15:00 每分钟一行；只在盘中记录器开着时有数据（打开牛牛会自动启动）。离线用 2026-09-24 收盘报价试算，与历史版 15:00 一致（上涨 1,120 / 1,113、下跌 4,306 / 4,311） | `NOT_READY` | 2026-09-28 开盘实测、核对延迟后改 `READY`；之后 CODE 在 10:00、10:30 读当天文件的最后一行，缺失或 `latency_s` 过大时照实显示 |
 | `qfq_daily_existing` | FILE | 旧前复权日线（旧 MQC 构建） | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_daily` | 每只证券一个 parquet；`date, code, open, high, low, close, volume, amount, factor` | 截止 **2026-09-04**（比原始日K落后 12 个交易日）；来源为东财旧分红，构建脚本不在仓库、不可复现；漏掉早年配股和部分特别分红 | `DEPRECATED` | 替代项为 `qfq_published_f24`（已 READY）。CODE 应把 qfq 读取路径改到替代项；旧目录保留只为历史复算 |
 | `qfq_min5_existing` | FILE | 旧前复权 5 分钟 | `/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_min5` | 同上加 `time` | 截止 2026-09-04；问题同上 | `DEPRECATED` | 同上 |
 | `adjustment_factors_v2` | FILE | 逐事件复权因子与来源裁决记录 | `/Volumes/Lexar/niuniu-data/lake/silver/adjustment_factors_v2` | 每只证券一个 parquet；每行一个除权日：现金/送股/转增/配股、来源组合、`factor`、`status`（accepted/blocked/ignored）、`blockers` | `qfq_published_f24` 的审计记录 | `NOT_READY` | 不读取；它是 DATA 的审计记录，不是产品接口 |
