@@ -14,12 +14,12 @@ from quantlab.agent.tdx_collection_cli import (
     COLLECTION_SCOPE,SCOPE_FORMAT,_scope_job_decision,apply_collection_scope,
     load_collection_scope,load_scheduler_policy,validate_collection_scope,writer_lease,
 )
-from quantlab.data.tdx_lake import TdxLake,digest,write_json
+from quantlab.data.tdx_lake import FAMILIES,TdxLake,digest,write_json
 from quantlab.data.tdx_sharding import read_role
 from quantlab.storage.codec import encode
 
 
-PHASEA_EXCLUDED=("bars_1m","bars_5m","bars_daily","opening_match")
+PHASEA_EXCLUDED=tuple(sorted(family for family in FAMILIES if family!="trades"))
 
 
 def proposed_phasea_scope(pid,floor):
@@ -29,7 +29,7 @@ def proposed_phasea_scope(pid,floor):
         "excluded_families":list(PHASEA_EXCLUDED),
         "family_history_floors":{"trades":{"sh":floor,"sz":floor,"bj":floor}},
         "history_complete":False,
-        "reason":"Retail Microstructure V2 Phase-A trades-only backfill; keep K-lines and standalone opening_match excluded",
+        "reason":"Retail Microstructure V2 Phase-A trades-only backfill; every non-trades TDX family is excluded",
     }
     return validate_collection_scope({**core,"scope_id":digest(core)},pid)
 
@@ -53,17 +53,20 @@ def build_preview(worker_root,floor):
     proposed=proposed_phasea_scope(pid,floor)
 
     con=sqlite3.connect(str(lake.queue));con.row_factory=sqlite3.Row
-    trade_rows=[dict(r) for r in con.execute("""
-      SELECT * FROM jobs
-      WHERE plan_id=? AND family='trades' AND state IN ('PENDING','SKIPPED_POLICY','ERROR')
-      ORDER BY job_id
-    """,(pid,))]
+    trade_rows=sorted(
+        (dict(r) for r in con.execute("""
+          SELECT * FROM jobs
+          WHERE plan_id=? AND family='trades' AND state IN ('PENDING','SKIPPED_POLICY','ERROR')
+        """,(pid,))),
+        key=lambda row: row["job_id"])
     affected_families=sorted(set(proposed["excluded_families"])|set(proposed.get("family_history_floors",{})))
     marks=",".join("?" for _ in affected_families)
-    scope_rows=[dict(r) for r in con.execute(
-        "SELECT * FROM jobs WHERE plan_id=? AND family IN ("+marks+") "
-        "AND state IN ('PENDING','SKIPPED_POLICY') ORDER BY job_id",
-        (pid,*affected_families))]
+    scope_rows=sorted(
+        (dict(r) for r in con.execute(
+            "SELECT * FROM jobs WHERE plan_id=? AND family IN ("+marks+") "
+            "AND state IN ('PENDING','SKIPPED_POLICY')",
+            (pid,*affected_families))),
+        key=lambda row: row["job_id"])
     inflight=con.execute(
         "SELECT count(*) FROM jobs WHERE plan_id=? AND state IN ('RUNNING','STORED')",(pid,)
     ).fetchone()[0]

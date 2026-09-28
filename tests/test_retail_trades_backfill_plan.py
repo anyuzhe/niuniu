@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import duckdb
@@ -8,7 +9,7 @@ import duckdb
 from quantlab.agent.tdx_collection_cli import (
     COLLECTION_SCOPE,POLICY_FORMAT,SCHEDULER_POLICY,SCOPE_FORMAT,apply_collection_scope,
 )
-from quantlab.data.tdx_lake import TdxLake,digest,write_json
+from quantlab.data.tdx_lake import FAMILIES,TdxLake,digest,write_json
 from quantlab.data.tdx_sharding import ROLE_FILE,make_assignment,sealed
 from scripts.research.retail_trades_backfill_plan import (
     _current_feature_coverage,_eligible,build_plan,
@@ -16,6 +17,7 @@ from scripts.research.retail_trades_backfill_plan import (
 from scripts.research.retail_trades_phasea_scope import (
     PHASEA_EXCLUDED,apply_reviewed_scope,build_preview,proposed_phasea_scope,
 )
+from scripts.research.retail_trades_mac_serial import run_worker_batch
 
 
 class RetailTradesBackfillPlanTests(unittest.TestCase):
@@ -110,6 +112,7 @@ class RetailTradesBackfillPlanTests(unittest.TestCase):
         scope=proposed_phasea_scope(self.pid,"2026-01-10")
         self.assertEqual(tuple(scope["excluded_families"]),PHASEA_EXCLUDED)
         self.assertNotIn("trades",scope["excluded_families"])
+        self.assertEqual(set(scope["excluded_families"]),set(FAMILIES)-{"trades"})
         self.assertEqual(scope["family_history_floors"],{
             "trades":{"sh":"2026-01-10","sz":"2026-01-10","bj":"2026-01-10"}})
 
@@ -156,6 +159,44 @@ class RetailTradesBackfillPlanTests(unittest.TestCase):
                 old["scope_id"],preview["queue_snapshot"])
         current=json.loads((lake.base/COLLECTION_SCOPE).read_text())
         self.assertEqual(current["scope_id"],old["scope_id"])
+        self.assertTrue((lake.base/"STOP").exists())
+
+    def test_mac_serial_batch_restores_stop_after_success(self):
+        lake,_,old=self.prepare_phasea_worker()
+        preview=build_preview(self.worker,"2026-01-10")
+        apply_reviewed_scope(
+            self.worker,"2026-01-10",preview["proposed_scope"]["scope_id"],
+            old["scope_id"],preview["queue_snapshot"])
+
+        class FakeRunner:
+            def __init__(self,lake,pid,*args,**kwargs):
+                self.lake=lake;self.pid=pid
+            def run(self,seconds,max_requests,max_new_gib):
+                self.assert_stop_absent = not (self.lake.base/"STOP").exists()
+                if not self.assert_stop_absent:
+                    raise AssertionError("STOP must be removed only during bounded batch")
+                return {"state":"STOPPED","stop_reason":"REQUEST_BUDGET","processed_this_run":1,
+                        "shard_id":0,"full_history_complete":False}
+
+        with patch("scripts.research.retail_trades_mac_serial.Runner",FakeRunner):
+            result=run_worker_batch(self.worker,"2026-01-10",10,1,1,network_workers=1)
+        self.assertEqual(result["result"]["processed_this_run"],1)
+        self.assertTrue((lake.base/"STOP").exists())
+
+    def test_mac_serial_batch_restores_stop_after_failure(self):
+        lake,_,old=self.prepare_phasea_worker()
+        preview=build_preview(self.worker,"2026-01-10")
+        apply_reviewed_scope(
+            self.worker,"2026-01-10",preview["proposed_scope"]["scope_id"],
+            old["scope_id"],preview["queue_snapshot"])
+
+        class BrokenRunner:
+            def __init__(self,*args,**kwargs): pass
+            def run(self,*args,**kwargs): raise RuntimeError("synthetic runner failure")
+
+        with patch("scripts.research.retail_trades_mac_serial.Runner",BrokenRunner):
+            with self.assertRaisesRegex(RuntimeError,"synthetic runner failure"):
+                run_worker_batch(self.worker,"2026-01-10",10,1,1,network_workers=1)
         self.assertTrue((lake.base/"STOP").exists())
 
     def test_build_plan_is_dry_run_and_lifecycle_bounded(self):

@@ -218,3 +218,49 @@ HomePc WebCodex tunnel 超过 300 秒未在线，因此没有换用其他远控�
 ### HomePc / shard 1
 
 HomePc WebCodex tunnel 仍未在线；未改走其他远控通道，未写 scope、未改 STOP、未推断 queue 状态。由于 V2 0.2 现在要求每个 shard 独立达到覆盖门，即使只运行 Mac+601，未来日期也不会被误判为近全市场。真正启动 Phase A 仍以 HomePc 恢复、同步代码、只读预检、写入同一 reviewed scope 为前置条件。
+
+
+## Mac-only Phase A：一台物理机、三个逻辑 shard
+
+用户决定 Phase A 只使用 MacBook。现有 Mac 数据盘已经保留原三份 worker root，因此不需要重新 bootstrap：
+
+- worker-0：assignment c9a7a020...，逻辑 machine=macbook，shard 0/3，1951 symbols
+- worker-1：assignment a54018ed...，逻辑 machine=homepc，shard 1/3，1953 symbols
+- worker-2：assignment d1c90c05...，逻辑 machine=601，shard 2/3，1905 symbols
+
+三个 assignment 均属于原 cluster fbe957f3...，plan/policy 完全一致。machine_name 仅是冻结 assignment 的逻辑标签；实际三个 worker 都在同一台 Mac 上顺序运行。canonical 仍按原 distributed bundle/merge 契约接收数据，V2 0.2 继续按原 shard0/1/2 检查完整度。
+
+### strict trades-only scope
+
+原 Phase A scope 只排除了 K 线和 standalone opening_match，但真实队列还存在大量 auction PENDING，worker-0 另有 limit_ladder PENDING。直接启动 Runner 会顺带采无关 family。
+
+因此 Phase A scope 再冻结为严格 trades-only：
+
+- 允许：trades
+- 排除：securities / bars_1m / bars_5m / bars_daily / opening_match / auction / quotes / depth / finance / capital_changes / topics / limit_ladder
+- trades floor：sh/sz/bj 都为 2026-08-21
+- scope ID：a4f26280051643665304d1a2f80ac630d1779227dcd5f0e4197d7928c4d1cc93
+
+三个本地 worker 使用 fresh queue snapshot guarded apply：
+
+- shard0：额外变更1880行非-trades PENDING，STOP保持
+- shard1：额外变更1864行非-trades PENDING，STOP保持
+- shard2：额外变更1812行非-trades PENDING，STOP保持
+
+最终三个队列的 PENDING 均只有 trades：1882 / 1877 / 1813。
+
+### Mac 串行 runner
+
+新增 scripts/research/retail_trades_mac_serial.py。默认不联网，只输出三 worker preflight。真实 dry-run 已确认三个 assignment 唯一且完整覆盖0/1/2、plan/policy/cluster/scope一致、STOP=true、inflight=0、无AUTO_HALT、PENDING只有trades。
+
+只有同时传 --execute 与 --personal-research-only 才允许联网。单个 shard 的 batch 在现有 writer lease 内执行，启动前再次复核所有条件；批次期间临时移除该 shard STOP，finally 中无论成功或异常都恢复 STOP。其他两个 shard 始终保持STOP。Runner若进入HALTED，串行流程停止，不继续下一个shard。
+
+新增正常结束与异常两类 STOP 恢复测试。focused Phase-A/scheduler 21项PASS，完整 TDX scheduler/lake/distributed/V2/PhaseA 87项PASS。
+
+### SQLite 外置卷兼容
+
+worker-1/2 Phase-A preview 初次在大 ORDER BY job_id 查询上触发 sqlite3 OperationalError: unable to open database file。直接读写打开同一数据库正常，说明不是数据库损坏。preview 改为 SQLite 只过滤行，Python 内存按 job_id 稳定排序后计算 snapshot，避免外置卷上的 SQLite 临时排序文件依赖；随后 worker-1/2 真实 preview 均通过，snapshot 语义不变。
+
+### Windows 节点
+
+HomePc/601 不再是 Mac-only Phase A 的启动前置条件。Windows 601 之前写入的 reviewed scope 仍保持 STOP，不参与本轮；后续 Mac-only 不再操作 Windows 数据。V2 0.2 shard-aware coverage gate保证物理采集迁移到一台Mac后，最终canonical仍必须三个逻辑shard都达到覆盖阈值才允许推断。

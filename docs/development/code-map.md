@@ -189,3 +189,6 @@ Retail Trades 回补规划由 [retail_trades_backfill_plan.py](../../scripts/res
 
 
 Retail Microstructure 当前推断门升级到 [retail-microstructure-v2.0.2.json](../reference/retail-microstructure-v2.0.2.json)。[retail_microstructure.py](../../src/quantlab/data/retail_microstructure.py) 的 coverage 会校验 canonical active plan、scheduler-policy identity、coordinator cluster 与全部 assignment，并按日/按 shard 使用 lifecycle-adjusted expected symbols 做 90% 完整度门；任一 shard 缺失即不合格。旧 0.1 合同保留为历史版本。真实 2026-09-17 三 shard 1877/1871/1805 均通过，2026-09-16 520/136/177 全部拒绝。
+
+
+Mac-only Phase A 使用 [retail_trades_mac_serial.py](../../scripts/research/retail_trades_mac_serial.py)：同一台Mac顺序运行本地worker-0/1/2，但保留原distributed assignments与3-shard完整度语义。Phase-A scope生成器 [retail_trades_phasea_scope.py](../../scripts/research/retail_trades_phasea_scope.py) 当前为严格trades-only：从TDX FAMILIES动态排除除trades外的全部family，并继续使用2026-08-21历史floor。serial runner默认dry-run，执行模式要求显式personal-research-only，并在每个bounded batch结束或异常时finally恢复STOP。

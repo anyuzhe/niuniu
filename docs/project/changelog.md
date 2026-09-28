@@ -2323,3 +2323,12 @@
 - 真实canonical验证：2026-09-16实际520/136/177，对应门槛1694/1690/1632，三shard全部不合格；2026-09-17实际1877/1871/1805，对应门槛1694/1690/1633，三shard全部合格。当前仍1/120、INSUFFICIENT_COVERAGE；因此HomePc离线时Mac+601两shard即使总数很高也不会误触发推断。
 - retail_microstructure_v2.py固定到V2 0.2.0规格并记录spec SHA；新增缺失分片回归后，TDX scheduler/lake/distributed/PhaseA/V2完整相关回归85项全部PASS。
 - Phase A reviewed scope已在Mac shard0与601 shard2通过guarded apply写入同一scope ID e8a57a52b8e859e4164e04a16c1351ad088942b19b86a6c45dd427e0c9ecd41e；两台STOP保持、inflight=0、未resume、未联网。Mac仅恢复1882个旧scope trade seed；601仅把5313个bars PENDING按scope标记SKIPPED_POLICY，1814个trades PENDING保持。HomePc shard1仍离线、未写scope，因此Phase A仍禁止启动。
+
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Trades Phase A 改为 Mac-only 三逻辑分片
+
+- 用户明确选择只用一台 MacBook。发现 Lexar 上已保留 worker-0/1/2 三个本地 TDX worker root，分别持有原 cluster 的 shard0/1/2 assignment（1951/1953/1905 symbols）；因此不重新bootstrap、不改cluster，把原三机物理部署改成Mac单机顺序运行三个逻辑worker，canonical merge与V2 0.2按-shard完整度合同保持不变。
+- 启动前核到三份队列仍有大量auction PENDING，worker-0另有limit_ladder PENDING。Phase-A scope因此从“排除K线/standalone opening_match”收紧为严格trades-only：TDX FAMILIES中除trades外12类全部excluded，floor仍为2026-08-21，新scope ID=a4f26280051643665304d1a2f80ac630d1779227dcd5f0e4197d7928c4d1cc93。三个本地worker guarded apply额外跳过1880/1864/1812行非-trades PENDING；STOP保持、inflight=0，最终PENDING只剩trades 1882/1877/1813。
+- worker-1/2 Phase-A preview最初在SQLite大ORDER BY上报unable to open database file；直接rw打开数据库正常，定位为外置卷上的SQLite临时排序文件依赖。preview改为SQLite只过滤、Python按job_id稳定排序后，worker-1/2真实preview通过；snapshot语义不变。
+- 新增scripts/research/retail_trades_mac_serial.py：默认dry-run；只有--execute与--personal-research-only同时存在才联网。preflight要求三worker共享plan/policy/cluster/scope且完整覆盖0/1/2，STOP存在、无AUTO_HALT/inflight、无非-trades PENDING。单shard批次在writer lease内临时移除STOP，并在finally中无条件恢复；若Runner HALTED则不继续后续shard。
+- 真实Mac-only dry-run通过；新增正常结束/异常两类STOP恢复测试。focused Phase-A/scheduler 21项全部PASS，TDX scheduler/lake/distributed/V2/PhaseA完整相关回归87项全部PASS。此提交前尚未启动新的TDX网络采集；下一步仅做0→1→2的小流量smoke，验证真实网络、分页、落盘与STOP恢复后再扩大。

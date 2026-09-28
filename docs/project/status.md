@@ -515,3 +515,12 @@ V2 覆盖门升级为 shard-aware：canonical 必须具有有效 active plan、s
 保留原 V2 0.1 合同，新增 V2 0.2.0 合同 retail-microstructure-v2.0.2.json。TDX/V2/分布式完整回归85项全部通过。
 
 Phase A reviewed scope 已在 Mac shard0 与 601 shard2 通过 guarded apply 写入同一 scope ID e8a57a52b8e859e4164e04a16c1351ad088942b19b86a6c45dd427e0c9ecd41e；两台 STOP 均保持、inflight=0、未 resume、未联网。Mac恢复1882个旧scope trade seed；601将5313个既有 bars_1m/bars_5m/bars_daily PENDING 标为SKIPPED_POLICY，1814个trades PENDING保持。HomePc shard1仍离线，未写scope，因此 Phase A 仍禁止启动。
+
+
+### 2026-09-28 Retail Trades Phase A 改为 Mac-only 三逻辑分片
+
+用户明确要求只使用一台 MacBook。Phase A 不再等待 HomePc/601：Mac 本机已有 worker-0 / worker-1 / worker-2 三个独立 TDX worker root，分别持有原 cluster 的 shard 0/1/2 assignment（1951/1953/1905 symbols），因此物理上单机运行、逻辑上仍保持原三分片合同，canonical merge 与 V2 0.2 的按-shard覆盖门均无需改写。
+
+执行前进一步收紧 collection scope：Phase A 现在严格 trades-only，TDX FAMILIES 中除 trades 外其余12类全部 excluded；scope ID 为 a4f26280051643665304d1a2f80ac630d1779227dcd5f0e4197d7928c4d1cc93，trades floor 仍为2026-08-21。三个本地 worker guarded apply 后 STOP 均保持、inflight=0，PENDING 只剩 trades：shard0=1882、shard1=1877、shard2=1813。额外 scope 变更分别跳过1880/1864/1812个非-trades PENDING，避免 Runner 顺手采 auction/limit_ladder 等无关数据。
+
+新增 scripts/research/retail_trades_mac_serial.py：默认仅dry-run；只有 --execute + --personal-research-only 才联网。它要求3个逻辑worker共享plan/policy/cluster/scope、覆盖全部shard、STOP存在、无AUTO_HALT/无inflight、无非-trades PENDING；每个shard批次在writer lease下运行，并在finally无条件恢复STOP。真实dry-run已通过，focused安全回归21项全部PASS；完整TDX/V2/PhaseA相关回归87项全部PASS。下一步为提交该版本后，对0→1→2各做小流量smoke，再决定扩大批次。
