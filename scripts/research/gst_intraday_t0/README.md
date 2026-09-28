@@ -24,3 +24,4 @@
 - 第十五轮（原有理论信号放到日内）：`theory5m/export_theory.py`（虚拟机上导出每年 63 只的 5 分钟线）、`run_theory.py`（用仓库因子库对每个股票年算 147 个布尔信号，按 2 个进程分工，约 45 秒/股票年）、`evaluate.py`（两个方向 × 收盘/波段出场、万 1 免五）、`report.py`（按 2020–22 / 2023–24 / 2025–26 汇总）；K 线文件路径可用环境变量 `THEORY_BARS` 指定。
 - 第十六轮（资金管理）：`theory5m/mm_trades.py`（12 个理论信号的带进出时刻逐笔交易，同一天可多次进出）、`export_product_trips.py`（虚拟机上从引擎结果导出页面策略逐笔交易）、`mm_sim.py`（只用已知结果的仓位规则模拟，环境变量 `MM_PRODUCT_CSV` 指定页面策略文件）。
 - 第十七轮（日历效应与配对做T）：`breakout5m/calendar5.py` + `calagg.py`（按事件日分组）、`pairs.py` + `pairagg.py`（每月按 5 分钟收益相关性配对，盘中差距回归）。
+- 第十八轮（震荡时段分批抄底）：`breakout5m/chop.py`（各时段震荡程度）、`dipbuy.py`（分批挂单抄底、反弹或收盘卖出）、`dipagg.py`（汇总）。
