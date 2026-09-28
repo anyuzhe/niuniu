@@ -532,3 +532,9 @@ Phase A reviewed scope 已在 Mac shard0 与 601 shard2 通过 guarded apply 写
 冻结规格docs/reference/dip-factor-research-v1.json绑定上述记忆、原20股已见v3输入、5日主要/3与10日辅助、两个holdout任务和全部9个分期/期限比较；不宣称盲测、PIT、显著性或成本后收益。新增conditional_events只读摘要接入现有compare_factor_candidates，比较共同下跌事件、相同日期收益、保存MAE及尾部损失；不新建模型工具、计算队列或授权。先完成回归与提交再让牛牛执行该固定探索，真实结果另记。
 
 最终13模块127唯一用例全部通过，0失败/错误/跳过，源码/测试及冻结协议JSON前后指纹7456646d35a0cdbd0cca8e9dbb5e1fb0a31bbcc91dd4f4e346d5539dc5f40bb5；不是全仓回归或独立收益验证。日志artifacts/dip-factor-research-v1-20260928/regression。原生探索尚未执行，本条不宣称发现Alpha。
+
+e5aaf0e冻结后首次原生执行停在预检：模型把末两只证券sz前缀抄成sh，自行发现后未提交；7调用、0任务，accepted=false保留。宿主确认仅纠正抄写后，同样固定计划16调用完成2任务及6个分期子归档，全部计算字段和question均与冻结spec相同，原数据/历史任务SHA不变，Grant撤销。基准parent=a406d749-9f3c-4d0b-828c-716bfd1adabc，候选parent=9b3990d6-5f89-40e6-af49-52bafb4c8cbc。
+
+首次结果整理10次只读调用后停止，原生Chat确实未暴露旧MarketDataResearchAPI里的compare_factor_candidates。已把同名同参数的纯只读工具移到共享ReadOnlyResearchAPI，并删除旧重复声明/分派，保证原生Chat与旧调用使用相同实现；限定日常/解读profile和Grant权限不变。新增真实Chat派发/唯一schema/受限profile/非法参数回归后再做原结果整理，不再次计算或换参数。
+
+接线修复后14模块137唯一用例全部通过，0失败/错误/跳过，前后源码/测试/冻结协议指纹9bd6ee32fbf436f4b11ee1b3ff565a955da77860e52617e073e5ab798a324b61。原native-review的10调用无比较、无finding业务失败保持；复验只重读结果。

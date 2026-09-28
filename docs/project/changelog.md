@@ -2340,3 +2340,10 @@
 - 新增agent/conditional_events.py并接入原candidate_review/compare_factor_candidates；只读已有完整归档与观测。布尔候选仅在共同baseline=1内比较，非嵌套拒绝伪装过滤，missing不当0；相同日期等权收益及MAE差、无筛中日期、原始事件数/成熟数、最差ceil(5%×n)事件尾部指标分层。MAE来源矛盾/正值/非有限拒绝，缺字段则不可用；既有数值IC比较不变，没有新模型工具、数据库、研究队列或交易权限。
 - 初轮24项条件/候选测试PASS；完整范围回归另记。新增17项覆盖日期权重、配对缺失、无触发/无对照、尾部计数、真实归档/API、原文件不变及冻结规格完整性。代码先提交冻结再进行原生实际探索；结果与失败证据放artifacts/dip-factor-research-v1-20260928。不改统计引擎、标签、审批、Grant、采集或日常模型配置。
 - 最终13模块127唯一用例全部PASS，0失败/错误/跳过，前后源码/测试/协议JSON指纹7456646d35a0cdbd0cca8e9dbb5e1fb0a31bbcc91dd4f4e346d5539dc5f40bb5。首次diff检查仅发现两份追加文档末尾空行，修正文档；新managed根不可用、两个猜测源码路径不存在、一次读取预算低于schema下限均为无副作用工具失败，未当作业务成功。
+
+### 2026-09-28｜[CODE/ACCEPTANCE] 抄底首批计算通过与原生比较工具漏接
+
+- e5aaf0e上实际Pi首轮7调用仅preview，候选symbols最后两项误写sh.000012/sh.000014而非冻结sz代码；模型报告失误且未提交，Grant撤销。没有收益结果或任务、未改冻结方案，宿主只允许纠正该抄写后继续原两任务：16次调用/16结果无错误，baseline parent=a406d749-9f3c-4d0b-828c-716bfd1adabc、candidate parent=9b3990d6-5f89-40e6-af49-52bafb4c8cbc及6子全部完成。规范化spec和question完全匹配，原数据/旧研究指纹不变。
+- 无执行授权的首轮结果整理虽10调用均成功但未比较/写finding；原生ChatRuntime的PeerReview链不继承MarketDataResearchAPI，确实缺compare_factor_candidates。此次不注入测试工具、不换外部脚本代跑，而是把旧工具同名/同schema迁到共享catalog ReadOnlyResearchAPI，旧MarketData通过原继承委托继续工作且只出现一次。纯只读、无新增模型执行权限；受限everyday/evidence白名单保持不变。
+- compare返回严格有界完整摘要，不通过compact默默删条件比较字段；原有限文件/观测量与SHA核对不变，Polars读取异常转为明确归档错误。新增3项覆盖真实ChatRuntime派发、无queue、唯一schema、受限profile和非法路径/额外执行字段拒绝。后续仅核对原2任务结果，不重新提交；原失败回执不改判。
+- 最终14模块137唯一用例全部PASS，0失败/错误/跳过，源码/测试/协议前后hash=9bd6ee32fbf436f4b11ee1b3ff565a955da77860e52617e073e5ab798a324b61；验证包括原ChatRuntime派发和受限profile未扩大。与前127项不重复累加；native-review-routed将只调用既有结果读取、比较和结论草稿存储。

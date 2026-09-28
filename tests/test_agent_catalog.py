@@ -14,7 +14,7 @@ from quantlab.agent.catalog import ReadOnlyResearchAPI, compact
 EXPECTED_TOOLS = {'get_capabilities','search_factors','describe_factor','list_research_templates',
     'get_research_template','get_strategy_package_contract','preview_strategy_package',
     'list_strategy_runs','get_strategy_run','compare_strategy_runs','list_experiments',
-    'get_experiment','get_job','get_proposal_progress','get_run_research_links'}
+    'get_experiment','get_job','get_proposal_progress','get_run_research_links','compare_factor_candidates'}
 
 
 class AgentCatalogTests(unittest.TestCase):

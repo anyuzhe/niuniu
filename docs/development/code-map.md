@@ -135,7 +135,7 @@
 
 ## 条件事件比较与抄底研究（2026-09-28）
 
-[conditional_events.py](../../src/quantlab/agent/conditional_events.py) 只描述已有布尔研究的嵌套事件，在 [candidate_review.py](../../src/quantlab/agent/candidate_review.py) 完成原数据/身份/标签核对后使用；接线复用 [market_data_tools.py](../../src/quantlab/agent/market_data_tools.py) 的 compare_factor_candidates，不新增模型执行工具。测试 [test_conditional_event_review.py](../../tests/test_conditional_event_review.py) 覆盖日期配对、缺失/尾部、非嵌套拒绝及原生归档/冻结研究合同。首轮 [抄底探索规格](../reference/dip-factor-research-v1.json) 是已见20股上的固定探索，不是盲测或策略推荐。
+[conditional_events.py](../../src/quantlab/agent/conditional_events.py) 只描述已有布尔研究的嵌套事件，在 [candidate_review.py](../../src/quantlab/agent/candidate_review.py) 完成原数据/身份/标签核对后使用；旧 compare_factor_candidates 工具统一放入 [catalog.py](../../src/quantlab/agent/catalog.py) 的共享只读层，原 [market_data_tools.py](../../src/quantlab/agent/market_data_tools.py) 委托继承，避免原生Chat漏接；不新增模型执行工具。测试 [test_conditional_event_review.py](../../tests/test_conditional_event_review.py) 覆盖日期配对、缺失/尾部、非嵌套拒绝及原生归档/冻结研究合同。首轮 [抄底探索规格](../reference/dip-factor-research-v1.json) 是已见20股上的固定探索，不是盲测或策略推荐。
 
 ## 维护
 

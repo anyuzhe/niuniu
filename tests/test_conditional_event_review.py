@@ -100,6 +100,40 @@ class ConditionalArchiveTests(unittest.TestCase):
         self.assertLess(len(json.dumps(result)),24000)
         self.assertEqual(before,[snapshot_tree(self.out,r.run_id) for r in (self.base,self.candidate)])
         self.assertFalse((self.out/'_jobs').exists())
+    def test_native_chat_dispatches_existing_compare_without_queue(self):
+        from quantlab.agent.chat_runtime import ChatRuntime
+        from quantlab.agent.model_config import ModelConfig
+        args={'candidate_run_id':self.candidate.run_id,'baseline_run_id':self.base.run_id,'horizon':2}
+        class Transport:
+            def run(inner,system,messages,tools,dispatch,emit,stop):
+                names=[t['name'] for t in tools]
+                self.assertEqual(names.count('compare_factor_candidates'),1)
+                inner.result=dispatch('compare_factor_candidates',args,'candidate-check')
+                self.assertTrue(inner.result['ok'],inner.result)
+                self.assertIn('conditional_events',inner.result['data'])
+                return {'text':'只读取原记录；没有执行研究。','provider':'fixture','model':'fixture'}
+        runtime=ChatRuntime(self.out,self.root,lambda:self.fail('queue acquired'),local_data_only=True)
+        transport=Transport();cid=runtime.store.create('native comparison test')
+        result=runtime.send(cid,'比较已有证据',ModelConfig(max_context_chars=200000),allow_send=True,provider=transport)
+        self.assertEqual(result['tool_calls'],1)
+        self.assertFalse((self.out/'_jobs').exists())
+        events=runtime.store.events(cid)['events']
+        self.assertEqual(sum(e['kind']=='tool_result' for e in events),1)
+        self.assertEqual([t['name'] for t in MarketDataResearchAPI(self.out,self.root).schemas()].count('compare_factor_candidates'),1)
+    def test_restricted_profiles_do_not_gain_new_read_or_write_authority(self):
+        from quantlab.agent.chat_runtime import ChatRuntime
+        for profile in ('everyday','evidence'):
+            api=ChatRuntime(self.out,self.root,local_data_only=True,tool_profile=profile).api
+            self.assertNotIn('compare_factor_candidates',{t['name'] for t in api.schemas()})
+            self.assertFalse(api.call('compare_factor_candidates',{'candidate_run_id':self.candidate.run_id,'baseline_run_id':self.base.run_id,'horizon':2})['ok'])
+    def test_core_schema_rejects_arbitrary_paths_and_extra_execution_arguments(self):
+        from quantlab.agent.catalog import ReadOnlyResearchAPI
+        api=ReadOnlyResearchAPI(self.out)
+        args={'candidate_run_id':self.candidate.run_id,'baseline_run_id':self.base.run_id,'horizon':2}
+        self.assertFalse(api.call('compare_factor_candidates',{**args,'execute':True})['ok'])
+        self.assertFalse(api.call('compare_factor_candidates',{**args,'candidate_run_id':'../escape'})['ok'])
+        self.assertFalse(api.call('compare_factor_candidates',{**args,'horizon':True})['ok'])
+        self.assertTrue(api.call('compare_factor_candidates',args)['ok'])
     def test_risk_mismatch_rejected(self):
         p=self.candidate.artifact_path/'observations.parquet'
         pl.read_parquet(p).with_columns((pl.col('mae_2')-.01).alias('mae_2')).write_parquet(p)
