@@ -25,3 +25,4 @@
 - 第十六轮（资金管理）：`theory5m/mm_trades.py`（12 个理论信号的带进出时刻逐笔交易，同一天可多次进出）、`export_product_trips.py`（虚拟机上从引擎结果导出页面策略逐笔交易）、`mm_sim.py`（只用已知结果的仓位规则模拟，环境变量 `MM_PRODUCT_CSV` 指定页面策略文件）。
 - 第十七轮（日历效应与配对做T）：`breakout5m/calendar5.py` + `calagg.py`（按事件日分组）、`pairs.py` + `pairagg.py`（每月按 5 分钟收益相关性配对，盘中差距回归）。
 - 第十八轮（震荡时段分批抄底）：`breakout5m/chop.py`（各时段震荡程度）、`dipbuy.py`（分批挂单抄底、反弹或收盘卖出）、`dipagg.py`（汇总）。
+- 第十九轮（分批抄底大亏分析）：`breakout5m/dipdiag.py`（单一设置逐次记录进场前特征与之后走势）、`ddagg.py`（大亏集中在哪些日子与情形）、`dipbuy2.py` + `dip2agg.py`（盘中大盘止损：停止加仓或全部卖出）。
