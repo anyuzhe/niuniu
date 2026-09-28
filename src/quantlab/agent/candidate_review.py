@@ -50,7 +50,7 @@ def _finite_mean(frame, name):
     return float(values.mean()) if len(values) else None
 
 
-def compare_candidate(output, candidate_run_id, baseline_run_id, horizon):
+def _load_candidate_pair(output, candidate_run_id, baseline_run_id, horizon):
     if type(horizon) is not int or not 1<=horizon<=1000:
         raise ValueError('持有期必须为1–1000根的整数')
     catalog = ArtifactCatalog(output); trees = []
@@ -79,6 +79,13 @@ def compare_candidate(output, candidate_run_id, baseline_run_id, horizon):
         raise ValueError('相同证券/时间的收益标签不一致，拒绝选择性删除后比较')
     if not common[endpoint].equals(common['baseline_label_end']):
         raise ValueError('相同观测的标签结束时间不一致')
+    return catalog,trees,records,frames,common,runtime_note
+
+
+def compare_candidate(output, candidate_run_id, baseline_run_id, horizon):
+    catalog,trees,records,frames,common,runtime_note = _load_candidate_pair(output,candidate_run_id,baseline_run_id,horizon)
+    left,right = [r['manifest'] for r in records]
+    label = f'forward_{horizon}'
     both = common.filter(pl.col('candidate').is_finite() & pl.col('baseline').is_finite())
     correlation = both.group_by('datetime').agg(pl.len().alias('n'),
         pl.corr('candidate','baseline',method='spearman').alias('rank_correlation')).filter(pl.col('n')>=3)

@@ -1,0 +1,57 @@
+{
+  "format": "niuniu-dip100-risk-diagnostic-v1",
+  "status": "frozen_before_new_diagnostics",
+  "scope": "same 100-stock published qfq archived observations, 2023-2025, research_only",
+  "parent_protocol_digest": "adfcf0e4c0ba8d2175fdc326daec9599ae8239879d4ee25c550490945ff8648e",
+  "dataset_id": "998103567009960d44147a05585563c3db32e85272dead13b98072a45f23b10d",
+  "primary_horizon": 5,
+  "pairs": {
+    "train": {
+      "candidate_run_id": "01721fb8-e9c1-4a35-aeac-fd4909a29bc3",
+      "baseline_run_id": "78ae46c7-7076-496c-b2e1-6098bd357233"
+    },
+    "valid": {
+      "candidate_run_id": "f5244e04-24e5-4d6b-aa75-e34295ff8265",
+      "baseline_run_id": "4b377244-5ccb-4314-8286-e1ce7a848b55"
+    },
+    "test": {
+      "candidate_run_id": "db8f8633-a144-4a53-a55b-08aa93c692f6",
+      "baseline_run_id": "ceefec8a-6bc1-4097-a752-5091656a0390"
+    }
+  },
+  "planning_answer_sha256": "9f8edba3d8a72ede26590fa41d6c04da0986f937511a37048bb6b15d3ebee0cd",
+  "original_hypothesis_id": "1f77d7e5-8013-41f9-9519-704e30fdb16a",
+  "prior_finding_id": "9577ceae-3592-4b6e-b0c5-312735fc76eb",
+  "fixed_filter": "original baseline and original return_volatility(20)<0.03; no new formula/threshold",
+  "method": "matched_nested_risk_audit_v1",
+  "panels": [
+    "all_signals",
+    "nonoverlapping"
+  ],
+  "sample": "baseline==1; candidate 1 selected, 0 rejected, null UNKNOWN; first schedule, then finite saved forward AND MAE, then dates with both groups",
+  "schedule": "first baseline signal per security per stage, next strictly after prior saved label_end_5; candidate UNKNOWN or missing future outcome still consumes original window",
+  "primary_metric": "date_equal_pairs.mae.difference (selected minus disjoint rejected; positive less adverse)",
+  "fixed_secondary": [
+    "event_equal_mae_tail_difference",
+    "event_equal_return_tail_difference",
+    "date_equal_pairs.return.difference",
+    "coverage"
+  ],
+  "weights": "paired means equal dates / equal securities within date; worst ceil(5%*n) tails event-weighted on exactly those complete matched events",
+  "source_fingerprints": {
+    "01721fb8-e9c1-4a35-aeac-fd4909a29bc3": "1b6f8d38dfee515d9ad5e4d6d2e64cc5bc2a665123b78f8104167cb2cbd1dd6a",
+    "78ae46c7-7076-496c-b2e1-6098bd357233": "7f6f2ddf69d4cc8c908db841c2152c41566cc30f107492ef23ad4da7cd4f2954",
+    "f5244e04-24e5-4d6b-aa75-e34295ff8265": "609be15a43574886e5709a2bc40cf04ad541e2b49062dd9d60325522235f5977",
+    "4b377244-5ccb-4314-8286-e1ce7a848b55": "b95adc0d67f6f771d51fa90e7f113cbb34186d699fb2c4d0dcb6e9cf10ecbbfc",
+    "db8f8633-a144-4a53-a55b-08aa93c692f6": "60ceaf2f8ec4db4a22fe7af82ad8ca5dcfa767236cb86cc1fe73f8edd3cf581a",
+    "ceefec8a-6bc1-4097-a752-5091656a0390": "18f8be6d588138a1c5d246a705f475ed2192df3cba4de077574ebcf69c42b375"
+  },
+  "new_factor_jobs": 0,
+  "new_labels": false,
+  "limitations": [
+    "Post-exploration sensitivity on known results, not blind validation.",
+    "No p-value, causal attribution, independent Alpha, trade/cost/PIT or account risk claim.",
+    "Three years and both panels all retained; no return-dependent replacements."
+  ],
+  "protocol_digest": "9cbd32e83676009e513522fedaf390af6b472d7312e6c72d9a490de19985e202"
+}

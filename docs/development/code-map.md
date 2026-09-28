@@ -149,6 +149,10 @@
 
 [grant_fixed_specs.py](../../src/quantlab/agent/grant_fixed_specs.py) 是原Research Session Grant的可选进一步限制；目录/hash进入原授权，不建立第二任务状态。[research_session_tools.py](../../src/quantlab/agent/research_session_tools.py) 在原预检/提交工具内解析精确grant_spec引用；不能覆盖证券/参数或授权，原CLI提供fixed-specs-file。测试 [test_grant_fixed_specs.py](../../tests/test_grant_fixed_specs.py) 覆盖输入漂移、无队列预检、跨轮固定幂等、失败/撤销/权限及真实Chat派发。
 
+## 已归档条件风险敏感性（2026-09-28）
+
+[candidate_risk.py](../../src/quantlab/agent/candidate_risk.py)使用[candidate_review.py](../../src/quantlab/agent/candidate_review.py)的共同来源校验，报告一致成熟样本、互斥组与非重叠事件的固定描述性风险。[catalog.py](../../src/quantlab/agent/catalog.py)提供同源`audit_factor_risk`正式工具，不写原归档或创建任务；旧比较输出不变。测试：[test_candidate_risk.py](../../tests/test_candidate_risk.py)；[低波动风险诊断协议](../reference/dip100-risk-diagnostic-v1.json)固定三阶段5日、两个样本面板与来源，明确是事后敏感性而非新盲测。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

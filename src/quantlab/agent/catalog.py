@@ -31,6 +31,7 @@ TOOLS = [
     schema('list_experiments', '检索当前目录实际实验，包含失败记录。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_experiment', '读取指定实验的统计摘要及holdout的periods子归档引用。父归档无顶层metrics不表示无研究结果：按periods中run_id分别读取train/valid/test，再用inspect_research_evidence核对具体字段。periods只表示父记录的引用，未代替对子归档的重新核验；研究关联查询不完整也不等于这些指标不可读取。', {'run_id': TEXT}),
     schema('compare_factor_candidates','只读对照两个真实单因子归档（父研究先选择同阶段子run）：同数据/股票池/条件比较Rank IC；若双方为布尔事件，conditional_events在baseline=1内报告候选筛中/未筛中、相同日期等权收益差、已存MAE与最差5%事件损失。空值不填零，无候选日期单列，非嵌套事件不冒充过滤。纯描述、无p值/成本/Alpha认证，不创建任务。',{'candidate_run_id':TEXT,'baseline_run_id':TEXT,'horizon':{'type':'integer','minimum':1,'maximum':1000}}),
+    schema('audit_factor_risk','只读风险敏感性：两个同阶段、同数据布尔因子归档。固定baseline触发集内，候选筛中与未筛中为互斥组；要求收益和MAE共同可用且同日期有两组，报告均值与最差5%尾部；同时给全部信号和按最早基准信号、严格晚于原窗口结束的非重叠样本。选择不看未来损益/候选值，空值不补。固定算法无可调阈值，不重算因子、不创建任务、不认证显著性或独立风险控制。',{'candidate_run_id':TEXT,'baseline_run_id':TEXT,'horizon':{'type':'integer','minimum':1,'maximum':1000}}),
     schema('get_job', '读取现有任务状态，不提交或取消任务。', {'job_id': TEXT}),
     schema('get_proposal_progress', '只读关联一个真实提案、任务日志、冻结清单和结果头部；须披露errors/incomplete，不把日志running当进程在线。不批准、不恢复、不重跑。', {'proposal_id': TEXT}),
     schema('get_run_research_links', '只读查看一个run_id与已登记TrialRegistry检验族、研究记忆假设/结论的精确证据关联；host固定当前output，模型不能传path，不按名称或相似参数伪join。', {'run_id': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
@@ -249,6 +250,14 @@ class ReadOnlyResearchAPI:
             except pl.exceptions.PolarsError as error:
                 raise ValueError('INVALID_ARTIFACT：候选观测表不可读取') from error
             return data,[{'kind':'experiment','run_id':args[key]} for key in ('candidate_run_id','baseline_run_id')]
+        if name == 'audit_factor_risk':
+            from quantlab.agent.candidate_risk import audit_candidate_risk
+            import polars as pl
+            self.identifier(args['candidate_run_id']);self.identifier(args['baseline_run_id'])
+            try:data=audit_candidate_risk(self.output,**args)
+            except pl.exceptions.PolarsError as error:
+                raise ValueError('INVALID_ARTIFACT：风险观测表不可读取') from error
+            return data,[{'kind':'experiment','run_id':args[key]} for key in ('candidate_run_id','baseline_run_id')]
         if name == 'get_job':
             job_id = self.identifier(args['job_id'])
             path = self.output/'_jobs'/(job_id+'.json')
@@ -270,7 +279,7 @@ class ReadOnlyResearchAPI:
         try:
             self.validate(name, arguments)
             data, evidence = self._read(name, arguments)
-            exact = name in {'preview_strategy_package', 'list_strategy_runs', 'get_strategy_run', 'compare_strategy_runs', 'get_proposal_progress', 'get_run_research_links', 'compare_factor_candidates'}
+            exact = name in {'preview_strategy_package', 'list_strategy_runs', 'get_strategy_run', 'compare_strategy_runs', 'get_proposal_progress', 'get_run_research_links', 'compare_factor_candidates', 'audit_factor_risk'}
             result = {'ok': True, 'tool': name, 'data': data if exact else compact(data),
                       'evidence': evidence, 'warnings': [], 'error': None}
             if name == 'list_strategy_runs' and data.get('incomplete'):
