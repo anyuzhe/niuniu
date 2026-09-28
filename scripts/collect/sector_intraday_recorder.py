@@ -247,6 +247,12 @@ def main(argv=None) -> int:
             print(f"ETF/指数实时报价初始化失败，本日不记录：{error}", flush=True)
     live_receipt = data_root / "lake/silver/market_intraday_breadth/freq=live/_receipts" / f"{today}.json"
     live_log = {"date": today, "ok": 0, "failed": 0, "last_error": None}
+    if live_receipt.is_file():          # a restart during the day keeps the counts
+        try:
+            live_log.update(json.loads(live_receipt.read_text()))
+            live_log["restarts"] = live_log.get("restarts", 0) + 1
+        except ValueError:
+            pass
 
     def record_live():
         if quotes is not None:
