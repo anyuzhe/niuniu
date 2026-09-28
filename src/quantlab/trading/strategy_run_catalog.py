@@ -249,6 +249,7 @@ def get_strategy_run(output, run_id) -> dict:
         "content_hash": strategy_content_hash(checked),
         "package": package,
         "execution_metrics": left["execution_metrics"],
+        "simulation_contract": deepcopy(left.get('simulation_contract')),
         "evidence_fingerprint": left["evidence_fingerprint"],
         "verification": "archive_internal_consistency",
         "scope": "DESCRIPTIVE_ONLY",

@@ -2445,3 +2445,11 @@
 - 用户要求100万元本金完整抄底策略和模拟，原生Pi在未看新账户结果前读取合同/旧负结果/实际模板定义，9次工具成功，提出两个信号草稿；首稿缺少明确换手及支持的排序/持有说明，需要事前转成完整配置，不虚称已经回测。
 - 不给原published_qfq_status_research_only_v1赋予raw账户估值资格：新增ExecutionConfig.price_mode=virtual_qfq，原research/account/vnpy仍拒绝该输入。独立虚拟消费者要求明确首价、保留停牌日期/OHLC空值，最近已观察收盘估值，不伪造vendor_previous_close；T+1、ST新买阻断、固定模拟板块限价和上一完整bar量/factor的虚拟容量，禁止real规则/公司行动混用。归档和模型合同明确simulation_contract；本次不是实际原始股数、券商账户或市场规则认证。
 - 原ProposalService/ApprovalInputFreeze/JobQueue仍为宿主审批执行，Research Session Grant/模型权限不扩大。保留初次测试将filled_at误写at的失败和一次空edit工具schema错误，修正不改模拟数值。正式行情、采集、日常模型配置和可见桌面不变；最终回归和账户结果另外记录。
+
+### 2026-09-28｜[ACCEPTANCE] 百万元两策略与固定滑点敏感性
+
+- b1b9bf4冻结虚拟账本实现。原生设计第二轮11调用，两个完整package调用preview均因完整响应超24000拒绝；并非允许截断配置执行。宿主按工具建议通过原strategy_package_cli preview原字节，两个package与100股/日期/资本费用逐字段一致，未缩股票或删参数。第二策略方向效率>0.3是模型在看收益前的最终设计，不沿用初稿0，也未以结果改阈值。
+- 原模型完整信号/仓位经宿主批准4个事前固定策略情景（各自1m、基础5bp与压力10bp滑点），原ProposalService→ApprovalInputFreeze→JobQueue完成：base run=a3ff53a1-878e-4466-8f43-76d5b5ace042/41f3d04f-4ad5-4385-95c1-c48ecfc5e988，stress=f328fd6f-8da9-406f-abb6-a9bcbd739f6e/860ad89f-de7a-45ed-afe2-0d79fabb48f6。公式由牛牛产生、宿主仅检查和执行用户明确要求的模拟，不把宿主队列操作冒充模型Execution权限。
+- 基础1m期末974795.40098与996583.63786，压力期末965663.11335与996486.20591；四项均无尾仓，输入与执行时源码SHA不变。原曲线逐日平衡、费用/成交及连续年度收益另核验，不是年年重新投1m。第二策略3年仅2成交笔、1持仓日，样本不足；第一187笔/55持仓日/均仓1.25570%，负结果保留，未宣称找到好策略。
+- 只读策略回查补齐virtual模式来源及simulation_contract；发现_public_run遗漏字段导致新测试失败，修正为准确披露，不改变计算或既有归档。原8MiB元信息预算仍在，大账户用原精确字段读取。最终14模块115唯一回归PASS，0失败/错误/跳过，hash04beab607e7134895e59a439abd895b1820a5f5cf0878e69f6d203651bf3cdc5。原失败和一次session_id误写的无效工具调用保留，不追清历史账本为全绿。
+- 证据artifacts/dip-million-20260928包含模型原稿、原始工具参数、Host CLI预览、冻结两策略四情景、批准与4run回执、连续年度/费用/持仓报告；原生结果解释和最终集成推送另记。

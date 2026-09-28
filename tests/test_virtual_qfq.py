@@ -69,6 +69,32 @@ class VirtualLedgerTests(unittest.TestCase):
         self.assertTrue(any('虚拟' in x for x in record['limitations']))
         self.assertFalse(any('精细账户模式' in x for x in record['limitations']))
         self.assertEqual(before,{str(p):p.read_bytes() for p in self.fx.out.rglob('*') if p.is_file()})
+    def packaged(self):
+        from dataclasses import asdict
+        from quantlab.trading.strategy_package import compile_strategy,FORMAT,LIFECYCLE
+        spec={'question':'virtual packaged fixture','symbols':self.fx.symbols,'timeframe':'1d','start':'2024-01-01','end':'2024-01-12',
+            'adjustment':'qfq','qualification':'research_only','factor':'BASE.MOMENTUM','version':'1.0.0','parameters':{'lookback':2},
+            'horizons':[2],'quantiles':3,'replay':True,'mode':'execution','execution_backend':'open','execution':asdict(self.cfg),
+            'portfolio':{'weighting':'equal','max_position':.3,'max_exposure':.6,'max_turnover':None}}
+        pkg={'format':FORMAT,'strategy_key':'virtual-fixture','name':'virtual fixture','version':'1','lifecycle':dict(LIFECYCLE),'spec':spec}
+        return execute(prepare(compile_strategy(pkg)['spec']),self.fx.out,self.fx.root/'packaged-runs')
+    def test_native_archive_read_keeps_virtual_denomination_and_does_not_reexecute(self):
+        from quantlab.trading.strategy_run_catalog import get_strategy_run
+        from quantlab.agent.catalog import ReadOnlyResearchAPI
+        result=self.packaged();root=result.artifact_path.parent
+        before={str(p):p.read_bytes() for p in root.rglob('*') if p.is_file()}
+        detail=get_strategy_run(root,result.run_id)
+        self.assertEqual(detail['simulation_contract'],DISCLOSURE)
+        api=ReadOnlyResearchAPI(root);response=api.call('get_strategy_run',{'run_id':result.run_id})
+        self.assertTrue(response['ok'],response);self.assertFalse(response['data']['simulation_contract']['real_account'])
+        self.assertEqual(before,{str(p):p.read_bytes() for p in root.rglob('*') if p.is_file()})
+    def test_archived_virtual_disclosure_cannot_be_removed_or_promoted(self):
+        from quantlab.trading.strategy_run_catalog import get_strategy_run
+        result=self.packaged();path=result.artifact_path/'experiment.json'
+        original=json.loads(path.read_text())
+        for value in (None,{**DISCLOSURE,'real_account':True}):
+            record={**original,'simulation_contract':value};path.write_text(json.dumps(record))
+            with self.assertRaisesRegex(ValueError,'disclosure'):get_strategy_run(path.parent.parent,result.run_id)
     def test_warnings_never_claim_missing_limits_or_precise_account(self):
         warnings=cost_model_warnings(self.cfg)
         self.assertFalse(any('未模拟涨跌停' in w for w in warnings));self.assertTrue(any('名义人民币' in w for w in warnings))

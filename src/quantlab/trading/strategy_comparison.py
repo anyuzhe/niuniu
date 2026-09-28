@@ -32,7 +32,7 @@ _METRICS = (
 _ALLOWED_EXECUTION_VARIABLES = {"top_n", "threshold", "exposure"}
 _PARENT_FIELDS = {
     "run_id", "experiment_id", "status", "kind", "manifest", "children", "execution",
-    "fills", "rejections",
+    "fills", "rejections", "simulation_contract",
 }
 _CHILD_FIELDS = {
     "run_id", "experiment_id", "status", "kind", "manifest", "children", "periods",
@@ -428,12 +428,21 @@ def _load_execution(output_root, run_id, tree):
     if not child_bars.select(keys).sort(keys).equals(execution_bars.select(keys).sort(keys)):
         raise ValueError("Signal and execution market clocks/securities differ within archive")
     price_mode = manifest.get("execution", {}).get("price_mode")
-    if price_mode == "research" and not child_bars.equals(execution_bars):
+    if price_mode in ("research", "virtual_qfq") and not child_bars.equals(execution_bars):
         raise ValueError("Research-price execution bytes differ from signal market bytes")
     if price_mode == "account" and manifest.get("data_snapshot", {}).get("adjustment") != "raw":
         raise ValueError("Account-price execution archive is not raw")
-    if price_mode not in ("research", "account"):
+    if price_mode not in ("research", "account", "virtual_qfq"):
         raise ValueError("Invalid archived price_mode")
+    if price_mode == "virtual_qfq":
+        from quantlab.execution.virtual_qfq import DISCLOSURE, validate_virtual_range
+        from quantlab.data.validation import ordered_bars
+        if record.get('simulation_contract') != DISCLOSURE:
+            raise ValueError('Virtual simulation disclosure missing or changed')
+        if manifest.get('data_snapshot',{}).get('adjustment')!='qfq':
+            raise ValueError('Virtual simulation must retain qfq source identity')
+        ordered_bars(execution_bars,for_execution=True,virtual_qfq=True)
+        validate_virtual_range(execution_bars)
 
     targets = _frame(folder / "targets.parquet", "targets")
     if digest(targets.write_json()) != manifest.get("targets_hash"):
@@ -467,6 +476,7 @@ def _load_execution(output_root, run_id, tree):
         "run_id": run_id,
         "package": identity,
         "execution_metrics": metrics,
+        "simulation_contract": deepcopy(record.get('simulation_contract')),
         "evidence_fingerprint": evidence,
         "_package_value": envelope["package"],
         "_manifest": manifest,
@@ -519,7 +529,7 @@ def _blockers(left, right):
 
 
 def _public_run(value):
-    return {key: value[key] for key in ("run_id", "package", "execution_metrics", "evidence_fingerprint")}
+    return {key: value[key] for key in ("run_id", "package", "execution_metrics", "evidence_fingerprint", "simulation_contract")}
 
 
 def compare_strategy_runs(output, left_run_id: str, right_run_id: str) -> dict:
@@ -540,6 +550,7 @@ def compare_strategy_runs(output, left_run_id: str, right_run_id: str) -> dict:
     if before_left != after_left or before_right != after_right:
         raise ValueError("Execution evidence changed during comparison")
 
+    # Virtual denomination must remain visible to both UI and model consumers.
     config = _compare_normalized(
         left["_package_value"], right["_package_value"], left["package"], right["package"],
     )
@@ -554,6 +565,7 @@ def compare_strategy_runs(output, left_run_id: str, right_run_id: str) -> dict:
             delta = right_value - left_value
         metrics.append({"metric": metric, "left": left_value, "right": right_value, "delta": delta})
     warnings = [
+        *[v for side in (left,right) if side.get('simulation_contract') for v in side['simulation_contract']['limitations']],
         "仅作描述性对照；delta=right-left，不表示 Alpha、因果、优劣或赢家。",
         "结果只核对所给本地归档；未访问源 data_root，也未执行或复算策略。",
     ]
