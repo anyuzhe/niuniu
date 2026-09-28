@@ -6,6 +6,14 @@ from quantlab.data.mqc import MQCParquetProvider
 def local_data_provider(root, adjustment='raw'):
     supplied = Path(root)
     root = supplied.resolve()
+    published = root/'published-daily-research.json'
+    pending = root/'published-daily-research.pending.json'
+    if published.exists() or published.is_symlink() or pending.exists() or pending.is_symlink():
+        if pending.exists() or pending.is_symlink():raise ValueError('Published research export incomplete; no legacy fallback')
+        if any((root/name).exists() or (root/name).is_symlink() for name in ('archived-daily-dataset.json','manifest.json','baostock-series.json','baostock-dataset.json')):
+            raise ValueError('Conflicting managed dataset markers; select one explicit input root')
+        from quantlab.data.published_daily_research import PublishedDailyResearchProvider
+        return PublishedDailyResearchProvider(supplied,adjustment)
     archived = root/'archived-daily-dataset.json'
     if archived.is_symlink() or archived.exists():
         # An explicit host-created dataset is never guessed from raw archive folders.

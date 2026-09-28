@@ -2400,3 +2400,11 @@
 - 原bundle/MERGED/ACK流程已接收本批1500个trades source；后续compaction实际归档1500页/1016491行。独立只读验收再次检查全部metadata、ACK/sequence、4500个raw/Parquet/manifest字节哈希、manifest checksum及行数。canonical从14517661增至15534152行，与新增精确对账，compacted查询一致。
 - 9月16日方向特征覆盖增至1768只（分组777/478/513），仍不足各组门槛；9月17日5553只仍为唯一合格日，现有V2门保持1/120、INSUFFICIENT_COVERAGE。20日Phase A尚未完成，未做收益推断。分页完整度另列，不将部分数据presence替代完整股票日或PIT资格。
 - 证据artifacts/retail-phasea-mac-acceptance-20260928/acceptance.json，SHA256=4697261f06900b08dff218730ef65c6950d0d62359e7fc104d7d9b123bc92e37；当前状态和既有Phase A阶段记录已同步。本轮只提交验收文档，采集源码不变；保留其他会话ETF/日内说明，恢复本任务历史条目的正常换行与已提交正文，避免索引式提交遗留工作树回退。
+
+### 2026-09-28｜[CODE/RESEARCH] 新增100股抄底固定复验与已发布日线研究视图
+
+- 从main 9c9209b干净隔离分支启动，保留主目录两份并行文档。仅读DATA交接指定的注册表、qfq coverage与2026-09-23快照，固定字符串种子SHA256排序，每个沪主/深主/创业/科创代码层25股，排除旧20股；名单在目标行情值检查前冻结，不看收益后换股。保留存续/覆盖选择偏差，不认证新盲测。
+- 100股72700行日期齐全；9股38条空量额由已交付逐日状态明确为停牌。新增data/published_daily_research.py（host CLI preview/export/inspect和Provider），只复制已发布qfq、status、calendar、coverage字节，按状态屏蔽研究OHLC且保留原session/量额空值/ST。没有原始preclose字段，故新contract禁止账户估值/执行，不借用旧valuation合同或填零。validation仅新增显式研究型合同，OpenExecutionBacktester与VnpyOpenBacktester在实际入口拒绝新合同，旧合同/vendor_previous_close规则保留。
+- 输入包202个来源文件18423190字节，id=998103567009960d44147a05585563c3db32e85272dead13b98072a45f23b10d；manifest/逐文件SHA/每次读回重建规范化与预算/路径/缺失/重复/状态冲突/未完成导出均有检查，不回退raw或旧数据，不写DATA。批准后继续使用原ApprovalInputFreeze，来源离线测试通过。
+- 原3候选参数与方向全部保留、同一基准、主要5日/辅助3与10日，100股qfq独立比较不与旧20股raw混合。docs/reference/dip-factor-expansion100-v1.json冻结4研究/12子/27比较，digest=adfcf0e4c0ba8d2175fdc326daec9599ae8239879d4ee25c550490945ff8648e。没有成本/统计显著性/自动入池权限。研究仍由牛牛原生模型提交并读取，不由宿主代算。
+- 16模块146唯一测试PASS，0失败/错误/跳过；冻结源/测试/JSON指纹4b92e1d126693a737e7e76a89010983766456c5ac0ab79f9ea29659360bcad2d。早期诊断把日期字符串当Polars列名以及压缩预算测试缺BytesIO参数均已修正，失败工具日志保留。原生结果待后续记录；当前提交冻结代码供实际验证。

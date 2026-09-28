@@ -578,3 +578,11 @@ Mac本地worker-0/1/2各完成500次trades请求，分别新增426881 / 283618 /
 新增1500个trades source_id已通过原bundle/MERGED/ACK链进入canonical，逐页metadata与worker完全一致；归档后重新计算raw/Parquet/manifest三类SHA并核对manifest内容校验和。主库trades从14517661增至15534152行，差值精确等于本批1016491行，compacted查询行数一致。2026-09-16现有1775只出现数据、1768只有方向特征；三逻辑组777/478/513仍低于1694/1690/1632门槛。2026-09-17仍为5553只可算方向特征、唯一合格日，因此现有V2门仍为1/120、INSUFFICIENT_COVERAGE；20日Phase A尚未完成，未运行收益推断。
 
 验收文件：artifacts/retail-phasea-mac-acceptance-20260928/acceptance.json（SHA256 4697261f06900b08dff218730ef65c6950d0d62359e7fc104d7d9b123bc92e37）；同目录保留before_merge、collection_receipt、只读复核脚本和摘要。股票日分页完成度另列，不把“出现部分记录”解释成整日完整；当前代码的coverage仍是库存门而非PIT或因子有效性认证。操作细节见[Phase A记录](../archive/testing/20260928-Retail-Trades-PhaseA-Plan.md)。
+
+### 2026-09-28 抄底扩样：固定新增100股与已发布qfq研究输入
+
+扩样不新增机制/阈值。先从DATA指定2026-09-23参考快照与已发布qfq coverage按元数据筛选，固定SHA256排序、四代码分层各25股，排除旧20股；100股在读取目标行情前冻结且不得事后替换。因当前存续列表、DATA历史覆盖筛选及其他会话使用史未知，本次不是历史全市场或独立盲测。新样本采用已发布qfq，与旧raw不合并。
+
+固定区间2023–2025共72700行，无日期缺口；旧MQC读入91股，另9股38条volume/amount空值全部对应DATA明确tradestatus=0。新增published_daily_research只读消费指定qfq+日状态+日历+coverage，复制202份原字节18423190字节到独立输入包，不回填/重算qfq/裁决公司行动。不删除停牌/ST（保留3043条ST状态），只在研究视图中把停牌OHLC置空；无vendor_previous_close，不伪造估值。新独立input_contract仅供因子研究，Open/vnpy账户入口明确拒绝；旧v1/v2/v3约束不变。
+
+宿主preview/export/inspect及原local_data_provider/批准冻结已接通。146个唯一测试（16模块）PASS，0失败/错误/跳过，src/tests/冻结JSON前后hash=4b92e1d126693a737e7e76a89010983766456c5ac0ab79f9ea29659360bcad2d。初轮诊断字符串边界与新增测试缺IO参数错误保留，修正后完整回归通过。固定[扩样方案](../reference/dip-factor-expansion100-v1.json)为1基准+原3候选、4holdout/12分年子/27比较，protocol_digest=adfcf0e4c0ba8d2175fdc326daec9599ae8239879d4ee25c550490945ff8648e，输入id=998103567009960d44147a05585563c3db32e85272dead13b98072a45f23b10d。原生计算尚未启动，本条不宣称收益验收通过。

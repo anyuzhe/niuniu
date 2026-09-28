@@ -117,7 +117,7 @@ class OpenExecutionBacktester:
         self.config=config or ExecutionConfig(); self.rules=rules; self.matcher=matcher
 
     def run(self,targets,bars):
-        bars=ordered_bars(bars);cfg=self.config;industry=IndustryHistory(cfg.industry_events)
+        bars=ordered_bars(bars,for_execution=True);cfg=self.config;industry=IndustryHistory(cfg.industry_events)
         state_aware=suspension_state_aware(bars)
         audit=ExecutionAudit(cfg.initial_cash)
         if bars['timeframe'][0] not in ('1d','1m','5m','15m','30m','60m'):

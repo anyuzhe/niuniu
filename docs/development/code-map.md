@@ -141,6 +141,10 @@
 
 [pi_runtime_cache.mjs](../../src/quantlab/devstudio/pi_runtime_cache.mjs) 为Pi创建有界临时模型目录副本，原 [pi_bridge.mjs](../../src/quantlab/devstudio/pi_bridge.mjs) 使用SDK公开modelsStorePath，不移动配置或凭据；测试 [test_pi_catalog_cache.py](../../tests/test_pi_catalog_cache.py)。[memory_projection.py](../../src/quantlab/agent/memory_projection.py) 由原记忆工具在超预算时投影，正文不截断、省略字段显式记录，测试 [test_memory_projection.py](../../tests/test_memory_projection.py)。
 
+## 已发布qfq研究输入与固定扩样（2026-09-28）
+
+[published_daily_research.py](../../src/quantlab/data/published_daily_research.py)提供host preview/export/inspect和Provider；[provider.py](../../src/quantlab/data/provider.py)按显式marker接入，[validation.py](../../src/quantlab/data/validation.py)识别独立research-only停牌合同，Open/vnpy入口拒绝该合同做账户估值。测试 [test_published_daily_research.py](../../tests/test_published_daily_research.py) 包含原字节、缺失/篡改拒绝、原批准冻结及实际因子标签；[扩样冻结方案](../reference/dip-factor-expansion100-v1.json)与旧三候选定义和抽样元数据绑定，不是盲测认证。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

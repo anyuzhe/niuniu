@@ -1,0 +1,1119 @@
+{
+  "format": "niuniu-dip-expansion100-v1",
+  "selection": {
+    "format": "niuniu-dip-expansion-selection-v1",
+    "created_at": "2026-09-28T07:50:04.473838+00:00",
+    "selection_seed": "niuniu-dip-expansion-20260928-v1",
+    "selection_algorithm": "sha256(seed + | + code) ascending within fixed four code strata; first 25 each; no returns inspected",
+    "start": "2023-01-01",
+    "end": "2025-12-31",
+    "symbols": [
+      "sh.600054",
+      "sh.600126",
+      "sh.600211",
+      "sh.600396",
+      "sh.600482",
+      "sh.600595",
+      "sh.600618",
+      "sh.600763",
+      "sh.600908",
+      "sh.601003",
+      "sh.601111",
+      "sh.601163",
+      "sh.601360",
+      "sh.601388",
+      "sh.601888",
+      "sh.601919",
+      "sh.603006",
+      "sh.603109",
+      "sh.603192",
+      "sh.603326",
+      "sh.603518",
+      "sh.603658",
+      "sh.603848",
+      "sh.605299",
+      "sh.605339",
+      "sh.688020",
+      "sh.688070",
+      "sh.688103",
+      "sh.688111",
+      "sh.688117",
+      "sh.688159",
+      "sh.688165",
+      "sh.688167",
+      "sh.688179",
+      "sh.688190",
+      "sh.688217",
+      "sh.688298",
+      "sh.688303",
+      "sh.688396",
+      "sh.688466",
+      "sh.688509",
+      "sh.688511",
+      "sh.688516",
+      "sh.688569",
+      "sh.688580",
+      "sh.688595",
+      "sh.688658",
+      "sh.688659",
+      "sh.688665",
+      "sh.688681",
+      "sz.000419",
+      "sz.000426",
+      "sz.000516",
+      "sz.000669",
+      "sz.000802",
+      "sz.000810",
+      "sz.000825",
+      "sz.000909",
+      "sz.000929",
+      "sz.000988",
+      "sz.000999",
+      "sz.001205",
+      "sz.002370",
+      "sz.002397",
+      "sz.002446",
+      "sz.002461",
+      "sz.002547",
+      "sz.002584",
+      "sz.002585",
+      "sz.002592",
+      "sz.002672",
+      "sz.002762",
+      "sz.002780",
+      "sz.002899",
+      "sz.002921",
+      "sz.300007",
+      "sz.300036",
+      "sz.300047",
+      "sz.300074",
+      "sz.300105",
+      "sz.300123",
+      "sz.300130",
+      "sz.300144",
+      "sz.300224",
+      "sz.300243",
+      "sz.300247",
+      "sz.300281",
+      "sz.300287",
+      "sz.300290",
+      "sz.300314",
+      "sz.300341",
+      "sz.300496",
+      "sz.300509",
+      "sz.300561",
+      "sz.300667",
+      "sz.300796",
+      "sz.300880",
+      "sz.300939",
+      "sz.301004",
+      "sz.301066"
+    ],
+    "strata": {
+      "sh_main": [
+        "sh.601888",
+        "sh.600482",
+        "sh.603109",
+        "sh.601360",
+        "sh.600054",
+        "sh.600763",
+        "sh.600211",
+        "sh.600595",
+        "sh.603192",
+        "sh.603658",
+        "sh.603006",
+        "sh.603848",
+        "sh.603518",
+        "sh.600908",
+        "sh.605339",
+        "sh.601919",
+        "sh.605299",
+        "sh.601111",
+        "sh.601163",
+        "sh.600126",
+        "sh.600618",
+        "sh.600396",
+        "sh.603326",
+        "sh.601003",
+        "sh.601388"
+      ],
+      "sz_main": [
+        "sz.002584",
+        "sz.000669",
+        "sz.000810",
+        "sz.000419",
+        "sz.002899",
+        "sz.000999",
+        "sz.002585",
+        "sz.002592",
+        "sz.000825",
+        "sz.002446",
+        "sz.002397",
+        "sz.002461",
+        "sz.000802",
+        "sz.001205",
+        "sz.000909",
+        "sz.002672",
+        "sz.002547",
+        "sz.002780",
+        "sz.000516",
+        "sz.000988",
+        "sz.002762",
+        "sz.002921",
+        "sz.000929",
+        "sz.000426",
+        "sz.002370"
+      ],
+      "chinext": [
+        "sz.300074",
+        "sz.300290",
+        "sz.300047",
+        "sz.300561",
+        "sz.300036",
+        "sz.300144",
+        "sz.300667",
+        "sz.301004",
+        "sz.300007",
+        "sz.300314",
+        "sz.300509",
+        "sz.300243",
+        "sz.300247",
+        "sz.300281",
+        "sz.300496",
+        "sz.300123",
+        "sz.300796",
+        "sz.300341",
+        "sz.300880",
+        "sz.300224",
+        "sz.300105",
+        "sz.300130",
+        "sz.301066",
+        "sz.300939",
+        "sz.300287"
+      ],
+      "star": [
+        "sh.688167",
+        "sh.688111",
+        "sh.688509",
+        "sh.688020",
+        "sh.688165",
+        "sh.688117",
+        "sh.688103",
+        "sh.688658",
+        "sh.688396",
+        "sh.688179",
+        "sh.688217",
+        "sh.688298",
+        "sh.688303",
+        "sh.688516",
+        "sh.688070",
+        "sh.688159",
+        "sh.688681",
+        "sh.688190",
+        "sh.688569",
+        "sh.688659",
+        "sh.688665",
+        "sh.688466",
+        "sh.688511",
+        "sh.688595",
+        "sh.688580"
+      ]
+    },
+    "population_counts": {
+      "sh_main": 1555,
+      "sz_main": 1362,
+      "chinext": 1047,
+      "star": 373
+    },
+    "exclusion_counts": {
+      "not_current_A_share_in_DATA_snapshot": 3749,
+      "previous_pilot_security": 20,
+      "DATA_qfq_not_available_at_start": 57,
+      "less_than_one_year_preperiod_listing": 806,
+      "outside_fixed_four_code_strata": 2
+    },
+    "excluded_pilot_symbols": [
+      "sh.600000",
+      "sh.600004",
+      "sh.600006",
+      "sh.600007",
+      "sh.600008",
+      "sh.600009",
+      "sh.600010",
+      "sh.600011",
+      "sh.600012",
+      "sh.600015",
+      "sz.000001",
+      "sz.000002",
+      "sz.000006",
+      "sz.000007",
+      "sz.000008",
+      "sz.000009",
+      "sz.000010",
+      "sz.000011",
+      "sz.000012",
+      "sz.000014"
+    ],
+    "source_metadata": {
+      "coverage": {
+        "path": "/Volumes/Lexar/niuniu-data/lake/silver/qfq_kline_daily_v2/_meta/coverage.parquet",
+        "sha256": "a21048d25a5becd3c40430e3a61be3f1079febc6bcd70a029d702113fb3b54f5"
+      },
+      "stock_basic": {
+        "path": "/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/reference_snapshots/snapshot=2026-09-23/stock_basic.parquet",
+        "sha256": "eda353baffa6c6e5ef7f58d27fc68e90627deee587f015488c950537905ee2ed"
+      },
+      "calendar": {
+        "path": "/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/reference_snapshots/snapshot=2026-09-23/trade_calendar.parquet",
+        "sha256": "cc6176a76a645ac065b3c59a6b6c7f0eb26e4a4770f151101f2a04b069ca3a48"
+      }
+    },
+    "registry_sha256": "41d5887af48426b425efa4fbb52d0a580228f60689c43881fdb8597ec878b93b",
+    "adjustment": "qfq",
+    "qualification": "research_only",
+    "replacement_allowed": false,
+    "no_forward_result_screening": true,
+    "blind_holdout": false,
+    "limitations": [
+      "current 2026-09-23 survivor universe, not historical PIT population",
+      "qfq published retrospectively; DATA coverage selection may bias population",
+      "same 2023-2025 market periods used previously; disjoint securities not independent market evidence",
+      "four code strata equally sampled, not cap/industry neutral",
+      "prior access by other sessions is unknown",
+      "different price basis from previous raw pilot, comparisons only within this fixed new dataset"
+    ],
+    "selection_digest": "ecc2252284446d0904bf4a40935e664cb048aa571817d1abbf028a7b0ab63bfc"
+  },
+  "dataset_id": "998103567009960d44147a05585563c3db32e85272dead13b98072a45f23b10d",
+  "studies": [
+    {
+      "role": "baseline",
+      "hypothesis_id": "0d0cd4a1-4bff-41d5-86f9-7e566d6c26c2",
+      "hypothesis_record_digest": "30360b45eaa89b0d939bb63a26332e4dbce9cd003de9eae6677ab236fe7e12b5",
+      "source_title": "DIPV1 基准：20日下跌事件",
+      "spec": {
+        "question": "DIP100 baseline；固定新增100股qfq外推检查，非盲测非成交收益",
+        "symbols": [
+          "sh.600054",
+          "sh.600126",
+          "sh.600211",
+          "sh.600396",
+          "sh.600482",
+          "sh.600595",
+          "sh.600618",
+          "sh.600763",
+          "sh.600908",
+          "sh.601003",
+          "sh.601111",
+          "sh.601163",
+          "sh.601360",
+          "sh.601388",
+          "sh.601888",
+          "sh.601919",
+          "sh.603006",
+          "sh.603109",
+          "sh.603192",
+          "sh.603326",
+          "sh.603518",
+          "sh.603658",
+          "sh.603848",
+          "sh.605299",
+          "sh.605339",
+          "sh.688020",
+          "sh.688070",
+          "sh.688103",
+          "sh.688111",
+          "sh.688117",
+          "sh.688159",
+          "sh.688165",
+          "sh.688167",
+          "sh.688179",
+          "sh.688190",
+          "sh.688217",
+          "sh.688298",
+          "sh.688303",
+          "sh.688396",
+          "sh.688466",
+          "sh.688509",
+          "sh.688511",
+          "sh.688516",
+          "sh.688569",
+          "sh.688580",
+          "sh.688595",
+          "sh.688658",
+          "sh.688659",
+          "sh.688665",
+          "sh.688681",
+          "sz.000419",
+          "sz.000426",
+          "sz.000516",
+          "sz.000669",
+          "sz.000802",
+          "sz.000810",
+          "sz.000825",
+          "sz.000909",
+          "sz.000929",
+          "sz.000988",
+          "sz.000999",
+          "sz.001205",
+          "sz.002370",
+          "sz.002397",
+          "sz.002446",
+          "sz.002461",
+          "sz.002547",
+          "sz.002584",
+          "sz.002585",
+          "sz.002592",
+          "sz.002672",
+          "sz.002762",
+          "sz.002780",
+          "sz.002899",
+          "sz.002921",
+          "sz.300007",
+          "sz.300036",
+          "sz.300047",
+          "sz.300074",
+          "sz.300105",
+          "sz.300123",
+          "sz.300130",
+          "sz.300144",
+          "sz.300224",
+          "sz.300243",
+          "sz.300247",
+          "sz.300281",
+          "sz.300287",
+          "sz.300290",
+          "sz.300314",
+          "sz.300341",
+          "sz.300496",
+          "sz.300509",
+          "sz.300561",
+          "sz.300667",
+          "sz.300796",
+          "sz.300880",
+          "sz.300939",
+          "sz.301004",
+          "sz.301066"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "qfq",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      }
+    },
+    {
+      "role": "directional_efficiency",
+      "hypothesis_id": "a983d337-2ed1-40b6-89dd-d26050b20235",
+      "hypothesis_record_digest": "c67145abd256e452549b4d46eb1ede84d32dce3a4db605f27018a345f262acb9",
+      "source_title": "DIPV1 候选：下跌中方向效率不极端",
+      "spec": {
+        "question": "DIP100 directional_efficiency；固定新增100股qfq外推检查，非盲测非成交收益",
+        "symbols": [
+          "sh.600054",
+          "sh.600126",
+          "sh.600211",
+          "sh.600396",
+          "sh.600482",
+          "sh.600595",
+          "sh.600618",
+          "sh.600763",
+          "sh.600908",
+          "sh.601003",
+          "sh.601111",
+          "sh.601163",
+          "sh.601360",
+          "sh.601388",
+          "sh.601888",
+          "sh.601919",
+          "sh.603006",
+          "sh.603109",
+          "sh.603192",
+          "sh.603326",
+          "sh.603518",
+          "sh.603658",
+          "sh.603848",
+          "sh.605299",
+          "sh.605339",
+          "sh.688020",
+          "sh.688070",
+          "sh.688103",
+          "sh.688111",
+          "sh.688117",
+          "sh.688159",
+          "sh.688165",
+          "sh.688167",
+          "sh.688179",
+          "sh.688190",
+          "sh.688217",
+          "sh.688298",
+          "sh.688303",
+          "sh.688396",
+          "sh.688466",
+          "sh.688509",
+          "sh.688511",
+          "sh.688516",
+          "sh.688569",
+          "sh.688580",
+          "sh.688595",
+          "sh.688658",
+          "sh.688659",
+          "sh.688665",
+          "sh.688681",
+          "sz.000419",
+          "sz.000426",
+          "sz.000516",
+          "sz.000669",
+          "sz.000802",
+          "sz.000810",
+          "sz.000825",
+          "sz.000909",
+          "sz.000929",
+          "sz.000988",
+          "sz.000999",
+          "sz.001205",
+          "sz.002370",
+          "sz.002397",
+          "sz.002446",
+          "sz.002461",
+          "sz.002547",
+          "sz.002584",
+          "sz.002585",
+          "sz.002592",
+          "sz.002672",
+          "sz.002762",
+          "sz.002780",
+          "sz.002899",
+          "sz.002921",
+          "sz.300007",
+          "sz.300036",
+          "sz.300047",
+          "sz.300074",
+          "sz.300105",
+          "sz.300123",
+          "sz.300130",
+          "sz.300144",
+          "sz.300224",
+          "sz.300243",
+          "sz.300247",
+          "sz.300281",
+          "sz.300287",
+          "sz.300290",
+          "sz.300314",
+          "sz.300341",
+          "sz.300496",
+          "sz.300509",
+          "sz.300561",
+          "sz.300667",
+          "sz.300796",
+          "sz.300880",
+          "sz.300939",
+          "sz.301004",
+          "sz.301066"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              },
+              {
+                "input": "efficiency",
+                "op": "gt",
+                "value": -0.5
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "qfq",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      }
+    },
+    {
+      "role": "close_location",
+      "hypothesis_id": "7950e7b3-e20d-4dbd-892b-0b0ca7102ae4",
+      "hypothesis_record_digest": "23b708690fb218de24efdb351f39414c8c1c90d4564af3cbb2471a530fd83f7e",
+      "source_title": "DIPV1-R2 COMB.CONDITION：收盘位置过滤",
+      "spec": {
+        "question": "DIP100 close_location；固定新增100股qfq外推检查，非盲测非成交收益",
+        "symbols": [
+          "sh.600054",
+          "sh.600126",
+          "sh.600211",
+          "sh.600396",
+          "sh.600482",
+          "sh.600595",
+          "sh.600618",
+          "sh.600763",
+          "sh.600908",
+          "sh.601003",
+          "sh.601111",
+          "sh.601163",
+          "sh.601360",
+          "sh.601388",
+          "sh.601888",
+          "sh.601919",
+          "sh.603006",
+          "sh.603109",
+          "sh.603192",
+          "sh.603326",
+          "sh.603518",
+          "sh.603658",
+          "sh.603848",
+          "sh.605299",
+          "sh.605339",
+          "sh.688020",
+          "sh.688070",
+          "sh.688103",
+          "sh.688111",
+          "sh.688117",
+          "sh.688159",
+          "sh.688165",
+          "sh.688167",
+          "sh.688179",
+          "sh.688190",
+          "sh.688217",
+          "sh.688298",
+          "sh.688303",
+          "sh.688396",
+          "sh.688466",
+          "sh.688509",
+          "sh.688511",
+          "sh.688516",
+          "sh.688569",
+          "sh.688580",
+          "sh.688595",
+          "sh.688658",
+          "sh.688659",
+          "sh.688665",
+          "sh.688681",
+          "sz.000419",
+          "sz.000426",
+          "sz.000516",
+          "sz.000669",
+          "sz.000802",
+          "sz.000810",
+          "sz.000825",
+          "sz.000909",
+          "sz.000929",
+          "sz.000988",
+          "sz.000999",
+          "sz.001205",
+          "sz.002370",
+          "sz.002397",
+          "sz.002446",
+          "sz.002461",
+          "sz.002547",
+          "sz.002584",
+          "sz.002585",
+          "sz.002592",
+          "sz.002672",
+          "sz.002762",
+          "sz.002780",
+          "sz.002899",
+          "sz.002921",
+          "sz.300007",
+          "sz.300036",
+          "sz.300047",
+          "sz.300074",
+          "sz.300105",
+          "sz.300123",
+          "sz.300130",
+          "sz.300144",
+          "sz.300224",
+          "sz.300243",
+          "sz.300247",
+          "sz.300281",
+          "sz.300287",
+          "sz.300290",
+          "sz.300314",
+          "sz.300341",
+          "sz.300496",
+          "sz.300509",
+          "sz.300561",
+          "sz.300667",
+          "sz.300796",
+          "sz.300880",
+          "sz.300939",
+          "sz.301004",
+          "sz.301066"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "close_location": {
+              "factor_id": "BASE.CLOSE_LOCATION",
+              "parameters": {},
+              "version": "1.0.0"
+            },
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              },
+              {
+                "input": "close_location",
+                "op": "lt",
+                "value": 0.3
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "qfq",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      }
+    },
+    {
+      "role": "low_volatility",
+      "hypothesis_id": "1f77d7e5-8013-41f9-9519-704e30fdb16a",
+      "hypothesis_record_digest": "1095af7a5724b9cae1f3758c7a2d2a4f9fa15c60bfd226cc8ebaea363298e986",
+      "source_title": "DIPV1-R2 COMB.CONDITION：波动收敛过滤",
+      "spec": {
+        "question": "DIP100 low_volatility；固定新增100股qfq外推检查，非盲测非成交收益",
+        "symbols": [
+          "sh.600054",
+          "sh.600126",
+          "sh.600211",
+          "sh.600396",
+          "sh.600482",
+          "sh.600595",
+          "sh.600618",
+          "sh.600763",
+          "sh.600908",
+          "sh.601003",
+          "sh.601111",
+          "sh.601163",
+          "sh.601360",
+          "sh.601388",
+          "sh.601888",
+          "sh.601919",
+          "sh.603006",
+          "sh.603109",
+          "sh.603192",
+          "sh.603326",
+          "sh.603518",
+          "sh.603658",
+          "sh.603848",
+          "sh.605299",
+          "sh.605339",
+          "sh.688020",
+          "sh.688070",
+          "sh.688103",
+          "sh.688111",
+          "sh.688117",
+          "sh.688159",
+          "sh.688165",
+          "sh.688167",
+          "sh.688179",
+          "sh.688190",
+          "sh.688217",
+          "sh.688298",
+          "sh.688303",
+          "sh.688396",
+          "sh.688466",
+          "sh.688509",
+          "sh.688511",
+          "sh.688516",
+          "sh.688569",
+          "sh.688580",
+          "sh.688595",
+          "sh.688658",
+          "sh.688659",
+          "sh.688665",
+          "sh.688681",
+          "sz.000419",
+          "sz.000426",
+          "sz.000516",
+          "sz.000669",
+          "sz.000802",
+          "sz.000810",
+          "sz.000825",
+          "sz.000909",
+          "sz.000929",
+          "sz.000988",
+          "sz.000999",
+          "sz.001205",
+          "sz.002370",
+          "sz.002397",
+          "sz.002446",
+          "sz.002461",
+          "sz.002547",
+          "sz.002584",
+          "sz.002585",
+          "sz.002592",
+          "sz.002672",
+          "sz.002762",
+          "sz.002780",
+          "sz.002899",
+          "sz.002921",
+          "sz.300007",
+          "sz.300036",
+          "sz.300047",
+          "sz.300074",
+          "sz.300105",
+          "sz.300123",
+          "sz.300130",
+          "sz.300144",
+          "sz.300224",
+          "sz.300243",
+          "sz.300247",
+          "sz.300281",
+          "sz.300287",
+          "sz.300290",
+          "sz.300314",
+          "sz.300341",
+          "sz.300496",
+          "sz.300509",
+          "sz.300561",
+          "sz.300667",
+          "sz.300796",
+          "sz.300880",
+          "sz.300939",
+          "sz.301004",
+          "sz.301066"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "return_volatility": {
+              "factor_id": "BASE.RETURN_VOLATILITY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              },
+              {
+                "input": "return_volatility",
+                "op": "lt",
+                "value": 0.03
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "qfq",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      }
+    }
+  ],
+  "primary_horizon": 5,
+  "auxiliary_horizons": [
+    3,
+    10
+  ],
+  "comparison_slots": [
+    {
+      "role": "directional_efficiency",
+      "phase": "train",
+      "horizon": 3
+    },
+    {
+      "role": "directional_efficiency",
+      "phase": "train",
+      "horizon": 5
+    },
+    {
+      "role": "directional_efficiency",
+      "phase": "train",
+      "horizon": 10
+    },
+    {
+      "role": "directional_efficiency",
+      "phase": "valid",
+      "horizon": 3
+    },
+    {
+      "role": "directional_efficiency",
+      "phase": "valid",
+      "horizon": 5
+    },
+    {
+      "role": "directional_efficiency",
+      "phase": "valid",
+      "horizon": 10
+    },
+    {
+      "role": "directional_efficiency",
+      "phase": "test",
+      "horizon": 3
+    },
+    {
+      "role": "directional_efficiency",
+      "phase": "test",
+      "horizon": 5
+    },
+    {
+      "role": "directional_efficiency",
+      "phase": "test",
+      "horizon": 10
+    },
+    {
+      "role": "close_location",
+      "phase": "train",
+      "horizon": 3
+    },
+    {
+      "role": "close_location",
+      "phase": "train",
+      "horizon": 5
+    },
+    {
+      "role": "close_location",
+      "phase": "train",
+      "horizon": 10
+    },
+    {
+      "role": "close_location",
+      "phase": "valid",
+      "horizon": 3
+    },
+    {
+      "role": "close_location",
+      "phase": "valid",
+      "horizon": 5
+    },
+    {
+      "role": "close_location",
+      "phase": "valid",
+      "horizon": 10
+    },
+    {
+      "role": "close_location",
+      "phase": "test",
+      "horizon": 3
+    },
+    {
+      "role": "close_location",
+      "phase": "test",
+      "horizon": 5
+    },
+    {
+      "role": "close_location",
+      "phase": "test",
+      "horizon": 10
+    },
+    {
+      "role": "low_volatility",
+      "phase": "train",
+      "horizon": 3
+    },
+    {
+      "role": "low_volatility",
+      "phase": "train",
+      "horizon": 5
+    },
+    {
+      "role": "low_volatility",
+      "phase": "train",
+      "horizon": 10
+    },
+    {
+      "role": "low_volatility",
+      "phase": "valid",
+      "horizon": 3
+    },
+    {
+      "role": "low_volatility",
+      "phase": "valid",
+      "horizon": 5
+    },
+    {
+      "role": "low_volatility",
+      "phase": "valid",
+      "horizon": 10
+    },
+    {
+      "role": "low_volatility",
+      "phase": "test",
+      "horizon": 3
+    },
+    {
+      "role": "low_volatility",
+      "phase": "test",
+      "horizon": 5
+    },
+    {
+      "role": "low_volatility",
+      "phase": "test",
+      "horizon": 10
+    }
+  ],
+  "max_studies": 4,
+  "max_leaf_studies": 12,
+  "no_parameter_changes": true,
+  "no_independent_or_cost_claim": true,
+  "original_raw_results_not_pooled": true,
+  "no_automatic_promotion": true,
+  "status": "frozen_before_research",
+  "protocol_digest": "adfcf0e4c0ba8d2175fdc326daec9599ae8239879d4ee25c550490945ff8648e"
+}
