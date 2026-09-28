@@ -6,10 +6,12 @@ Default is dry-run only. Network access requires both --execute and
 finally, including failures.
 """
 import argparse
+import hashlib
+import importlib.metadata
 import json
 import sqlite3
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT=Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -23,6 +25,97 @@ from quantlab.data.tdx_lake import TdxLake,now
 from quantlab.data.tdx_sharding import load_worker_assignment,read_role,validate_worker_queue
 from quantlab.storage.codec import encode
 from scripts.research.retail_trades_phasea_scope import proposed_phasea_scope
+
+
+ELTDX_VERSION="3.2.2"
+ELTDX_WHEEL_SHA256="20f0a78dff4b2b7c701d288fe80db9b68b1d2662431b95af62084a45b7780b68"
+LOCAL_RUNTIME_ERROR="PackageNotFoundError: No package metadata was found for eltdx"
+
+
+def verified_eltdx_runtime(data_root:Path,*,activate:bool=False):
+    data_root=Path(data_root).resolve()
+    automation=data_root/"automation/tdx"
+    manifest_path=automation/"runtime-manifest.json"
+    runtime=automation/f"runtime-{ELTDX_VERSION}"
+    if manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size>2_000_000:
+        raise ValueError("Verified eltdx runtime manifest is unavailable")
+    if runtime.is_symlink() or not runtime.is_dir():
+        raise ValueError("Verified eltdx runtime directory is unavailable")
+    manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
+    if (manifest.get("distribution")!=f"eltdx=={ELTDX_VERSION}"
+            or manifest.get("personal_research_only") is not True
+            or manifest.get("default_application_dependency") is not False
+            or manifest.get("wheel_sha256")!=ELTDX_WHEEL_SHA256):
+        raise ValueError("Verified eltdx runtime manifest identity mismatch")
+    files=manifest.get("files")
+    if not isinstance(files,dict) or not files:
+        raise ValueError("Verified eltdx runtime manifest file inventory missing")
+    required={
+        "eltdx/__init__.py","eltdx/_native.abi3.so",
+        "eltdx-3.2.2.dist-info/METADATA","eltdx-3.2.2.dist-info/RECORD",
+    }
+    if not required <= set(files):
+        raise ValueError("Verified eltdx runtime manifest omits required runtime files")
+    checked=0
+    for relative,expected in sorted(files.items()):
+        pure=PurePosixPath(relative)
+        if pure.is_absolute() or not pure.parts or any(part in ("",".","..") for part in pure.parts):
+            raise ValueError("Unsafe eltdx runtime manifest path")
+        path=runtime.joinpath(*pure.parts)
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Verified eltdx runtime file missing: "+relative)
+        actual=hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual!=expected:
+            raise ValueError("Verified eltdx runtime file hash mismatch: "+relative)
+        checked+=1
+    if activate and str(runtime) not in sys.path:
+        sys.path.insert(0,str(runtime))
+    if activate:
+        if importlib.metadata.version("eltdx")!=ELTDX_VERSION:
+            raise ValueError("Activated eltdx runtime version mismatch")
+        import eltdx
+        module=Path(eltdx.__file__).resolve()
+        if not module.is_relative_to(runtime):
+            raise ValueError("Activated eltdx module escaped verified runtime")
+    return {
+        "runtime":str(runtime),
+        "manifest":str(manifest_path),
+        "distribution":manifest["distribution"],
+        "wheel_sha256":manifest["wheel_sha256"],
+        "files_checked":checked,
+        "activated":activate,
+    }
+
+
+def repair_local_runtime_errors(worker_root:Path,floor:str):
+    before=preflight_worker(worker_root,floor)
+    lake=TdxLake(worker_root)
+    with writer_lease(lake):
+        locked=preflight_worker(worker_root,floor,before["shard_id"])
+        if locked["assignment_id"]!=before["assignment_id"] or locked["scope_id"]!=before["scope_id"]:
+            raise ValueError("Mac serial worker identity changed before runtime-error repair")
+        with lake.db() as con:
+            con.execute("""CREATE TABLE IF NOT EXISTS retail_phasea_runtime_repair_audit(
+                event_id TEXT PRIMARY KEY,job_id TEXT NOT NULL,before_json TEXT NOT NULL,
+                repair_reason TEXT NOT NULL,repaired_at TEXT NOT NULL)""")
+            rows=[dict(r) for r in con.execute(
+                "SELECT * FROM jobs WHERE plan_id=? AND family='trades' AND state='ERROR' AND error=? ORDER BY job_id",
+                (before["plan_id"],LOCAL_RUNTIME_ERROR))]
+            for job in rows:
+                event_id=hashlib.sha256((job["job_id"]+"|"+LOCAL_RUNTIME_ERROR).encode()).hexdigest()
+                con.execute("INSERT OR IGNORE INTO retail_phasea_runtime_repair_audit VALUES (?,?,?,?,?)",
+                            (event_id,job["job_id"],encode(job),"verified-runtime-not-loaded",now()))
+                con.execute("UPDATE jobs SET state='PENDING',error=NULL,updated_at=? WHERE job_id=? AND state='ERROR' AND error=?",
+                            (now(),job["job_id"],LOCAL_RUNTIME_ERROR))
+            con.commit()
+        return {
+            "worker_root":before["worker_root"],
+            "shard_id":before["shard_id"],
+            "assignment_id":before["assignment_id"],
+            "repaired":len(rows),
+            "error_exact":LOCAL_RUNTIME_ERROR,
+            "stop_exists":(lake.base/"STOP").exists(),
+        }
 
 
 def preflight_worker(worker_root:Path,floor:str,expected_shard:int|None=None):
@@ -82,7 +175,9 @@ def preflight_worker(worker_root:Path,floor:str,expected_shard:int|None=None):
 
 
 def preflight_serial(workers_base:Path,floor:str,shards=(0,1,2)):
-    rows=[preflight_worker(Path(workers_base)/f"worker-{sid}",floor,sid) for sid in shards]
+    workers_base=Path(workers_base).resolve()
+    runtime=verified_eltdx_runtime(workers_base.parent,activate=False)
+    rows=[preflight_worker(workers_base/f"worker-{sid}",floor,sid) for sid in shards]
     if len({r["plan_id"] for r in rows})!=1 or len({r["policy_id"] for r in rows})!=1:
         raise ValueError("Mac serial workers do not share plan/policy")
     if len({r["cluster_id"] for r in rows})!=1:
@@ -101,6 +196,7 @@ def preflight_serial(workers_base:Path,floor:str,shards=(0,1,2)):
         "format":"niuniu-retail-phasea-mac-serial-preflight-v1",
         "physical_host":"macbook",
         "floor":floor,
+        "runtime":runtime,
         "shards":rows,
         "network_accessed":False,
         "stop_modified":False,
@@ -154,7 +250,10 @@ def run_worker_batch(worker_root:Path,floor:str,seconds:int,max_requests:int,max
 
 def run_serial(workers_base:Path,floor:str,shards,seconds,max_requests,max_new_gib,
                network_workers=2,request_interval=.35):
+    workers_base=Path(workers_base).resolve()
+    runtime=verified_eltdx_runtime(workers_base.parent,activate=True)
     pre=preflight_serial(workers_base,floor,tuple(shards))
+    pre["runtime"]=runtime
     results=[]
     for row in pre["shards"]:
         batch=run_worker_batch(
@@ -185,6 +284,7 @@ def main(argv=None):
     p.add_argument("--network-workers",type=int,choices=(1,2),default=2)
     p.add_argument("--request-interval",type=float,default=.35)
     p.add_argument("--execute",action="store_true")
+    p.add_argument("--repair-local-runtime-errors",action="store_true")
     p.add_argument("--personal-research-only",action="store_true")
     a=p.parse_args(argv)
     if not 10<=a.seconds_per_shard<=86400:
@@ -196,6 +296,15 @@ def main(argv=None):
     if not .2<=a.request_interval<=2:
         raise ValueError("request-interval out of bounds")
 
+    if a.repair_local_runtime_errors:
+        if not a.personal_research_only:
+            raise ValueError("--repair-local-runtime-errors requires --personal-research-only")
+        verified_eltdx_runtime(Path(a.workers_base).resolve().parent,activate=False)
+        result={"format":"niuniu-retail-phasea-runtime-error-repair-v1","repairs":[
+            repair_local_runtime_errors(Path(a.workers_base)/f"worker-{sid}",a.floor)
+            for sid in a.shards]}
+        print(encode(result))
+        return
     if not a.execute:
         print(encode(preflight_serial(a.workers_base,a.floor,tuple(a.shards))))
         return

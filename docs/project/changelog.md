@@ -2354,3 +2354,11 @@
 - 长会话与新会话的全9项+引用均达到有限上下文上限而partial，未扩大预算/执行权限。只读编号抄错均拒绝且保留（routed和fresh各一次）；其中routed的宿主验收call_id关联又发生KeyError，原失败receipt保持，另从同轮原生事件日志保存comparison-audit.json，不倒改验收。
 - 分步结论会话65ea176f-7bb5-42d6-8327-311a9989fa41在无Grant下用12工具调用再次核验三个主要5日比较和6条原始triggered指标，保存原候选假设下finding=b1d279e7-ff9d-49c2-92cb-ab069a5a163e（inconclusive）。模型读回接口省略过大正文，但含精确ID与证据引用；宿主完整ResearchMemory.get核验来源verified、claim_verified=false，不称模型看过完整正文。重复只读数值核对允许1e-12相对/1e-14绝对浮点误差，ID/计数/来源指纹必须精确；不存在改样本/重算因子。
 - native-conclusion/acceptance.json通过：2原研究任务/8实验归档、冻结输入/假设/此前九项证据字节保持，Grant关闭，无新研究/自动入池/订单。仅完成第一个原生候选的已见数据探索，正式未见覆盖、统计检验族与成本评价仍待另定，失败和限制保留。提交/主线整合/推送与证据复制以最终delivery回执为准。
+
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Phase A Mac-only 首轮真实 smoke 的 eltdx runtime 修复
+
+- Mac-only 0→1→2 三逻辑shard首轮真实smoke各给200个请求预算；三个worker的STOP均由serial runner在批次结束后恢复，AUTO_HALT未触发。600个请求均未形成有效网络页，错误统一为 PackageNotFoundError: No package metadata was found for eltdx；原有 ProtocolError: invalid historical ticks payload 继续保留，未被归并或覆盖。该轮证明问题在Mac主.venv没有挂载数据根中已经独立验证的eltdx运行时，而不是TDX数据或分片合同本身。
+- 数据根已有隔离 eltdx==3.2.2：automation/tdx/runtime-3.2.2 与 runtime-manifest.json。新增 verified_eltdx_runtime：执行前校验manifest身份、personal-research-only边界、固定wheel SHA及211个文件逐个SHA，确认所需metadata/native文件存在后才把该runtime加入本进程 sys.path；不把eltdx写入项目默认依赖。
+- 新增 repair_local_runtime_errors，只把error字段精确等于上述PackageNotFoundError的trades任务恢复为PENDING，并写审计表；ProtocolError等真实数据/协议错误保持ERROR。新增CLI --repair-local-runtime-errors --personal-research-only，默认仍不联网。
+- 新增runtime manifest激活与“只修本地runtime错误、不碰ProtocolError”两项测试。focused测试23项全部PASS；TDX scheduler/lake/distributed/PhaseA/V2完整相关回归89项全部PASS。真实runtime manifest当前校验211文件通过。修复提交后将先做exact repair，再重跑小流量smoke；未验证成功网络页前不扩大Phase A。

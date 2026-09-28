@@ -1,4 +1,6 @@
+import hashlib
 import json
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -17,7 +19,10 @@ from scripts.research.retail_trades_backfill_plan import (
 from scripts.research.retail_trades_phasea_scope import (
     PHASEA_EXCLUDED,apply_reviewed_scope,build_preview,proposed_phasea_scope,
 )
-from scripts.research.retail_trades_mac_serial import run_worker_batch
+from scripts.research.retail_trades_mac_serial import (
+    ELTDX_WHEEL_SHA256,LOCAL_RUNTIME_ERROR,repair_local_runtime_errors,
+    run_worker_batch,verified_eltdx_runtime,
+)
 
 
 class RetailTradesBackfillPlanTests(unittest.TestCase):
@@ -198,6 +203,70 @@ class RetailTradesBackfillPlanTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,"synthetic runner failure"):
                 run_worker_batch(self.worker,"2026-01-10",10,1,1,network_workers=1)
         self.assertTrue((lake.base/"STOP").exists())
+
+    def test_verified_runtime_manifest_and_activation(self):
+        data=Path(self.tmp.name)/"runtime-data"
+        runtime=data/"automation/tdx/runtime-3.2.2"
+        runtime.mkdir(parents=True)
+        files={
+            "eltdx/__init__.py":b"",
+            "eltdx/_native.abi3.so":b"synthetic-native",
+            "eltdx-3.2.2.dist-info/METADATA":(
+                b"Metadata-Version: 2.1\nName: eltdx\nVersion: 3.2.2\n"),
+            "eltdx-3.2.2.dist-info/RECORD":b"",
+        }
+        inventory={}
+        for relative,payload in files.items():
+            path=runtime/relative
+            path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_bytes(payload)
+            inventory[relative]=hashlib.sha256(payload).hexdigest()
+        manifest={
+            "distribution":"eltdx==3.2.2",
+            "personal_research_only":True,
+            "default_application_dependency":False,
+            "wheel_sha256":ELTDX_WHEEL_SHA256,
+            "files":inventory,
+        }
+        manifest_path=data/"automation/tdx/runtime-manifest.json"
+        manifest_path.write_text(json.dumps(manifest))
+        result=verified_eltdx_runtime(data,activate=True)
+        self.assertEqual(result["distribution"],"eltdx==3.2.2")
+        self.assertEqual(result["files_checked"],4)
+        self.assertTrue(result["activated"])
+        runtime_text=str(runtime.resolve())
+        self.addCleanup(lambda: sys.path.remove(runtime_text) if runtime_text in sys.path else None)
+        self.addCleanup(lambda: sys.modules.pop("eltdx",None))
+
+    def test_runtime_error_repair_is_exact_and_preserves_protocol_error(self):
+        lake,job_id,old=self.prepare_phasea_worker()
+        preview=build_preview(self.worker,"2026-01-10")
+        apply_reviewed_scope(
+            self.worker,"2026-01-10",preview["proposed_scope"]["scope_id"],
+            old["scope_id"],preview["queue_snapshot"])
+        protocol_id=lake.enqueue(
+            self.pid,"trades","sz.000001","2026-01-24",0,priority=100)
+        with lake.db() as con:
+            con.execute(
+                "UPDATE jobs SET state='ERROR',error=? WHERE job_id=?",
+                (LOCAL_RUNTIME_ERROR,job_id))
+            con.execute(
+                "UPDATE jobs SET state='ERROR',error=? WHERE job_id=?",
+                ("ProtocolError: invalid historical ticks payload",protocol_id))
+            con.commit()
+        result=repair_local_runtime_errors(self.worker,"2026-01-10")
+        self.assertEqual(result["repaired"],1)
+        self.assertTrue(result["stop_exists"])
+        with lake.db(readonly=True) as con:
+            rows={r["job_id"]:dict(r) for r in con.execute(
+                "SELECT * FROM jobs WHERE job_id IN (?,?)",(job_id,protocol_id))}
+            audit=con.execute(
+                "SELECT count(*) FROM retail_phasea_runtime_repair_audit").fetchone()[0]
+        self.assertEqual(rows[job_id]["state"],"PENDING")
+        self.assertIsNone(rows[job_id]["error"])
+        self.assertEqual(rows[protocol_id]["state"],"ERROR")
+        self.assertEqual(rows[protocol_id]["error"],"ProtocolError: invalid historical ticks payload")
+        self.assertEqual(audit,1)
 
     def test_build_plan_is_dry_run_and_lifecycle_bounded(self):
         queue=self.worker/"catalog/tdx_ingestion.sqlite3"
