@@ -141,7 +141,7 @@ result.to_dict()   # 可直接 JSON 序列化
 - 除权除息日的 `previous_close` 是交易所的除权参考价，不等于前一日K线收盘价（例：600160 在 2026-09-24 除息，昨收 34.83，不是 35.05）。
 - 东方财富对同一出口 IP 请求过密会断开连接，此时靠腾讯、新浪两家仍能形成一致结果。接口内东财按每批 100 只、间隔 1.5 秒串行请求。
 
-**已实测：**收盘后的收盘价，覆盖普通股、科创板、北交所、停牌股、当日除息股，一次最多 200 只。扶摇与三家公开行情的现价、昨收、成交量一致。**盘中（集合竞价、连续竞价、涨跌停封单）尚未实测**，DATA 下一交易日（2026-09-28）开盘后补测，结果写在这里。
+**已实测：**收盘后的收盘价，覆盖普通股、科创板、北交所、停牌股、当日除息股，一次最多 200 只。扶摇与三家公开行情的现价、昨收、成交量一致。**盘中实测（2026-09-28 连续竞价 09:36–09:37）**：普通股、科创板、北交所、封死涨停 3 只、封死跌停 2 只，共 9 只，扶摇与腾讯、东财、新浪四源现价全部一致；封板股 `execution_profile=QUEUE_DEPENDENT`（涨停封单时卖一为空、跌停时买一为空），其余 `STANDARD_ACCESS`；各源报价时刻与抓取时刻相差 0–3 秒，一次 9 只约 1.5 秒（纯公开三源约 0.8 秒）。集合竞价时段（`AUCTION`，09:15–09:25）当天未赶上测试，留待下一交易日补测。
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
 |---|---|---|---|---|---|---|---|
@@ -183,12 +183,12 @@ result.to_dict()   # 可直接 JSON 序列化
 - 板块榜：概念 390 个加行业 320 个共 710 个，全部返回，约 4 秒。
 - 新能源汽车板块 1,065 只成分股：第一次约 7 秒，之后每次 2–5 秒，1,061 只与公开行情一致，4 只当日零成交。
 - 涨停、炸板与扶摇池对照一致。
-- **尚未实测的只有盘中表现**：交易时段扶摇多久更新一次、集合竞价时返回什么、整天按 10 秒/5 秒刷新是否限流、封板股判断。DATA 于下一交易日（2026-09-28，中秋休市后）盘中实测，结果写在这里；发现问题会修，严重时改回 `REVIEW_REQUIRED`。在此之前页面请照实显示 `as_of`、`age_seconds` 和 `stale`，延迟大时用户能直接看到。
+- **盘中实测（2026-09-28）**：09:37–09:38 按 10 秒刷新板块榜 5 次、按 5 秒刷新成分股 4 次，没有限流或报错；板块榜每次约 1 秒（首次 3.4 秒），710 个板块完整，`as_of` 与抓取时刻相差不到 1 秒（`age_seconds` 0–0.01）；成分股每次 0.2–2 秒，`age_seconds` 0–2 秒。成分股里的涨停、炸板判断与扶摇涨停池一致（`limit_check=agree`）。盘中记录器 09:17 起每分钟一条，集合竞价阶段 `market_status=OPENING_AUCTION`，之后为 `TRADING`，没有失败或断档。
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
 |---|---|---|---|---|---|---|---|
-| `sector_board_snapshot` | API | 同花顺概念、行业板块行情榜 | `SectorIntradayProvider.board_snapshot(types=["concept","industry"])`；采样走势用 `board_series(code)` | 每个板块：`code, name, type(concept/industry), last, change, change_pct, amount, volume, previous_close, open, high, low, as_of, constituent_count, board_class, label_reason`，按涨跌幅从高到低；整体：`as_of, age_seconds, market_status, completeness, missing, counts, cache, stale, constituent_counts_date, board_class_version` | 盘中看盘与 AI 解读。`market_status` 取值：`PREOPEN / OPENING_AUCTION / TRADING / MIDDAY_BREAK / CLOSING_AUCTION / CLOSED / NON_TRADING_DAY`。盘中延迟未实测，见上 | `READY` | 10 秒刷新；显示 `as_of`、`age_seconds`，`stale=true` 时标明是旧数据 |
-| `sector_board_members` | API | 单个板块的当前成分股行情 | `SectorIntradayProvider.board_members(code)`，`code` 取自板块榜 | 每只：`symbol, name, last, change_pct, amount, volume, previous_close, open, high, low, as_of, status(trading/no_trade_today/withheld_source_mismatch), limit_status, limit_up_price, limit_down_price, limit_check, cross_check`；整体同上，另有 `counts`（涨停/跌停/炸板/暂不输出只数） | 当前成分，不代表历史成分。盘中延迟未实测，见上 | `READY` | 只刷新用户打开的那个板块，5 秒刷新；`withheld_source_mismatch` 的股票不显示价格 |
+| `sector_board_snapshot` | API | 同花顺概念、行业板块行情榜 | `SectorIntradayProvider.board_snapshot(types=["concept","industry"])`；采样走势用 `board_series(code)` | 每个板块：`code, name, type(concept/industry), last, change, change_pct, amount, volume, previous_close, open, high, low, as_of, constituent_count, board_class, label_reason`，按涨跌幅从高到低；整体：`as_of, age_seconds, market_status, completeness, missing, counts, cache, stale, constituent_counts_date, board_class_version` | 盘中看盘与 AI 解读。`market_status` 取值：`PREOPEN / OPENING_AUCTION / TRADING / MIDDAY_BREAK / CLOSING_AUCTION / CLOSED / NON_TRADING_DAY`。2026-09-28 盘中实测延迟 0–2 秒、10 秒/5 秒刷新不限流，见上 | `READY` | 10 秒刷新；显示 `as_of`、`age_seconds`，`stale=true` 时标明是旧数据 |
+| `sector_board_members` | API | 单个板块的当前成分股行情 | `SectorIntradayProvider.board_members(code)`，`code` 取自板块榜 | 每只：`symbol, name, last, change_pct, amount, volume, previous_close, open, high, low, as_of, status(trading/no_trade_today/withheld_source_mismatch), limit_status, limit_up_price, limit_down_price, limit_check, cross_check`；整体同上，另有 `counts`（涨停/跌停/炸板/暂不输出只数） | 当前成分，不代表历史成分。2026-09-28 盘中实测延迟 0–2 秒、10 秒/5 秒刷新不限流，见上 | `READY` | 只刷新用户打开的那个板块，5 秒刷新；`withheld_source_mismatch` 的股票不显示价格 |
 | `sector_board_constituents` | FILE | 同花顺概念、行业板块的每日成分快照 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_constituents/date=YYYY-MM-DD.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每行一个（板块, 股票）：`board_code, board_name, board_type, symbol, name, observed_at` | 当天的当前成分，不代表历史成分。2026-09-24 起，710 个板块、80,701 行。由盘中记录器在开盘前、午休和每分钟的空闲时间分段刷新（不耽误板块记录），收盘后日常更新也会补做当天的；两者都没运行的日子沿用上一天 | `READY` | 要查“某只股票属于哪些板块”时读这里；板块成分行情仍用 `sector_board_members` |
 | `sector_board_intraday` | FILE | 盘中每分钟的全部板块行情记录 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=fuyao/sector_board_intraday/date=YYYY-MM-DD/HHMMSS.parquet`，回执在 `_receipts/YYYY-MM-DD.json` | 每个文件是一分钟的全部板块，列同 `sector_board_snapshot` 的板块行，另有 `market_status, snapshot_as_of, stale` | 需要 Mac 在交易时间运行记录器（`artifacts/run-sector-recorder.command`），没运行的时段没有数据，也不能补；同一时间只允许一个记录器（`catalog/jobs/sector_recorder.lock`），第二个会直接退出 | `NOT_READY` | 有了首日数据并核对后改 `READY` |
 
