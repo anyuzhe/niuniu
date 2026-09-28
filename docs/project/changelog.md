@@ -2384,3 +2384,11 @@
 - 主要5日条件收益差（百分点）收盘位置−0.17906254/−0.09261220/+0.25583507，低波动−0.03494599/+0.15254191/−0.00560191；对应MAE差−0.04146224/−0.22234621/+0.19357989及+0.00090042/+0.41652122/+0.22401808。全部3/10辅助结果保留，未依据表现改机制/阈值/样本。无p值/成本/独立盲测；低波动风险差异不能等同独立Alpha。
 - finding 7ff8c4c6-e3e7-4f84-8f08-d87c860391d8与46b23027-b67e-45ca-931f-b1d13b3f5690均为inconclusive模型草稿、来源verified但claim_verified=false。所有结果整理前后研究/输入/源码SHA不变、Grant关闭、无自动入池/实盘。证据artifacts/dip-factor-round2-20260928，主线合入与最终128项范围回归另外核对，不把并行WIP列入本任务验收。
 - 独立集成到main已提交003cf1bd的12路径，无源码冲突；changelog保留最新上游全文并追加本任务尾部。完整重跑13模块128唯一测试全部PASS，0失败/错误/跳过，前后hash=bc891a8f295536561e6ef340c91abc5a9c7d1e88b1adb6cb70f54264cfa65b66；不与前128累加。main未提交采集说明仍须按SHA/三路合并保护，不代提交；普通推送和最终一致性另有delivery receipt。
+
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Phase A 恢复已退役的分页前置页
+
+- eltdx runtime 修复后，三逻辑shard各20次真实请求均 network_errors=0，并产生新的SAVED/EMPTY；STOP均自动恢复。shard0另出现1条 ValueError: TDX page bytes not found，定位为 sh.688786 / 2026-09-16 / offset=1800：其精确前一页offset=0仍是SAVED且worker/canonical publication完全一致，但worker本地page目录已被压缩/退役。
+- canonical 对该前页保留完整page archive：source_id、1800行、raw/parquet/manifest三份SHA及原始字节都存在。因此新增 repair_missing_preceding_archives：仅处理精确 missing-page ERROR；要求worker assignment属于同一canonical coordinator，worker SAVED job/publication、canonical job/publication、canonical archive与原始response job_id/source_id/row count全部一致。
+- 修复不重新下载前页、不伪造checkpoint；它把canonical已验证的原始page archive字节复制到worker自己的page archive，随后重新调用原 page_source.verify，再把当前失败job精确恢复为PENDING并写 retail_phasea_archive_restore_audit。任何身份/hash/游标冲突均fail-closed，ProtocolError等其他错误不处理。
+- 新增合成端到端测试：canonical压缩页、worker删除同一页本地目录、当前分页任务制造精确缺页ERROR；修复后worker从archive读取同一manifest且当前job回PENDING。focused测试24项、TDX scheduler/lake/distributed/PhaseA/V2完整相关回归90项全部PASS。真实数据只会在该修复提交发布后执行。

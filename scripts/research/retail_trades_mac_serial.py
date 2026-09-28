@@ -6,6 +6,7 @@ Default is dry-run only. Network access requires both --execute and
 finally, including failures.
 """
 import argparse
+import gzip
 import hashlib
 import importlib.metadata
 import json
@@ -21,7 +22,7 @@ from quantlab.agent.tdx_collection_cli import (
     AUTO_HALT,Runner,apply_collection_scope,load_collection_scope,
     load_scheduler_policy,recover_for_resume,writer_lease,
 )
-from quantlab.data.tdx_lake import TdxLake,now
+from quantlab.data.tdx_lake import TdxLake,digest,now,rows_for
 from quantlab.data.tdx_sharding import load_worker_assignment,read_role,validate_worker_queue
 from quantlab.storage.codec import encode
 from scripts.research.retail_trades_phasea_scope import proposed_phasea_scope
@@ -30,6 +31,7 @@ from scripts.research.retail_trades_phasea_scope import proposed_phasea_scope
 ELTDX_VERSION="3.2.2"
 ELTDX_WHEEL_SHA256="20f0a78dff4b2b7c701d288fe80db9b68b1d2662431b95af62084a45b7780b68"
 LOCAL_RUNTIME_ERROR="PackageNotFoundError: No package metadata was found for eltdx"
+MISSING_PRECEDING_BYTES_ERROR="ValueError: TDX page bytes not found"
 
 
 def verified_eltdx_runtime(data_root:Path,*,activate:bool=False):
@@ -116,6 +118,150 @@ def repair_local_runtime_errors(worker_root:Path,floor:str):
             "error_exact":LOCAL_RUNTIME_ERROR,
             "stop_exists":(lake.base/"STOP").exists(),
         }
+
+
+def repair_missing_preceding_archives(worker_root:Path,canonical_root:Path,floor:str):
+    before=preflight_worker(worker_root,floor)
+    worker=TdxLake(worker_root)
+    canonical=TdxLake(canonical_root)
+    coordinator_role=read_role(canonical)
+    if not coordinator_role or coordinator_role.get("role")!="coordinator":
+        raise ValueError("Canonical TDX coordinator role is required for archive repair")
+    cluster=coordinator_role.get("cluster") or {}
+    if (cluster.get("cluster_id")!=before["cluster_id"]
+            or cluster.get("plan_id")!=before["plan_id"]
+            or cluster.get("policy_id")!=before["policy_id"]):
+        raise ValueError("Canonical coordinator identity differs from worker")
+    registered={a.get("assignment_id") for a in cluster.get("assignments",[])}
+    if before["assignment_id"] not in registered:
+        raise ValueError("Worker assignment is not registered by canonical coordinator")
+
+    repaired=[]
+    with writer_lease(worker):
+        locked=preflight_worker(worker_root,floor,before["shard_id"])
+        if locked["assignment_id"]!=before["assignment_id"] or locked["scope_id"]!=before["scope_id"]:
+            raise ValueError("Mac serial worker identity changed before archive repair")
+        with worker.db(readonly=True) as con:
+            failed=[dict(r) for r in con.execute(
+                "SELECT * FROM jobs WHERE plan_id=? AND family='trades' AND state='ERROR' AND error=? ORDER BY job_id",
+                (before["plan_id"],MISSING_PRECEDING_BYTES_ERROR))]
+        worker.initialize_archive()
+
+        for current in failed:
+            if not current["offset"]:
+                raise ValueError("Missing-page repair requires a paginated trade job")
+            with worker.db(readonly=True) as con:
+                previous=con.execute(
+                    """SELECT * FROM jobs
+                       WHERE plan_id=? AND family=? AND symbol=? AND day=? AND offset<?
+                         AND state='SAVED' AND chunk IS NOT NULL
+                       ORDER BY offset DESC LIMIT 1""",
+                    (current["plan_id"],current["family"],current["symbol"],current["day"],current["offset"])).fetchone()
+                publication=con.execute(
+                    """SELECT * FROM publications
+                       WHERE plan_id=? AND family=? AND symbol=? AND day=?
+                       ORDER BY observed_at DESC""",
+                    (current["plan_id"],current["family"],current["symbol"],current["day"])).fetchall()
+            if previous is None:
+                raise ValueError("Missing-page repair found no preceding SAVED job")
+            previous=dict(previous)
+            if previous["offset"]+previous["rows"]!=current["offset"] or not previous["rows"]:
+                raise ValueError("Missing-page repair preceding cursor is not exact")
+            sid=PurePosixPath(previous["chunk"].replace("\\","/")).name
+            if len(sid)!=64 or any(c not in "0123456789abcdef" for c in sid):
+                raise ValueError("Missing-page repair source identity invalid")
+            matching=[dict(row) for row in publication if row["source_id"]==sid]
+            if len(matching)!=1:
+                raise ValueError("Missing-page repair worker publication identity missing")
+            worker_pub=matching[0]
+            for key in ("plan_id","family","symbol","day","rows","chunk"):
+                if worker_pub[key]!=previous[key]:
+                    raise ValueError("Missing-page repair worker publication/job mismatch")
+
+            with canonical.db(readonly=True) as con:
+                canonical_job=con.execute("SELECT * FROM jobs WHERE job_id=?",(previous["job_id"],)).fetchone()
+                canonical_pub=con.execute("SELECT * FROM publications WHERE source_id=?",(sid,)).fetchone()
+            if canonical_job is None or canonical_pub is None:
+                raise ValueError("Missing-page repair canonical job/publication missing")
+            canonical_job=dict(canonical_job);canonical_pub=dict(canonical_pub)
+            for key in ("job_id","plan_id","family","symbol","day","offset","rows","chunk"):
+                if canonical_job[key]!=previous[key]:
+                    raise ValueError("Missing-page repair canonical job mismatch")
+            if canonical_job["state"]!="SAVED":
+                raise ValueError("Missing-page repair canonical preceding job is not SAVED")
+            for key in ("source_id","plan_id","family","symbol","day","rows","chunk"):
+                if canonical_pub[key]!=worker_pub[key]:
+                    raise ValueError("Missing-page repair canonical publication mismatch")
+
+            with canonical.archive_db(readonly=True) as con:
+                archive=con.execute("SELECT * FROM page_archive WHERE source_id=? AND family=?",(sid,current["family"])).fetchone()
+            if archive is None:
+                raise ValueError("Missing-page repair canonical archive missing")
+            archive=dict(archive)
+            raw=bytes(archive["raw_bytes"]);parquet=bytes(archive["parquet_bytes"]);manifest_bytes=bytes(archive["manifest_bytes"])
+            if (hashlib.sha256(raw).hexdigest()!=archive["raw_sha256"]
+                    or hashlib.sha256(parquet).hexdigest()!=archive["parquet_sha256"]
+                    or hashlib.sha256(manifest_bytes).hexdigest()!=archive["manifest_sha256"]
+                    or archive["rows"]!=previous["rows"]):
+                raise ValueError("Missing-page repair canonical archive hash/row mismatch")
+            canonical_source=canonical.page_source(current["family"],sid,canonical_pub["chunk"])
+            manifest=canonical_source.verify()
+            if manifest.get("rows")!=previous["rows"] or manifest.get("source_id")!=sid:
+                raise ValueError("Missing-page repair canonical manifest mismatch")
+            payload=json.loads(gzip.decompress(raw))
+            request=payload.get("request") or {}
+            result=payload.get("result")
+            parsed=rows_for(current["family"],result)
+            if (request.get("job_id")!=previous["job_id"] or len(parsed)!=previous["rows"]
+                    or digest({"job":previous["job_id"],"body":result})!=sid):
+                raise ValueError("Missing-page repair canonical response identity mismatch")
+
+            with worker.archive_db() as con:
+                existing=con.execute(
+                    "SELECT family,raw_sha256,parquet_sha256,manifest_sha256,rows FROM page_archive WHERE source_id=?",
+                    (sid,)).fetchone()
+                identity=(archive["family"],archive["raw_sha256"],archive["parquet_sha256"],archive["manifest_sha256"],archive["rows"])
+                if existing is not None and tuple(existing)!=identity:
+                    raise ValueError("Missing-page repair worker archive conflict")
+                if existing is None:
+                    con.execute(
+                        "INSERT INTO page_archive VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (archive["source_id"],archive["family"],raw,parquet,manifest_bytes,
+                         archive["raw_sha256"],archive["parquet_sha256"],archive["manifest_sha256"],
+                         archive["rows"],archive["archived_at"]))
+                    con.commit()
+            restored=worker.page_source(current["family"],sid,previous["chunk"]).verify()
+            if restored!=manifest:
+                raise ValueError("Missing-page repair restored manifest differs from canonical")
+
+            with worker.db() as con:
+                con.execute("""CREATE TABLE IF NOT EXISTS retail_phasea_archive_restore_audit(
+                    event_id TEXT PRIMARY KEY,failed_job_id TEXT NOT NULL,previous_job_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,before_json TEXT NOT NULL,canonical_hashes_json TEXT NOT NULL,
+                    restored_at TEXT NOT NULL)""")
+                event_id=hashlib.sha256((current["job_id"]+"|"+sid+"|canonical-archive-v1").encode()).hexdigest()
+                hashes={k:archive[k] for k in ("raw_sha256","parquet_sha256","manifest_sha256","rows")}
+                con.execute(
+                    "INSERT OR IGNORE INTO retail_phasea_archive_restore_audit VALUES (?,?,?,?,?,?,?)",
+                    (event_id,current["job_id"],previous["job_id"],sid,encode(current),encode(hashes),now()))
+                changed=con.execute(
+                    "UPDATE jobs SET state='PENDING',error=NULL,updated_at=? WHERE job_id=? AND state='ERROR' AND error=?",
+                    (now(),current["job_id"],MISSING_PRECEDING_BYTES_ERROR)).rowcount
+                con.commit()
+            if changed!=1:
+                raise ValueError("Missing-page repair failed to requeue exact failed job")
+            repaired.append({"failed_job_id":current["job_id"],"previous_job_id":previous["job_id"],"source_id":sid})
+    return {
+        "worker_root":before["worker_root"],
+        "shard_id":before["shard_id"],
+        "assignment_id":before["assignment_id"],
+        "canonical_root":str(Path(canonical_root).resolve()),
+        "repaired":len(repaired),
+        "pages":repaired,
+        "error_exact":MISSING_PRECEDING_BYTES_ERROR,
+        "stop_exists":(worker.base/"STOP").exists(),
+        "network_accessed":False,
+    }
 
 
 def preflight_worker(worker_root:Path,floor:str,expected_shard:int|None=None):
@@ -285,6 +431,7 @@ def main(argv=None):
     p.add_argument("--request-interval",type=float,default=.35)
     p.add_argument("--execute",action="store_true")
     p.add_argument("--repair-local-runtime-errors",action="store_true")
+    p.add_argument("--repair-missing-preceding-archives",action="store_true")
     p.add_argument("--personal-research-only",action="store_true")
     a=p.parse_args(argv)
     if not 10<=a.seconds_per_shard<=86400:
@@ -302,6 +449,15 @@ def main(argv=None):
         verified_eltdx_runtime(Path(a.workers_base).resolve().parent,activate=False)
         result={"format":"niuniu-retail-phasea-runtime-error-repair-v1","repairs":[
             repair_local_runtime_errors(Path(a.workers_base)/f"worker-{sid}",a.floor)
+            for sid in a.shards]}
+        print(encode(result))
+        return
+    if a.repair_missing_preceding_archives:
+        if not a.personal_research_only:
+            raise ValueError("--repair-missing-preceding-archives requires --personal-research-only")
+        canonical_root=Path(a.workers_base).resolve().parent
+        result={"format":"niuniu-retail-phasea-archive-restore-v1","repairs":[
+            repair_missing_preceding_archives(Path(a.workers_base)/f"worker-{sid}",canonical_root,a.floor)
             for sid in a.shards]}
         print(encode(result))
         return

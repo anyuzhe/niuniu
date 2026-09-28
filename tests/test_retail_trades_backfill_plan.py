@@ -1,9 +1,11 @@
 import hashlib
 import json
+import shutil
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 from pathlib import Path
 
 import duckdb
@@ -11,6 +13,7 @@ import duckdb
 from quantlab.agent.tdx_collection_cli import (
     COLLECTION_SCOPE,POLICY_FORMAT,SCHEDULER_POLICY,SCOPE_FORMAT,apply_collection_scope,
 )
+from quantlab.agent.tdx_storage import compact_storage
 from quantlab.data.tdx_lake import FAMILIES,TdxLake,digest,write_json
 from quantlab.data.tdx_sharding import ROLE_FILE,make_assignment,sealed
 from scripts.research.retail_trades_backfill_plan import (
@@ -20,7 +23,8 @@ from scripts.research.retail_trades_phasea_scope import (
     PHASEA_EXCLUDED,apply_reviewed_scope,build_preview,proposed_phasea_scope,
 )
 from scripts.research.retail_trades_mac_serial import (
-    ELTDX_WHEEL_SHA256,LOCAL_RUNTIME_ERROR,repair_local_runtime_errors,
+    ELTDX_WHEEL_SHA256,LOCAL_RUNTIME_ERROR,MISSING_PRECEDING_BYTES_ERROR,
+    repair_local_runtime_errors,repair_missing_preceding_archives,
     run_worker_batch,verified_eltdx_runtime,
 )
 
@@ -267,6 +271,78 @@ class RetailTradesBackfillPlanTests(unittest.TestCase):
         self.assertEqual(rows[protocol_id]["state"],"ERROR")
         self.assertEqual(rows[protocol_id]["error"],"ProtocolError: invalid historical ticks payload")
         self.assertEqual(audit,1)
+
+    def test_missing_preceding_archive_repair_restores_exact_canonical_page(self):
+        worker,job_id,old=self.prepare_phasea_worker()
+        preview=build_preview(self.worker,"2026-01-10")
+        apply_reviewed_scope(
+            self.worker,"2026-01-10",preview["proposed_scope"]["scope_id"],
+            old["scope_id"],preview["queue_snapshot"])
+        with worker.db(readonly=True) as con:
+            previous=dict(con.execute("SELECT * FROM jobs WHERE job_id=?",(job_id,)).fetchone())
+        packet={
+            "exchange":"sh","code":"600000","trading_date":"2026-01-25",
+            "ticks":[{"trade_datetime":"2026-01-25T09:30:00","event_kind":"trade",
+                      "side":"buy","price":10.0,"volume":2,"order_count":1}],
+        }
+        roomy=SimpleNamespace(free=100*1024**3)
+        with patch("quantlab.data.tdx_lake.shutil.disk_usage",return_value=roomy):
+            manifest,_=worker.save_page(previous,packet,observed_at="2026-01-26T00:00:00+00:00")
+        sid=manifest["source_id"]
+
+        canonical_root=Path(self.tmp.name)/"archive-canonical"
+        canonical_root.mkdir()
+        canonical=TdxLake(canonical_root,create=True)
+        plan=worker.plan(self.pid)
+        self.assertEqual(canonical.add_plan(plan),self.pid)
+        write_json(canonical.base/"active-plan.json",{"plan_id":self.pid})
+        policy=json.loads((worker.base/SCHEDULER_POLICY).read_text())
+        write_json(canonical.base/SCHEDULER_POLICY,policy)
+        role=json.loads((worker.base/ROLE_FILE).read_text())
+        assignment=role["assignment"]
+        cluster=sealed({
+            "format":"tdx-distributed-cluster-v1","cluster_id":assignment["cluster_id"],
+            "plan_id":self.pid,"policy_id":policy["policy_id"],
+            "shard_algorithm":"sha256-utf8-symbol-mod-v1","shard_count":1,
+            "assignments":[assignment],"history_complete":False,
+        })
+        write_json(canonical.base/ROLE_FILE,sealed({
+            "role":"coordinator","cluster":cluster,"created_at":"2026-01-26T00:00:00+00:00"}))
+        canonical.enqueue(self.pid,"trades","sh.600000","2026-01-25",0,priority=100)
+        with canonical.db(readonly=True) as con:
+            cjob=dict(con.execute("SELECT * FROM jobs WHERE job_id=?",(job_id,)).fetchone())
+        with patch("quantlab.data.tdx_lake.shutil.disk_usage",return_value=roomy):
+            cmanifest,_=canonical.save_page(cjob,packet,observed_at="2026-01-26T00:00:00+00:00")
+        self.assertEqual(cmanifest["source_id"],sid)
+        (canonical.base/"STOP").write_text("test stop\n")
+        with patch("quantlab.agent.tdx_storage.shutil.disk_usage",return_value=roomy):
+            self.assertEqual(compact_storage(canonical,families=("trades",),batch_pages=10)["compacted_pages"],1)
+        self.assertIsNone(canonical.page_source("trades",sid).folder)
+
+        worker_folder=worker.page_source("trades",sid).folder
+        self.assertIsNotNone(worker_folder)
+        shutil.rmtree(worker_folder)
+        with self.assertRaisesRegex(ValueError,"page bytes not found"):
+            worker.page_source("trades",sid,previous["chunk"])
+
+        failed_id=worker.enqueue(self.pid,"trades","sh.600000","2026-01-25",1,priority=100)
+        with worker.db() as con:
+            con.execute("UPDATE jobs SET state='ERROR',error=? WHERE job_id=?",
+                        (MISSING_PRECEDING_BYTES_ERROR,failed_id))
+            con.commit()
+        result=repair_missing_preceding_archives(self.worker,canonical_root,"2026-01-10")
+        self.assertEqual(result["repaired"],1)
+        self.assertEqual(result["pages"][0]["source_id"],sid)
+        restored=worker.page_source("trades",sid,previous["chunk"])
+        self.assertIsNone(restored.folder)
+        self.assertEqual(restored.verify(),canonical.page_source("trades",sid).verify())
+        with worker.db(readonly=True) as con:
+            failed=dict(con.execute("SELECT * FROM jobs WHERE job_id=?",(failed_id,)).fetchone())
+            audit=con.execute("SELECT count(*) FROM retail_phasea_archive_restore_audit").fetchone()[0]
+        self.assertEqual(failed["state"],"PENDING")
+        self.assertIsNone(failed["error"])
+        self.assertEqual(audit,1)
+        self.assertTrue((worker.base/"STOP").exists())
 
     def test_build_plan_is_dry_run_and_lifecycle_bounded(self):
         queue=self.worker/"catalog/tdx_ingestion.sqlite3"
