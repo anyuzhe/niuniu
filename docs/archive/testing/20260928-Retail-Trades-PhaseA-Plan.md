@@ -264,3 +264,34 @@ worker-1/2 Phase-A preview 初次在大 ORDER BY job_id 查询上触发 sqlite3 
 ### Windows 节点
 
 HomePc/601 不再是 Mac-only Phase A 的启动前置条件。Windows 601 之前写入的 reviewed scope 仍保持 STOP，不参与本轮；后续 Mac-only 不再操作 Windows 数据。V2 0.2 shard-aware coverage gate保证物理采集迁移到一台Mac后，最终canonical仍必须三个逻辑shard都达到覆盖阈值才允许推断。
+
+## 2026-09-28 Mac-only真实采集与主库验收
+
+本节是后续真实执行结果，不覆盖上文各阶段当时的“尚未执行”记录。执行版本95d0422，隔离eltdx接线修复afa934a已包含在内。前置页恢复针对sh.688786 / 2026-09-16：worker丢失的是本地页副本，canonical仍有相同source_id、1800行与三份原始字节SHA；恢复后精确分页为0→1800→2227（最后EMPTY），不重新请求原第一页、不改变历史错误证据。
+
+### 本次有界批次
+
+物理主机仅MacBook。worker标签homepc/601只是既有逻辑assignment名称，不代表调用对应Windows电脑。日期下限2026-08-21、trades-only、0.35秒请求间隔、每组500请求预算保持。
+
+| 逻辑分组 | 请求页数 | 新增逐笔行数 | 非空页 | 空响应页 | 网络错误 |
+|---|---:|---:|---:|---:|---:|
+| 0 | 500 | 426881 | 325 | 175 | 0 |
+| 1 | 500 | 283618 | 268 | 232 | 0 |
+| 2 | 500 | 305992 | 270 | 230 | 0 |
+| 合计 | 1500 | 1016491 | 863 | 637 | 0 |
+
+原236条ProtocolError（69/76/91）的job_id、state、error、attempts、updated_at在验收中逐项比对保持。三个批次因REQUEST_BUDGET正常结束，STOP全部恢复，无RUNNING/STORED，无AUTO_HALT。零新增网络错误不等于历史数据已经没有问题。
+
+### 主库接收与字节验证
+
+三个worker使用原export/import/ack链完成本地合并；本次明确锁定的1500个trades source_id全部出现在canonical publications，证券、日期、行数、观察时间和计划等metadata与worker完全一致。对应bundle在canonical有同SHA和sequence_no的导入记录，worker acked=1。随后仅对trades执行compaction，本次归档1500页、1016491行、原始文件逻辑字节61969265。
+
+独立只读验收重新计算每个归档的raw、Parquet、manifest SHA，共4500个字节哈希，并重新核对manifest checksum及source_id/family/rows。主库trades publication总行数从14517661增至15534152，新增精确为1016491；compacted表总量和每一组新增source的行数均一致。空响应页单独存证，不计入逐笔行数。
+
+### 剩余覆盖与结论边界
+
+2026-09-16：2539928行、1775只原始出现证券、1768只有有效方向特征；分组实际777/478/513，对照门槛1694/1690/1632，全不合格。2026-09-17：12994164行、5562只原始出现证券、5553只有效方向特征，三个分组仍全部合格。其余三个历史日期仅为单股测试记录。
+
+因此当前仍只有1/120个合格日。20日Phase A尚未完成，也没有运行V2的未来收益显著性检验。验收另列canonical分页库存：9月16日1773个非空股票日已从offset=0连续到EMPTY，11个完全空响应，27个已出现队列的股票日未闭合；这个数字只描述已出现的队列，不是全市场完成率。某股票日出现数据、方向特征可算、分页完整、达到研究资格是不同层次。
+
+原始验收位于artifacts/retail-phasea-mac-acceptance-20260928/：before_merge.json、collection_receipt.json、verify_acceptance.py、acceptance.json、summary.md。acceptance.json SHA256为4697261f06900b08dff218730ef65c6950d0d62359e7fc104d7d9b123bc92e37，accepted=true，phase_a_20_days_complete=false，return_inference_performed=false。此前修复代码的90项相关回归与本节真实数据验收分开，不累计为新测试数量。

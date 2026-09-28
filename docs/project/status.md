@@ -568,3 +568,13 @@ e5aaf0e冻结后首次原生执行停在预检：模型把末两只证券sz前�
 结果见artifacts/dip-factor-round2-20260928/results-projection.json及4份review回执。保持已见20股raw探索，未增加盲测、p值或成本后证据，未自动入观察池/交易；不是找到2个可用抄底策略。集成回归、main/WIP保留、普通push与最终来源核对单独记录于delivery-final.json。
 
 基于最新已提交main=003cf1bd在独立集成分支合并本轮12路径，上游已提交的采集改动完整保留，main未提交改动尚未触碰。13模块128唯一测试再次全部PASS，0失败/错误/跳过；冻结src/tests/.mjs/JSON前后hash=bc891a8f295536561e6ef340c91abc5a9c7d1e88b1adb6cb70f54264cfa65b66。与初轮128不重复累加；后续仅文档收尾，最终main/WIP保护和远端SHA以交付回执为准。
+
+### 2026-09-28 Retail Phase A：Mac单机1500请求批次通过采集、合并与归档验收
+
+当前执行代码为95d0422（前置页恢复），已包含afa934a（eltdx隔离运行时接线）。sh.688786 / 2026-09-16的缺页任务已使用canonical原始归档恢复：offset 0的1800行原页不变，随后offset 1800保存427行、offset 2227取得EMPTY终页，未重置游标或伪造checkpoint。
+
+Mac本地worker-0/1/2各完成500次trades请求，分别新增426881 / 283618 / 305992行，共1016491条逐笔；1500页中863页非空、637页为真实空响应。三个批次network_errors均为0，旧ProtocolError任务69 / 76 / 91条的job_id、状态、错误、尝试数与时间戳逐项未变。三个STOP均已恢复，inflight=0，没有启动Windows采集或下载K线。
+
+新增1500个trades source_id已通过原bundle/MERGED/ACK链进入canonical，逐页metadata与worker完全一致；归档后重新计算raw/Parquet/manifest三类SHA并核对manifest内容校验和。主库trades从14517661增至15534152行，差值精确等于本批1016491行，compacted查询行数一致。2026-09-16现有1775只出现数据、1768只有方向特征；三逻辑组777/478/513仍低于1694/1690/1632门槛。2026-09-17仍为5553只可算方向特征、唯一合格日，因此现有V2门仍为1/120、INSUFFICIENT_COVERAGE；20日Phase A尚未完成，未运行收益推断。
+
+验收文件：artifacts/retail-phasea-mac-acceptance-20260928/acceptance.json（SHA256 4697261f06900b08dff218730ef65c6950d0d62359e7fc104d7d9b123bc92e37）；同目录保留before_merge、collection_receipt、只读复核脚本和摘要。股票日分页完成度另列，不把“出现部分记录”解释成整日完整；当前代码的coverage仍是库存门而非PIT或因子有效性认证。操作细节见[Phase A记录](../archive/testing/20260928-Retail-Trades-PhaseA-Plan.md)。

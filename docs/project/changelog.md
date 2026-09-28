@@ -2392,3 +2392,11 @@
 - canonical 对该前页保留完整page archive：source_id、1800行、raw/parquet/manifest三份SHA及原始字节都存在。因此新增 repair_missing_preceding_archives：仅处理精确 missing-page ERROR；要求worker assignment属于同一canonical coordinator，worker SAVED job/publication、canonical job/publication、canonical archive与原始response job_id/source_id/row count全部一致。
 - 修复不重新下载前页、不伪造checkpoint；它把canonical已验证的原始page archive字节复制到worker自己的page archive，随后重新调用原 page_source.verify，再把当前失败job精确恢复为PENDING并写 retail_phasea_archive_restore_audit。任何身份/hash/游标冲突均fail-closed，ProtocolError等其他错误不处理。
 - 新增合成端到端测试：canonical压缩页、worker删除同一页本地目录、当前分页任务制造精确缺页ERROR；修复后worker从archive读取同一manifest且当前job回PENDING。focused测试24项、TDX scheduler/lake/distributed/PhaseA/V2完整相关回归90项全部PASS。真实数据只会在该修复提交发布后执行。
+
+### 2026-09-28｜[DATA/ACCEPTANCE] Retail Mac单机1500页采集、主库合并与归档闭合
+
+- 延续已启动的Mac-only有界任务，不重复开采集器。95d0422上的三个本地逻辑worker各完成500次trades请求，新增426881/283618/305992行，共1016491条。各组network_errors=0，旧236条ProtocolError逐字段保持，全部STOP恢复、无inflight；Windows、K线和交易权限未使用。
+- 精确缺页修复已真实通过：sh.688786/2026-09-16原offset0的1800行仍不变，offset1800保存427行，offset2227为EMPTY。原始canonical页、worker恢复页与分页前驱匹配，没有通过清空或跳过页让任务成功。
+- 原bundle/MERGED/ACK流程已接收本批1500个trades source；后续compaction实际归档1500页/1016491行。独立只读验收再次检查全部metadata、ACK/sequence、4500个raw/Parquet/manifest字节哈希、manifest checksum及行数。canonical从14517661增至15534152行，与新增精确对账，compacted查询一致。
+- 9月16日方向特征覆盖增至1768只（分组777/478/513），仍不足各组门槛；9月17日5553只仍为唯一合格日，现有V2门保持1/120、INSUFFICIENT_COVERAGE。20日Phase A尚未完成，未做收益推断。分页完整度另列，不将部分数据presence替代完整股票日或PIT资格。
+- 证据artifacts/retail-phasea-mac-acceptance-20260928/acceptance.json，SHA256=4697261f06900b08dff218730ef65c6950d0d62359e7fc104d7d9b123bc92e37；当前状态和既有Phase A阶段记录已同步。本轮只提交验收文档，采集源码不变；保留其他会话ETF/日内说明，恢复本任务历史条目的正常换行与已提交正文，避免索引式提交遗留工作树回退。
