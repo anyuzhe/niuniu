@@ -5,13 +5,16 @@ from pathlib import Path
 
 import duckdb
 
-from quantlab.agent.tdx_collection_cli import POLICY_FORMAT,SCHEDULER_POLICY
+from quantlab.agent.tdx_collection_cli import (
+    COLLECTION_SCOPE,POLICY_FORMAT,SCHEDULER_POLICY,SCOPE_FORMAT,apply_collection_scope,
+)
 from quantlab.data.tdx_lake import TdxLake,digest,write_json
+from quantlab.data.tdx_sharding import ROLE_FILE,make_assignment,sealed
 from scripts.research.retail_trades_backfill_plan import (
     _current_feature_coverage,_eligible,build_plan,
 )
 from scripts.research.retail_trades_phasea_scope import (
-    PHASEA_EXCLUDED, proposed_phasea_scope,
+    PHASEA_EXCLUDED,apply_reviewed_scope,build_preview,proposed_phasea_scope,
 )
 
 
@@ -78,6 +81,22 @@ class RetailTradesBackfillPlanTests(unittest.TestCase):
         policy={**core,"policy_id":digest(core)}
         write_json(lake.base/SCHEDULER_POLICY,policy)
 
+    def prepare_phasea_worker(self):
+        lake=TdxLake(self.worker)
+        plan=lake.plan(self.pid)
+        policy=json.loads((lake.base/SCHEDULER_POLICY).read_text())
+        assignment=make_assignment(plan,self.pid,policy["policy_id"],"a"*64,1,0,"testworker")
+        role=sealed({"role":"worker","assignment":assignment,"created_at":"2026-01-26T00:00:00+00:00"})
+        write_json(lake.base/ROLE_FILE,role)
+        (lake.base/"STOP").write_text("test stop\n")
+        job_id=lake.enqueue(self.pid,"trades","sh.600000","2026-01-25",0,priority=100)
+        old_core={"format":SCOPE_FORMAT,"plan_id":self.pid,"excluded_families":["trades"],
+                  "family_history_floors":{},"history_complete":False}
+        old={**old_core,"scope_id":digest(old_core)}
+        write_json(lake.base/COLLECTION_SCOPE,old)
+        apply_collection_scope(lake,self.pid,old)
+        return lake,job_id,old
+
     def test_batch_coverage_and_lifecycle(self):
         coverage=_current_feature_coverage(self.canonical,("2026-01-23","2026-01-24","2026-01-25"))
         self.assertEqual(coverage,{"2026-01-23":0,"2026-01-24":2,"2026-01-25":0})
@@ -93,6 +112,39 @@ class RetailTradesBackfillPlanTests(unittest.TestCase):
         self.assertNotIn("trades",scope["excluded_families"])
         self.assertEqual(scope["family_history_floors"],{
             "trades":{"sh":"2026-01-10","sz":"2026-01-10","bj":"2026-01-10"}})
+
+    def test_reviewed_apply_writes_scope_restores_queue_and_keeps_stop(self):
+        lake,job_id,old=self.prepare_phasea_worker()
+        preview=build_preview(self.worker,"2026-01-10")
+        self.assertEqual(preview["current_scope_id"],old["scope_id"])
+        self.assertEqual(preview["restore_scope_skipped_trade_seeds"],1)
+        self.assertEqual(preview["inflight_jobs"],0)
+        receipt=apply_reviewed_scope(
+            self.worker,"2026-01-10",preview["proposed_scope"]["scope_id"],
+            old["scope_id"],preview["queue_snapshot"])
+        self.assertEqual(receipt["queue_rows_changed"],1)
+        self.assertTrue(receipt["stop_exists"])
+        self.assertFalse(receipt["network_accessed"])
+        self.assertFalse(receipt["resume_performed"])
+        current=json.loads((lake.base/COLLECTION_SCOPE).read_text())
+        self.assertEqual(current["scope_id"],preview["proposed_scope"]["scope_id"])
+        with lake.db(readonly=True) as con:
+            state=con.execute("SELECT state FROM jobs WHERE job_id=?",(job_id,)).fetchone()[0]
+        self.assertEqual(state,"PENDING")
+        self.assertTrue((lake.base/"STOP").exists())
+        self.assertTrue((lake.base/"retail-phasea-scope-receipt.json").is_file())
+
+    def test_reviewed_apply_rejects_stale_queue_snapshot_without_scope_change(self):
+        lake,_,old=self.prepare_phasea_worker()
+        preview=build_preview(self.worker,"2026-01-10")
+        lake.enqueue(self.pid,"trades","sz.000001","2026-01-24",0,priority=100)
+        with self.assertRaisesRegex(ValueError,"queue changed"):
+            apply_reviewed_scope(
+                self.worker,"2026-01-10",preview["proposed_scope"]["scope_id"],
+                old["scope_id"],preview["queue_snapshot"])
+        current=json.loads((lake.base/COLLECTION_SCOPE).read_text())
+        self.assertEqual(current["scope_id"],old["scope_id"])
+        self.assertTrue((lake.base/"STOP").exists())
 
     def test_build_plan_is_dry_run_and_lifecycle_bounded(self):
         queue=self.worker/"catalog/tdx_ingestion.sqlite3"

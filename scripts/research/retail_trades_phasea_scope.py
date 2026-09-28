@@ -11,10 +11,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 
 from quantlab.agent.tdx_collection_cli import (
-    SCOPE_FORMAT,_scope_job_decision,load_collection_scope,load_scheduler_policy,
-    validate_collection_scope,
+    COLLECTION_SCOPE,SCOPE_FORMAT,_scope_job_decision,apply_collection_scope,
+    load_collection_scope,load_scheduler_policy,validate_collection_scope,writer_lease,
 )
-from quantlab.data.tdx_lake import TdxLake,digest
+from quantlab.data.tdx_lake import TdxLake,digest,write_json
 from quantlab.data.tdx_sharding import read_role
 from quantlab.storage.codec import encode
 
@@ -58,7 +58,11 @@ def build_preview(worker_root,floor):
       WHERE plan_id=? AND family='trades' AND state IN ('PENDING','SKIPPED_POLICY','ERROR')
       ORDER BY job_id
     """,(pid,))]
+    inflight=con.execute(
+        "SELECT count(*) FROM jobs WHERE plan_id=? AND state IN ('RUNNING','STORED')",(pid,)
+    ).fetchone()[0]
     con.close()
+    queue_snapshot=digest(rows)
 
     restore=[];skip=[];untouched_errors=0
     for job in rows:
@@ -89,8 +93,11 @@ def build_preview(worker_root,floor):
         "machine_name":assignment["machine_name"],
         "stop_exists":(lake.base/"STOP").exists(),
         "current_scope":current,
+        "current_scope_id":current.get("scope_id"),
         "proposed_scope":proposed,
         "phasea_floor":floor,
+        "queue_snapshot":queue_snapshot,
+        "inflight_jobs":inflight,
         "restore_scope_skipped_trade_seeds":len(restore),
         "skip_pending_below_floor":len(skip),
         "untouched_trade_errors":untouched_errors,
@@ -106,13 +113,74 @@ def build_preview(worker_root,floor):
     }
 
 
+def apply_reviewed_scope(worker_root,floor,expected_proposed_scope_id,
+                         expected_current_scope_id,expected_queue_snapshot):
+    lake=TdxLake(worker_root)
+    with writer_lease(lake):
+        preview=build_preview(worker_root,floor)
+        expected_current=None if expected_current_scope_id=="NONE" else expected_current_scope_id
+        if preview["proposed_scope"]["scope_id"]!=expected_proposed_scope_id:
+            raise ValueError("Phase-A proposed scope changed since review")
+        if preview["current_scope_id"]!=expected_current:
+            raise ValueError("Phase-A current scope changed since review")
+        if preview["queue_snapshot"]!=expected_queue_snapshot:
+            raise ValueError("Phase-A trade queue changed since review")
+        if not preview["stop_exists"]:
+            raise ValueError("Phase-A scope apply requires STOP to remain present")
+        if preview["inflight_jobs"]:
+            raise ValueError("Phase-A scope apply refuses RUNNING/STORED jobs")
+
+        scope_path=lake.base/COLLECTION_SCOPE
+        write_json(scope_path,preview["proposed_scope"])
+        changed=apply_collection_scope(lake,preview["plan_id"],preview["proposed_scope"])
+        after=build_preview(worker_root,floor)
+        if after["current_scope_id"]!=expected_proposed_scope_id:
+            raise ValueError("Phase-A scope file did not persist reviewed identity")
+        if not after["stop_exists"] or after["inflight_jobs"]:
+            raise ValueError("Phase-A safety state changed during scope apply")
+
+        receipt={
+            "format":"niuniu-retail-trades-phasea-scope-apply-v1",
+            "worker_root":preview["worker_root"],
+            "plan_id":preview["plan_id"],
+            "scheduler_policy_id":preview["scheduler_policy_id"],
+            "assignment_id":preview["assignment_id"],
+            "shard_id":preview["shard_id"],
+            "machine_name":preview["machine_name"],
+            "phasea_floor":floor,
+            "before_scope_id":preview["current_scope_id"],
+            "applied_scope_id":expected_proposed_scope_id,
+            "before_queue_snapshot":preview["queue_snapshot"],
+            "after_queue_snapshot":after["queue_snapshot"],
+            "queue_rows_changed":changed,
+            "stop_exists":after["stop_exists"],
+            "stop_modified":False,
+            "network_accessed":False,
+            "resume_performed":False,
+        }
+        write_json(lake.base/"retail-phasea-scope-receipt.json",receipt)
+        return receipt
+
+
 def main(argv=None):
     p=argparse.ArgumentParser()
     p.add_argument("--worker-root",type=Path,required=True)
     p.add_argument("--floor",required=True)
     p.add_argument("--output",type=Path)
+    p.add_argument("--apply-reviewed",action="store_true")
+    p.add_argument("--expected-proposed-scope-id")
+    p.add_argument("--expected-current-scope-id")
+    p.add_argument("--expected-queue-snapshot")
     a=p.parse_args(argv)
-    value=build_preview(a.worker_root,a.floor)
+    if a.apply_reviewed:
+        required=(a.expected_proposed_scope_id,a.expected_current_scope_id,a.expected_queue_snapshot)
+        if any(v is None for v in required):
+            raise ValueError("Reviewed apply requires expected proposed/current scope and queue snapshot")
+        value=apply_reviewed_scope(
+            a.worker_root,a.floor,a.expected_proposed_scope_id,
+            a.expected_current_scope_id,a.expected_queue_snapshot)
+    else:
+        value=build_preview(a.worker_root,a.floor)
     if a.output:
         target=a.output.resolve()
         target.parent.mkdir(parents=True,exist_ok=True)

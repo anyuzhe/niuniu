@@ -2308,3 +2308,10 @@
 - 这暴露Phase-A preview原先“继承当前scope再移除trades”只对Mac安全：601无旧scope时会误放开K线与standalone opening_match。修正为proposed_phasea_scope显式固定排除bars_1m/bars_5m/bars_daily/opening_match，只允许trades并设置sh/sz/bj统一floor，不再继承worker旧scope。
 - 新增纯函数回归验证无scope机器也生成完全相同语义；连同scheduler范围16项测试全部PASS。Mac真实dry-run再次核对：scope_id仍为e8a57a52b8e859e4164e04a16c1351ad088942b19b86a6c45dd427e0c9ecd41e，恢复1882个旧scope trade seed、69个ERROR保持、STOP保持、无写scope/队列/网络。
 - 601所在卷约1.86TiB、空闲约1.52TiB，容量不是Phase A硬阻塞；但真正resume前必须先把三台worker代码同步到包含scope floor保护的版本，并等HomePc恢复后完成同样只读预检。详细补充已写入20260928-Retail-Trades-PhaseA-Plan.md。
+
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Trades Phase A guarded scope apply
+
+- 在跨worker scope一致性修正后，增加 reviewed-scope apply 模式：必须持有 TDX writer lease，且 STOP 存在、无 RUNNING/STORED、current scope ID、proposed scope ID 与 trade queue snapshot 均与刚生成的 preview 完全一致；任何队列/配置变化都拒绝。
+- apply 只写 reviewed collection scope、调用 apply_collection_scope 并写 retail-phasea-scope-receipt.json；明确不删除 STOP、不 resume/autoresume、不访问网络。receipt 记录 before/after queue snapshot、scope identity、实际变更数与安全状态。
+- 新增正常 apply 与 stale queue fail-closed 两项测试；连同 scheduler/lake/distributed/V2/planner 完整回归共83项全部PASS。该能力只用于先把三台worker配置到同一Phase-A scope，HomePc未完成预检前仍不允许启动采集。

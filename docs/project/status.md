@@ -501,3 +501,8 @@ V1.0.1 按四板块各100只的确定性分层样本完成400股扩大验证，2
 ### 2026-09-28 Retail Trades Phase A：20日回补方案已冻结，尚未联网执行
 
 V2 当前只有1/120个近全市场逐笔日。原TDX plan本身具备完整交易日历与trades向历史递推能力，真正阻断点是现有collection scope明确排除了trades。为避免改scheduler policy导致三机assignment/bootstrap失配，本轮只扩展collection scope支持family_history_floors，并与供应商retention floor语义分离。Phase A固定2026-08-21..09-17共20个交易日；三分片约11.13万symbol-day、30.3万页请求，三节点0.35秒限速理论下限约9.8小时。Mac dry-run proposed scope将恢复1882个旧scope跳过的trade seed、保留69个ProtocolError不动，并在8/21停止向更早日期递推；STOP仍存在，scope未写入、网络未启动。TDX scheduler/lake/distributed/V2/planner共80项回归全部通过。完整规划见[Retail Trades Phase A回补规划](../archive/testing/20260928-Retail-Trades-PhaseA-Plan.md)。
+
+
+### 2026-09-28 Retail Trades Phase A：reviewed scope 可安全写入，仍不启动采集
+
+Phase A 工具新增 guarded apply：必须 STOP 存在、无 RUNNING/STORED、current/proposed scope ID 与 trade queue snapshot 均与刚生成的 preview 完全一致，并持有原 TDX writer lease 才能写入 reviewed scope；任何队列变化均 fail-closed。apply 只写 scope、调用 apply_collection_scope 并记录 receipt，不解除 STOP、不 resume、不联网。加入正常 apply 与 stale queue 拒绝测试后，TDX scheduler/lake/distributed/V2/planner 完整回归 83 项全部通过。该能力用于先把 Mac/601/HomePc 配置到同一安全 scope，三机全部预检完成前仍不得启动 Phase A。

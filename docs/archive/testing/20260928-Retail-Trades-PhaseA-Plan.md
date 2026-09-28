@@ -165,3 +165,28 @@ HomePc WebCodex tunnel 超过 300 秒未在线，因此没有换用其他远控�
 4. 三台 STOP 在 scope 写入和队列预览期间保持；
 5. HomePc 恢复在线并完成只读预检；
 6. scope 写入后先复核队列变化，再由独立显式动作解除 STOP / resume。
+
+
+## Guarded reviewed-scope apply
+
+为避免人工写 collection-scope.json 或使用陈旧 preview，本轮进一步给 Phase-A 工具增加 guarded apply 模式。
+
+只有同时满足以下条件才允许写 reviewed scope：
+
+- worker STOP 文件仍存在；
+- 无 RUNNING / STORED 任务；
+- 当前 scope ID 与 preview 时完全一致；
+- proposed scope ID 与 preview 时完全一致；
+- trade queue 逻辑快照与 preview 时完全一致；
+- 持有既有 TDX writer lease；
+- 只调用 apply_collection_scope，不调用 resume/autoresume，不删除 STOP，不访问网络。
+
+成功后额外写 retail-phasea-scope-receipt.json，记录 before/current scope、before/after queue snapshot、实际变更行数、STOP 状态，并明确 network_accessed=false、resume_performed=false。
+
+新增测试验证：
+
+1. 指纹完全匹配时，scope 被写入、旧 scope skip 可恢复为 PENDING，但 STOP 仍存在；
+2. preview 之后 queue 任意变化时，apply 必须 fail-closed，旧 scope 保持不变；
+3. 加入这两项后，TDX scheduler/lake/distributed/V2/planner 完整回归为 83 项，全部通过。
+
+该能力仅用于把 worker 安全配置到同一 reviewed scope；它本身不启动 Phase A 采集。
