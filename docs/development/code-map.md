@@ -145,6 +145,10 @@
 
 [published_daily_research.py](../../src/quantlab/data/published_daily_research.py)提供host preview/export/inspect和Provider；[provider.py](../../src/quantlab/data/provider.py)按显式marker接入，[validation.py](../../src/quantlab/data/validation.py)识别独立research-only停牌合同，Open/vnpy入口拒绝该合同做账户估值。测试 [test_published_daily_research.py](../../tests/test_published_daily_research.py) 包含原字节、缺失/篡改拒绝、原批准冻结及实际因子标签；[扩样冻结方案](../reference/dip-factor-expansion100-v1.json)与旧三候选定义和抽样元数据绑定，不是盲测认证。
 
+## 宿主冻结配置引用（2026-09-28）
+
+[grant_fixed_specs.py](../../src/quantlab/agent/grant_fixed_specs.py) 是原Research Session Grant的可选进一步限制；目录/hash进入原授权，不建立第二任务状态。[research_session_tools.py](../../src/quantlab/agent/research_session_tools.py) 在原预检/提交工具内解析精确grant_spec引用；不能覆盖证券/参数或授权，原CLI提供fixed-specs-file。测试 [test_grant_fixed_specs.py](../../tests/test_grant_fixed_specs.py) 覆盖输入漂移、无队列预检、跨轮固定幂等、失败/撤销/权限及真实Chat派发。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

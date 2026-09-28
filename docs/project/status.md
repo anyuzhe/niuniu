@@ -586,3 +586,11 @@ Mac本地worker-0/1/2各完成500次trades请求，分别新增426881 / 283618 /
 固定区间2023–2025共72700行，无日期缺口；旧MQC读入91股，另9股38条volume/amount空值全部对应DATA明确tradestatus=0。新增published_daily_research只读消费指定qfq+日状态+日历+coverage，复制202份原字节18423190字节到独立输入包，不回填/重算qfq/裁决公司行动。不删除停牌/ST（保留3043条ST状态），只在研究视图中把停牌OHLC置空；无vendor_previous_close，不伪造估值。新独立input_contract仅供因子研究，Open/vnpy账户入口明确拒绝；旧v1/v2/v3约束不变。
 
 宿主preview/export/inspect及原local_data_provider/批准冻结已接通。146个唯一测试（16模块）PASS，0失败/错误/跳过，src/tests/冻结JSON前后hash=4b92e1d126693a737e7e76a89010983766456c5ac0ab79f9ea29659360bcad2d。初轮诊断字符串边界与新增测试缺IO参数错误保留，修正后完整回归通过。固定[扩样方案](../reference/dip-factor-expansion100-v1.json)为1基准+原3候选、4holdout/12分年子/27比较，protocol_digest=adfcf0e4c0ba8d2175fdc326daec9599ae8239879d4ee25c550490945ff8648e，输入id=998103567009960d44147a05585563c3db32e85272dead13b98072a45f23b10d。原生计算尚未启动，本条不宣称收益验收通过。
+
+### 2026-09-28 扩样续跑：固定输入引用与偏差保留
+
+恢复中断状态后发现：基准与方向效率已各完成100股研究；收盘位置漏抄sh.605339而实际计算99股，旧审计已判frozen spec mismatch，原结果保留但不纳入100股结论。低波动尚未执行。不能用任务completed代替完整spec一致。
+
+新增宿主可选fixed_specs内联目录到原Grant，版本2进一步限定配置；原工具接受精确grant_spec引用，范围/输入字节冻结/预算/撤销/过期/运行身份规则原样保留。直接JSON亦须匹配同一冻结配置，同Grant固定配置跨请求幂等，失败不重跑。23项针对性固定配置与旧Grant回归通过，最终完整回归和原生实际研究另记。保守runtime因代码修复改变，需要同一新运行身份复核全部4角色，不是根据收益更换参数；旧2准确任务及1偏差任务均保留，不覆盖任何原方案。
+
+固定引用完整回归19模块175唯一用例PASS，0失败/错误/跳过，前后src/tests/docs-reference JSON/pyproject指纹11d6ca3e187903a7662e0f8ce0e2386e776f30a945dc649a74c060e9db5c062e，逐模块日志fixed-regression-v1。测试仅验证实现边界，不认证因子效果；后续真实研究使用已提交版本。

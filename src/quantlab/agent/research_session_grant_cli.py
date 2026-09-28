@@ -13,6 +13,7 @@ def main(argv=None):
     p=argparse.ArgumentParser(description='Research Session Grant 宿主管理；模型不能创建/撤销授权')
     p.add_argument('action',choices=['preview','authorize','revoke','status']);p.add_argument('--output',required=True);p.add_argument('--data-root')
     p.add_argument('--scope-file');p.add_argument('--plan-file');p.add_argument('--expires-at');p.add_argument('--grant-id');p.add_argument('--confirm',action='store_true')
+    p.add_argument('--fixed-specs-file',help='可选：宿主冻结的编号到完整研究spec映射；进一步收紧授权，不允许模型覆盖')
     p.add_argument('--max-jobs',type=int,default=5);p.add_argument('--max-active-jobs',type=int,default=2);p.add_argument('--max-leaf-studies',type=int,default=32)
     p.add_argument('--max-total-leaf-studies',type=int,default=80);p.add_argument('--max-total-bar-evaluations',type=int,default=20_000_000)
     p.add_argument('--max-total-resample-date-draws',type=int,default=100_000_000);p.add_argument('--cooperative-seconds',type=int,default=300)
@@ -24,7 +25,7 @@ def main(argv=None):
             data=preview_grant(a.output,a.data_root,_json_file(a.scope_file),expires_at=a.expires_at,max_jobs=a.max_jobs,
                 max_active_jobs=a.max_active_jobs,max_leaf_studies=a.max_leaf_studies,max_total_leaf_studies=a.max_total_leaf_studies,
                 max_total_bar_evaluations=a.max_total_bar_evaluations,max_total_resample_date_draws=a.max_total_resample_date_draws,
-                cooperative_seconds=a.cooperative_seconds)
+                cooperative_seconds=a.cooperative_seconds,fixed_specs=_json_file(a.fixed_specs_file) if a.fixed_specs_file else None)
             data={'plan':data,'plan_digest':digest(data)}
         elif a.action=='authorize':
             if not a.data_root or not a.plan_file:raise ValueError('authorize 需要 --data-root/--plan-file')

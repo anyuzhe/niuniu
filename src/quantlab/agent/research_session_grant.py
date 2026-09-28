@@ -69,7 +69,7 @@ def _factor_key(value):
 
 def preview_grant(output,data_root,scope,*,expires_at,max_jobs=5,max_leaf_studies=32,
                   max_total_leaf_studies=80,max_total_bar_evaluations=20_000_000,
-                  max_total_resample_date_draws=100_000_000,cooperative_seconds=300,max_active_jobs=2,now=None):
+                  max_total_resample_date_draws=100_000_000,cooperative_seconds=300,max_active_jobs=2,now=None,fixed_specs=None):
     stamp=utc(now);expiry=utc(datetime.fromisoformat(expires_at))
     if not timedelta(minutes=5)<=expiry-stamp<=timedelta(hours=24):raise ValueError('Research Session Grant 有效期须为5分钟至24小时')
     if type(max_jobs) is not int or not 1<=max_jobs<=20:raise ValueError('Research Session Grant 最多1–20个任务')
@@ -89,7 +89,7 @@ def preview_grant(output,data_root,scope,*,expires_at,max_jobs=5,max_leaf_studie
     budget=ResearchBudget(max_symbols=len(scope['symbols']),max_calendar_days=(date.fromisoformat(scope['end'])-date.fromisoformat(scope['start'])).days+1,
         max_leaf_studies=max_leaf_studies,max_bar_evaluations=max_total_bar_evaluations,
         max_resample_date_draws=max_total_resample_date_draws,cooperative_seconds=cooperative_seconds,max_active_jobs=max_active_jobs)
-    return {'version':1,'prepared_at':stamp.isoformat(),'expires_at':expiry.isoformat(),'scope':scope,
+    plan={'version':1,'prepared_at':stamp.isoformat(),'expires_at':expiry.isoformat(),'scope':scope,
         'limits':{'max_jobs':max_jobs,'max_leaf_studies_per_job':max_leaf_studies,
             'max_total_leaf_studies':max_total_leaf_studies,'max_total_bar_evaluations':max_total_bar_evaluations,
             'max_total_resample_date_draws':max_total_resample_date_draws,'cooperative_seconds':cooperative_seconds,'max_active_jobs':max_active_jobs},
@@ -97,6 +97,10 @@ def preview_grant(output,data_root,scope,*,expires_at,max_jobs=5,max_leaf_studie
         'research_budget':asdict(budget),'network_allowed':False,'shell_allowed':False,'code_write_allowed':False,
         'real_trade_allowed':False,'approval_required_per_job':False,
         'scope_note':'仅允许本机现有数据；每个授权任务入队前单独冻结实际输入字节。'}
+    if fixed_specs is not None:
+        from quantlab.agent.grant_fixed_specs import normalize_fixed_specs
+        plan.update(version=2,fixed_specs=normalize_fixed_specs(fixed_specs,scope))
+    return plan
 
 def _normalize_scope(scope):
     if not isinstance(scope,dict) or set(scope)!={'symbols','timeframe','start','end','adjustment','qualification','allowed_modes','allowed_factors'}:raise ValueError('Research Session Grant scope 字段不完整')
@@ -122,7 +126,7 @@ def authorize_grant(output,data_root,plan,expected_digest,*,confirmed=False,now=
     current=preview_grant(output,data_root,plan['scope'],expires_at=plan['expires_at'],now=prepared,
         max_jobs=plan['limits']['max_jobs'],max_leaf_studies=plan['limits']['max_leaf_studies_per_job'],
         max_total_leaf_studies=plan['limits']['max_total_leaf_studies'],max_total_bar_evaluations=plan['limits']['max_total_bar_evaluations'],
-        max_total_resample_date_draws=plan['limits']['max_total_resample_date_draws'],cooperative_seconds=plan['limits']['cooperative_seconds'],max_active_jobs=plan['limits']['max_active_jobs'])
+        max_total_resample_date_draws=plan['limits']['max_total_resample_date_draws'],cooperative_seconds=plan['limits']['cooperative_seconds'],max_active_jobs=plan['limits']['max_active_jobs'],fixed_specs=plan.get('fixed_specs'))
     if current!=plan or stamp>=utc(datetime.fromisoformat(plan['expires_at'])):raise ValueError('授权范围、代码、目录或期限变化')
     store=SessionGrantStore(output)
     with store.locked():
@@ -176,8 +180,10 @@ def grant_status(output,data_root=None,*,now=None):
         'bar_evaluations':max(0,limits['max_total_bar_evaluations']-used['bar_evaluations']),
         'resample_date_draws':max(0,limits['max_total_resample_date_draws']-used['resample_date_draws'])}
     binding_ok=None if data_root is None else _binding_matches(state['plan'],Path(output).resolve(),Path(data_root).resolve())
+    from quantlab.agent.grant_fixed_specs import fixed_spec_summary
     return {'format':FORMAT,'status':status,'enabled':enabled,'grant':{k:state[k] for k in ('grant_id','authorized_at','revoked_at','authorization_source')},
         'scope':state['plan']['scope'],'expires_at':state['plan']['expires_at'],'used':used,'remaining':remaining,'binding_ok':binding_ok,'jobs':jobs,
+        'fixed_specs':fixed_spec_summary(state['plan'],state['jobs']),'fixed_specs_only':'fixed_specs' in state['plan'],
         'limitations':['Grant 不允许 Shell、联网下载、代码写入、Campaign、Execution 或真实交易。','失败/取消任务仍消耗已授权任务与计算预算，防止结果导向反复试验。']}
 def _validate_spec(plan,spec):
     scope=plan['scope'];mode=spec.get('mode','single')
@@ -234,10 +240,28 @@ class ResearchSessionGrantService:
         if utc()>=utc(datetime.fromisoformat(state['plan']['expires_at'])):raise ProposalError('GRANT_EXPIRED','Research Session Grant 已过期')
         if not _binding_matches(state['plan'],self.output,self.data_root):raise ProposalError('GRANT_STALE','代码、工作空间或行情目录已变化')
         return receipt
+    def preview_fixed(self,spec):
+        # Preview does not reserve budget, freeze input, create a job or obtain a queue.
+        from quantlab.agent.grant_fixed_specs import resolve_fixed_spec
+        with self.store.locked(False):
+            state=self.store.load()
+            if state is None:raise ProposalError('GRANT_NOT_FOUND','Research Session Grant 不存在')
+            self._active_state(state,state['grant_id'],str(UUID(int=0)))
+            resolved,identity=resolve_fixed_spec(state['plan'],spec)
+            if identity is None:raise ProposalError('GRANT_FIXED_SPEC','当前授权不是固定配置授权')
+            _validate_spec(state['plan'],resolved)
+            value=ProposalService(self.output,self.data_root,budget=ResearchBudget(**state['plan']['research_budget'])).preview(resolved)
+            return {**value,'grant_id':state['grant_id'],'fixed_spec_digest':identity,'fixed_spec_reference':spec}
     def submit(self,grant_id,request_id,spec):
-        grant_id=canonical(grant_id);request_id=canonical(request_id);spec=json.loads(encode(spec));spec_digest=digest(spec)
+        from quantlab.agent.grant_fixed_specs import resolve_fixed_spec
+        grant_id=canonical(grant_id);request_id=canonical(request_id)
         with self.store.locked(False):
             state=self.store.load();receipt=self._active_state(state,grant_id,request_id)
+            spec,fixed_identity=resolve_fixed_spec(state['plan'],spec);spec_digest=digest(spec)
+            if fixed_identity is not None:
+                # One fixed study per grant, including cross-turn retries and failed jobs.
+                request_id=str(uuid5(UUID(grant_id),'fixed-spec:'+fixed_identity))
+                receipt=_grant_receipt(state,request_id)
             item=next((j for j in state['jobs'] if j['request_id']==request_id),None)
             if item is not None:
                 if item['spec_digest']!=spec_digest:raise ProposalError('CONFLICT','同一授权请求编号不能用于不同研究配置')

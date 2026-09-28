@@ -2408,3 +2408,11 @@
 - 输入包202个来源文件18423190字节，id=998103567009960d44147a05585563c3db32e85272dead13b98072a45f23b10d；manifest/逐文件SHA/每次读回重建规范化与预算/路径/缺失/重复/状态冲突/未完成导出均有检查，不回退raw或旧数据，不写DATA。批准后继续使用原ApprovalInputFreeze，来源离线测试通过。
 - 原3候选参数与方向全部保留、同一基准、主要5日/辅助3与10日，100股qfq独立比较不与旧20股raw混合。docs/reference/dip-factor-expansion100-v1.json冻结4研究/12子/27比较，digest=adfcf0e4c0ba8d2175fdc326daec9599ae8239879d4ee25c550490945ff8648e。没有成本/统计显著性/自动入池权限。研究仍由牛牛原生模型提交并读取，不由宿主代算。
 - 16模块146唯一测试PASS，0失败/错误/跳过；冻结源/测试/JSON指纹4b92e1d126693a737e7e76a89010983766456c5ac0ab79f9ea29659360bcad2d。早期诊断把日期字符串当Polars列名以及压缩预算测试缺BytesIO参数均已修正，失败工具日志保留。原生结果待后续记录；当前提交冻结代码供实际验证。
+
+### 2026-09-28｜[CODE/RESEARCH] 扩样固定配置引用防止模型漏抄
+
+- 用户继续后恢复已提交ed2c5d5与未完成验收：baseline和directional_efficiency完成，close_location完成但漏sh.605339（99股），low_volatility尚未执行。保留execution-complete.json的false及close-location-spec-audit.json，不缩小基准、改原实验或把偏差任务补写成100股。
+- grant_fixed_specs.py对宿主可选1–20项目录限制名称/总体大小/原scope/规范spec，目录进入原plan摘要并在授权时重新构造校验。get_research_session_grant返回有界编号/证券数/问题/配置hash；原preview_experiment、submit_granted_experiment支持单字段grant_spec引用，不新增工具名或任意路径读取。直接spec同样受固定集合限制，缺证券/不同参数/日期/问题拒绝。固定请求ID由grant+完整规范spec生成，跨会话重试返回原任务，失败消耗不退且不能再执行；原v1与共享队列/ApprovalInputFreeze不变。
+- Host CLI增加--fixed-specs-file，仅preview读取，不自行authorize；只读/日常profile、无queue模式不获得执行能力。11项新增测试与旧12项Grant共23项通过，覆盖完整原配置、无预览副作用、覆盖字段/路径/漏股票拒绝、跨请求幂等、失败不重跑、时效/撤销/代码变更和原生Chat日志。不是正式100股收益验收。
+- 探索机制和100股qfq冻结protocol不变。修复改变保守runtime，因此新身份下复核4角色，保留所有先前任务和偏差，不是收益导向重试；最终范围回归、原生计算/27比较/结论与主线整合分别记录。
+- 正式提交前完整回归19模块175唯一用例PASS，0失败/错误/跳过，测试首尾代码/JSON/pyproject指纹11d6ca3e187903a7662e0f8ce0e2386e776f30a945dc649a74c060e9db5c062e，来源fixed-regression-v1/summary.json；不与23项局部或历史146项重复累加。文档检查132文件812本地链接0错误。

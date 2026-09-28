@@ -7,15 +7,21 @@ from quantlab.agent.research_session_grant import ResearchSessionGrantService,gr
 from quantlab.storage.codec import encode
 
 SPEC={'type':'string','maxLength':65536}
-STATUS=schema('get_research_session_grant','读取当前有限研究授权、剩余任务/计算预算和任务状态；不会创建或修改授权。',{})
-SUBMIT=schema('submit_granted_experiment','仅在宿主已明确授权的Research Session Grant范围内提交一个研究任务；超范围、过期、撤销或预算不足会拒绝。',
+STATUS=schema('get_research_session_grant','读取当前有限研究授权、剩余预算、任务状态及fixed_specs固定配置编号；存在fixed_specs_only时必须使用其grant_spec引用，不要重抄长证券/参数清单。不会创建或修改授权。',{})
+SUBMIT=schema('submit_granted_experiment','仅在有效Research Session Grant内提交。宿主配置fixed_specs时，spec_json使用{\"grant_spec\":\"状态返回的精确编号\"}；由宿主还原冻结完整配置，不重抄股票/参数、不接受覆盖字段。同一固定研究跨轮重试也只返回原任务，失败不重跑。超范围、过期、撤销或预算不足拒绝。',
     {'grant_id':TEXT,'request_id':TEXT,'spec_json':SPEC})
 
 class ResearchSessionGrantAPI:
     def __init__(self,inner,output,data_root=None,queue_factory=None):
         self.inner=inner;self.output=Path(output).resolve();self.data_root=Path(data_root).resolve() if data_root else None
         self.service=ResearchSessionGrantService(self.output,self.data_root,queue_factory) if self.data_root and queue_factory else None
-    def schemas(self):return self.inner.schemas()+[json.loads(json.dumps(STATUS,ensure_ascii=False))]+([json.loads(json.dumps(SUBMIT,ensure_ascii=False))] if self.service else [])
+    def schemas(self):
+        tools=json.loads(json.dumps(self.inner.schemas(),ensure_ascii=False))
+        if self.service:
+            for tool in tools:
+                if tool['name']=='preview_experiment':
+                    tool['description']+=' 当前有效Grant配置fixed_specs时，也可传spec_json={\"grant_spec\":\"精确编号\"}，只读预检宿主冻结配置；不接受覆盖字段，不创建任务。'
+        return tools+[json.loads(json.dumps(STATUS,ensure_ascii=False))]+([json.loads(json.dumps(SUBMIT,ensure_ascii=False))] if self.service else [])
     def __getattr__(self,name):return getattr(self.inner,name)
     def call(self,name,arguments):
         if name=='get_capabilities':
@@ -31,6 +37,22 @@ class ResearchSessionGrantAPI:
             data=grant_status(self.output,self.data_root);refs=[]
             if data.get('grant'):refs=[{'kind':'research_session_grant','grant_id':data['grant']['grant_id']}]
             return {'ok':True,'tool':name,'data':compact(data),'evidence':refs,'warnings':['授权存在不等于Alpha成立；授权只扩大研究执行范围，不扩大真实交易权限。'],'error':None}
+        if name=='preview_experiment' and self.service is not None:
+            try:
+                if not isinstance(arguments,dict) or set(arguments)!={'spec_json'}:
+                    raise ProposalError('INVALID_ARGUMENT','预检需要唯一spec_json字段')
+                spec=parse_spec(arguments['spec_json'])
+                if 'grant_spec' in spec:
+                    data=self.service.preview_fixed(spec)
+                    result={'ok':True,'tool':name,'data':data,'evidence':[],
+                        'warnings':['固定配置预检不批准、不提交研究；实际输入仍在提交时冻结。'],'error':None}
+                    if len(encode(result))>24000:
+                        result['data']={'grant_id':data['grant_id'],'fixed_spec_digest':data['fixed_spec_digest'],
+                            'fixed_spec_reference':data['fixed_spec_reference'],'omitted':True,'reason':'result_size_limit'}
+                    return json.loads(encode(result))
+            except (ProposalError,ValueError,TypeError,KeyError,OSError,RuntimeError) as error:
+                return {'ok':False,'tool':name,'data':None,'evidence':[],'warnings':[],
+                    'error':{'code':getattr(error,'code','SESSION_GRANT_FAILED'),'message':str(error)[:300]}}
         if name!='submit_granted_experiment' or self.service is None:return self.inner.call(name,arguments)
         try:
             props=SUBMIT['parameters']['properties']
