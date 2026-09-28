@@ -453,6 +453,8 @@ AI回答明确这是合成报告，保留两项负估计、test_status=unavailab
 
 新增原生运行时与结构校验回归；首次范围回归暴露系统盘空间不足（Errno 28，现场约284MiB可用），原失败日志保留。仅为本轮测试指定Lexar临时目录，不删除用户文件或更改全局环境。同一源码在Lexar临时目录重跑10模块88唯一用例全部通过，0失败/错误/跳过，源码/测试/JSON/MJS前后hash=401953b895aa124071587ae907a22f089764a0217103a8437c9876e537863487。修后真实模型结果另行追加，预检成功不是业务验收成功。
 
+修复冻结为11b0940后，正式CLI两次在模型入口返回Pi model not found: openai-codex/gpt-6-luna，尚未执行研究工具；中间只读ModelRuntime目录检查曾恢复同一模型可见且无错误，但后续正式入口仍拒绝，根因未确定，未改模型配置或切换模型。三个本轮有限Grant均已撤销，原工作空间仍0任务/0实验/0finding；原假设、输入包和原失败记录保持。证据在artifacts/holdout-resume-20260928（attempt2/attempt3与model-availability-diagnostic.json）。当前待办仍为模型入口稳定后的原holdout续跑，不是数据或Alpha验收完成。
+
 ### 2026-09-27 Retail Crowding V1：冻结因子与400股扩大验证
 
 新增 RETAIL.VOLUME_SHOCK_20、RETAIL.AMOUNT_SHOCK_20、RETAIL.CROWDING_V1 并注册到正式因子目录；公式、2010–2026时间分割、T+1/3/5/10/20 与240项TrialRegistry检验族固定在参考规格。第一版999次置换无法达到 0.05/240 的Holm首档阈值，原V1.0.0及100股pilot保留；V1.0.1仅把置换提高到9999并固化已有research-only nullable-volume口径，没有按收益结果换公式/方向/日期。

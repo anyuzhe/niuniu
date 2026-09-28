@@ -2242,6 +2242,9 @@
 - 初轮88项有34个错误来自系统临时盘Errno 28，日志在artifacts/holdout-resume-20260928/regression。系统盘现场仅约284MiB；没有删除用户文件，后续测试限定TMPDIR到Lexar独立目录并重跑同一范围。另一次尝试读取不存在的agent/evidence.py返回not_found，无副作用，不作为证据来源。
 - 未改变原20股、2023–2025、2023训练/2024验证/2025测试、20日动量与5日标签。修后模型执行及最终范围回归另记，原失败保留，不把CLI completed误判为研究成功。独立提交/普通push遵循主线并行保护，不重启/部署或改采集、日常模型配置。
 - 最终同一源码在Lexar独立TMPDIR重跑10模块88唯一用例全PASS，0失败/错误/跳过，hash=401953b895aa124071587ae907a22f089764a0217103a8437c9876e537863487。日志regression-external-temp，不覆盖原系统盘失败日志，不把两轮重复相加；此时还没有真实holdout结果。
+- git_commit_paths因Runner系统临时目录StorageFull在开始前失败，state_changed=false；未重试受限读取，改用原生Git在独立worktree精确暂存6文件并提交11b0940，原提交工具失败记录保留。没有删除系统文件、修改全局TMPDIR或代提交main并行工作。
+- 冻结代码后的attempt2原生CLI（临时目录明确在Lexar）报Pi model not found: openai-codex/gpt-6-luna。仅对SDK源代码和公开目录API诊断，不导出凭据或原始配置；一次getModel目录复核恢复可见后进行最后一次attempt3，实际CLI仍同样失败。没有替代模型、安装/升级依赖或修改Pi配置。两次均0研究提交，finally撤销当次Grant；根因仍未确定，不把目录中偶尔可见当作连接验收通过。
+- 本轮原20股、原假设及v3输入不变；全部本轮执行授权关闭，0研究任务/实验/finding。此提交只补故障和验收文档，最终交付按主线实际SHA核对，不虚称真实holdout通过。
 
 ### 2026-09-27｜[CODE/RESEARCH] Retail Crowding V1 冻结实现与首轮扩大验证
 
