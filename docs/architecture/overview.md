@@ -141,6 +141,12 @@ FactorWatchDialog复用原归档选择器和提案进度窗口，字段与按钮
 
 `desktop/local_data_readiness.py`只在用户明确点击时将表单的证券/日期/周期/复权传给既有LocalMarketDataTools。返回内容按原证券顺序和范围重新核对，状态/记录不一致、关闭/换根/表单编辑后的回执拒绝；仅显示原加载器检查，不建立状态数据库或资格回执。MQC的缺量校验、管理数据包的入口选择、审批冻结和研究授权均不改变；空值原因未知时不能推断停牌或自动填补。
 
+### 8.9 回溯停牌占位价的版本化适配
+
+`archived_daily_dataset.py`新增显式format/contract v3，不改v1/v2默认语义。只有原始与typed数据逐值一致、同一日tradestatus=0、OHLC全空或精确等于有限正preclose且volume/amount/turn/pctChg无非零值时，派生OHLC才置null；原字节和完整session网格保留。新包绑定normalization_contract/policy、masked计数和资源上限，深验必须从原字节重建后与保存标准化表逐值匹配。运行层继续使用既有v2状态契约，不改MQC生产校验、标签、研究mask、成交引擎或审批/Grant。
+
+显式宿主v3范围20只/1100自然日/22000行/44数据文件；模型桥接单次10只/371日不变。宿主读取两个不重叠的原始symbol组，比较计划/参考字节一致性，然后核对完整目标范围的每个calendar session；不存在按首年或首10只截断。旧合同、模型工具、总体字节预算与独占新目录发布均保持。已有失败验收必须保留为原输入版本的失败，不因新版本能加载而改写历史。
+
 ## 9. TDX个人研究采集的调度边界
 
 既有计划和原始页保持不变；scheduler-policy v2单独绑定plan_id与内容SHA，使用回顾性生命周期和按市场验证的供应商保留边界减少无效逐日请求，不签发PIT资格。策略生成与队列预览不改正式policy/任务；显式应用必须绑定已审查的策略文件、精确队列snapshot_id和STOP状态，并持有单写者锁。过期预览拒绝应用。

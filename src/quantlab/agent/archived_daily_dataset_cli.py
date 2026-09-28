@@ -16,7 +16,7 @@ def main(argv=None):
         command.add_argument('--symbols', nargs='+', required=True)
         command.add_argument('--start', required=True)
         command.add_argument('--end', required=True)
-        command.add_argument('--contract', choices=('tradable_only_v1','preserve_suspension_state_v2'), default='tradable_only_v1')
+        command.add_argument('--contract', choices=('tradable_only_v1','preserve_suspension_state_v2','normalize_baostock_suspension_marks_v3'), default='tradable_only_v1')
         if action == 'export':
             command.add_argument('--destination', required=True)
             command.add_argument('--expected-preview-hash', required=True)

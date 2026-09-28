@@ -433,3 +433,11 @@ AI回答明确这是合成报告，保留两项负估计、test_status=unavailab
 新增实验表单只读输入检查，复用已有LocalMarketDataTools而不新增模型工具。113唯一用例全部PASS，0失败/错误/跳过（13模块、16进程组），源码/测试/JSON/MJS前后hash=8f0a810a99172af9a1f16b4d375da6e2c725c7b00d98a85a3d7e697046e78a27。独立offscreen窗口在同一20只真实副本上显示18可加载/2阻塞，0任务/提案/模型调用，数据SHA不变；这是阻塞可视化通过，不是holdout或Alpha通过。
 
 主线合并先在独立Git夹具验证“只暂存入站分支增量、保留其他会话未提交后缀”的fast-forward方式，再按精确HEAD/索引/所有旧文件SHA和三份文档纯追加条件检查实际工作区；不暂存或提交retail_crowding。最终合入/push及WIP保留以本轮integration回执为准，未通过条件则保持独立分支。
+
+### 2026-09-28 真实研究阻塞的来源确认与停牌输入v3
+
+已对照当前daily_status_v2及原始retro capture=0b774158-3a3b-561f-9c18-23fd895db4aa（raw/typed/manifest深验）：原12行全部明确tradestatus=0，OHLC为同日preclose占位，不是仅凭空量推断。完整20股2023–2025共14540行，与原验收副本的OHLC/volume/amount逐值完全一致，逐日状态也一致；供应商回顾性证据不升级为官方PIT。
+
+新增显式宿主v3归档输入适配，原文件不写，派生停牌OHLC置null，全部日期与原空量额保留；旧v1/v2、生产MQC、模型工具与Grant规则不变。CLI已创建并深验输入包dataset_id=1919e7672c672083b8646e82c90023d3b2f753f6d1e0851c85c1f2156eb2fa62，保留14540行/12停牌行。证据artifacts/suspension-contract-20260928/source-reconciliation.json及package-verification.json。
+
+12模块127唯一用例全部PASS，0失败/错误/跳过，源码/测试/JSON/MJS前后hash=1f4edd907dd598b079f1b8ed55e04dbd93d089ec791f5e9710a83af48e98686a；包括v1/v2兼容、源与派生篡改、明确状态/报价/活动矛盾拒绝、20股三年完整网格、冻结后源离线、停牌不成交及标签不跳日。首次13项一处失败是测试预期错误消息不符（更早的文件大小检查已拦截），未放宽代码。当前仅确认输入适配和代码测试；原真实研究失败仍保留，恢复原假设的模型运行另记。
