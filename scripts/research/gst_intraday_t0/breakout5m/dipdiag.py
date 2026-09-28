@@ -32,4 +32,4 @@ out=dict(date=D['date'][r],code=code[r],pnl=pnl[r],units=units[r],hit=done[r],fi
   r1=(pc/pc2-1)[r], r5=(pc/pc6-1)[r], vr=(V[:,:s].sum(1)/np.maximum(np.nansum(D['vs20'][:,:s],1),1))[r],
   limdn=(C[:,-1]<=dn+0.001)[r], hiddn=(L.min(1)<=dn+0.001)[r], price=ref[r], cy=(up/pc>1.15)[r],
   pre_rng=((H[:,:s].max(1)-L[:,:s].min(1))/pc)[r])
-np.savez(f'{os.environ["HOME"]}/research/brk/dd_{yr}.npz',**out); print(yr,len(r))
+np.savez(f'{os.environ["HOME"]}/research/brk/dd{os.environ.get("DD_TAG","")}_{yr}.npz',**out); print(yr,len(r))
