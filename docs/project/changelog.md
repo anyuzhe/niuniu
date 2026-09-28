@@ -2277,3 +2277,11 @@
 - 不修改scheduler policy，因为assignment与policy_id强绑定。扩展collection scope新增family_history_floors（仅trades，sh/sz/bj），与供应商retention floor分离；apply_collection_scope只恢复旧collection-scope skip且在新floor内的任务，ERROR与scheduler-policy skip不改，Runner历史递推同时遵守scope floor。旧scope缺该字段继续兼容。
 - Phase A固定20日2026-08-21..09-17。新增retail_trades_phasea_scope.py只做scope迁移预览；Mac真实dry-run proposed scope保持K线和standalone opening_match排除、仅允许trades且floor=8/21，会恢复1882个旧scope trade seed、保留69个ProtocolError、STOP不变，policy/assignment ID不变。没有写真实scope、没有resume、没有网络请求。
 - TDX scheduler/lake/distributed/V2/planner相关5模块80项全部PASS；详细规划docs/archive/testing/20260928-Retail-Trades-PhaseA-Plan.md。真正执行仍需三台worker分别核对并明确写入reviewed scope后再显式resume。
+
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Trades Phase A 跨worker scope一致性修正
+
+- 发布Phase A后只读核对Windows节点：601在线，plan/policy/cluster与Mac一致，shard 2/3、1905证券、STOP存在，但仓库仍在旧提交92b46f8，且没有collection-scope.json；trades已有1814个PENDING和91个ERROR。HomePc WebCodex tunnel超过300秒未在线，未改走其他远控通道。
+- 这暴露Phase-A preview原先“继承当前scope再移除trades”只对Mac安全：601无旧scope时会误放开K线与standalone opening_match。修正为proposed_phasea_scope显式固定排除bars_1m/bars_5m/bars_daily/opening_match，只允许trades并设置sh/sz/bj统一floor，不再继承worker旧scope。
+- 新增纯函数回归验证无scope机器也生成完全相同语义；连同scheduler范围16项测试全部PASS。Mac真实dry-run再次核对：scope_id仍为e8a57a52b8e859e4164e04a16c1351ad088942b19b86a6c45dd427e0c9ecd41e，恢复1882个旧scope trade seed、69个ERROR保持、STOP保持、无写scope/队列/网络。
+- 601所在卷约1.86TiB、空闲约1.52TiB，容量不是Phase A硬阻塞；但真正resume前必须先把三台worker代码同步到包含scope floor保护的版本，并等HomePc恢复后完成同样只读预检。详细补充已写入20260928-Retail-Trades-PhaseA-Plan.md。

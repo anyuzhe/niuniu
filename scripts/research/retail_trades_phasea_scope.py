@@ -19,6 +19,21 @@ from quantlab.data.tdx_sharding import read_role
 from quantlab.storage.codec import encode
 
 
+PHASEA_EXCLUDED=("bars_1m","bars_5m","bars_daily","opening_match")
+
+
+def proposed_phasea_scope(pid,floor):
+    core={
+        "format":SCOPE_FORMAT,
+        "plan_id":pid,
+        "excluded_families":list(PHASEA_EXCLUDED),
+        "family_history_floors":{"trades":{"sh":floor,"sz":floor,"bj":floor}},
+        "history_complete":False,
+        "reason":"Retail Microstructure V2 Phase-A trades-only backfill; keep K-lines and standalone opening_match excluded",
+    }
+    return validate_collection_scope({**core,"scope_id":digest(core)},pid)
+
+
 def build_preview(worker_root,floor):
     lake=TdxLake(worker_root)
     active=json.loads((lake.base/"active-plan.json").read_text())
@@ -35,18 +50,7 @@ def build_preview(worker_root,floor):
     if assignment["policy_id"]!=policy.get("policy_id"):
         raise ValueError("Worker assignment/policy mismatch before Phase-A preview")
 
-    excluded=sorted(f for f in current.get("excluded_families",[]) if f!="trades")
-    floors=dict(current.get("family_history_floors",{}) or {})
-    floors["trades"]={"sh":floor,"sz":floor,"bj":floor}
-    core={
-        "format":SCOPE_FORMAT,
-        "plan_id":pid,
-        "excluded_families":excluded,
-        "family_history_floors":floors,
-        "history_complete":False,
-        "reason":"Retail Microstructure V2 Phase-A trades-only backfill; keep K-lines and standalone opening_match excluded",
-    }
-    proposed=validate_collection_scope({**core,"scope_id":digest(core)},pid)
+    proposed=proposed_phasea_scope(pid,floor)
 
     con=sqlite3.connect(str(lake.queue));con.row_factory=sqlite3.Row
     rows=[dict(r) for r in con.execute("""
@@ -93,6 +97,7 @@ def build_preview(worker_root,floor):
         "restore_sample":[{k:j[k] for k in ("job_id","symbol","day","state")} for j in restore[:12]],
         "skip_sample":[{k:j[k] for k in ("job_id","symbol","day","state","proposed_reason")} for j in skip[:12]],
         "notes":[
+            "Phase-A exclusions are explicit and identical on every worker; they do not inherit a worker's prior scope.",
             "Scheduler policy and distributed assignment remain byte/identity compatible because only collection scope changes.",
             "Standalone opening_match remains excluded; exact opening-match rows may still be derived locally from fetched trade pages without an extra network request.",
             "ERROR trade jobs are not retried or relabeled by the scope migration.",

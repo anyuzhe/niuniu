@@ -119,3 +119,49 @@ TDX scheduler / lake / distributed / V2 / planner 相关 5 模块合计 80 项�
 - 未进行 V2 收益统计推断
 
 真正执行 Phase A 仍需在三台 worker 上分别核对 scope/assignment 后，明确写入 reviewed scope，再显式 resume。
+
+
+## 跨机只读核对补充
+
+Phase A 代码发布后，对现有 WebCodex Windows 节点做了只读执行前核对：
+
+### 601
+
+601 WebCodex 在线；仅做文件/SQLite/磁盘读取，没有 pull、scope 写入、STOP 变更或采集。
+
+- 仓库当时仍停在旧提交 92b46f8，因此不能直接执行新的 collection-scope floor 逻辑。
+- data root：D:\AI\testData\niuniu-data
+- active plan：与 Mac 相同 c4566306...
+- scheduler policy：与 Mac 相同 7829c3c...，0.35 秒
+- cluster：fbe957f3...
+- assignment：d1c90c05...，shard 2/3，machine=601，1905 symbols
+- STOP：存在；AUTO_HALT：不存在
+- collection-scope.json 不存在
+- trades：PENDING 1814、ERROR 91，另有已有 CHECKPOINT/EMPTY/SAVED；日期只到 2026-09-16/17
+- D 盘 data root 所在卷约 1.86 TiB，总空闲约 1.52 TiB
+
+这说明原 Phase-A preview 的“继承当前 scope 再移除 trades”在 Mac 上正确，但跨机器不安全：601 无旧 scope 时会把 K 线与 standalone opening_match 也意外放开。
+
+因此 Phase-A scope 生成器修正为显式固定语义，不再继承任何 worker 的旧 excluded 列表：
+
+- 必须排除：bars_1m / bars_5m / bars_daily / opening_match
+- 必须允许：trades
+- trades floor：sh/sz/bj 都等于 Phase A 起始日
+- scheduler policy / assignment 不改
+
+这个修正只影响 Phase-A preview/后续显式 scope 内容，不会修改已有数据或立即执行采集。
+
+### HomePc
+
+HomePc WebCodex tunnel 超过 300 秒未在线，因此没有换用其他远控通道，也没有推断其当前 scope/queue。Phase A 真正执行前必须等 HomePc WebCodex 恢复后做同样只读核对。
+
+### 执行前新增硬条件
+
+真正 resume Phase A 前必须同时满足：
+
+1. 三台 worker 代码都包含本次 Phase-A scope floor 支持；
+2. 三台 plan/policy/cluster/assignment 身份逐项一致；
+3. 三台 proposed scope 都解析为同一显式 excluded 集与同一 2026-08-21 trades floor；
+4. 三台 STOP 在 scope 写入和队列预览期间保持；
+5. HomePc 恢复在线并完成只读预检；
+6. scope 写入后先复核队列变化，再由独立显式动作解除 STOP / resume。

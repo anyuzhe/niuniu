@@ -10,6 +10,9 @@ from quantlab.data.tdx_lake import TdxLake,digest,write_json
 from scripts.research.retail_trades_backfill_plan import (
     _current_feature_coverage,_eligible,build_plan,
 )
+from scripts.research.retail_trades_phasea_scope import (
+    PHASEA_EXCLUDED, proposed_phasea_scope,
+)
 
 
 class RetailTradesBackfillPlanTests(unittest.TestCase):
@@ -83,6 +86,13 @@ class RetailTradesBackfillPlanTests(unittest.TestCase):
         self.assertTrue(_eligible(policy,"sh.600001","2026-01-10"))
         self.assertTrue(_eligible(policy,"sz.000002","2026-01-20"))
         self.assertFalse(_eligible(policy,"sz.000002","2026-01-21"))
+
+    def test_phasea_scope_is_explicit_and_does_not_inherit_worker_scope(self):
+        scope=proposed_phasea_scope(self.pid,"2026-01-10")
+        self.assertEqual(tuple(scope["excluded_families"]),PHASEA_EXCLUDED)
+        self.assertNotIn("trades",scope["excluded_families"])
+        self.assertEqual(scope["family_history_floors"],{
+            "trades":{"sh":"2026-01-10","sz":"2026-01-10","bj":"2026-01-10"}})
 
     def test_build_plan_is_dry_run_and_lifecycle_bounded(self):
         queue=self.worker/"catalog/tdx_ingestion.sqlite3"
