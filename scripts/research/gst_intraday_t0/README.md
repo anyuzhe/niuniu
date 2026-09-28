@@ -28,3 +28,4 @@
 - 第十九轮（分批抄底大亏分析）：`breakout5m/dipdiag.py`（单一设置逐次记录进场前特征与之后走势）、`ddagg.py`（大亏集中在哪些日子与情形）、`dipbuy2.py` + `dip2agg.py`（盘中大盘止损：停止加仓或全部卖出）。
 - 第二十轮（分批抄底加大盘过滤）：`breakout5m/dipbuy3.py`（每次买入前按盘中大盘状态过滤，另含事后上限）、`dip3agg.py`（汇总）。
 - 第二十一轮（10:30 判断下午大盘）：`breakout5m/mktfeat.py`（每天 10:30 可知的 24 个大盘因子与下午走势）、`mfagg.py`（单因子与逐年滚动模型，写出 `mfpred.npz`）、`mffilter.py`（按模型风险跳过分批抄底；需先用 `DD_TAG=close15 dipdiag.py 年 12 23 0.015 3 1.0` 生成拿到收盘的记录）、`mftiming.py`（预测下午弱时先卖后买）。
+- 第二十二轮（风险过滤分批抄底复核）：`breakout5m/dipgrid.py`（10:30 以后开始的 192 组参数，按日期存结果，含 10:35 全买对照）、`mfloyo.py`（去掉当年拟合的预测，只作敏感性）、`dipgridagg.py` / `dipgridagg2.py` / `dipgridagg3.py`（按大跌概率门槛过滤、逐年与门槛敏感性）。
