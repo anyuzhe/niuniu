@@ -186,3 +186,6 @@ Retail Microstructure V2 数据准备位于 [retail_microstructure.py](../../src
 
 
 Retail Trades 回补规划由 [retail_trades_backfill_plan.py](../../scripts/research/retail_trades_backfill_plan.py) 只读计算20/40/120日symbol-day、三分片和现有canonical覆盖；[retail_trades_phasea_scope.py](../../scripts/research/retail_trades_phasea_scope.py) 生成Mac worker的Phase A collection-scope dry-run。`tdx_collection_cli.py` 的collection scope新增可选family_history_floors（当前只允许trades），可审计恢复旧scope自己跳过的任务，并让Runner在采集窗口floor处停止历史递推；scheduler policy与worker assignment合同不变。回归见 [test_tdx_scheduler.py](../../tests/test_tdx_scheduler.py) 与 [test_retail_trades_backfill_plan.py](../../tests/test_retail_trades_backfill_plan.py)，规划证据见[Phase A回补规划](../archive/testing/20260928-Retail-Trades-PhaseA-Plan.md)。
+
+
+Retail Microstructure 当前推断门升级到 [retail-microstructure-v2.0.2.json](../reference/retail-microstructure-v2.0.2.json)。[retail_microstructure.py](../../src/quantlab/data/retail_microstructure.py) 的 coverage 会校验 canonical active plan、scheduler-policy identity、coordinator cluster 与全部 assignment，并按日/按 shard 使用 lifecycle-adjusted expected symbols 做 90% 完整度门；任一 shard 缺失即不合格。旧 0.1 合同保留为历史版本。真实 2026-09-17 三 shard 1877/1871/1805 均通过，2026-09-16 520/136/177 全部拒绝。

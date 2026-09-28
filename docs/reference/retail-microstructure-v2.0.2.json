@@ -1,0 +1,49 @@
+{
+  "spec_id": "retail-microstructure-v2",
+  "version": "0.2.0",
+  "frozen_date": "2026-09-28",
+  "supersedes": "retail-microstructure-v2@0.1.0",
+  "reason": "Prevent partial distributed-shard collection from being mistaken for near-full-market coverage.",
+  "scope": "TDX personal-research trade archive feature contract only; no return inference until shard-aware coverage gate is ready.",
+  "source": {
+    "table": "tdx_trades_compacted",
+    "qualification": "vendor_observation_personal_research_not_pit",
+    "volume_unit": "lots_provider",
+    "notional_proxy_unit": "provider_lot_price_units_not_RMB",
+    "distributed_contract": "canonical active TDX plan + scheduler policy + coordinator cluster assignments"
+  },
+  "valid_directional_record": "side in {buy,sell} and price>0 and volume>0",
+  "features": {
+    "buy_imbalance_proxy": "(sum_buy(price*volume)-sum_sell(price*volume))/(sum_buy+sum_sell)",
+    "volume_imbalance": "(buy_volume_lots-sell_volume_lots)/(buy_volume_lots+sell_volume_lots)",
+    "avg_lots_per_order_proxy": "volume/order_count when order_count>0",
+    "small_order_threshold": "within each symbol-day, 20th percentile of avg_lots_per_order_proxy",
+    "small_order_notional_share": "notional proxy from records at/below the small-order threshold divided by all directional notional proxy",
+    "small_order_buy_imbalance": "buy-sell notional imbalance inside the small-order proxy subset"
+  },
+  "coverage_gate": {
+    "small_order_quantile": 0.2,
+    "min_qualified_days": 120,
+    "min_symbols_per_day": 3000,
+    "relative_full_market_ratio": 0.9,
+    "require_every_distributed_shard": true,
+    "expected_symbols": "per day and per shard, lifecycle-adjusted from the canonical scheduler policy",
+    "qualified_day": "trading day in frozen plan AND total feature_symbols >= min_symbols_per_day AND every shard actual feature symbols >= ceil(expected eligible symbols for that shard * 0.9) AND no unexpected feature symbol"
+  },
+  "missing_policy": {
+    "no_directional_trade": "no feature row",
+    "directional_trade_but_no_positive_order_count": "BuyImbalance remains available; small-order fields remain null",
+    "neutral_or_status_side": "excluded from directional metrics, retained in quality counts",
+    "nonpositive_volume": "excluded from directional metrics, retained in quality counts",
+    "missing_or_noncoordinator_distributed_contract": "coverage fails closed before inference",
+    "missing_one_or_more_shards": "day is not qualified even if the total feature-symbol count exceeds the absolute minimum"
+  },
+  "inference_policy": "require_inference_ready must pass the shard-aware 120-day gate before any return-predictive significance study is launched.",
+  "limitations": [
+    "No claim that the small-order proxy identifies retail investors.",
+    "No claim that price*provider_lots is RMB turnover.",
+    "Lifecycle bounds are retrospective acquisition bounds and are not PIT universe evidence.",
+    "Shard completeness proves collection coverage relative to the frozen distributed plan, not vendor-history completeness.",
+    "Attention/search/forum data are not part of V2."
+  ]
+}

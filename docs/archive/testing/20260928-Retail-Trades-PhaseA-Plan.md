@@ -191,3 +191,30 @@ HomePc WebCodex tunnel 超过 300 秒未在线，因此没有换用其他远控�
 4. 加入这些保护后，TDX scheduler/lake/distributed/V2/planner 完整回归为 84 项，全部通过。
 
 该能力仅用于把 worker 安全配置到同一 reviewed scope；它本身不启动 Phase A 采集。
+
+
+## Phase A reviewed scope 实际写入状态
+
+在 guarded apply 与全 family stale-queue guard 发布后，对 Mac 与 601 分别重新生成 fresh preview，并使用各自 current scope ID 与 queue snapshot 执行 reviewed apply。
+
+### Mac / shard 0
+
+- proposed scope ID：e8a57a52b8e859e4164e04a16c1351ad088942b19b86a6c45dd427e0c9ecd41e
+- before scope：0ec7436fe87645b4bc5917a7a4676f15a5d81d24d090ef911302f370e69af28f
+- queue snapshot：976249a291044eb83b457479ea3ab551fb37620d43861ff22b828010440b3d9f
+- changed rows：1882，全部为旧 collection-scope skip 的 trades 恢复为 PENDING
+- STOP=true，inflight=0，network_accessed=false，resume_performed=false
+
+### 601 / shard 2
+
+- 代码先由旧 92b46f8 ff-only 到当前 Phase A 版本；同步前后 STOP、plan、policy、assignment、queue SHA 均核对未因代码同步改变
+- proposed scope ID 与 Mac 完全一致
+- before scope：NONE
+- queue snapshot：6427db19e5b71403fa7c9f17ac80d1b31eba9250135df2120ff1dca6a75bf88f
+- changed rows：5313，审计分解为 bars_1m 1809、bars_5m 1807、bars_daily 1697 的 PENDING→SKIPPED_POLICY
+- trades PENDING 1814 保持，ERROR 91 保持
+- STOP=true，inflight=0，network_accessed=false，resume_performed=false
+
+### HomePc / shard 1
+
+HomePc WebCodex tunnel 仍未在线；未改走其他远控通道，未写 scope、未改 STOP、未推断 queue 状态。由于 V2 0.2 现在要求每个 shard 独立达到覆盖门，即使只运行 Mac+601，未来日期也不会被误判为近全市场。真正启动 Phase A 仍以 HomePc 恢复、同步代码、只读预检、写入同一 reviewed scope 为前置条件。

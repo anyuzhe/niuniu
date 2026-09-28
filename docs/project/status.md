@@ -506,3 +506,12 @@ V2 当前只有1/120个近全市场逐笔日。原TDX plan本身具备完整交�
 ### 2026-09-28 Retail Trades Phase A：reviewed scope 可安全写入，仍不启动采集
 
 Phase A 工具新增 guarded apply：必须 STOP 存在、无 RUNNING/STORED、current/proposed scope ID 与 trade queue snapshot 均与刚生成的 preview 完全一致，并持有原 TDX writer lease 才能写入 reviewed scope；任何队列变化均 fail-closed。apply 只写 scope、调用 apply_collection_scope 并记录 receipt，不解除 STOP、不 resume、不联网。queue snapshot 覆盖 proposed scope 会修改的全部 family，非 trades 队列变化也会拒绝；TDX scheduler/lake/distributed/V2/planner 完整回归 84 项全部通过。该能力用于先把 Mac/601/HomePc 配置到同一安全 scope，三机全部预检完成前仍不得启动 Phase A。
+
+
+### 2026-09-28 Retail Microstructure V2.0.2：三分片覆盖门生效，Phase A 两台已安全配置
+
+V2 覆盖门升级为 shard-aware：canonical 必须具有有效 active plan、scheduler policy 与 coordinator cluster，且每个交易日对 3 个 assignment 分别按上市/退市生命周期计算 expected symbols；每个 shard 的实际可算 feature symbols 都必须达到 expected×90%，总量还需≥3000，缺任一 shard 即不合格。真实 canonical 验证：2026-09-16 为 520/136/177，对应门槛 1694/1690/1632，明确不合格；2026-09-17 为 1877/1871/1805，对应门槛 1694/1690/1633，三 shard 全部合格。当前仍只有1/120日，INSUFFICIENT_COVERAGE。
+
+保留原 V2 0.1 合同，新增 V2 0.2.0 合同 retail-microstructure-v2.0.2.json。TDX/V2/分布式完整回归85项全部通过。
+
+Phase A reviewed scope 已在 Mac shard0 与 601 shard2 通过 guarded apply 写入同一 scope ID e8a57a52b8e859e4164e04a16c1351ad088942b19b86a6c45dd427e0c9ecd41e；两台 STOP 均保持、inflight=0、未 resume、未联网。Mac恢复1882个旧scope trade seed；601将5313个既有 bars_1m/bars_5m/bars_daily PENDING 标为SKIPPED_POLICY，1814个trades PENDING保持。HomePc shard1仍离线，未写scope，因此 Phase A 仍禁止启动。

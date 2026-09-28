@@ -2315,3 +2315,11 @@
 - 在跨worker scope一致性修正后，增加 reviewed-scope apply 模式：必须持有 TDX writer lease，且 STOP 存在、无 RUNNING/STORED、current scope ID、proposed scope ID 与 trade queue snapshot 均与刚生成的 preview 完全一致；任何队列/配置变化都拒绝。
 - apply 只写 reviewed collection scope、调用 apply_collection_scope 并写 retail-phasea-scope-receipt.json；明确不删除 STOP、不 resume/autoresume、不访问网络。receipt 记录 before/after queue snapshot、scope identity、实际变更数与安全状态。
 - queue snapshot 现在覆盖 proposed scope 会修改的全部 family，非 trades 队列变化也会 fail-closed；新增对应回归后，scheduler/lake/distributed/V2/planner 完整回归共84项全部PASS。该能力只用于先把三台worker配置到同一Phase-A scope，HomePc未完成预检前仍不允许启动采集。
+
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Microstructure V2.0.2 三分片覆盖门与Phase A双机预配置
+
+- 保留V2 0.1历史合同，新建retail-microstructure-v2.0.2.json。coverage现在要求canonical active plan、scheduler policy、coordinator cluster/assignments身份一致，并按上市/退市生命周期逐日计算每个shard expected symbols；总feature symbols需≥3000，且每个shard实际覆盖均需≥expected×90%，任一shard缺失即不合格。
+- 真实canonical验证：2026-09-16实际520/136/177，对应门槛1694/1690/1632，三shard全部不合格；2026-09-17实际1877/1871/1805，对应门槛1694/1690/1633，三shard全部合格。当前仍1/120、INSUFFICIENT_COVERAGE；因此HomePc离线时Mac+601两shard即使总数很高也不会误触发推断。
+- retail_microstructure_v2.py固定到V2 0.2.0规格并记录spec SHA；新增缺失分片回归后，TDX scheduler/lake/distributed/PhaseA/V2完整相关回归85项全部PASS。
+- Phase A reviewed scope已在Mac shard0与601 shard2通过guarded apply写入同一scope ID e8a57a52b8e859e4164e04a16c1351ad088942b19b86a6c45dd427e0c9ecd41e；两台STOP保持、inflight=0、未resume、未联网。Mac仅恢复1882个旧scope trade seed；601仅把5313个bars PENDING按scope标记SKIPPED_POLICY，1814个trades PENDING保持。HomePc shard1仍离线、未写scope，因此Phase A仍禁止启动。

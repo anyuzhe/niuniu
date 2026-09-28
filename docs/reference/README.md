@@ -18,6 +18,7 @@
 - [Retail Crowding V1 冻结规格 1.0.1](retail-crowding-v1.0.1.json)：公式、方向、日期和240项Holm族不变；仅修正999次置换无法达到首档Holm阈值的统计分辨率，并固化既有nullable-volume研究口径。当前执行版本。
 - [Retail Crowding V1 残差增量规格 1.0.0](retail-crowding-v1.1-residual.json)：固定 MOM20 + VolumeShock20 + AmountShock20 控制，只用≤2022拟合，2023–2026检验5个残差IC期限。
 - [Retail Microstructure V2 数据合同 0.1.0](retail-microstructure-v2.json)：固定逐笔买卖失衡、小单代理与120日覆盖门；当前只构建特征，不做收益推断。
+- [Retail Microstructure V2 数据合同 0.2.0](retail-microstructure-v2.0.2.json)：在0.1逐笔特征定义不变的基础上，新增canonical三分片逐日完整度门；任一shard不足即阻断推断。
 
 ## DATA / CODE 协作
 

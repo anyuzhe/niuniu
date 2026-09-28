@@ -2,12 +2,14 @@
 """Build research-only daily TDX retail microstructure proxies and coverage evidence."""
 import argparse
 import hashlib
+import json
 import sys
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
+SPEC_PATH=ROOT/"docs/reference/retail-microstructure-v2.0.2.json"
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 
@@ -28,6 +30,9 @@ def main(argv=None):
     a=p.parse_args(argv)
     out=a.output.resolve()
     out.mkdir(parents=True,exist_ok=False)
+    spec=json.loads(SPEC_PATH.read_text())
+    if spec.get("spec_id")!="retail-microstructure-v2" or spec.get("version")!="0.2.0":
+        raise ValueError("Retail Microstructure V2 current spec identity mismatch")
     config=RetailMicrostructureConfig()
     service=TdxRetailMicrostructure(a.data_root,config)
     coverage=service.coverage(parse_day(a.start),parse_day(a.end))
@@ -36,6 +41,8 @@ def main(argv=None):
     features.write_parquet(path)
     manifest={
         "format":"niuniu-retail-microstructure-v2-preview",
+        "spec":{"path":"docs/reference/retail-microstructure-v2.0.2.json","version":spec["version"],
+                "sha256":hashlib.sha256(SPEC_PATH.read_bytes()).hexdigest()},
         "config":asdict(config),
         "coverage":coverage,
         "feature_rows":features.height,

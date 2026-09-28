@@ -7,11 +7,13 @@ lots_provider; therefore notional values below are scale proxies, not RMB.
 from dataclasses import dataclass
 from datetime import date
 from math import ceil
+import json
 
 import duckdb
 import polars as pl
 
-from quantlab.data.tdx_lake import QUALIFICATION, TdxLake
+from quantlab.data.tdx_lake import QUALIFICATION, TdxLake, digest
+from quantlab.data.tdx_sharding import read_role, shard_for, validate_assignment
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,61 @@ class TdxRetailMicrostructure:
         return duckdb.connect(str(self.lake.catalog), read_only=True)
 
     @staticmethod
+    def _small_json(path, label):
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 5_000_000:
+            raise ValueError(label + " is unavailable or unsafe")
+        value=json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(value,dict):
+            raise ValueError(label + " schema invalid")
+        return value
+
+    def _distributed_contract(self):
+        active=self._small_json(self.lake.base/"active-plan.json","TDX active plan")
+        pid=active.get("plan_id")
+        if not isinstance(pid,str):
+            raise ValueError("TDX active plan identity invalid")
+        plan=self.lake.plan(pid)
+
+        policy=self._small_json(self.lake.base/"scheduler-policy.json","TDX scheduler policy")
+        core={k:v for k,v in policy.items() if k!="policy_id"}
+        policy_id=policy.get("policy_id")
+        if policy.get("format")!="tdx-scheduler-policy-v2" or policy.get("plan_id")!=pid or policy_id!=digest(core):
+            raise ValueError("TDX scheduler policy identity mismatch")
+
+        role=read_role(self.lake)
+        if role is None or role.get("role")!="coordinator":
+            raise ValueError("Retail microstructure inference requires the canonical distributed coordinator")
+        cluster=role.get("cluster")
+        if (not isinstance(cluster,dict) or cluster.get("format")!="tdx-distributed-cluster-v1"
+                or cluster.get("plan_id")!=pid or cluster.get("policy_id")!=policy_id):
+            raise ValueError("TDX distributed cluster identity mismatch")
+        shard_count=cluster.get("shard_count")
+        assignments=cluster.get("assignments")
+        if type(shard_count) is not int or not isinstance(assignments,list) or len(assignments)!=shard_count:
+            raise ValueError("TDX distributed shard inventory invalid")
+        checked=[]
+        seen=set()
+        for assignment in assignments:
+            value=validate_assignment(assignment,plan,pid,policy_id)
+            sid=value["shard_id"]
+            if sid in seen or value.get("cluster_id")!=cluster.get("cluster_id"):
+                raise ValueError("TDX distributed assignment set invalid")
+            seen.add(sid);checked.append(value)
+        if seen!=set(range(shard_count)):
+            raise ValueError("TDX distributed shard set incomplete")
+        return {
+            "plan_id":pid,"policy_id":policy_id,"cluster_id":cluster.get("cluster_id"),
+            "shard_count":shard_count,"assignments":tuple(sorted(checked,key=lambda x:x["shard_id"])),
+            "lifecycle_bounds":policy.get("lifecycle_bounds",{}),"trading_days":frozenset(plan.get("trading_days",[])),
+        }
+
+    @staticmethod
+    def _eligible_on(symbol,day,lifecycle):
+        row=lifecycle.get(symbol,{})
+        listed=row.get("listed");delisted=row.get("delisted")
+        return (not listed or day>=listed) and (not delisted or day<=delisted)
+
+    @staticmethod
     def _where(start=None, end=None, symbols=()):
         clauses, params = [], []
         if start is not None:
@@ -68,11 +125,12 @@ class TdxRetailMicrostructure:
         return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
     def coverage(self, start=None, end=None):
+        contract=self._distributed_contract()
         where, params = self._where(start, end)
         sql = (
             "SELECT date,count(*) AS n_rows,count(DISTINCT code) AS raw_symbols,"
-            "count(DISTINCT CASE WHEN json_extract_string(record_json,'$.side') IN ('buy','sell') "
-            "AND price>0 AND volume>0 THEN code END) AS feature_symbols,"
+            "list(DISTINCT code) FILTER (WHERE json_extract_string(record_json,'$.side') IN ('buy','sell') "
+            "AND price>0 AND volume>0) AS feature_codes,"
             "sum(CASE WHEN volume_unit!='lots_provider' THEN 1 ELSE 0 END) AS bad_units,"
             "sum(CASE WHEN qualification!=? THEN 1 ELSE 0 END) AS bad_qualification "
             "FROM tdx_trades_compacted" + where + " GROUP BY date ORDER BY date"
@@ -86,37 +144,78 @@ class TdxRetailMicrostructure:
             raise ValueError("Unexpected TDX trade volume unit")
         if any(row[5] for row in rows):
             raise ValueError("Unexpected TDX trade qualification")
-        max_feature_symbols = max((row[3] for row in rows), default=0)
-        threshold = (
-            max(self.config.min_symbols_per_day, ceil(max_feature_symbols * self.config.relative_full_market_ratio))
-            if max_feature_symbols else self.config.min_symbols_per_day
-        )
-        by_day = [
-            {
-                "date": row[0].isoformat(),
-                "rows": row[1],
-                "raw_symbols": row[2],
-                "feature_symbols": row[3],
-                "qualified": row[3] >= threshold,
-            }
-            for row in rows
-        ]
-        qualified = [row for row in by_day if row["qualified"]]
-        ready = len(qualified) >= self.config.min_qualified_days
+
+        assignments=contract["assignments"]
+        symbol_to_shard={}
+        for assignment in assignments:
+            for symbol in assignment["symbols"]:
+                prior=symbol_to_shard.setdefault(symbol,assignment["shard_id"])
+                if prior!=assignment["shard_id"]:
+                    raise ValueError("TDX symbol appears in multiple shards")
+
+        by_day=[]
+        for row in rows:
+            day=row[0].isoformat()
+            codes=tuple(sorted(c for c in (row[3] or []) if c))
+            actual={a["shard_id"]:0 for a in assignments}
+            unexpected=[]
+            for code in codes:
+                sid=symbol_to_shard.get(code)
+                if sid is None:
+                    unexpected.append(code)
+                else:
+                    actual[sid]+=1
+            expected={}
+            thresholds={}
+            shard_ok={}
+            for assignment in assignments:
+                sid=assignment["shard_id"]
+                expected[sid]=sum(
+                    self._eligible_on(symbol,day,contract["lifecycle_bounds"])
+                    for symbol in assignment["symbols"]
+                )
+                thresholds[sid]=ceil(expected[sid]*self.config.relative_full_market_ratio)
+                shard_ok[sid]=actual[sid]>=thresholds[sid]
+            feature_symbols=len(codes)
+            qualified=(
+                day in contract["trading_days"]
+                and feature_symbols>=self.config.min_symbols_per_day
+                and not unexpected
+                and all(shard_ok.values())
+            )
+            by_day.append({
+                "date":day,"rows":row[1],"raw_symbols":row[2],"feature_symbols":feature_symbols,
+                "expected_symbols_by_shard":{str(k):expected[k] for k in sorted(expected)},
+                "feature_symbols_by_shard":{str(k):actual[k] for k in sorted(actual)},
+                "required_symbols_by_shard":{str(k):thresholds[k] for k in sorted(thresholds)},
+                "shard_qualified":{str(k):shard_ok[k] for k in sorted(shard_ok)},
+                "unexpected_feature_symbols":unexpected,
+                "qualified":qualified,
+            })
+        qualified=[row for row in by_day if row["qualified"]]
+        ready=len(qualified)>=self.config.min_qualified_days
         return {
-            "format": "niuniu-retail-microstructure-coverage-v1",
-            "qualification": QUALIFICATION,
-            "volume_unit": "lots_provider",
-            "available_days": len(by_day),
-            "max_raw_symbols": max((row[2] for row in rows), default=0),
-            "max_feature_symbols": max_feature_symbols,
-            "qualified_symbol_threshold": threshold,
-            "qualified_days": len(qualified),
-            "min_qualified_days": self.config.min_qualified_days,
-            "status": "READY_FOR_INFERENCE" if ready else "INSUFFICIENT_COVERAGE",
-            "inference_ready": ready,
-            "by_day": by_day,
-            "scope": "Cross-section completeness proxy only; does not certify PIT completeness or vendor history completeness.",
+            "format":"niuniu-retail-microstructure-coverage-v2",
+            "qualification":QUALIFICATION,
+            "volume_unit":"lots_provider",
+            "available_days":len(by_day),
+            "max_raw_symbols":max((row["raw_symbols"] for row in by_day),default=0),
+            "max_feature_symbols":max((row["feature_symbols"] for row in by_day),default=0),
+            "min_symbols_per_day":self.config.min_symbols_per_day,
+            "relative_full_market_ratio":self.config.relative_full_market_ratio,
+            "qualified_days":len(qualified),
+            "min_qualified_days":self.config.min_qualified_days,
+            "status":"READY_FOR_INFERENCE" if ready else "INSUFFICIENT_COVERAGE",
+            "inference_ready":ready,
+            "distributed_contract":{
+                "plan_id":contract["plan_id"],"policy_id":contract["policy_id"],
+                "cluster_id":contract["cluster_id"],"shard_count":contract["shard_count"],
+                "assignments":[{"shard_id":a["shard_id"],"machine_name":a["machine_name"],
+                                "symbol_count":a["symbol_count"],"assignment_id":a["assignment_id"]}
+                               for a in assignments],
+            },
+            "by_day":by_day,
+            "scope":"Every distributed shard must meet its lifecycle-adjusted completeness threshold; this remains retrospective acquisition coverage, not PIT tradability.",
         }
 
     def require_inference_ready(self, start=None, end=None):
