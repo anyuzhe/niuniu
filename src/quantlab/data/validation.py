@@ -85,9 +85,16 @@ def validate_bars(bars: pl.DataFrame) -> None:
         raise ValueError("Bar available before datetime")
 
 
-def ordered_bars(bars: pl.DataFrame, *, for_execution: bool = False) -> pl.DataFrame:
+def ordered_bars(bars: pl.DataFrame, *, for_execution: bool = False, virtual_qfq: bool = False) -> pl.DataFrame:
     validate_bars(bars)
-    if for_execution and 'input_contract' in bars.columns and bars['input_contract'][0] == PUBLISHED_RESEARCH_CONTRACT:
+    if type(virtual_qfq) is not bool or virtual_qfq and not for_execution:
+        raise ValueError('virtual_qfq is an explicit simulation-only consumer')
+    published='input_contract' in bars.columns and bars['input_contract'][0] == PUBLISHED_RESEARCH_CONTRACT
+    if virtual_qfq:
+        if not published:raise ValueError('virtual_qfq requires the exact published qfq/status input contract')
+        first=bars.sort('symbol','datetime').group_by('symbol',maintain_order=True).first()
+        if first['close'].null_count():raise ValueError('virtual_qfq requires an observed first close for every security')
+    elif for_execution and published:
         raise ValueError('Published qfq/status research-only input has no account valuation contract; execution is forbidden')
     if bars["timeframe"].n_unique() != 1:
         raise ValueError("Detect one timeframe at a time")

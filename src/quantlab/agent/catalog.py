@@ -168,6 +168,8 @@ class ReadOnlyResearchAPI:
                         'authority': 'historical_reference_only', 'verification': 'not_checked_by_compile',
                         'policy': '来源必须来自实际父实验；宿主提案和批准前重新核验。不继承批准、预算或交易权限。'},
                     'lifecycle': dict(LIFECYCLE), 'supported_qualifications': list(QUALIFICATIONS),
+                    'price_modes': {'research':'既有研究价格模型', 'account':'raw与明确公司行动的精细账户模型',
+                                    'virtual_qfq':'显式前复权虚拟单位资金模拟，只有open后端；T+1、不新增ST买入、固定模拟板块限价、最近已观察价估值；不是原始股数/真实券商账户'},
                     'spec_required': sorted(_SPEC_REQUIRED),
                     'execution_required': sorted(_EXECUTION_REQUIRED), 'portfolio_required': sorted(_PORTFOLIO_REQUIRED),
                     'signal_alternatives': [['factor', 'version', 'parameters'], ['theory', 'theory_version']],
@@ -209,7 +211,7 @@ class ReadOnlyResearchAPI:
             self.identifier(args['run_id'])
             path = self.catalog.file(args['run_id'], 'experiment.json')
             record = load_record_fields(path, {'run_id','experiment_id','kind','status','created_at',
-                'metrics','execution','summary','limitations','inference','error','periods'})
+                'metrics','execution','summary','limitations','inference','error','periods','simulation_contract'})
             if record.get('run_id') != args['run_id']: raise ValueError('INVALID_ARTIFACT：归档身份不一致。')
             if 'periods' in record:
                 periods=record['periods']

@@ -2439,3 +2439,9 @@
 - 互斥组共同完整日期MAE差（百分点）：全部信号+0.77245/+1.24856/+1.28951，非重叠+0.53382/+1.34168/+1.86095。非重叠最差5%事件MAE差+0.74277/−4.76207/+3.86753，收益差−0.18881/+0.47065/−0.16928。两组共同日期149/179/193与76/103/91；未配对事件条数442/262/97与267/276/173，不是日期数。完整数值与report_digest在audits.json及results-summary.json。
 - 宿主语义复核发现原模型首稿将events_without_opposite_group_date误译成日期，未改代码或统计让文稿过关。原生追加修订6调用，三审计report_digest完全相同、原六引用一致，supersedes链保留旧文；新稿06827cc3-7b03-480d-98c8-0dec51daf61d正式读回。分类inconclusive/来源verified但claim_verified=false。修订回执与原稿并存，不虚称首次完整语义验收正确。
 - 本轮包括4规划+13诊断+6文字修订的23次原生调用，工具错误0但保留上述模型解释错误。未认证独立Alpha、因果风险价值、PIT、成本或可成交止损，不创建观察池或真实交易。最终仅文档收尾，源码与133项冻结回归保持一致；main安全合入、远端SHA和证据复制另核对。
+
+### 2026-09-28｜[CODE/RESEARCH] 用户百万元策略模拟的显式虚拟单位模式
+
+- 用户要求100万元本金完整抄底策略和模拟，原生Pi在未看新账户结果前读取合同/旧负结果/实际模板定义，9次工具成功，提出两个信号草稿；首稿缺少明确换手及支持的排序/持有说明，需要事前转成完整配置，不虚称已经回测。
+- 不给原published_qfq_status_research_only_v1赋予raw账户估值资格：新增ExecutionConfig.price_mode=virtual_qfq，原research/account/vnpy仍拒绝该输入。独立虚拟消费者要求明确首价、保留停牌日期/OHLC空值，最近已观察收盘估值，不伪造vendor_previous_close；T+1、ST新买阻断、固定模拟板块限价和上一完整bar量/factor的虚拟容量，禁止real规则/公司行动混用。归档和模型合同明确simulation_contract；本次不是实际原始股数、券商账户或市场规则认证。
+- 原ProposalService/ApprovalInputFreeze/JobQueue仍为宿主审批执行，Research Session Grant/模型权限不扩大。保留初次测试将filled_at误写at的失败和一次空edit工具schema错误，修正不改模拟数值。正式行情、采集、日常模型配置和可见桌面不变；最终回归和账户结果另外记录。

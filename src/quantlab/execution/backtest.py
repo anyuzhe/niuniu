@@ -55,7 +55,7 @@ class ExecutionConfig:
         if type(self.statutory_fees) is not bool:raise ValueError('statutory_fees must be boolean')
         if self.entry_window_minutes is not None and (type(self.entry_window_minutes) is not int or self.entry_window_minutes < 1):
             raise ValueError('entry_window_minutes must be a positive integer')
-        if self.price_mode not in ('research','account'):raise ValueError('price_mode must be research or account')
+        if self.price_mode not in ('research','account','virtual_qfq'):raise ValueError('price_mode must be research, account or virtual_qfq')
         IndustryHistory(self.industry_events)
         traded=RightsTrading(self.rights_trading,self.corporate_action_mode)
         dividends=CashDividends(self.corporate_actions, self.corporate_action_mode)
@@ -80,7 +80,11 @@ class ExecutionConfig:
             raise ValueError('limit_pct must be null or in (0,1)')
 
     def validate_price_inputs(self, rules=None):
-        if self.price_mode=='research':
+        if self.price_mode=='virtual_qfq':
+            if rules is not None:raise ValueError('virtual_qfq does not consume real-account market rules')
+            if not self.t_plus_one or self.allow_st:raise ValueError('virtual_qfq requires T+1 and no new ST buys')
+            if self.limit_pct is not None:raise ValueError('virtual_qfq uses fixed modeled board limits, not limit_pct overrides')
+        if self.price_mode in ('research','virtual_qfq'):
             if any((self.corporate_actions,self.stock_splits,self.rights_issues,self.rights_trading)):
                 raise ValueError('研究价格回测不重复处理公司行动；请清空事件或选择精细账户模式 price_mode=account')
             if rules and any(r.get('limit_up') is not None or r.get('limit_down') is not None for r in rules.records):
@@ -93,6 +97,9 @@ def cost_model_warnings(config, rules=None):
     Informational only: it never changes fills, costs or archived numerical results.
     """
     warnings=[]
+    if config.price_mode=='virtual_qfq':
+        from quantlab.execution.virtual_qfq import DISCLOSURE
+        return list(DISCLOSURE['limitations'])
     if rules is None and not config.statutory_fees:
         if config.sell_tax_bps==0:
             warnings.append('未收卖出印花税：sell_tax_bps=0 且未开启 statutory_fees（按成交日法定税率）。结果会偏乐观。')
@@ -117,7 +124,13 @@ class OpenExecutionBacktester:
         self.config=config or ExecutionConfig(); self.rules=rules; self.matcher=matcher
 
     def run(self,targets,bars):
-        bars=ordered_bars(bars,for_execution=True);cfg=self.config;industry=IndustryHistory(cfg.industry_events)
+        cfg=self.config;cfg.validate_price_inputs(self.rules)
+        virtual=cfg.price_mode=='virtual_qfq'
+        if virtual and self.matcher is not None:raise ValueError('virtual_qfq only supports the internal virtual-unit simulator')
+        bars=ordered_bars(bars,for_execution=True,virtual_qfq=virtual);industry=IndustryHistory(cfg.industry_events)
+        if virtual:
+            from quantlab.execution.virtual_qfq import validate_virtual_range
+            validate_virtual_range(bars)
         state_aware=suspension_state_aware(bars)
         audit=ExecutionAudit(cfg.initial_cash)
         if bars['timeframe'][0] not in ('1d','1m','5m','15m','30m','60m'):
@@ -187,6 +200,7 @@ class OpenExecutionBacktester:
                     raise ValueError('Missing ex-date valuation bar for held dividend stock')
             tradable_group=group if not state_aware else group.filter(pl.col('bs_trade_status')==1)
             suspended_group=group.head(0) if not state_aware else group.filter(pl.col('bs_trade_status')==0)
+            virtual_status=dict(zip(group['symbol'],group['bs_is_st'])) if virtual else {}
             if state_aware and suspended_group.height:
                 suspended_symbols=set(suspended_group['symbol'])
                 for action in dividends.records:
@@ -266,6 +280,10 @@ class OpenExecutionBacktester:
                         elif buying and rule['st'] and not cfg.allow_st:size=0;reason='st_buy_blocked'
                         elif (buying and rule['limit_up'] is not None and price>=rule['limit_up']-1e-10) or (not buying and rule['limit_down'] is not None and price<=rule['limit_down']+1e-10):
                             size=0;reason='session_price_limit'
+                    if virtual:
+                        from quantlab.execution.virtual_qfq import blocked_reason
+                        blocked=blocked_reason(symbol,price,last_close.get(symbol),buying,virtual_status[symbol])
+                        if blocked:size=0;reason=blocked
                     if any(r['rights_symbol']==symbol and not r['deliver_at']<=opening<r['expires_at'] for r in traded_rights.records):size=0;reason='rights_outside_trading_lifetime'
                     if size and self.rules is None and cfg.limit_pct is not None and symbol in last_close:
                         bound=last_close[symbol]*(1+cfg.limit_pct if buying else 1-cfg.limit_pct)
@@ -344,10 +362,12 @@ class OpenExecutionBacktester:
                     audit.attempt(opening,decision,symbol,buying,requested,size,reason,capacity)
             for row in tradable_group.iter_rows(named=True):
                 marks[row['symbol']]=row['close'];last_close[row['symbol']]=row['close']
-                prior_volume[row['symbol']]={'at':end,'volume':row['volume']}
+                prior_volume[row['symbol']]={'at':end,'volume':row['volume']/row['adj_factor'] if virtual else row['volume']}
+                if virtual:prior_volume[row['symbol']]['units']='qfq_virtual_units_from_previous_completed_bar'
             if state_aware:
                 for row in suspended_group.iter_rows(named=True):
-                    symbol=row['symbol'];reference=row['vendor_previous_close']
+                    symbol=row['symbol'];reference=marks.get(symbol) if virtual else row['vendor_previous_close']
+                    if virtual and reference is None:raise ValueError('Missing prior observed virtual valuation mark')
                     if symbol not in marks:marks[symbol]=reference
                     last_close[symbol]=reference
             prices=dict(zip(tradable_group['symbol'],tradable_group['open']))

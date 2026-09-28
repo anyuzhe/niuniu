@@ -27,6 +27,7 @@ class ExecutionStudy:
     def run(self,config,execution_config,portfolio_config=None,backend="open",market_rules=None,*,strategy_package=None):
         execution_config.validate_price_inputs(market_rules)
         if backend not in ("open","vnpy_open","vnpy_rules"):raise ValueError("Unknown execution backend")
+        if execution_config.price_mode=='virtual_qfq' and backend!='open':raise ValueError('virtual_qfq requires the internal open research simulator')
         if backend=="vnpy_open" and market_rules is not None:raise ValueError("Use vnpy_rules for dated market rules")
         if backend=="vnpy_open":
             from quantlab.adapters.vnpy import validate_config
@@ -47,6 +48,7 @@ class ExecutionStudy:
             signal_snapshot=source['manifest']['data_snapshot']
             if strategy_package is not None and signal_snapshot['adjustment'] != strategy_package['package']['spec']['adjustment']:
                 raise ValueError('实际信号价格口径与 strategy_package 声明不一致')
+            if execution_config.price_mode=='virtual_qfq' and signal_snapshot['adjustment']!='qfq':raise ValueError('virtual_qfq requires published qfq signals')
             execution_snapshot=signal_snapshot
             bars=pl.read_parquet(child.artifact_path/'bars.parquet')
             signal_bars=bars
@@ -107,6 +109,11 @@ class ExecutionStudy:
                 '整手、T+1、费用、税费及价格上下限由配置或逐时点规则决定；不自动匹配历史板块身份。',
                 '研究价格模式不处理公司行动；精细账户模式按明确来源与时间处理事件及持有期税。未强平末尾持仓。',
                 '逐时点规则只有在 market_rules 提供时才启用；缺失或过期规则阻止下单。规则文件的真实历史覆盖需单独验证。'])
+            if execution_config.price_mode=='virtual_qfq':
+                from quantlab.execution.virtual_qfq import DISCLOSURE
+                record['simulation_contract']=dict(DISCLOSURE)
+                record['limitations']=[*DISCLOSURE['limitations'],*record['limitations']]
+                record['limitations']=[v for v in record['limitations'] if '精细账户模式' not in v and '逐时点规则只有' not in v]
         except Exception as error:
             record.update(status='failed',experiment_id=digest(manifest),error=f'{type(error).__name__}: {error}')
             self.runner.store.save(run_id,record,None)
