@@ -73,33 +73,66 @@ def _scope_path(lake):return safe(lake.root,lake.base/COLLECTION_SCOPE)
 def validate_collection_scope(value,pid):
     if not isinstance(value,dict):raise ValueError('TDX collection scope schema invalid')
     core={k:v for k,v in value.items() if k!='scope_id'}
-    excluded=value.get('excluded_families')
+    excluded=value.get('excluded_families');floors=value.get('family_history_floors',{})
     if value.get('format')!=SCOPE_FORMAT or value.get('plan_id')!=pid or value.get('scope_id')!=digest(core):
         raise ValueError('TDX collection scope identity/checksum mismatch')
     if not isinstance(excluded,list) or len(excluded)!=len(set(excluded)) or any(f not in FAMILIES for f in excluded):
         raise ValueError('TDX collection scope excluded families invalid')
+    if not isinstance(floors,dict):raise ValueError('TDX collection scope history floors invalid')
+    for family,markets in floors.items():
+        if family!='trades' or not isinstance(markets,dict):raise ValueError('Unsupported collection history floor')
+        for market,day in markets.items():
+            if market not in ('sh','sz','bj') or not isinstance(day,str):
+                raise ValueError('Unsupported collection history floor market')
+            if date.fromisoformat(day).isoformat()!=day:raise ValueError('Noncanonical collection history floor')
     return value
 
 def load_collection_scope(lake,pid):
     path=_scope_path(lake)
-    if not path.exists():return {'format':SCOPE_FORMAT,'plan_id':pid,'scope_id':None,'excluded_families':[],'history_complete':False}
+    if not path.exists():return {'format':SCOPE_FORMAT,'plan_id':pid,'scope_id':None,'excluded_families':[],'family_history_floors':{},'history_complete':False}
     if path.is_symlink() or not path.is_file() or path.stat().st_size>1_000_000:raise ValueError('Invalid TDX collection scope file')
     return validate_collection_scope(json.loads(path.read_text(encoding='utf-8')),pid)
 
+def _scope_history_floor(scope,family,symbol):
+    return ((scope.get('family_history_floors',{}).get(family,{}) or {}).get(symbol[:2] if symbol else ''))
+
+def _scope_job_decision(scope,job):
+    if job['family'] in set(scope.get('excluded_families') or ()):
+        return False,'Excluded by collection scope '+str(scope.get('scope_id'))
+    floor=_scope_history_floor(scope,job['family'],job.get('symbol'))
+    if floor and job.get('day') and job['day']<floor:
+        return False,'Outside collection history floor scope='+str(scope.get('scope_id'))+' floor='+floor
+    return True,None
+
 def apply_collection_scope(lake,pid,scope):
     excluded=tuple(scope.get('excluded_families') or ())
-    if not excluded:return 0
+    floors=scope.get('family_history_floors',{}) or {}
+    changed=0
     with lake.db() as con:
         con.execute('CREATE TABLE IF NOT EXISTS collection_scope_audit(event_id TEXT PRIMARY KEY,scope_id TEXT NOT NULL,job_id TEXT NOT NULL,before_json TEXT NOT NULL,created_at TEXT NOT NULL)')
-        marks=','.join('?' for _ in excluded)
-        rows=[dict(r) for r in con.execute("SELECT * FROM jobs WHERE plan_id=? AND state='PENDING' AND family IN ("+marks+") ORDER BY job_id",(pid,*excluded))]
-        for job in rows:
+        families=sorted(set(excluded)|set(floors))
+        pending=[]
+        if families:
+            marks=','.join('?' for _ in families)
+            pending=[dict(r) for r in con.execute("SELECT * FROM jobs WHERE plan_id=? AND state='PENDING' AND family IN ("+marks+") ORDER BY job_id",(pid,*families))]
+        skipped=[dict(r) for r in con.execute(
+            "SELECT * FROM jobs WHERE plan_id=? AND state='SKIPPED_POLICY' AND (error LIKE 'Excluded by collection scope %' OR error LIKE 'Outside collection history floor %') ORDER BY job_id",(pid,))]
+        for job in pending:
+            allowed,reason=_scope_job_decision(scope,job)
+            if allowed:continue
             con.execute('INSERT OR IGNORE INTO collection_scope_audit VALUES (?,?,?,?,?)',
                 (digest([scope.get('scope_id'),job]),scope.get('scope_id') or 'default',job['job_id'],encode(job),now()))
-            con.execute("UPDATE jobs SET state='SKIPPED_POLICY',error=?,updated_at=? WHERE job_id=?",
-                ('Excluded by collection scope '+str(scope.get('scope_id')),now(),job['job_id']))
+            con.execute("UPDATE jobs SET state='SKIPPED_POLICY',error=?,updated_at=? WHERE job_id=?",(reason,now(),job['job_id']))
+            changed+=1
+        for job in skipped:
+            allowed,_=_scope_job_decision(scope,job)
+            if not allowed:continue
+            con.execute('INSERT OR IGNORE INTO collection_scope_audit VALUES (?,?,?,?,?)',
+                (digest([scope.get('scope_id'),job]),scope.get('scope_id') or 'default',job['job_id'],encode(job),now()))
+            con.execute("UPDATE jobs SET state='PENDING',error=NULL,updated_at=? WHERE job_id=?",(now(),job['job_id']))
+            changed+=1
         con.commit()
-    return len(rows)
+    return changed
 
 def _verify_auction_retention_evidence(directory,trading_days):
     root=Path(directory).resolve()
@@ -402,7 +435,9 @@ class Runner:
         validate_worker_queue(lake,self.assignment)
         self.metrics_lock=threading.Lock();self.network_attempts=0;self.network_errors=0;self.reused_pages=0
     def _previous_history_day(self,family,symbol,day):
-        return _latest_allowed_day(self.days,family,symbol,day,self.policy,strictly_before=True)
+        candidate=_latest_allowed_day(self.days,family,symbol,day,self.policy,strictly_before=True)
+        floor=_scope_history_floor(self.scope,family,symbol)
+        return candidate if candidate and (not floor or candidate>=floor) else None
     def _next_host(self):
         with self.source_lock:
             host=HOSTS[self.host_cursor%len(HOSTS)];self.host_cursor+=1;return host

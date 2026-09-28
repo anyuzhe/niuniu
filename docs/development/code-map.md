@@ -183,3 +183,6 @@ Retail Crowding 第二阶段由 [retail_crowding_residual_v1.py](../../scripts/r
 
 
 Retail Microstructure V2 数据准备位于 [retail_microstructure.py](../../src/quantlab/data/retail_microstructure.py)：只读 TDX compacted trades，构造买卖失衡和无人民币单位假设的小单代理，并以 feature-symbol 覆盖和120日门槛 fail-closed；预览脚本 [retail_microstructure_v2.py](../../scripts/research/retail_microstructure_v2.py)，冻结合同 [retail-microstructure-v2.json](../reference/retail-microstructure-v2.json)，测试 [test_retail_microstructure.py](../../tests/test_retail_microstructure.py)。当前覆盖不足时不注册收益因子、不做推断。
+
+
+Retail Trades 回补规划由 [retail_trades_backfill_plan.py](../../scripts/research/retail_trades_backfill_plan.py) 只读计算20/40/120日symbol-day、三分片和现有canonical覆盖；[retail_trades_phasea_scope.py](../../scripts/research/retail_trades_phasea_scope.py) 生成Mac worker的Phase A collection-scope dry-run。`tdx_collection_cli.py` 的collection scope新增可选family_history_floors（当前只允许trades），可审计恢复旧scope自己跳过的任务，并让Runner在采集窗口floor处停止历史递推；scheduler policy与worker assignment合同不变。回归见 [test_tdx_scheduler.py](../../tests/test_tdx_scheduler.py) 与 [test_retail_trades_backfill_plan.py](../../tests/test_retail_trades_backfill_plan.py)，规划证据见[Phase A回补规划](../archive/testing/20260928-Retail-Trades-PhaseA-Plan.md)。

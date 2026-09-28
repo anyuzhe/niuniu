@@ -6,9 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from quantlab.data.tdx_lake import TdxLake, digest, write_json
 from quantlab.agent.tdx_collection_cli import (
-    POLICY_FORMAT, DEDICATED, Runner, build_scheduler_policy,
-    validate_scheduler_policy, preview_scheduler_policy,
-    apply_scheduler_policy_to_pending, recover_for_resume,
+    POLICY_FORMAT, SCOPE_FORMAT, COLLECTION_SCOPE, DEDICATED, Runner, build_scheduler_policy,
+    validate_scheduler_policy, validate_collection_scope, preview_scheduler_policy,
+    apply_scheduler_policy_to_pending, apply_collection_scope, recover_for_resume,
     _verify_auction_retention_evidence,
 )
 
@@ -108,6 +108,41 @@ class SchedulerSafetyTests(unittest.TestCase):
         ):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 validate_scheduler_policy(self.seal({**self.policy, **changes}), self.pid)
+
+    def test_collection_scope_trade_floor_is_separate_from_retention_floor(self):
+        core={'format':SCOPE_FORMAT,'plan_id':self.pid,'excluded_families':['bars_1m'],
+              'family_history_floors':{'trades':{'sh':'2025-07-22','sz':'2025-07-22','bj':'2025-07-22'}},
+              'history_complete':False}
+        scope={**core,'scope_id':digest(core)}
+        self.assertEqual(validate_collection_scope(scope,self.pid),scope)
+        bad={**core,'family_history_floors':{'auction':{'sh':'2025-07-22'}}}
+        bad={**bad,'scope_id':digest(bad)}
+        with self.assertRaisesRegex(ValueError,'Unsupported collection history floor'):
+            validate_collection_scope(bad,self.pid)
+
+    def test_collection_scope_restore_and_trade_floor_stop(self):
+        newer=self.seed(day='2025-07-23')
+        older=self.seed(symbol='bj.920010',day='2025-07-21')
+        old_core={'format':SCOPE_FORMAT,'plan_id':self.pid,'excluded_families':['trades'],
+                  'family_history_floors':{},'history_complete':False}
+        old={**old_core,'scope_id':digest(old_core)}
+        self.assertEqual(apply_collection_scope(self.lake,self.pid,old),2)
+        self.assertTrue(all(r['state']=='SKIPPED_POLICY' for r in self.jobs()))
+
+        new_core={'format':SCOPE_FORMAT,'plan_id':self.pid,'excluded_families':[],
+                  'family_history_floors':{'trades':{'sh':'2025-07-22','sz':'2025-07-22','bj':'2025-07-22'}},
+                  'history_complete':False}
+        new={**new_core,'scope_id':digest(new_core)}
+        self.assertEqual(apply_collection_scope(self.lake,self.pid,new),1)
+        actual={r['job_id']:r for r in self.jobs()}
+        self.assertEqual(actual[newer['job_id']]['state'],'PENDING')
+        self.assertEqual(actual[older['job_id']]['state'],'SKIPPED_POLICY')
+
+        write_json(self.lake.base/'scheduler-policy.json',self.policy)
+        write_json(self.lake.base/COLLECTION_SCOPE,new)
+        runner=Runner(self.lake,self.pid)
+        self.assertEqual(runner._previous_history_day('trades','sh.600000','2025-07-23'),'2025-07-22')
+        self.assertIsNone(runner._previous_history_day('trades','sh.600000','2025-07-22'))
 
     def test_unknown_lifecycle_does_not_trim_bse_or_trade_years(self):
         write_json(self.lake.base/'scheduler-policy.json', self.policy)

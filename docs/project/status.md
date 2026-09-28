@@ -470,3 +470,8 @@ V1.0.1 按四板块各100只的确定性分层样本完成400股扩大验证，2
 ### 2026-09-28 Retail Microstructure V2：特征已接通，历史覆盖不足而阻断推断
 
 新增只读 TDX 逐笔微观结构特征：BuyImbalanceProxy、VolumeImbalance、SmallOrderNotionalShare、SmallOrderBuyImbalance。因为 provider volume 只认证为 lots_provider，所有名义值明确是比例代理而非人民币；小单按每股每天 volume/order_count 的底部20%定义，没有正order_count时只留空小单字段。覆盖门要求至少120个近全市场有效日，且每日feature symbols≥max(3000,最大覆盖×90%)。当前5个有数据日期中仅2026-09-17合格：原始5562只、5553只可算方向特征，最终状态1/120、INSUFFICIENT_COVERAGE，因此没有运行任何未来收益显著性研究。预览证据 artifacts/retail-microstructure-v2-preview-final-20260928/；V2合同见[retail-microstructure-v2.json](../reference/retail-microstructure-v2.json)。
+
+
+### 2026-09-28 Retail Trades Phase A：20日回补方案已冻结，尚未联网执行
+
+V2 当前只有1/120个近全市场逐笔日。原TDX plan本身具备完整交易日历与trades向历史递推能力，真正阻断点是现有collection scope明确排除了trades。为避免改scheduler policy导致三机assignment/bootstrap失配，本轮只扩展collection scope支持family_history_floors，并与供应商retention floor语义分离。Phase A固定2026-08-21..09-17共20个交易日；三分片约11.13万symbol-day、30.3万页请求，三节点0.35秒限速理论下限约9.8小时。Mac dry-run proposed scope将恢复1882个旧scope跳过的trade seed、保留69个ProtocolError不动，并在8/21停止向更早日期递推；STOP仍存在，scope未写入、网络未启动。TDX scheduler/lake/distributed/V2/planner共80项回归全部通过。完整规划见[Retail Trades Phase A回补规划](../archive/testing/20260928-Retail-Trades-PhaseA-Plan.md)。

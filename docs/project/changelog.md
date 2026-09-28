@@ -2268,3 +2268,12 @@
 - 新增 data/retail_microstructure.py：方向记录只接受buy/sell+正价格+正量；BuyImbalance/VolumeImbalance独立于order_count可算。小单代理使用 volume/order_count 的股日20%分位，order_count不可用时小单字段null但不删除方向特征；neutral/status/零量保留质量计数。覆盖门按可算方向特征证券数，要求≥max(3000,当前范围最大feature symbols×90%)且至少120个合格日，未满足时 require_inference_ready 明确拒绝。
 - 新增 scripts/research/retail_microstructure_v2.py，只生成coverage/feature parquet/manifest，固定 inference_performed=false；没有联网、没有写canonical lake、没有收益检验。初版小单阈值inner join会丢失无order_count股票，真实预览发现后拆成方向聚合+小单left join；BuyImbalance覆盖由5209提升到5553只，小单缺失344只保持null。
 - canonical真实预览：14,043,754条、5日期；2026-09-17原始5562只/方向特征5553只，09-16为833只，其余3天为单股测试。最终只有1/120合格日，状态INSUFFICIENT_COVERAGE；输出 artifacts/retail-microstructure-v2-preview-final-20260928/ 共6389行，比例字段边界检查0异常。没有据此声称V2因子有效或无效。
+
+
+### 2026-09-28｜[CODE/RESEARCH] Retail Trades Phase A 历史回补规划与scope窗口保护
+
+- V2仅1/120合格日。核查现有三机TDX后确认：原plan覆盖1990-12-19..2026-09-17且Runner支持trades逐日向前，历史未增长是因为collection scope主动排除trades；Mac worker为STOPPED/USER_STOP。现有worker0 trade queue只有2026-09-15..17，canonical只有5个日期，所以等待或只解除现有seed都不足以形成120日。
+- 新增scripts/research/retail_trades_backfill_plan.py，纯只读复用原交易日历、scheduler lifecycle和sha256三分片。真实dry-run：20/40/120日分别约11.13/22.22/66.42万symbol-day，页面请求约30.3/60.6/181.1万；三节点0.35秒限速理论下限约9.8/19.6/58.7小时。120日按最新活跃度估约15.5亿逐笔，源页约88.9GiB、compacted粗估180+GiB；Lexar当前约1.4TiB可用。
+- 不修改scheduler policy，因为assignment与policy_id强绑定。扩展collection scope新增family_history_floors（仅trades，sh/sz/bj），与供应商retention floor分离；apply_collection_scope只恢复旧collection-scope skip且在新floor内的任务，ERROR与scheduler-policy skip不改，Runner历史递推同时遵守scope floor。旧scope缺该字段继续兼容。
+- Phase A固定20日2026-08-21..09-17。新增retail_trades_phasea_scope.py只做scope迁移预览；Mac真实dry-run proposed scope保持K线和standalone opening_match排除、仅允许trades且floor=8/21，会恢复1882个旧scope trade seed、保留69个ProtocolError、STOP不变，policy/assignment ID不变。没有写真实scope、没有resume、没有网络请求。
+- TDX scheduler/lake/distributed/V2/planner相关5模块80项全部PASS；详细规划docs/archive/testing/20260928-Retail-Trades-PhaseA-Plan.md。真正执行仍需三台worker分别核对并明确写入reviewed scope后再显式resume。
