@@ -916,9 +916,11 @@ class DataUpdateJobs:
                                 note="按两源一致的公司行动整体重算，qfq 文件会被新版本替换"))
         steps.append(self._step("通达信 1 分钟线", "fetch", ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"],
                                 [day], "tdx_minute", weight=15,
-                                note="约 5,600 只，每只取最新一页并合并，约 30 分钟；通达信只保留最近约 91 个交易日，不能漏跑太久"))
+                                note="约 5,600 只股票、约 90 只 ETF（1 分钟、5 分钟、日线）和 6 个指数，每只取最新一页并合并，约 35 分钟；通达信只保留最近约 91 个交易日，不能漏跑太久"))
         steps.append(self._step("全市场情绪序列", "fetch", ["market_intraday_breadth", "market_intraday_breadth_5m"],
                                 [day], "breadth", overwrites=True, weight=3, note="重算当月的 1 分钟和 5 分钟文件"))
+        steps.append(self._step("ETF 净值与事件日历", "fetch", ["etf_nav_daily", "etf_info", "event_calendar"], [day],
+                                "etf_daily", overwrites=True, weight=3, note="约 90 只 ETF 的全部净值历史（每只一次请求）"))
         prev = calendar.previous(day)
         steps.append(self._step("封存", "seal", ["*"], [prev, day], "seal", trading_day=True,
                                 note=f"封存 {day}；同时把 {prev} 待封存的次日数据补封"))

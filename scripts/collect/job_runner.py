@@ -252,6 +252,12 @@ class Runner:
             info = self.last_json(self.sh(["scripts/derive/market_breadth.py", "build", "--source", source, "--from", start]))
             self.result_dataset(dataset_id, through=step["dates"][0], files_written=len(info.get("files", [])) or 1)
 
+    def step_etf_daily(self, step, share):
+        self.sh(["scripts/collect/etf_nav.py"])
+        self.result_dataset("etf_nav_daily", through=step["dates"][0], files_written=1)
+        self.sh(["scripts/derive/event_calendar.py"])
+        self.result_dataset("event_calendar", through=step["dates"][0], files_written=1)
+
     def step_seal(self, step, share):
         from quantlab.data import day_seals
         for position, day in enumerate(step["dates"]):

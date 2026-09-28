@@ -52,7 +52,7 @@ WORKERS = 4                      # parallel connections, each starting on its ow
 INDICES = {"sh.000001": "上证指数", "sh.000300": "沪深300", "sh.000905": "中证500",
            "sh.000852": "中证1000", "sz.399001": "深证成指", "sz.399006": "创业板指"}
 MARKET = {"sz": 0, "sh": 1, "bj": 2}
-CATEGORY = {"min1": 8, "min5": 0}
+CATEGORY = {"min1": 8, "min5": 0, "daily": 9}
 PYTDX_CANDIDATES = [ROOT / "artifacts/tdx-source-probe-20260918-013455/upstream/pytdx-1.72",
                     Path("/Volumes/Lexar/niuniu/artifacts/tdx-source-probe-20260918-013455/upstream/pytdx-1.72")]
 BASE = "lake/bronze/provider=tdx"
@@ -85,9 +85,25 @@ def _atomic(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
-def targets(data_root: Path) -> list[dict]:
+def etf_targets(data_root: Path) -> list[dict]:
+    path = data_root / "lake/bronze/provider=tdx/etf_universe/latest.parquet"
+    if not path.is_file():
+        return []
+    import pandas as pd
+    frame = pd.read_parquet(path)
+    out = []
+    for s in frame.loc[frame["selected"], "symbol"]:
+        for period in ("min1", "min5", "daily"):
+            out.append({"symbol": s, "kind": "stock", "period": period, "dir": f"etf_kline_{period}"})
+    return out
+
+
+def targets(data_root: Path, which: str = "all") -> list[dict]:
+    if which == "etf":
+        return etf_targets(data_root)
     from quantlab.data.stock_intraday import universe
     out = [{"symbol": s, "kind": "stock", "period": "min1", "dir": "kline_min1"} for s in universe(data_root)]
+    out += etf_targets(data_root)
     for s in INDICES:
         out.append({"symbol": s, "kind": "index", "period": "min1", "dir": "index_kline_min1"})
         out.append({"symbol": s, "kind": "index", "period": "min5", "dir": "index_kline_min5"})
@@ -98,13 +114,13 @@ def file_for(data_root: Path, target: dict) -> Path:
     return data_root / BASE / target["dir"] / (target["symbol"].replace(".", "_") + ".parquet")
 
 
-def plan(data_root: Path, mode: str) -> tuple[Path, str]:
+def plan(data_root: Path, mode: str, which: str = "all") -> tuple[Path, str]:
     body = {"kind": "tdx_minute", "mode": mode, "created_at": datetime.now(timezone.utc).isoformat(),
             "data_root": str(data_root), "hosts": HOSTS, "page": PAGE, "pace": PACE, "workers": WORKERS,
-            "targets": targets(data_root)}
+            "which": which, "targets": targets(data_root, which)}
     data = json.dumps(body, ensure_ascii=False, sort_keys=True).encode()
     sha = hashlib.sha256(data).hexdigest()
-    path = data_root / BASE / "_plans" / f"tdx-minute-{mode}-{sha[:12]}.json"
+    path = data_root / BASE / "_plans" / f"tdx-minute-{mode}-{which}-{sha[:12]}.json"
     _atomic(path, data)
     return path, sha
 
@@ -123,7 +139,7 @@ def _to_rows(bars: list, target: dict, fetch_ts: str) -> list[dict]:
         row = {"date": dt[:10], "time": dt[:4] + dt[5:7] + dt[8:10] + dt[11:13] + dt[14:16] + "00000",
                "code": target["symbol"], "open": float(b["open"]), "high": float(b["high"]),
                "low": float(b["low"]), "close": float(b["close"]), "volume": int(round(float(b["vol"]))),
-               "amount": float(b["amount"]), "fetch_ts": fetch_ts, "provider": "tdx"}
+               "amount": float(b["amount"]) if float(b["amount"]) > 1e-6 else 0.0, "fetch_ts": fetch_ts, "provider": "tdx"}
         if target["kind"] == "index":
             row["up_count"] = int(b.get("up_count") or 0)
             row["down_count"] = int(b.get("down_count") or 0)
@@ -301,13 +317,14 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("plan")
     p.add_argument("--mode", choices=("backfill", "daily"), required=True)
+    p.add_argument("--set", dest="which", choices=("all", "etf"), default="all")
     a = sub.add_parser("apply")
     a.add_argument("--plan", required=True)
     a.add_argument("--approve", required=True)
     a.add_argument("--max-seconds", type=float, default=36 * 3600)
     args = parser.parse_args(argv)
     if args.command == "plan":
-        path, sha = plan(paths.DATA_ROOT, args.mode)
+        path, sha = plan(paths.DATA_ROOT, args.mode, args.which)
         print(json.dumps({"plan": str(path), "sha256": sha}, ensure_ascii=False))
         return 0
     summary = apply(Path(args.plan), args.approve, max_seconds=args.max_seconds, log=lambda m: print(m, flush=True))
