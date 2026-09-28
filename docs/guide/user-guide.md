@@ -196,6 +196,14 @@ AI 助手的日常模式可以用 `get_judgments` 读取这些判断和统计（
 
 结果绑定本次表单范围和工作空间。读取期间修改表单、关闭窗口或切换数据根时丢弃旧回执；重新读取失败会清除先前结果。配置预检、行情可加载性与批准时冻结是不同检查，不能因为配置预检成功就承诺正式研究一定能运行。
 
+### 已有归档的停牌占位价：显式 v3 输入合同
+
+若原始供应商响应明确给出`tradestatus=0`，但OHLC都等于同一行的`preclose`，这些价格不能当作真实成交或有效研究收盘。新增宿主CLI合同`normalize_baostock_suspension_marks_v3`：完整保留原raw响应、typed Parquet及其SHA，只在派生标准化表中将这种停牌占位OHLC置为null；原null量额保持null，原明确0保持0，不删日期、不填充或压缩时间轴。停牌状态缺失、报价不全/与preclose矛盾、缺前收证据或有非零活动字段时仍拒绝。
+
+通过`python -m quantlab.agent.archived_daily_dataset_cli preview ... --contract normalize_baostock_suspension_marks_v3`预览，再由宿主显式`export`到全新目录，必须提供`--expected-preview-hash`及`--confirm-create`。源workspace必须包含实际`_market_data/retro_daily`，迁移后的本机路径为`/Volumes/Lexar/niuniu-data/lake`；不得关闭路径检查来接受越界重定向。导出后可用同一CLI的`inspect --data-root <新目录>`深验，再由宿主明确为研究选择输入根。
+
+v3限1–20只、1100自然日、22000行；256 MB总字节/64 MB单文件上限不变。默认v1、原v2及模型归档读取工具的10只/371日限制不变，旧包不会自动升级。新包复用已有`preserve_suspension_state_v2`运行时约定：保留停牌session，排除该日信号和不可用标签端点，禁止停牌成交，前收仅作显式估值来源。这个版本是回顾性供应商输入适配，不是Strict PIT、完整公司行动或盈利认证。当前新增合同由宿主CLI选择，旧界面v2勾选不会自动采用v3。
+
 ### 可视化新建固定 Factory 计划
 
 在“专业模式 → 研究实验室 → 新建可视化Factory计划”打开表单。先明确选择一个已完成的因子基准和1–5个控制因子归档；需要成本后净收益增量时再勾选该项并选择匹配的execution基准。选择器不代替Factory原有的replay、显式股票池、输入/价格/预处理和运行环境兼容校验。不匹配会拒绝，不会自动换档、重算或把旧运行环境视为兼容。
