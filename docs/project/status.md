@@ -447,6 +447,12 @@ AI回答明确这是合成报告，保留两项负估计、test_status=unavailab
 初次主线合入因另一会话暂存区非空在任何写入前中止。随后对方完成79ca98b提交，独立整合分支保留其Retail相关代码/文档，并重新执行12模块127唯一用例全部通过，0失败/错误/跳过，前后hash=9be3c123db6d9b6121211cf5aa4a9b5d0c444a3ab12796211a95791237b0cbc7。新结果保存integrated-regression，不与前127项重复累加；最后主线合入/push仍以delivery-final回执为准。
 
 
+### 2026-09-28 原固定holdout续跑与配置说明修复
+
+通过既有正式CLI使用原会话和已配置模型，不导出模型配置或读取上轮受限的历史工具参数。原v3输入再次深验，旧Grant已撤销且没有已执行任务。首次续跑6次工具调用在preview因顶层train_end/valid_end被拒，0研究任务；保留accepted=false。修正preview_experiment说明及原prepare错误提示，明确日期须放split对象，不自动接受错误字段、不改统计/数据/权限。
+
+新增原生运行时与结构校验回归；首次范围回归暴露系统盘空间不足（Errno 28，现场约284MiB可用），原失败日志保留。仅为本轮测试指定Lexar临时目录，不删除用户文件或更改全局环境。同一源码在Lexar临时目录重跑10模块88唯一用例全部通过，0失败/错误/跳过，源码/测试/JSON/MJS前后hash=401953b895aa124071587ae907a22f089764a0217103a8437c9876e537863487。修后真实模型结果另行追加，预检成功不是业务验收成功。
+
 ### 2026-09-27 Retail Crowding V1：冻结因子与400股扩大验证
 
 新增 RETAIL.VOLUME_SHOCK_20、RETAIL.AMOUNT_SHOCK_20、RETAIL.CROWDING_V1 并注册到正式因子目录；公式、2010–2026时间分割、T+1/3/5/10/20 与240项TrialRegistry检验族固定在参考规格。第一版999次置换无法达到 0.05/240 的Holm首档阈值，原V1.0.0及100股pilot保留；V1.0.1仅把置换提高到9999并固化已有research-only nullable-volume口径，没有按收益结果换公式/方向/日期。

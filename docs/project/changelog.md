@@ -2235,6 +2235,14 @@
 - 原fix分支b61a9a7已普通推送；第一次main整合在检查暂存区时发现另一会话正在stage，尚未执行git apply或写主目录即中止。对方随后提交79ca98b后，以该已提交树创建独立integrated分支，只应用本轮7文件变化，并保留对方完整文档追加条目。再次冻结回归12模块127唯一项全部PASS，0失败/错误/跳过，hash=9be3c123db6d9b6121211cf5aa4a9b5d0c444a3ab12796211a95791237b0cbc7；含Retail注册后的兼容环境，不是对其全部研究结果的审核。新旧验证均留痕，最终发布回执另存，未重试平台拦截读取。
 
 
+### 2026-09-28｜[CODE/AI] Holdout日期层级说明与失败定位
+
+- 54e3450上通过正式chat_cli恢复原会话cb8f06b2-0acc-4e65-996c-8f8f4e6311f2、原假设345bef4a-bbec-4ece-8d19-d92dceaedf9d与v3输入。宿主只提供原固定边界和一个任务槽，不读取/导出受限历史参数或凭据；模型由已配置CLI内部调用。6调用/6结果，preview因日期误放spec顶层失败，未提交研究，Grant撤销，原假设/输入/源码保持。
+- 最小修复agent/proposal_tools.py的已有工具说明、workbench/jobs.py的未知字段错误，明确嵌套split和日期关系；不自动修正输入、不新增工具或权限、不放宽非法字段/日期顺序。新增test_holdout_tool_contract.py覆盖6项，包括真实headless runtime提供的schema、错误回执可修正、成功预检0任务0数据读取。
+- 初轮88项有34个错误来自系统临时盘Errno 28，日志在artifacts/holdout-resume-20260928/regression。系统盘现场仅约284MiB；没有删除用户文件，后续测试限定TMPDIR到Lexar独立目录并重跑同一范围。另一次尝试读取不存在的agent/evidence.py返回not_found，无副作用，不作为证据来源。
+- 未改变原20股、2023–2025、2023训练/2024验证/2025测试、20日动量与5日标签。修后模型执行及最终范围回归另记，原失败保留，不把CLI completed误判为研究成功。独立提交/普通push遵循主线并行保护，不重启/部署或改采集、日常模型配置。
+- 最终同一源码在Lexar独立TMPDIR重跑10模块88唯一用例全PASS，0失败/错误/跳过，hash=401953b895aa124071587ae907a22f089764a0217103a8437c9876e537863487。日志regression-external-temp，不覆盖原系统盘失败日志，不把两轮重复相加；此时还没有真实holdout结果。
+
 ### 2026-09-27｜[CODE/RESEARCH] Retail Crowding V1 冻结实现与首轮扩大验证
 
 - 用户要求开始验证“散户趋同/拥挤后反转”相关因子。新增 RetailCrowdingPack：复用既有 BASE.MOMENTUM 的 MOM1/3/5/10/20，新增 RETAIL.VOLUME_SHOCK_20、RETAIL.AMOUNT_SHOCK_20 和等权 RETAIL.CROWDING_V1。所有滚动基准只看当前日前的20根，零方差/缺失输出null，不执行任意代码。

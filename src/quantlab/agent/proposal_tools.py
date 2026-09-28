@@ -10,7 +10,7 @@ from quantlab.agent.local_data_tools import LocalMarketDataTools, TOOLS as LOCAL
 SPEC = {'type':'string','maxLength':65536}
 PROPOSAL_TOOLS = [
     schema('qualify_research_data','按research_only/retrospective_reference/strict_pit/official_rule_covered核对本地数据资格；只读，不创建任务。',{'spec_json':SPEC}),
-    schema('preview_experiment','校验研究配置并估算规模；spec_json使用question/symbols/start/end/timeframe/adjustment/factor/version/parameters/mode/horizons/quantiles/replay/qualification。版本键是version，不是factor_version；parameters仅因子参数。严格资格先核对，不创建任务。',{'spec_json':SPEC}),
+    schema('preview_experiment','校验研究配置并估算规模；spec_json使用question/symbols/start/end/timeframe/adjustment/factor/version/parameters/mode/horizons/quantiles/replay/qualification。版本键是version，不是factor_version；parameters仅因子参数。holdout须使用嵌套对象split={"train_end":"YYYY-MM-DD","valid_end":"YYYY-MM-DD"}，两日期不能放在顶层或parameters；要求start<=train_end<valid_end<end。语法修正不允许更改原假设、参数、证券或日期；预检不创建任务，成功也不代表实际行情已加载。严格资格仍按原规则核对。',{'spec_json':SPEC}),
     schema('propose_experiment','保存待用户批准的固定提案；相同 request_id 重试幂等。不会执行研究。',{'request_id':TEXT,'spec_json':SPEC}),
     schema('get_proposal','读取真实提案及状态；批准不在模型工具集合中。',{'proposal_id':TEXT}),
 ]

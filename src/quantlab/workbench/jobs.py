@@ -82,6 +82,8 @@ def prepare(spec):
         'regime', 'regime_filter', 'context', 'processor', 'bootstrap', 'permutation', 'incremental_test', 'universe', 'replay', 'execution', 'theory_study', 'portfolio', 'execution_backend', 'market_rules', 'correlation', 'qualification'}
     unknown=set(spec)-allowed
     if unknown:
+        if unknown & {'train_end','valid_end'}:
+            raise ValueError('日期层级错误：train_end/valid_end不能位于顶层。holdout使用split={"train_end":"YYYY-MM-DD","valid_end":"YYYY-MM-DD"}；parameters仅保存因子参数。仅修正嵌套结构，不更改已确定日期；仍要求start<=train_end<valid_end<end。')
         names=', '.join(sorted(str(key) for key in unknown))[:160]
         raise ValueError('配置包含不支持的字段：'+names+'；研究配置使用factor/version，parameters只保存因子参数；factor_id/factor_version用于假设记录，不用于研究spec。')
     symbols = spec.get('symbols')
