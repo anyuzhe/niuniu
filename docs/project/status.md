@@ -538,3 +538,11 @@ e5aaf0e冻结后首次原生执行停在预检：模型把末两只证券sz前�
 首次结果整理10次只读调用后停止，原生Chat确实未暴露旧MarketDataResearchAPI里的compare_factor_candidates。已把同名同参数的纯只读工具移到共享ReadOnlyResearchAPI，并删除旧重复声明/分派，保证原生Chat与旧调用使用相同实现；限定日常/解读profile和Grant权限不变。新增真实Chat派发/唯一schema/受限profile/非法参数回归后再做原结果整理，不再次计算或换参数。
 
 接线修复后14模块137唯一用例全部通过，0失败/错误/跳过，前后源码/测试/冻结协议指纹9bd6ee32fbf436f4b11ee1b3ff565a955da77860e52617e073e5ab798a324b61。原native-review的10调用无比较、无finding业务失败保持；复验只重读结果。
+
+### 2026-09-28 抄底V1首个候选：探索未显示跨年改善
+
+原生工具已经取得全部9组（2023/2024/2025×3/5/10日）条件比较，成功回执在native-review-fresh/all-comparisons.json。主要5日相同日期等权候选减基准收益差为+0.17724/-0.37505/-0.46869个百分点，MAE差为+0.04805/-0.14784/-0.35605个百分点（正值表示风险较轻），2024和2025未改善；辅助期限同样前一年正、后两年负。都是已见20股raw描述性标签收益，不是独立样本、p值、可成交净收益或Alpha认证。
+
+九项大结果两次触及原200000字符上下文上限，保持partial；只读UUID抄写错误各一次被拒并纠正，原错误不隐藏。后来把结论收尾分成仅复核预登记5日的独立原生会话，12次调用/12结果、0工具错误，重复读取三项主比较、核验6条原指标引用并保存finding=b1d279e7-ff9d-49c2-92cb-ab069a5a163e，assessment=inconclusive。完整记录由ResearchMemory宿主读取核source_integrity=verified/claim_verified=false；模型读回因结果过大仅获得ID/证据引用，不能声称模型已读全文。三个原始分期指标引用与派生日期等权比较明确区分。原2任务/输入/假设及此前9项回执SHA不变，无新执行Grant、实盘或观察池晋级。
+
+本次完成首批1候选的提出、固定探索、九项比较和结论留存，不是12候选完成或无人值守认证。证据artifacts/dip-factor-research-v1-20260928/native-conclusion/acceptance.json及answer.md。native-review-routed验收脚本还发生call_id关联KeyError，原false回执保留，旁证comparison-audit.json按同轮实际事件记录了完整9项成功与失败查询；没有重新执行研究来消除审计失败。

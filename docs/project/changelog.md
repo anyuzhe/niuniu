@@ -2347,3 +2347,10 @@
 - 无执行授权的首轮结果整理虽10调用均成功但未比较/写finding；原生ChatRuntime的PeerReview链不继承MarketDataResearchAPI，确实缺compare_factor_candidates。此次不注入测试工具、不换外部脚本代跑，而是把旧工具同名/同schema迁到共享catalog ReadOnlyResearchAPI，旧MarketData通过原继承委托继续工作且只出现一次。纯只读、无新增模型执行权限；受限everyday/evidence白名单保持不变。
 - compare返回严格有界完整摘要，不通过compact默默删条件比较字段；原有限文件/观测量与SHA核对不变，Polars读取异常转为明确归档错误。新增3项覆盖真实ChatRuntime派发、无queue、唯一schema、受限profile和非法路径/额外执行字段拒绝。后续仅核对原2任务结果，不重新提交；原失败回执不改判。
 - 最终14模块137唯一用例全部PASS，0失败/错误/跳过，源码/测试/协议前后hash=9bd6ee32fbf436f4b11ee1b3ff565a955da77860e52617e073e5ab798a324b61；验证包括原ChatRuntime派发和受限profile未扩大。与前127项不重复累加；native-review-routed将只调用既有结果读取、比较和结论草稿存储。
+
+### 2026-09-28｜[ACCEPTANCE] 抄底首批探索、条件风险比较与结论落库
+
+- de8e8a3上9项（3阶段×3期限）实际只读比较全部取得，原始回执保存在native-review-fresh/all-comparisons.json。5日日期等权收益差（candidate−baseline）2023/2024/2025为+0.17724084/-0.37505092/-0.46868690个百分点，配对MAE差+0.04804745/-0.14783537/-0.35605000个百分点；3/10日也仅2023正、后两年负。描述性未支持稳定改善，绝不据此宣布统计显著、独立Alpha或真实成交盈利。
+- 长会话与新会话的全9项+引用均达到有限上下文上限而partial，未扩大预算/执行权限。只读编号抄错均拒绝且保留（routed和fresh各一次）；其中routed的宿主验收call_id关联又发生KeyError，原失败receipt保持，另从同轮原生事件日志保存comparison-audit.json，不倒改验收。
+- 分步结论会话65ea176f-7bb5-42d6-8327-311a9989fa41在无Grant下用12工具调用再次核验三个主要5日比较和6条原始triggered指标，保存原候选假设下finding=b1d279e7-ff9d-49c2-92cb-ab069a5a163e（inconclusive）。模型读回接口省略过大正文，但含精确ID与证据引用；宿主完整ResearchMemory.get核验来源verified、claim_verified=false，不称模型看过完整正文。重复只读数值核对允许1e-12相对/1e-14绝对浮点误差，ID/计数/来源指纹必须精确；不存在改样本/重算因子。
+- native-conclusion/acceptance.json通过：2原研究任务/8实验归档、冻结输入/假设/此前九项证据字节保持，Grant关闭，无新研究/自动入池/订单。仅完成第一个原生候选的已见数据探索，正式未见覆盖、统计检验族与成本评价仍待另定，失败和限制保留。提交/主线整合/推送与证据复制以最终delivery回执为准。
