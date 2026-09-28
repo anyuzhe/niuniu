@@ -2246,6 +2246,29 @@
 - 冻结代码后的attempt2原生CLI（临时目录明确在Lexar）报Pi model not found: openai-codex/gpt-6-luna。仅对SDK源代码和公开目录API诊断，不导出凭据或原始配置；一次getModel目录复核恢复可见后进行最后一次attempt3，实际CLI仍同样失败。没有替代模型、安装/升级依赖或修改Pi配置。两次均0研究提交，finally撤销当次Grant；根因仍未确定，不把目录中偶尔可见当作连接验收通过。
 - 本轮原20股、原假设及v3输入不变；全部本轮执行授权关闭，0研究任务/实验/finding。此提交只补故障和验收文档，最终交付按主线实际SHA核对，不虚称真实holdout通过。
 
+### 2026-09-28｜[CODE/ACCEPTANCE] 原生Pi恢复、停牌回放空值修复
+
+- 用户继续核心验收。精确SDK/模型的4组目录与离线环境诊断及正式PiProvider.probe通过；没有更新Pi、改账号或切换模型。上轮目录异常本次未复现，原因仍不确定。系统盘当时4.8GiB可用，本轮临时文件继续只放Lexar。
+- 原会话cb8f06b2-0acc-4e65-996c-8f8f4e6311f2实际6次调用并提交唯一job=7de93d27-8cc9-5190-911f-c85139237212，holdout父0888caea-e8c5-42c7-ba8e-1503bb37f7a2及子64708a07-7694-491a-b921-42cf144915c4保留failed；generic replay的FVGZoneEngine.analyze比较None与价格时抛TypeError，原Grant已撤销。
+- 修改zones/fvg.py与structure/breaks.py的缺失观察处理，不把停牌当0价或压缩时间：FVG三根需实际中间价格，停牌不更新已知区；swing保留已知水平但中断连续close比较，复牌首根不伪造跨越。旧有限值行为不变，无旧输入/状态库重写，动量/统计/标签/冻结与Grant未改。
+- 新增test_replay_suspension.py，9项含合成3年holdout归档与复算；最终12模块107唯一用例全部PASS，0失败/错误/跳过，hash=92bab2e8ff8ce14b48d209bc4c271716e70f62d944904dc22eb3fb6b55685a70。读取回执时远程通道短暂断开，只重查原job，没有重复启动测试。两个猜测路径检索与grep不支持files_with_matches的错误仅为只读定位失败，实际改动和范围回归另有证据。
+- 先提交冻结修复，再通过牛牛正式入口以新有限Grant执行一次原spec，失败job/归档按哈希保留，结果另记；不把开发者的合成回归当实际研究或Alpha。证据在artifacts/pi-runtime-diagnosis-20260928。
+
+### 2026-09-28｜[CODE/AI] 已完成holdout的精确子归档导航
+
+- 真Pi在6a9c9ee完成原20股三年计算，job=2edc4502-7cb7-5862-a77b-baf3eee918ae，parent=7b816f4e-b110-44b1-a9b5-8e23e49994da，三个child均completed且含回放。14调用14规范结果、无工具错误、Grant已撤销；未存finding，因为父摘要只给元信息，关联扫描对9.5MB子文件按原8MiB门槛报incomplete。计算参数完全一致但question描述被模型改写，严格spec等值验收false保留，不重跑来追字面通过。
+- catalog.get_experiment加入periods只读导航投影：仅原name/phase/start/end/run_id/experiment_id，最多30条并显式总数/省略；结果过大时保留导航但不伪称完整指标，子来源需重新读取。工具说明指出父无metrics不表示无子结果。未新增工具、提升权限、扩大关联扫描预算或绕过逐字段证据验证。
+- test_experiment_period_navigation六项覆盖大manifest、负数/null指标、明确截断、非法ID、超大metrics、原生Runtime接线；test_agent_catalog旧清单补入已存在的get_run_research_links，初轮两项失败留痕。18模块149唯一用例最终PASS，0失败/错误/跳过，hash=8d643108a0ab0865560ca7406d40b251afa39e6f525ad4e51de7108c8bd8329f。
+- 正式API/EvidenceResolver已读出train/valid/test的/metrics/5/rank_ic与源SHA，文件未写、未启动研究。后续冻结代码后只用原生--recover-results核对并补存结论，实际验收另记；不把符号、收益或p值缺失当Alpha。
+
+### 2026-09-28｜[ACCEPTANCE] 原生真实holdout结果整理通过
+
+- 3fab48e上原生CLI --recover-results、原Pi/openai-codex/gpt-6-luna在无执行Grant时完成16调用16结果，4次get_experiment覆盖parent+3children，6次具体证据字段核验，1次record_finding及读回。保存原HID=345bef4a-bbec-4ece-8d19-d92dceaedf9d下finding=6c089916-4fe4-489a-b228-70c68abb2ed6，三子引用完整且source_integrity=verified/claim_verified=false；assessment=contradicted仅是模型草稿。
+- parent=7b816f4e-b110-44b1-a9b5-8e23e49994da；train=41cce9b0-8a60-4e99-b633-f2c874ba8563，valid=a57eee9a-1e79-4cf8-8f26-3a0b7c1508c9，test=3fd4e7f9-bace-4881-8cfd-4f1070120e2b。/metrics/5/rank_ic为+0.0598250671/-0.0334618553/-0.0481389594，固定范围方向不一致；无统计p值核验或净收益证据，不能把草稿当Alpha结论。
+- 全部旧/新研究JSON、任务、冻结文件和输入前后SHA不变，原假设不变、Grant保持撤销，结果整理无新研究。首次实际计算失败、修后question字符串漂移的严格验收false，以及旧工具清单测试失败均保留，恢复成功单独记native-recovery/acceptance.json，不改判历史失败。
+- 当前只补验收文档，后续在最新main已提交基线上合并本轮9路径并冻结回归，不覆盖其他会话WIP；普通push与远端SHA由最终交付回执确认。真实数据/模型配置/采集/服务/权限保持。
+- 最新集成基线8c1a891：git三方文本合并仅本轮9路径，没有写主目录；第二次18模块149唯一项全PASS，0失败/错误/跳过，hash=4109118c5f09882c925cccbfec856b054635de8423d56188e4cfae20bd3141ac，日志integrated-regression。真实模型验收核心3个源文件字节与集成版本相同，原失败证据不覆盖；发布时继续用精确HEAD/索引/工作区哈希保护其他会话变化。
+
 ### 2026-09-27｜[CODE/RESEARCH] Retail Crowding V1 冻结实现与首轮扩大验证
 
 - 用户要求开始验证“散户趋同/拥挤后反转”相关因子。新增 RetailCrowdingPack：复用既有 BASE.MOMENTUM 的 MOM1/3/5/10/20，新增 RETAIL.VOLUME_SHOCK_20、RETAIL.AMOUNT_SHOCK_20 和等权 RETAIL.CROWDING_V1。所有滚动基准只看当前日前的20根，零方差/缺失输出null，不执行任意代码。

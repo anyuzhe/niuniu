@@ -455,6 +455,32 @@ AI回答明确这是合成报告，保留两项负估计、test_status=unavailab
 
 修复冻结为11b0940后，正式CLI两次在模型入口返回Pi model not found: openai-codex/gpt-6-luna，尚未执行研究工具；中间只读ModelRuntime目录检查曾恢复同一模型可见且无错误，但后续正式入口仍拒绝，根因未确定，未改模型配置或切换模型。三个本轮有限Grant均已撤销，原工作空间仍0任务/0实验/0finding；原假设、输入包和原失败记录保持。证据在artifacts/holdout-resume-20260928（attempt2/attempt3与model-availability-diagnostic.json）。当前待办仍为模型入口稳定后的原holdout续跑，不是数据或Alpha验收完成。
 
+### 2026-09-28 Pi原入口恢复与停牌回放修复
+
+同一SDK/同一模型在根目录与临时目录、继承环境与产品离线环境四种组合均可见，正式PiProvider.probe也通过；未修改模型配置，不能据此认定上轮model-not-found根因已修复。实际原生CLI随后成功提交原20股holdout，但job=7de93d27-8cc9-5190-911f-c85139237212在通用回放FVG的空价格比较处失败，失败父/子归档保留，执行Grant撤销。
+
+修复zones/fvg.py与structure/breaks.py：明确停牌行不产生区域触碰/填补/失效更新；三根FVG不能跨越缺失中间价格；摆动突破需要相邻两个可观察收盘，停牌和首个复牌对比值为null。已知结构保留，后续实际价格可更新它；不填价、不删日，不改动量公式、标签、统计或审批权限。
+
+9项新增测试覆盖活动区域遇停牌、跨缺失模式拒绝、全停牌、多证券隔离、前缀不变性、三年合成holdout与可移植复算。最终12模块107个唯一用例全部通过，0失败/错误/跳过；源码/测试前后hash=92bab2e8ff8ce14b48d209bc4c271716e70f62d944904dc22eb3fb6b55685a70。证据artifacts/pi-runtime-diagnosis-20260928。修后真实模型复验必须另记，不能把当前失败任务算成研究完成。
+
+### 2026-09-28 原真实holdout计算完成与父子归档读取修复
+
+在6a9c9ee上实际Pi提交一次新任务2edc4502-7cb7-5862-a77b-baf3eee918ae并完成holdout父7b816f4e-b110-44b1-a9b5-8e23e49994da及train/valid/test三个子归档。股票、日期、split、因子版本/参数、期限等计算字段与旧任务完全相同，只有question描述文字变化；完整spec逐字一致的严格验收仍为false，未改写该回执。原失败job/归档、假设与输入SHA保持。
+
+模型14次调用后未保存finding：get_experiment旧摘要缺少periods，且关联扫描遇到大于8MiB子归档后明确incomplete。现只修改既有get_experiment的有界periods导航，保留name/start/end/run_id等来源字段、计数/省略状态，不展示文件路径、不把导航当子归档已核验；超大指标响应仍可保留导航。原关联扫描预算和EvidenceResolver的逐字段SHA校验保持。
+
+新增6项导航测试，既有目录测试修正漏列的旧get_run_research_links工具；初轮27项中两项旧工具集合断言失败保留。最终18模块149唯一测试全部通过，0失败/错误/跳过，前后hash=8d643108a0ab0865560ca7406d40b251afa39e6f525ad4e51de7108c8bd8329f。真实父子记录已由正式只读API逐一读出；下一次模型操作仅整理结果、无研究授权，不得重跑已完成计算。证据artifacts/pi-runtime-diagnosis-20260928。
+
+### 2026-09-28 原20股真实研究结果与结论留存已闭合
+
+在3fab48e通过原CLI --recover-results、原Pi模型和原会话进行纯结果整理，16次工具/16条规范结果，0工具错误；父归档与三个子归档分别读回，6个指标字段逐一由EvidenceResolver核验，原假设下保存finding=6c089916-4fe4-489a-b228-70c68abb2ed6并读回。assessment=contradicted仍是待复核草稿，source_integrity=verified、claim_verified=false。原全部任务/归档/冻结包/输入SHA不变，Grant保持关闭，没有再次执行研究。
+
+原holdout父7b816f4e-b110-44b1-a9b5-8e23e49994da，train/valid/test的5日Rank IC分别0.0598250671/-0.0334618553/-0.0481389594；原假设要求方向延续，本样本不支持。没有p值/完整成本模型/PIT或全市场资格，不能作显著性或盈利认证。计算与结果留存这条限定真实流程已完成；此前question文本差异导致的严格整份spec等值验收仍false，不改其原记录。Pi本次可用但前次model-not-found根因仍未确认。
+
+证据artifacts/pi-runtime-diagnosis-20260928/native-recovery/acceptance.json、answer.txt及actual-child-readback.json；源码6a9c9ee回放修复、3fab48e父子导航修复，最终集成版本另行冻结回归与核对远端。本轮不新增实盘能力、不改日常模型配置、不删除正式数据、不重启客户端。
+
+已基于main已提交8c1a891创建独立集成分支，只合入本轮9路径；最新环境再次执行18模块149唯一测试全部通过，0失败/错误/跳过，前后hash=4109118c5f09882c925cccbfec856b054635de8423d56188e4cfae20bd3141ac。原回放修复与父子导航源码同真实模型验收版本完全一致；两轮149不重复累加。主线WIP保留及最终推送结果见delivery-final.json，不将整仓其他研究结果视为本轮验收。
+
 ### 2026-09-27 Retail Crowding V1：冻结因子与400股扩大验证
 
 新增 RETAIL.VOLUME_SHOCK_20、RETAIL.AMOUNT_SHOCK_20、RETAIL.CROWDING_V1 并注册到正式因子目录；公式、2010–2026时间分割、T+1/3/5/10/20 与240项TrialRegistry检验族固定在参考规格。第一版999次置换无法达到 0.05/240 的Holm首档阈值，原V1.0.0及100股pilot保留；V1.0.1仅把置换提高到9999并固化已有research-only nullable-volume口径，没有按收益结果换公式/方向/日期。

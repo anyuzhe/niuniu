@@ -27,8 +27,12 @@ class FVGZoneEngine:
             pl.col("high").shift(2).over("symbol").alias("first_high"),
             pl.col("low").shift(2).over("symbol").alias("first_low"),
         ).with_columns(
-            (pl.col("low") > pl.col("first_high")).alias("bull_created"),
-            (pl.col("high") < pl.col("first_low")).alias("bear_created"),
+            # A three-bar pattern needs its middle session too. Preserved
+            # suspension rows must not be bridged by two valid endpoints.
+            pl.when(pl.col("high").shift(1).over("symbol").is_not_null())
+              .then(pl.col("low") > pl.col("first_high")).alias("bull_created"),
+            pl.when(pl.col("low").shift(1).over("symbol").is_not_null())
+              .then(pl.col("high") < pl.col("first_low")).alias("bear_created"),
         )
 
     @staticmethod
@@ -60,6 +64,12 @@ class FVGZoneEngine:
             if row["symbol"] != symbol:
                 active = {}
                 symbol = row["symbol"]
+            # ordered_bars only admits null OHLC under the explicit suspended
+            # input contract. Keep the session and prior state, but there is no
+            # observed touch, fill, invalidation or count on this session.
+            if row["low"] is None or row["high"] is None:
+                counts.append(None)
+                continue
             # Only zones known before this bar are eligible for touches.
             for zone_id, (zone, previous) in list(active.items()):
                 lo, hi = zone.lower_price, zone.upper_price

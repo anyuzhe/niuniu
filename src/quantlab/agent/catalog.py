@@ -29,7 +29,7 @@ TOOLS = [
     schema('get_strategy_run', '重新核验明确策略实验的完整归档，读取策略身份、绩效与证据指纹；不执行、不回测，不把内部一致性或完成状态当作Alpha。', {'run_id': TEXT}),
     schema('compare_strategy_runs', '只读比较两个明确策略实验，复用宿主归档核验；不可比时披露blockers并保留空delta，不能按收益挑赢家或扩大研究。', {'left_run_id': TEXT, 'right_run_id': TEXT}),
     schema('list_experiments', '检索当前目录实际实验，包含失败记录。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
-    schema('get_experiment', '读取指定实验的统计摘要和实际证据引用。', {'run_id': TEXT}),
+    schema('get_experiment', '读取指定实验的统计摘要及holdout的periods子归档引用。父归档无顶层metrics不表示无研究结果：按periods中run_id分别读取train/valid/test，再用inspect_research_evidence核对具体字段。periods只表示父记录的引用，未代替对子归档的重新核验；研究关联查询不完整也不等于这些指标不可读取。', {'run_id': TEXT}),
     schema('get_job', '读取现有任务状态，不提交或取消任务。', {'job_id': TEXT}),
     schema('get_proposal_progress', '只读关联一个真实提案、任务日志、冻结清单和结果头部；须披露errors/incomplete，不把日志running当进程在线。不批准、不恢复、不重跑。', {'proposal_id': TEXT}),
     schema('get_run_research_links', '只读查看一个run_id与已登记TrialRegistry检验族、研究记忆假设/结论的精确证据关联；host固定当前output，模型不能传path，不按名称或相似参数伪join。', {'run_id': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
@@ -207,8 +207,19 @@ class ReadOnlyResearchAPI:
             self.identifier(args['run_id'])
             path = self.catalog.file(args['run_id'], 'experiment.json')
             record = load_record_fields(path, {'run_id','experiment_id','kind','status','created_at',
-                'metrics','execution','summary','limitations','inference','error'})
+                'metrics','execution','summary','limitations','inference','error','periods'})
             if record.get('run_id') != args['run_id']: raise ValueError('INVALID_ARTIFACT：归档身份不一致。')
+            if 'periods' in record:
+                periods=record['periods']
+                if not isinstance(periods,list):raise ValueError('INVALID_ARTIFACT：periods须为归档引用数组。')
+                projected=[]
+                for period in periods[:30]:
+                    if not isinstance(period,dict) or not isinstance(period.get('run_id'),str):
+                        raise ValueError('INVALID_ARTIFACT：period缺少子归档编号。')
+                    self.identifier(period['run_id'])
+                    projected.append({k:period[k] for k in ('name','phase','start','end','run_id','experiment_id') if k in period})
+                record.update(periods=projected,periods_count=len(periods),
+                    periods_omitted=max(0,len(periods)-len(projected)),periods_are_references_only=True)
             return record, [{'kind': 'experiment', 'run_id': args['run_id'],
                              'uri': 'quantlab://run/'+args['run_id']}]
         if name == 'get_proposal_progress':
@@ -259,8 +270,12 @@ class ReadOnlyResearchAPI:
             if exact and len(encode(result)) > 24000:
                 raise ValueError('RESULT_TOO_LARGE：完整策略配置或证据超过模型输出预算；缩小分页或使用宿主CLI/工作台，不返回截断配置、遗漏错误或不完整比较。')
             if len(encode(result)) > 24000:
-                result['data'] = {'omitted': True, 'reason': 'result_size_limit'}
-                result['warnings'].append('超过摘要预算；请缩小查询或在工作台打开证据。')
+                essential=({k:result['data'][k] for k in ('run_id','experiment_id','kind','status','periods',
+                    'periods_count','periods_omitted','periods_are_references_only') if k in result['data']}
+                    if name=='get_experiment' else {})
+                result['data'] = {**essential,'omitted': True, 'reason': 'result_size_limit'}
+                if len(encode(result))>24000:result['data']={'omitted':True,'reason':'result_size_limit'}
+                result['warnings'].append('超过摘要预算；请缩小查询或在工作台打开证据。保留的periods仅为子归档导航，不是完整统计。')
             return json.loads(encode(result))
         except (ValueError, KeyError, TypeError, OSError, AttributeError, RecursionError) as error:
             message = str(error)

@@ -15,6 +15,14 @@ class ConfirmedSwingBreakEngine:
         for row in flags.iter_rows(named=True):
             if symbol!=row['symbol']:
                 symbol=row['symbol'];levels={};previous_close=None
+            # A suspended session has no observed close. Keep known levels but
+            # break the consecutive-close comparison; do not synthesize a cross
+            # from the last traded close to a later session.
+            if row['close'] is None:
+                rows.append({'symbol':symbol,'datetime':row['datetime'],
+                    'available_at':row['available_at'],'up':None,'down':None})
+                previous_close=None
+                continue
             for side in ('high','low'):
                 if row['ready'] and row['pivot_'+side]:
                     levels[side]={'price':row['pivot_'+side+'_price'],'occurred_at':row['pivot_at'],
@@ -24,7 +32,7 @@ class ConfirmedSwingBreakEngine:
                 level=levels.get(side)
                 crossed=bool(level and not level['broken'] and previous_close is not None and
                     (previous_close<=level['price']<row['close'] if direction==1 else previous_close>=level['price']>row['close']))
-                values[side]=float(crossed) if level else None
+                values[side]=float(crossed) if level and previous_close is not None else None
                 if crossed:
                     level['broken']=True
                     identity={'factor_id':'SMC.BOS_UP' if direction==1 else 'SMC.BOS_DOWN',
