@@ -2,6 +2,7 @@
 // skills, project discovery or shell: Niuniu remains the only tool authority.
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { isolatedModelCatalog, modelLookupError } from './pi_runtime_cache.mjs';
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const lines = input[Symbol.asyncIterator]();
 const send = value => process.stdout.write(JSON.stringify(value) + '\n');
@@ -14,16 +15,17 @@ const receive = async () => {
 const budgetText = reason => `\n\n[Pi budget stop: ${reason}]\n\n预算已到，以下为宿主确定性停止说明（不是研究结论）：请将当前状态标记为未完成/需跟进；只保留已实际取得的证据，并明确列出未完成项。不得推断或编造研究数值，不得批准、提交或写入 finding。可从本次已有证据恢复后续工作。`;
 try {
   const cfg = await receive();
-  const { ModelRuntime } = await import(pathToFileURL(process.argv[2]).href);
-  const runtime = await ModelRuntime.create({ allowModelNetwork: false });
+  const sdk = await import(pathToFileURL(process.argv[2]).href);
+  const catalog = await isolatedModelCatalog(sdk, process.cwd());
+  const runtime = await sdk.ModelRuntime.create(catalog.options);
   const split = cfg.model.indexOf('/');
   const provider = cfg.model.slice(0, split), id = cfg.model.slice(split + 1);
   const model = runtime.getModel(provider, id);
-  if (!model) throw new Error('Pi model not found: ' + cfg.model);
+  if (!model) throw new Error(modelLookupError(runtime,cfg.model));
   const available = await runtime.getAvailable(provider);
   if (!available.some(m => m.id === id)) throw new Error('Pi provider is not authenticated: ' + provider);
   if (cfg.probe) {
-    send({type:'result', result:{provider:'pi_sdk', model:id, pi_provider:provider, available:true}});
+    send({type:'result', result:{provider:'pi_sdk', model:id, pi_provider:provider, available:true,catalog_cache:catalog.receipt}});
   } else {
     const zeroUsage = {input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}};
     const messages = cfg.messages.map(m => m.role === 'user'
@@ -36,7 +38,7 @@ try {
     const complete = (text, termination, reason=null) => send({type:'result',result:{text,provider:'pi_sdk',model:id,pi_provider:provider,
       tool_calls:calls,usage,termination,needs_followup:termination==='budget_stopped',reason}});
     const finalizationInstruction = '\n\n预算收尾规则：本轮仅可总结上下文中已经存在的证据及未完成项。不得批准、提交、写入 finding 或声称未验证工作已完成。';
-    send({type:'identity', model:id, pi_provider:provider, builtin_tools:false, extensions:false});
+    send({type:'identity', model:id, pi_provider:provider, builtin_tools:false, extensions:false,catalog_cache:catalog.receipt});
     for (let round=0; round<cfg.max_rounds; round++) {
       const finalRound = round === cfg.max_rounds - 1 || calls >= cfg.max_tool_calls || stopReason !== null;
       const requestContext = {...context,

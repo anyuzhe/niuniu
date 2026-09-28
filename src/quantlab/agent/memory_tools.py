@@ -70,6 +70,12 @@ class ResearchMemoryAPI:
                          for e in data['evidence_checks'] if e['status']=='verified']
             result = {'ok':True,'tool':name,'data':compact(data),'evidence':refs,
                       'warnings':['历史笔记及模型解释不是新的实测事实；来源一致不等于结论成立。'],'error':None}
+            if len(encode(result))>24000 and name in ('get_research_memory','record_hypothesis','record_finding'):
+                from quantlab.agent.memory_projection import large_memory_view
+                view=large_memory_view(data)
+                if view is not None:
+                    result['data']=view
+                    result['warnings'].append('大记录使用显式部分视图：正文未截断，重复证据上下文/大值或参数已标明省略；不是完整记录或新的证据认证。')
             if len(encode(result))>24000:
                 result['data'] = {'omitted':True,'reason':'result_size_limit'}
                 result['warnings'].append('完整记录保留在研究记忆面板；请缩小检索范围。')

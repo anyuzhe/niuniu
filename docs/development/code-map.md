@@ -137,6 +137,10 @@
 
 [conditional_events.py](../../src/quantlab/agent/conditional_events.py) 只描述已有布尔研究的嵌套事件，在 [candidate_review.py](../../src/quantlab/agent/candidate_review.py) 完成原数据/身份/标签核对后使用；旧 compare_factor_candidates 工具统一放入 [catalog.py](../../src/quantlab/agent/catalog.py) 的共享只读层，原 [market_data_tools.py](../../src/quantlab/agent/market_data_tools.py) 委托继承，避免原生Chat漏接；不新增模型执行工具。测试 [test_conditional_event_review.py](../../tests/test_conditional_event_review.py) 覆盖日期配对、缺失/尾部、非嵌套拒绝及原生归档/冻结研究合同。首轮 [抄底探索规格](../reference/dip-factor-research-v1.json) 是已见20股上的固定探索，不是盲测或策略推荐。
 
+## 本地模型目录与记忆大响应（2026-09-28）
+
+[pi_runtime_cache.mjs](../../src/quantlab/devstudio/pi_runtime_cache.mjs) 为Pi创建有界临时模型目录副本，原 [pi_bridge.mjs](../../src/quantlab/devstudio/pi_bridge.mjs) 使用SDK公开modelsStorePath，不移动配置或凭据；测试 [test_pi_catalog_cache.py](../../tests/test_pi_catalog_cache.py)。[memory_projection.py](../../src/quantlab/agent/memory_projection.py) 由原记忆工具在超预算时投影，正文不截断、省略字段显式记录，测试 [test_memory_projection.py](../../tests/test_memory_projection.py)。
+
 ## 维护
 
 新增或移动模块后更新相应导航与清单；清单明确保留生成基线，不作为自动生成的实时指标。类与函数完整名称在 JSON 中检索，具体行为以源码及测试为准。

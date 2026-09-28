@@ -2362,3 +2362,25 @@
 - 数据根已有隔离 eltdx==3.2.2：automation/tdx/runtime-3.2.2 与 runtime-manifest.json。新增 verified_eltdx_runtime：执行前校验manifest身份、personal-research-only边界、固定wheel SHA及211个文件逐个SHA，确认所需metadata/native文件存在后才把该runtime加入本进程 sys.path；不把eltdx写入项目默认依赖。
 - 新增 repair_local_runtime_errors，只把error字段精确等于上述PackageNotFoundError的trades任务恢复为PENDING，并写审计表；ProtocolError等真实数据/协议错误保持ERROR。新增CLI --repair-local-runtime-errors --personal-research-only，默认仍不联网。
 - 新增runtime manifest激活与“只修本地runtime错误、不碰ProtocolError”两项测试。focused测试23项全部PASS；TDX scheduler/lake/distributed/PhaseA/V2完整相关回归89项全部PASS。真实runtime manifest当前校验211文件通过。修复提交后将先做exact repair，再重跑小流量smoke；未验证成功网络页前不扩大Phase A。
+
+### 2026-09-28｜[CODE/AI] 抄底第二轮的Pi缓存与大记忆读取
+
+- 新轮原生登记前宿主分页错误（200>20）已修正为实际游标；随后正式模型入口0工具即model-not-found。两个有界SDK诊断相同模型均出现Availability refresh/ENOSPC，系统盘约311MiB；只保留非敏感分类，更详细错误追读被平台拦截后未绕过。
+- pi_runtime_cache.mjs从SDK公开agent目录只复制models-store.json至本次TemporaryDirectory，16MiB限额、文件身份/读前后变更核对、非符号链接、独占写；SDK使用临时modelsStorePath，全球models/auth配置位置保持，不复制凭据、不下载目录、不切换模型。失败只输出固定分类，不泄露SDK配置错误原文。真实同模型probe成功，catalog副本10245字节，尚不等于研究调用成功。
+- memory_projection.py只处理超预算结果展示，保留完整正文、原状态、标记partial及省略字段SHA，删除重复context/大型value/parameters而不改写权威记忆。仍超预算沿用旧省略提示。新增测试覆盖Node真实进程/临时目录清理/不改原目录、旧SDK/异常边界及模型记忆完整文本/状态/预算。
+- 初轮39测试38通过1失败：Lexar暴露owner执行位0700而不是0600。测试改查owner读写与group/other无权限的实际安全边界，不修改文件访问权限。回归及真实规划单独追加，不清除原失败证据。
+- 修后13模块128唯一测试全部PASS，0失败/错误/跳过；src/tests/.mjs/JSON前后hash=a71a1a66ffd16bb6c22c54b0459efeb44ffc88367cd43e5e3cf36ede7eacc01d。额外核对上轮真实finding：正文逐字段一致、响应10559字符、source_integrity=verified、原记忆库SHA不变；不声称完整上下文已返回。pyproject的package-data显式加入新的mjs依赖，避免源码运行正常而打包遗漏。
+
+### 2026-09-28｜[RESEARCH] 抄底R2两条不同机制的原生假设冻结
+
+- c613285修复后原模型已实际连接；首次7调用因漏抄基准首段UUID而停止、0假设。原输入本来正确，宿主从旧冻结规格抽取准确ID后允许纠正，不换数据/机制。新规划6调用全部成功，原研究及输入SHA不变、Grant关闭。
+- 模型自己登记收盘位置<0.3（7950e7b3-e20d-4dbd-892b-0b0ca7102ae4）和20日收益波动率<0.03（1f77d7e5-8013-41f9-9519-704e30fdb16a），完整嵌套原momentum<-0.1与efficiency<0基准。新原生假设不含上轮efficiency>-0.5过滤。波动率阈值只是低水平，不足以认证动态收敛。
+- docs/reference/dip-factor-research-v1-round2.json在新计算前冻结：3研究、9分期叶子、18候选/阶段/期限对照，digest=6121f3c837774e368c272431b665439313c8f2fd054ad3061b90c31aeeb9df18。基准仅因运行身份变化重算，不因收益调参；仍已见20股/14540行/12停牌/raw探索，无盲测或p值。真实计算与结果整理另行记录，未把提出假设当Alpha。
+
+### 2026-09-28｜[ACCEPTANCE] 抄底R2两种机制结果留存完成
+
+- 首执行6调用误复用旧R1结果，0任务。已核manifest_runtime_compatible=False（computation code_hash差异）后，仅澄清R2身份，未改固定spec。修正过程保留前receipt，3个后续原生对话各6调用完成基准+2候选，每项prepare spec包括question完全一致；3任务/9子研究完成，旧原始研究与数据字节保持，有限Grant已撤销。parent依次2c28f881-c5da-45ef-9155-d11ed8755025、fd9d25f3-359a-4500-b418-3bc80f804109、102ab387-7a19-446e-a9ad-26bbfbce9c9c。
+- 4个无执行队列对话按candidate1 aux/primary、candidate2 aux/primary顺序6/13/6/13次工具调用，全部18个比较槽位实际读取，0工具错误；两个finding原生保存且四项正文全文读回相符，修复了上轮只见ID/引用但正文全省略的使用障碍。原库仍为权威，投影complete_record=false，既有Integrity与claim_verified边界不变。
+- 主要5日条件收益差（百分点）收盘位置−0.17906254/−0.09261220/+0.25583507，低波动−0.03494599/+0.15254191/−0.00560191；对应MAE差−0.04146224/−0.22234621/+0.19357989及+0.00090042/+0.41652122/+0.22401808。全部3/10辅助结果保留，未依据表现改机制/阈值/样本。无p值/成本/独立盲测；低波动风险差异不能等同独立Alpha。
+- finding 7ff8c4c6-e3e7-4f84-8f08-d87c860391d8与46b23027-b67e-45ca-931f-b1d13b3f5690均为inconclusive模型草稿、来源verified但claim_verified=false。所有结果整理前后研究/输入/源码SHA不变、Grant关闭、无自动入池/实盘。证据artifacts/dip-factor-round2-20260928，主线合入与最终128项范围回归另外核对，不把并行WIP列入本任务验收。
+- 独立集成到main已提交003cf1bd的12路径，无源码冲突；changelog保留最新上游全文并追加本任务尾部。完整重跑13模块128唯一测试全部PASS，0失败/错误/跳过，前后hash=bc891a8f295536561e6ef340c91abc5a9c7d1e88b1adb6cb70f54264cfa65b66；不与前128累加。main未提交采集说明仍须按SHA/三路合并保护，不代提交；普通推送和最终一致性另有delivery receipt。

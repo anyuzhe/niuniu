@@ -1,0 +1,390 @@
+{
+  "format": "niuniu-dip-research-round2-v1",
+  "created_at": "2026-09-28T06:38:45.997754+00:00",
+  "stage": "previously_seen_exploration",
+  "source": "native assistant hypotheses; host freezes data and budget only",
+  "parent_protocol": "9dd5af2be6aeda53a91c8ac548035af50afd0cb62fdd446dac18d721cc78fbda",
+  "primary_horizon": 5,
+  "auxiliary_horizons": [
+    3,
+    10
+  ],
+  "data": {
+    "dataset_id": "1919e7672c672083b8646e82c90023d3b2f753f6d1e0851c85c1f2156eb2fa62",
+    "qualification": "research_only",
+    "already_seen": true,
+    "blind_holdout": false,
+    "rows": 14540,
+    "suspended_rows": 12,
+    "uses_raw_prices": true
+  },
+  "studies": [
+    {
+      "role": "baseline",
+      "hypothesis_id": "0d0cd4a1-4bff-41d5-86f9-7e566d6c26c2",
+      "hypothesis_record_digest": "30360b45eaa89b0d939bb63a26332e4dbce9cd003de9eae6677ab236fe7e12b5",
+      "title": "DIPV1 基准：20日下跌事件",
+      "spec": {
+        "question": "DIPV1-R2 baseline DIPV1 基准：20日下跌事件；已见20股固定探索",
+        "symbols": [
+          "sh.600000",
+          "sh.600004",
+          "sh.600006",
+          "sh.600007",
+          "sh.600008",
+          "sh.600009",
+          "sh.600010",
+          "sh.600011",
+          "sh.600012",
+          "sh.600015",
+          "sz.000001",
+          "sz.000002",
+          "sz.000006",
+          "sz.000007",
+          "sz.000008",
+          "sz.000009",
+          "sz.000010",
+          "sz.000011",
+          "sz.000012",
+          "sz.000014"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "raw",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      }
+    },
+    {
+      "role": "candidate1",
+      "hypothesis_id": "7950e7b3-e20d-4dbd-892b-0b0ca7102ae4",
+      "hypothesis_record_digest": "23b708690fb218de24efdb351f39414c8c1c90d4564af3cbb2471a530fd83f7e",
+      "title": "DIPV1-R2 COMB.CONDITION：收盘位置过滤",
+      "spec": {
+        "question": "DIPV1-R2 candidate1 DIPV1-R2 COMB.CONDITION：收盘位置过滤；已见20股固定探索",
+        "symbols": [
+          "sh.600000",
+          "sh.600004",
+          "sh.600006",
+          "sh.600007",
+          "sh.600008",
+          "sh.600009",
+          "sh.600010",
+          "sh.600011",
+          "sh.600012",
+          "sh.600015",
+          "sz.000001",
+          "sz.000002",
+          "sz.000006",
+          "sz.000007",
+          "sz.000008",
+          "sz.000009",
+          "sz.000010",
+          "sz.000011",
+          "sz.000012",
+          "sz.000014"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "close_location": {
+              "factor_id": "BASE.CLOSE_LOCATION",
+              "parameters": {},
+              "version": "1.0.0"
+            },
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              },
+              {
+                "input": "close_location",
+                "op": "lt",
+                "value": 0.3
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "raw",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      }
+    },
+    {
+      "role": "candidate2",
+      "hypothesis_id": "1f77d7e5-8013-41f9-9519-704e30fdb16a",
+      "hypothesis_record_digest": "1095af7a5724b9cae1f3758c7a2d2a4f9fa15c60bfd226cc8ebaea363298e986",
+      "title": "DIPV1-R2 COMB.CONDITION：波动收敛过滤",
+      "spec": {
+        "question": "DIPV1-R2 candidate2 DIPV1-R2 COMB.CONDITION：波动收敛过滤；已见20股固定探索",
+        "symbols": [
+          "sh.600000",
+          "sh.600004",
+          "sh.600006",
+          "sh.600007",
+          "sh.600008",
+          "sh.600009",
+          "sh.600010",
+          "sh.600011",
+          "sh.600012",
+          "sh.600015",
+          "sz.000001",
+          "sz.000002",
+          "sz.000006",
+          "sz.000007",
+          "sz.000008",
+          "sz.000009",
+          "sz.000010",
+          "sz.000011",
+          "sz.000012",
+          "sz.000014"
+        ],
+        "timeframe": "1d",
+        "start": "2023-01-01",
+        "end": "2025-12-31",
+        "factor": "COMB.CONDITION",
+        "version": "1.0.0",
+        "parameters": {
+          "inputs": {
+            "efficiency": {
+              "factor_id": "BASE.DIRECTIONAL_EFFICIENCY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "momentum": {
+              "factor_id": "BASE.MOMENTUM",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            },
+            "return_volatility": {
+              "factor_id": "BASE.RETURN_VOLATILITY",
+              "parameters": {
+                "lookback": 20
+              },
+              "version": "1.0.0"
+            }
+          },
+          "rule": {
+            "all": [
+              {
+                "input": "momentum",
+                "op": "lt",
+                "value": -0.1
+              },
+              {
+                "input": "efficiency",
+                "op": "lt",
+                "value": 0
+              },
+              {
+                "input": "return_volatility",
+                "op": "lt",
+                "value": 0.03
+              }
+            ]
+          }
+        },
+        "horizons": [
+          3,
+          5,
+          10
+        ],
+        "quantiles": 3,
+        "seed": 0,
+        "adjustment": "raw",
+        "mode": "holdout",
+        "split": {
+          "train_end": "2023-12-31",
+          "valid_end": "2024-12-31"
+        },
+        "qualification": "research_only",
+        "replay": true
+      }
+    }
+  ],
+  "comparison_slots": [
+    {
+      "candidate_role": "candidate1",
+      "phase": "train",
+      "horizon": 3
+    },
+    {
+      "candidate_role": "candidate1",
+      "phase": "train",
+      "horizon": 5
+    },
+    {
+      "candidate_role": "candidate1",
+      "phase": "train",
+      "horizon": 10
+    },
+    {
+      "candidate_role": "candidate1",
+      "phase": "valid",
+      "horizon": 3
+    },
+    {
+      "candidate_role": "candidate1",
+      "phase": "valid",
+      "horizon": 5
+    },
+    {
+      "candidate_role": "candidate1",
+      "phase": "valid",
+      "horizon": 10
+    },
+    {
+      "candidate_role": "candidate1",
+      "phase": "test",
+      "horizon": 3
+    },
+    {
+      "candidate_role": "candidate1",
+      "phase": "test",
+      "horizon": 5
+    },
+    {
+      "candidate_role": "candidate1",
+      "phase": "test",
+      "horizon": 10
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "train",
+      "horizon": 3
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "train",
+      "horizon": 5
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "train",
+      "horizon": 10
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "valid",
+      "horizon": 3
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "valid",
+      "horizon": 5
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "valid",
+      "horizon": 10
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "test",
+      "horizon": 3
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "test",
+      "horizon": 5
+    },
+    {
+      "candidate_role": "candidate2",
+      "phase": "test",
+      "horizon": 10
+    }
+  ],
+  "baseline_recomputed_reason": "conservative runtime fingerprint changed due transport/memory fixes, not response to returns",
+  "no_cost_or_significance": true,
+  "no_automatic_promotion": true,
+  "protocol_digest": "6121f3c837774e368c272431b665439313c8f2fd054ad3061b90c31aeeb9df18"
+}
