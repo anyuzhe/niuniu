@@ -26,3 +26,4 @@
 - 第十七轮（日历效应与配对做T）：`breakout5m/calendar5.py` + `calagg.py`（按事件日分组）、`pairs.py` + `pairagg.py`（每月按 5 分钟收益相关性配对，盘中差距回归）。
 - 第十八轮（震荡时段分批抄底）：`breakout5m/chop.py`（各时段震荡程度）、`dipbuy.py`（分批挂单抄底、反弹或收盘卖出）、`dipagg.py`（汇总）。
 - 第十九轮（分批抄底大亏分析）：`breakout5m/dipdiag.py`（单一设置逐次记录进场前特征与之后走势）、`ddagg.py`（大亏集中在哪些日子与情形）、`dipbuy2.py` + `dip2agg.py`（盘中大盘止损：停止加仓或全部卖出）。
+- 第二十轮（分批抄底加大盘过滤）：`breakout5m/dipbuy3.py`（每次买入前按盘中大盘状态过滤，另含事后上限）、`dip3agg.py`（汇总）。
