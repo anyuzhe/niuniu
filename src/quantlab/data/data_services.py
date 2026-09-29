@@ -1058,6 +1058,8 @@ class DataUpdateJobs:
         return {"run_id": run_id}
 
     # Jobs the user has authorised to start by themselves when niuniu opens (2026-09-25).
+    # While niuniu is open, scripts/collect/scheduler.py also starts the recorder and the
+    # close update (daily_close_update) every trading day (user authorisation 2026-09-29).
     AUTOSTART = ("sector_recorder_start",)
 
     def autostart(self, job_id: str = "sector_recorder_start") -> dict:
