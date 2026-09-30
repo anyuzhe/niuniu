@@ -15,3 +15,5 @@
 - `dipbt.py` / `dipwf.py`：恐慌日买分数最高的 K 只的组合回测（路径法，含成本）；`dipwf.py` 为逐年滚动选因子的打分 A，以及假设型“超卖深度”打分 B。
 - `mkreg.py` / `etf_panic.py`：把恐慌日信号用到宽基 ETF 上。
 - `swing5.py`：`swing4.py` 加股价下限和剔除 4 月中旬到 5 月中旬信号日的稳健性版本。
+- `etfpanic_bt.py`：恐慌信号的 ETF 组合回测引擎（复权总收益、分批/按深度加仓、时间/恢复/止损退出、佣金 1bp + 每边 1 个价位、现金 0 收益），直接运行输出参照与三种仓位方案；依赖 `etfcore.py` 和 `mkreg.py` 生成的 `mkreg.npz`。
+- `etfpanic_grid.py`（阈值/持有天数/批数/退出/仓位/标的/滚动阈值）、`etfpanic_eps.py`（逐段行情、分年、最大回撤）、`etfpanic_extra.py`（闲置资金收益、把信号换成 ETF 篮子自己的涨跌）。
