@@ -194,11 +194,22 @@ class Runner:
         receipts.mkdir(parents=True, exist_ok=True)
         third = share[1] / 3
         # daily status
-        info = self.last_json(self.sh(["scripts/collect/status_incremental.py", "--target-end", day,
-                                       "--plan-output", str(plans / "status.json")]))
-        if info.get("actions"):
-            self.sh(["scripts/collect/status_incremental.py", "--plan", str(plans / "status.json"), "--apply",
-                     "--approve-sha256", info["plan_sha256"]], step_share=(share[0], third))
+        # The plan is rebuilt from what is already on disk, so a retry only redoes the
+        # symbols still missing. Baostock stalls now and then; retry twice after a pause.
+        for attempt in range(3):
+            info = self.last_json(self.sh(["scripts/collect/status_incremental.py", "--target-end", day,
+                                           "--plan-output", str(plans / "status.json")]))
+            if not info.get("actions"):
+                break
+            try:
+                self.sh(["scripts/collect/status_incremental.py", "--plan", str(plans / "status.json"), "--apply",
+                         "--approve-sha256", info["plan_sha256"]], step_share=(share[0], third))
+                break
+            except RuntimeError as exc:
+                if attempt == 2:
+                    raise
+                self.log(f"日状态第 {attempt + 1} 次失败（{exc}），120 秒后重新规划并续跑")
+                time.sleep(120)
         self.result_dataset("security_status_baostock_v2", through=day, files_written=info.get("actions", 0))
         for index, (dataset, dataset_id) in enumerate((("baostock-daily", "bars_daily_baostock_raw"),
                                                        ("baostock-min5", "bars_min5_baostock_raw")), start=1):

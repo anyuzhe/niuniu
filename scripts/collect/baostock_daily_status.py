@@ -63,14 +63,23 @@ class StatusSession:
         self.process = self.connection = None
         self._start()
 
+    START_ATTEMPTS = 3          # Baostock sometimes stalls for minutes; back off instead of aborting
+    START_BACKOFF = (30.0, 90.0)
+
     def _start(self):
-        parent, child = self.context.Pipe()
-        proc = self.context.Process(target=_worker, args=(child,), daemon=True)
-        proc.start(); child.close(); self.process, self.connection = proc, parent
-        if not parent.poll(max(30.0, self.timeout)):
-            self._terminate(); raise TimeoutError("status worker startup timed out")
-        status, detail = parent.recv()
-        if status != "ready": self._terminate(); raise RuntimeError(detail)
+        import time
+        for attempt in range(self.START_ATTEMPTS):
+            parent, child = self.context.Pipe()
+            proc = self.context.Process(target=_worker, args=(child,), daemon=True)
+            proc.start(); child.close(); self.process, self.connection = proc, parent
+            if parent.poll(min(60.0, max(30.0, self.timeout))):
+                status, detail = parent.recv()
+                if status == "ready": return
+                self._terminate(); raise RuntimeError(detail)
+            self._terminate()
+            if attempt + 1 < self.START_ATTEMPTS:
+                time.sleep(self.START_BACKOFF[min(attempt, len(self.START_BACKOFF) - 1)])
+        raise TimeoutError("status worker startup timed out")
 
     def _terminate(self):
         if self.connection is not None: self.connection.close(); self.connection = None
