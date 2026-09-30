@@ -30,3 +30,4 @@
 - 第二十一轮（10:30 判断下午大盘）：`breakout5m/mktfeat.py`（每天 10:30 可知的 24 个大盘因子与下午走势）、`mfagg.py`（单因子与逐年滚动模型，写出 `mfpred.npz`）、`mffilter.py`（按模型风险跳过分批抄底；需先用 `DD_TAG=close15 dipdiag.py 年 12 23 0.015 3 1.0` 生成拿到收盘的记录）、`mftiming.py`（预测下午弱时先卖后买）。
 - 第二十二轮（风险过滤分批抄底复核）：`breakout5m/dipgrid.py`（10:30 以后开始的 192 组参数，按日期存结果，含 10:35 全买对照）、`mfloyo.py`（去掉当年拟合的预测，只作敏感性）、`dipgridagg.py` / `dipgridagg2.py` / `dipgridagg3.py`（按大跌概率门槛过滤、逐年与门槛敏感性）。
 - 第二十三轮（正式情绪风险模型与 1 分钟核对）：`breakout5m/offmodel.py`（用 `market_intraday_breadth_5m` 建 10:30 模型，写出 `offpred.npz`）、`offagg.py`（按正式模型过滤 192 组分批抄底）、`dip1m.py`（`tdx_kline_min1` 2026-05..09 与 5 分钟成交对照）。
+- 第二十四轮（正式模型逐只先卖后买、真实 ETF）：`breakout5m/offsell.py`（按 `offpred.npz` / `mfpred.npz` 的信号逐只股票模拟先卖后买，含跌停不卖、封涨停次日开盘买回，写出 `offsell.npz`）、`offsellagg.py`（按门槛、年份、β、股价汇总）、`etfsell.py`（`etf_kline_min5` 真实 ETF，前收按 `etf_nav_daily` 的分红拆分调整，并用 `tdx_live_quotes` 核对买卖价差；环境变量 `LAKE` 指定数据根，默认 `$HOME/mnt/lake`）。
