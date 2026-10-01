@@ -23,3 +23,4 @@
 - `etfpanic_mk10.py`：用全市场 10 日（对比 20 日）跌幅做信号，ETF 篮子持有 10/20 天的事件研究和组合回测。记录见文档 §13。
 - `pp_feat.py`：恐慌日（等权 20 日 ≤ −6%）候选股的 28 个因子行和 10/20 天净收益标签，存 `pp_feat.npz`；`pp_ana.py`：因子排名 IC / 分位差，按段聚合；`pp_ana2.py`：入选因子、反转族打分、前 20% / 前 30 只、大票检验、十分位、深度恐慌日及单次建仓逐笔。引用 `swingbook.py`。记录见文档 §14。
 - `build_ext.py`：把个股面板拉到 2007-01-04（float32，存 `panel_ext.npz`）；`mkreg_ext.py`：长样本的市场信号（等权 20 日涨跌，存 `mkreg_ext_liq.npz`）；`etfcore_ext.py` / `etfpanic_bt_ext.py`：从 2007 年起的 ETF 日历和组合引擎（改自 `etfcore.py` / `etfpanic_bt.py`）；`etfpanic_ext_run.py`：分时期事件研究、一次性规则逐笔和分时期组合指标；`etfpanic_ext_cond.py`：反弹确认等条件。记录见文档 §15。
+- `etfpanic_regime.py`：深度恐慌日按年份、250 日均线、距高点回撤、连环下跌分层，以及信号后大盘是否继续下跌。记录见文档 §15.4。
