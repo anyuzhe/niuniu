@@ -29,3 +29,4 @@
 - `intra_snap.py`：从 `bars_min5_baostock_raw`（READY）按年抽取 8 个盘中时点的价格快照（时点收盘价、下一根开盘价、当日开盘价），存 `snap_YYYY.parquet`；`intra_e6.py`：用时点价格重算布林下轨收复信号和闸门 z，事件研究、价格路径、并存事件；`intra_port.py`：封顶 20 只的盘中买法组合回测和对照。引用 `lowfreq/panel.npz`、`panel_ext.npz`、`mkreg_ext_liq.npz`。记录见文档 §18。
 - `lf_long.py`：2008–2026 信号日（z ≤ −1.5）的 28 个选股因子 IC / 分位差、打分、十分位、组合（引用 `stockport.py` 前半段）；`lf_seeds.py`：同一框架下随机选股 8 个种子的组合波动和排序组合对比。记录见文档 §19。
 - `lf_beta.py`：beta 中性化检验（按 beta 分档、扣 beta 超额、横截面回归、beta 中性打分、E6 内排序组合）；引用 `lf_long.py` 的因子部分。记录见文档 §20。
+- `lev.py`：融资杠杆测试（1 / 1.5 / 2 / 3 倍，借款利息、担保比例、强平线、利率敏感性、不同 N、随机对照、逐年）；引用 `stockport.py` 前半段。记录见文档 §21。
