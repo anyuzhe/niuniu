@@ -25,3 +25,4 @@
 - `build_ext.py`：把个股面板拉到 2007-01-04（float32，存 `panel_ext.npz`）；`mkreg_ext.py`：长样本的市场信号（等权 20 日涨跌，存 `mkreg_ext_liq.npz`）；`etfcore_ext.py` / `etfpanic_bt_ext.py`：从 2007 年起的 ETF 日历和组合引擎（改自 `etfcore.py` / `etfpanic_bt.py`）；`etfpanic_ext_run.py`：分时期事件研究、一次性规则逐笔和分时期组合指标；`etfpanic_ext_cond.py`：反弹确认等条件。记录见文档 §15。
 - `etfpanic_regime.py`：深度恐慌日按年份、250 日均线、距高点回撤、连环下跌分层，以及信号后大盘是否继续下跌。记录见文档 §15.4。
 - `etfpanic_dyn.py`：动态（波动率标准化 / 滚动分位）恐慌因子和大盘布林下轨收复，ETF 篮子事件研究和可执行规则；`stockdyn.py`：2008–2026 个股布林下轨收复 × 动态市场状态（年代化成本）。记录见文档 §16。
+- `stockport.py`：2008–2026 个股布林下轨收复 × 动态市场超卖门的组合回测（日度盯市、年代化成本、N=10/20、多种门和对照、逐年、最新状态）；引用 `stockdyn.py` 的前半段。记录见文档 §17。
