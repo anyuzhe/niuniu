@@ -35,3 +35,4 @@
 - `exits.py`：逐日出场引擎（持有天数、止损止盈、回撤止盈、z 修复 / 大盘反弹出场、按 z 深度动态杠杆、闲置现金收益、回撤后降杠杆）；引用 `stockport.py` 前半段。记录见文档 §24。
 - `build_val.py`：把 `baostock/valuation_daily_v1` 对齐到 `panel_ext.npz` 的日期 × 代码（输出 `fund_val.npz`）；`build_fin.py`：把 `eastmoney` 的财报、股本、业绩预告、质押按公告日对齐成前一个交易日可见的面板（输出 `fund_fin.npz`，约 26MB，压缩）；`fundtest.py`：覆盖率、因子 IC、过滤的事件对比；`fundtest2.py`：过滤 / 排序的组合回测（1x、2x）；`fundtest3.py`：随机选股对照和逐年。记录见文档 §25。
 - `env_regime.py`、`env_filters.py`、`env_breadth.py`、`env_ex2015.py`：用产品引擎 `quantlab.dipbuy` 在研究面板上看“什么环境收益最好”，以及按环境过滤 / 调仓位 / 等 E6 只数扩散再开仓的测试，并去掉 2015 年复核（档案 §27）。
+- `allyears.py`、`build_xlsx.py`：把本目录里试过的 117 个变体（杠杆、成本、闸门、持仓只数、持有天数、止损止盈、修复出场、动态杠杆、环境过滤、仓位调节、基本面过滤）按 2008–2026 逐年收益跑成一张表（`python3 allyears.py core|exits|dyn|env|fund` 各写一个 `allyears_*.json`，再 `python3 build_xlsx.py 输出.xlsx` 合并成 Excel）；引用 `stockport.py` / `fundtest2.py` 前半段。记录见文档 §28。
