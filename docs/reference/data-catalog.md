@@ -345,6 +345,37 @@ result.to_dict()   # 可直接 JSON 序列化
 
 **公告的发布时间**：`announcements_cninfo`（§3.1）里本来就有 `announcement_time_ms`（巨潮发布时间，毫秒时间戳，精确到秒），但目前只有 2026-09-17 以后的数据；更早的历史待回补。**全市场 09:25 集合竞价**：`stock_intraday_snapshot` 的 `slot=09:25` 从 2026-09-28 起有；更早的历史需要逐只逐日回补通达信成交明细，尚未做。
 
+### 3.9 基本面与估值历史（FILE，2026-10-02 开放）
+
+回答"回测时只能用当时已公布的数据"：财报、业绩预告、股本都带披露日期，质押带统计日。以下数据都是 **research_only**，数值为供应商**最新修订值**，不是首次披露的原值。目录下的 `_empty/` 子目录存放"该分区确认没有数据"的标记（parquet），**不要把 `_empty` 当数据读**；通配读取用 `<目录>/*.parquet` 不会读到它们。
+
+**可见日规则（防未来函数，CODE 必须遵守）**
+
+- 财报三张表：以 `financial_cpd` 的 `NOTICE_DATE`（原始披露日）作为可见日，按（`SECURITY_CODE`, 报告期）去关联资产负债表和现金流表。**不要用** `financial_balance` 和 `financial_cashflow` 自己的 `NOTICE_DATE`：资产负债表有 7 行披露日被写成 1900-01-01、338 行缺失，现金流表有很多行是后来重述的更新日。资产负债表的 28.4 万行里 99.6%（28.26 万行）能在 `financial_cpd` 找到披露日，其余没有可见日，回测里应当丢弃。
+- 业绩预告：`notice_date` 当天可见。
+- 质押：统计日是周五，数据通常过几天才公开，回测建议以"统计日 + 5 天"作为可见日。
+- 股本：`NOTICE_DATE` 当天可见，生效日是 `END_DATE`；只取 `END_DATE <= 当日` 且 `NOTICE_DATE <= 当日` 的最近一行（文件里有未来日期的行，最晚到 2026-10-14）。
+- PE/PB：由供应商按当日收盘价和**最近已披露的财报**计算，当日收盘后可见；字段本身是字符串，使用时自行转数值。
+
+**口径提醒**
+
+- 财报的净利润、ROE 是**累计口径**（中报是上半年），不是单季；同比 `SJLTZ` 单位是百分数。
+- 总市值没有现成字段：用 `share_capital` 里生效的 `TOTAL_SHARES` × `valuation_daily_v1` 的不复权收盘价 `close`。茅台 2026-09-30：1,250,081,601 股 × 1,258.62 元 ≈ 1.573 万亿元。
+- 财报里有 1.1 万多个代码（含其他板块和已退市），使用时用股票池过滤。
+- 业绩预告类型直接用 `forecast_type`，已含 `扭亏`、`预减`、`首亏`、`减亏`、`增亏`、`预增`、`略增`、`略减`、`续盈`、`续亏`、`不确定`；一次预告拆成多行（`indicator`：归母净利润、扣非净利润、营业收入等），取 `归属于上市公司股东的净利润` 一行即可。
+
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `financial_cpd` | FILE | 季度业绩报表：归母净利润、净利润同比、ROE、EPS、营收、**原始披露日** | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=eastmoney/financial_cpd/report_date=YYYY-MM-DD.parquet` | 东财原列名，主要列 `SECURITY_CODE, REPORTDATE, NOTICE_DATE, PARENT_NETPROFIT, SJLTZ, WEIGHTAVG_ROE, BASIC_EPS, TOTAL_OPERATE_INCOME, YSTZ`；每个报告期一个文件 | 2007Q1–2026Q2，约 44.9 万行；披露日 2007-04-12 起，6 行披露日缺失 | `READY` | 作为财报可见日的主表 |
+| `financial_balance` | FILE | 资产负债表摘要，含资产负债率 | `.../provider=eastmoney/financial_balance/report_date=YYYY-MM-DD.parquet` | 东财原列名，主要列 `SECURITY_CODE, REPORT_DATE, TOTAL_ASSETS, TOTAL_LIABILITIES, TOTAL_EQUITY, DEBT_ASSET_RATIO`（百分数） | 同上，约 28.4 万行；214 行资产负债率缺失 | `READY` | 披露日不要用本表的 `NOTICE_DATE` |
+| `financial_cashflow` | FILE | 现金流量表摘要，含经营现金流净额 | `.../provider=eastmoney/financial_cashflow/report_date=YYYY-MM-DD.parquet` | 东财原列名，主要列 `SECURITY_CODE, REPORT_DATE, NETCASH_OPERATE, NETCASH_INVEST, NETCASH_FINANCE` | 同上，约 29.3 万行 | `READY` | 披露日不要用本表的 `NOTICE_DATE` |
+| `valuation_daily_v1` | FILE | 每日 PE(TTM)、PB(MRQ)、PS(TTM)、PCF，不复权收盘价 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/valuation_daily_v1/<sh_600519>.parquet` | `date, code, close, peTTM, pbMRQ, psTTM, pcfNcfTTM, fetch_ts`，字符串类型；每只股票一个文件 | 5,560 只，从上市日起到 2026-09-30，约 1,854 万行；`pbMRQ` 约 4,483 行为空 | `READY` | 自行转数值；亏损股 PE 的含义以供应商为准 |
+| `share_capital` | FILE | 股本变动历史（总股本、流通股、变动原因） | `.../provider=eastmoney/share_capital/<600519>.parquet` | 东财原列名，主要列 `SECURITY_CODE, END_DATE, NOTICE_DATE, TOTAL_SHARES, LISTED_A_SHARES, FREE_SHARES, CHANGE_REASON` | 5,560 只，约 16.7 万行 | `READY` | 总市值 = 生效股本 × 不复权收盘价 |
+| `earnings_forecast_history` | FILE | 业绩预告历史（预增、预减、首亏、扭亏、减亏…） | `.../provider=eastmoney/earnings_forecast_history/month=YYYY-MM.parquet` | 列同 `earnings_forecast_em`（§3.1）；按公告月一个文件 | 2007-01-05 起至 2026-09-30，约 18.5 万行，5,643 只；按（代码、公告日、报告期、指标）无重复 | `READY` | 取 `indicator` 为归母净利润的行；`notice_date` 当天可见 |
+| `equity_pledge_history` | FILE | 股权质押比例历史（中国结算每周统计） | `.../provider=eastmoney/equity_pledge_history/date=YYYY-MM-DD.parquet` | 列同 `equity_pledge_em`（§3.1）；每个统计日一个文件，含统计日当天有质押的股票 | 2014-03-07 至 2026-09-18，604 个统计日，约 154 万行；之后的统计日尚未公布 | `READY` | 不在表里 = 该统计日无质押记录；沪深，无北交所 |
+
+**更新**：这七项目前是一次性历史回补，脚本 `scripts/collect/fundamentals_history.py`（`plan` 后 `apply --plan --approve`，按文件落盘、可续跑）。每日追加还没有接入收盘任务：财报季（4、7、8、10 月）、质押每周、估值和股本每日的增量，DATA 下一步接入 `daily_close_update`。在此之前，最新一期财报和 2026-09-30 之后的估值请当作缺失处理。
+
 ## 4. 尚不可用、待审查或只供 DATA 内部使用
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
