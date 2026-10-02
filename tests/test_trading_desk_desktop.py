@@ -33,11 +33,11 @@ class TradingDeskDesktopTests(unittest.TestCase):
         self.window.close();QTest.qWait(10);self.temp.cleanup()
 
     def test_new_business_navigation_and_legacy_routes_both_work(self):
-        self.assertEqual(NAV[:11],['今日市场','主线方向','盘中板块','日内做T','今日候选','个股报告','我的股票','复盘验证','大V复盘','AI 助手','数据中心'])
+        self.assertEqual(NAV[:12],['今日市场','主线方向','盘中板块','日内做T','策略工作台','今日候选','个股报告','我的股票','复盘验证','大V复盘','AI 助手','数据中心'])
         self.assertEqual(len(self.window.nav),len(NAV));self.assertEqual(len(LEGACY_NAV),12)
         # Research, governance and development pages stay hidden until 专业模式 is switched on.
         self.assertFalse(self.window.pro_mode)
-        self.assertEqual([b.isVisible() for b in self.window.nav],[i<11 for i in range(len(NAV))])
+        self.assertEqual([b.isVisible() for b in self.window.nav],[i<12 for i in range(len(NAV))])
         self.window.pro_toggle.setChecked(True);QTest.qWait(20)
         self.assertTrue(all(b.isVisible() for b in self.window.nav))
         self.assertTrue(MainWindow(self.root).pro_mode)
