@@ -33,3 +33,4 @@
 - `pm.py`：仓位管理测试（持仓只数 N、按排名倾斜金额、每日限买只数、放宽闸门对照）；引用 `stockport.py` 前半段。记录见文档 §22。
 - `cap.py`：闸门日的 E6 候选只数分布、按段累计候选、不同 N 下实际持仓与占满比例、按日均成交额估算的容量；引用 `stockport.py` 前半段和 `pm.py` 的组合函数。记录见文档 §23。
 - `exits.py`：逐日出场引擎（持有天数、止损止盈、回撤止盈、z 修复 / 大盘反弹出场、按 z 深度动态杠杆、闲置现金收益、回撤后降杠杆）；引用 `stockport.py` 前半段。记录见文档 §24。
+- `build_val.py`：把 `baostock/valuation_daily_v1` 对齐到 `panel_ext.npz` 的日期 × 代码（输出 `fund_val.npz`）；`build_fin.py`：把 `eastmoney` 的财报、股本、业绩预告、质押按公告日对齐成前一个交易日可见的面板（输出 `fund_fin.npz`，约 26MB，压缩）；`fundtest.py`：覆盖率、因子 IC、过滤的事件对比；`fundtest2.py`：过滤 / 排序的组合回测（1x、2x）；`fundtest3.py`：随机选股对照和逐年。记录见文档 §25。
