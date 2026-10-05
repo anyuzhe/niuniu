@@ -4,7 +4,7 @@ import sys
 from grp11 import *
 from quantlab.dipbuy.engine import _fee_by_day
 fee = _fee_by_day(panel.dates); O, Cc, F = panel.o, panel.c, panel.f
-def rot(fm, fc, P=5, off='hold', cap=20, N=20, start='2008-01-01', cash_yield=0.0, replace_only_if_worse=False):
+def rot(fm, fc, P=5, off='hold', cap=20, N=20, start='2008-01-01', cash_yield=0.0, lag_thr=None, min_age=3):
     gate = np.isfinite(fm.z) & (fm.z <= -1.5); t0 = int(np.searchsorted(panel.dates, start))
     last_reb = -999; cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd); pend_s = []; pend_b = []; closed = []; nb = 0
     key = fc.ret20; pool_all = fc.e6 & fc.buyok
@@ -47,8 +47,12 @@ def rot(fm, fc, P=5, off='hold', cap=20, N=20, start='2008-01-01', cash_yield=0.
                 last_reb = t
                 idx = np.nonzero(pool_all[t])[0]
                 idx = idx[np.argsort(key[t, idx], kind='stable')][:N]; tgt = set(int(x) for x in idx)
-                for p in active:
-                    if p['j'] not in tgt: sell_ids.add(p['id'])
+                if lag_thr is None:
+                    for p in active:
+                        if p['j'] not in tgt: sell_ids.add(p['id'])
+                else:
+                    for p in active:
+                        if t - p['e'] >= min_age and p['v'] / p['inv'] - 1 <= lag_thr: sell_ids.add(p['id'])
                 pend_b = [int(x) for x in idx if int(x) not in {p['j'] for p in active if p['id'] not in sell_ids}]
             elif off == 'sell':
                 for p in active: sell_ids.add(p['id'])
@@ -60,6 +64,12 @@ if __name__ == '__main__':
     which = sys.argv[1]
     nm, fm, fc0 = {'A': ('A 大盘z+E6', market, cand), 'B': ('B 行业恐慌', fmB, fcB), 'C': ('C 成交额五分位', fmC, fcC)}[which]
     r = simulate(panel, fm, fc0, DipConfig(leverage=1.0)); met(dr(r['eq']), f'{nm} | 基线: 固定持有20日', r['expo'])
+    if len(sys.argv) > 2:
+        for P, thr in ((5, 0.0), (5, -0.05), (5, -0.10), (10, -0.05), (3, -0.05)):
+            ret, ex, n, h, m = rot(fm, fc0, P=P, off='hold', cap=20, lag_thr=thr)
+            met(ret, f'{nm} | 每{P}日只卖落后者(自买入以来<={thr*100:g}%), 上限20日', ex)
+            print(f'{"":46s} 平仓{n}笔 平均持有{h:4.1f}天 笔均{m:+5.0f}bp', flush=True)
+        sys.exit()
     for P, off, cap in ((5, 'hold', 20), (5, 'sell', 0), (5, 'hold', 0), (10, 'hold', 20), (10, 'sell', 0), (3, 'sell', 0)):
         ret, ex, n, h, m = rot(fm, fc0, P=P, off=off, cap=cap)
         met(ret, f'{nm} | 每{P}日换榜, 无信号{"清仓" if off=="sell" else "持有"}, 持有上限{cap or "无"}', ex)
