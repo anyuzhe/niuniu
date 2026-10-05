@@ -37,3 +37,4 @@
 - `env_regime.py`、`env_filters.py`、`env_breadth.py`、`env_ex2015.py`：用产品引擎 `quantlab.dipbuy` 在研究面板上看“什么环境收益最好”，以及按环境过滤 / 调仓位 / 等 E6 只数扩散再开仓的测试，并去掉 2015 年复核（档案 §27）。
 - `allyears.py`、`build_xlsx.py`：把本目录里试过的 117 个变体（杠杆、成本、闸门、持仓只数、持有天数、止损止盈、修复出场、动态杠杆、环境过滤、仓位调节、基本面过滤）按 2008–2026 逐年收益跑成一张表（`python3 allyears.py core|exits|dyn|env|fund` 各写一个 `allyears_*.json`，再 `python3 build_xlsx.py 输出.xlsx` 合并成 Excel）；引用 `stockport.py` / `fundtest2.py` 前半段。记录见文档 §28。
 - `cycle.py`、`cycle2.py`：恐慌日（z 闸门）有没有周期——段间隔 / 月份分布 / 自相关 / 周期图，以及按起始月份看信号后 20 日净收益的置换检验；引用 `stockport.py` 前半段。记录见文档 §29。
+- `states0.py` ~ `states4.py`：把 z 分成 5 个状态（恐慌 / 偏弱 / 中性 / 偏强 / 过热），看每档大盘后续收益（`states0`）、逐档扫 10 种选股规则的超额（`states1`）、各档做成子策略并与恐慌子策略合并（`states2`、`states3`）、恐慌日里 E6 与“20 日最弱 10%”池对比（`states4`）；`states2` 之后的脚本引用 `allyears.py` 的引擎。记录见文档 §30。
