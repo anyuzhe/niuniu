@@ -20,6 +20,8 @@ partition is never rewritten):
 
 Usage:  plan --dataset D [--from YYYY-MM-DD]        writes a plan, prints its sha256
         apply --plan FILE --approve SHA [--max-seconds N]
+        update --dataset D [--through YYYY-MM-DD] [--shard K/N]
+                                                    daily incremental refresh (used by daily_close_update)
 """
 from __future__ import annotations
 
@@ -340,6 +342,215 @@ def apply_cmd(args):
     return 1 if failed else 0
 
 
+# ---------------------------------------------------------------- incremental update
+def trading_days() -> list[date]:
+    snaps = sorted((BRONZE / "provider=baostock" / "reference_snapshots").glob("snapshot=*/trade_calendar.parquet"))
+    if not snaps:
+        raise FileNotFoundError("no baostock trade_calendar snapshot")
+    df = pd.read_parquet(snaps[-1])
+    return sorted(date.fromisoformat(x) for x, f in zip(df["calendar_date"], df["is_trading_day"]) if str(f) == "1")
+
+
+def weekly_last_trading_days(first: date, last: date) -> list[date]:
+    """China Clear publishes the pledge statistics at the last trading day of each week
+    (a Friday, except in holiday weeks, e.g. 2026-09-24 or 2026-09-30)."""
+    out: dict[tuple, date] = {}
+    for d in trading_days():
+        if first <= d <= last:
+            out[d.isocalendar()[:2]] = d
+    return sorted(out.values())
+
+
+def real_files(directory: Path, prefix: str) -> dict[str, Path]:
+    return {p.name[len(prefix):-len(".parquet")]: p for p in directory.glob(f"{prefix}*.parquet")}
+
+
+def write_real(df: pd.DataFrame, path: Path) -> None:
+    write_parquet(df, path)
+    marker = path.parent / "_empty" / path.name
+    if marker.exists():
+        marker.unlink()
+
+
+def write_empty(path: Path, reason: str) -> None:
+    write_parquet(pd.DataFrame({"_empty_reason": [reason]}), path.parent / "_empty" / path.name)
+
+
+def update_pledge(c, through: date) -> dict:
+    base = BRONZE / "provider=eastmoney" / "equity_pledge_history"
+    have = real_files(base, "date=")
+    first = PLEDGE_FIRST_FRIDAY          # weeks confirmed empty more than 21 days ago are skipped below
+    done = empty = failed = 0
+    errors = {}
+    for d in weekly_last_trading_days(first, through):
+        key = d.isoformat()
+        if key in have:
+            continue
+        marker = base / "_empty" / f"date={key}.parquet"
+        if marker.exists() and (through - d).days > 21:
+            continue                     # confirmed empty long ago
+        try:
+            df = fetch_pledge(c, key)
+            if "_empty_reason" in df.columns or df.empty:
+                write_empty(base / f"date={key}.parquet", "not published yet / no rows")
+                empty += 1
+            else:
+                write_real(fetched(df), base / f"date={key}.parquet")
+                done += 1
+        except Exception as exc:
+            failed += 1; errors[key] = f"{type(exc).__name__}: {exc}"[:200]
+    return {"done": done, "empty": empty, "failed": failed, "errors": errors}
+
+
+def update_forecast(c, through: date) -> dict:
+    base = BRONZE / "provider=eastmoney" / "earnings_forecast_history"
+    this = date(through.year, through.month, 1)
+    prev = date(this.year - (this.month == 1), 12 if this.month == 1 else this.month - 1, 1)
+    todo = [m for m in months(FORECAST_FIRST_MONTH, through) if m >= prev or not (base / f"month={m:%Y-%m}.parquet").exists()
+            and not (base / "_empty" / f"month={m:%Y-%m}.parquet").exists()]
+    done = empty = failed = 0
+    errors = {}
+    for m in todo:
+        key = m.strftime("%Y-%m")
+        try:
+            df = fetch_forecast(c, key)
+            if df.empty:
+                write_empty(base / f"month={key}.parquet", "no rows"); empty += 1
+            else:
+                write_real(fetched(df), base / f"month={key}.parquet"); done += 1
+        except Exception as exc:
+            failed += 1; errors[key] = f"{type(exc).__name__}: {exc}"[:200]
+    return {"done": done, "empty": empty, "failed": failed, "errors": errors}
+
+
+def update_fin(c, dataset: str, through: date) -> dict:
+    base = BRONZE / "provider=eastmoney" / FIN[dataset][2]
+    quarters = quarter_ends(FIN_FIRST_PERIOD, through)
+    recent = set(quarters[-2:])          # the two latest periods keep getting disclosed / restated
+    todo = [q for q in quarters if q in recent or not ((base / f"report_date={q}.parquet").exists()
+                                                       or (base / "_empty" / f"report_date={q}.parquet").exists())]
+    done = empty = failed = 0
+    errors = {}
+    for q in todo:
+        key = q.isoformat()
+        try:
+            df = fetch_fin(c, dataset, key)
+            if df.empty:
+                if not (base / f"report_date={key}.parquet").exists():
+                    write_empty(base / f"report_date={key}.parquet", "no rows")
+                empty += 1
+            else:
+                write_real(fetched(df), base / f"report_date={key}.parquet"); done += 1
+        except Exception as exc:
+            failed += 1; errors[key] = f"{type(exc).__name__}: {exc}"[:200]
+    return {"done": done, "empty": empty, "failed": failed, "errors": errors}
+
+
+def update_shares(c, through: date) -> dict:
+    base = BRONZE / "provider=eastmoney" / "share_capital"
+    mark = base / "_watermark.json"
+    if mark.exists():
+        since = date.fromisoformat(json.loads(mark.read_text())["notice_date"]) - timedelta(days=7)
+    else:
+        since = through - timedelta(days=14)
+    rows = c._em_datacenter_strict("RPT_F10_EH_EQUITY", f"(NOTICE_DATE>='{since}')", "NOTICE_DATE,SECURITY_CODE,END_DATE",
+                                   "1,1,1", page_size=500, max_rows=50000)
+    new = pd.DataFrame(rows)
+    done = failed = 0
+    errors = {}
+    if not new.empty:
+        stamp = datetime.now().astimezone().isoformat()
+        for code, part in new.groupby("SECURITY_CODE"):
+            path = base / f"{code}.parquet"
+            try:
+                part = part.assign(fetched_at=stamp)
+                if path.exists():
+                    old = pd.read_parquet(path)
+                    merged = pd.concat([old, part], ignore_index=True)
+                    keys = [k for k in ("END_DATE", "NOTICE_DATE", "CHANGE_REASON", "TOTAL_SHARES") if k in merged.columns]
+                    merged = merged.drop_duplicates(subset=keys, keep="first")
+                else:
+                    merged = part
+                merged = merged.sort_values("END_DATE", ascending=False, kind="stable")
+                write_parquet(merged, path); done += 1
+            except Exception as exc:
+                failed += 1; errors[str(code)] = f"{type(exc).__name__}: {exc}"[:200]
+    if not failed:
+        mark.write_text(json.dumps({"notice_date": through.isoformat(), "updated": datetime.now().isoformat()}))
+    return {"done": done, "rows": int(len(new)), "failed": failed, "errors": errors}
+
+
+def update_valuation(through: date, shard: str | None) -> dict:
+    base = BRONZE / "provider=baostock" / "valuation_daily_v1"
+    codes = stock_codes()
+    if shard:
+        k, n = map(int, shard.split("/"))
+        codes = codes[k::n]
+    session = BsSession()
+    done = skipped = failed = consecutive = 0
+    errors = {}
+    try:
+        for code in codes:
+            path = base / f"{code.replace('.', '_')}.parquet"
+            old = None
+            start = "1990-12-19"
+            if path.exists():
+                old = pd.read_parquet(path)
+                last = old["date"].max()
+                if last >= through.isoformat():
+                    skipped += 1
+                    continue
+                start = (date.fromisoformat(last) + timedelta(days=1)).isoformat()
+            try:
+                df = session.query(code, start, through.isoformat())
+                df["fetch_ts"] = datetime.now().astimezone().isoformat()
+                if old is not None:
+                    df = pd.concat([old, df], ignore_index=True).drop_duplicates(subset=["date"], keep="first")
+                if old is not None and len(df) == len(old):
+                    skipped += 1       # no new trading day for this stock (suspended / delisted)
+                    continue
+                if df.empty:
+                    skipped += 1
+                    continue
+                write_parquet(df, path)
+                done += 1; consecutive = 0
+            except Exception as exc:
+                failed += 1; consecutive += 1
+                errors[code] = f"{type(exc).__name__}: {exc}"[:200]
+                if consecutive >= 8:
+                    errors["_halt"] = "8 consecutive failures"
+                    break
+    finally:
+        session.close()
+    return {"done": done, "skipped": skipped, "failed": failed, "errors": dict(list(errors.items())[:20])}
+
+
+def update_cmd(args):
+    through = date.fromisoformat(args.through) if args.through else TODAY
+    t0 = time.time()
+    if args.dataset == "valuation":
+        result = update_valuation(through, args.shard)
+    else:
+        c = core()
+        if args.dataset == "pledge":
+            result = update_pledge(c, through)
+        elif args.dataset == "forecast":
+            result = update_forecast(c, through)
+        elif args.dataset in FIN:
+            result = update_fin(c, args.dataset, through)
+        elif args.dataset == "shares":
+            result = update_shares(c, through)
+        else:
+            raise SystemExit(f"unknown dataset {args.dataset}")
+    result.update(dataset=args.dataset, through=through.isoformat(), elapsed_s=round(time.time() - t0, 1))
+    receipts = BRONZE / "_fundamentals_receipts"
+    receipts.mkdir(parents=True, exist_ok=True)
+    suffix = (args.shard or "all").replace("/", "of")
+    (receipts / f"update-{args.dataset}-{through}-{suffix}.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(result, ensure_ascii=False), flush=True)
+    return 1 if result.get("failed") else 0
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -347,7 +558,11 @@ def main():
     b = sub.add_parser("apply"); b.add_argument("--plan", required=True); b.add_argument("--approve", required=True)
     b.add_argument("--max-seconds", type=float)
     b.add_argument("--shard", help="K/N: process every N-th missing partition starting at K")
+    u = sub.add_parser("update"); u.add_argument("--dataset", required=True)
+    u.add_argument("--through"); u.add_argument("--shard")
     args = p.parse_args()
+    if args.cmd == "update":
+        return update_cmd(args)
     if args.cmd == "plan":
         plan_cmd(args); return 0
     return apply_cmd(args)

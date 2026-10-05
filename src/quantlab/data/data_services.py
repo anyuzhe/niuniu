@@ -921,6 +921,12 @@ class DataUpdateJobs:
                                 [day], "breadth", overwrites=True, weight=3, note="重算当月的 1 分钟和 5 分钟文件"))
         steps.append(self._step("ETF 净值与事件日历", "fetch", ["etf_nav_daily", "etf_info", "event_calendar"], [day],
                                 "etf_daily", overwrites=True, weight=3, note="约 90 只 ETF 的全部净值历史（每只一次请求）"))
+        steps.append(self._step("基本面与估值历史", "fetch",
+                                ["equity_pledge_history", "earnings_forecast_history", "financial_cpd", "financial_balance",
+                                 "financial_cashflow", "share_capital", "valuation_daily_v1"], [day],
+                                "fundamentals", overwrites=True, weight=10,
+                                note="质押按周补、业绩预告和财报只刷新最近两期、股本按披露日增量、PE/PB 每只股票只补缺的交易日；"
+                                     "单项失败会记录，下次执行时自动补上"))
         prev = calendar.previous(day)
         steps.append(self._step("封存", "seal", ["*"], [prev, day], "seal", trading_day=True,
                                 note=f"封存 {day}；同时把 {prev} 待封存的次日数据补封"))

@@ -269,6 +269,28 @@ class Runner:
         self.sh(["scripts/derive/event_calendar.py"])
         self.result_dataset("event_calendar", through=step["dates"][0], files_written=1)
 
+    FUNDAMENTALS = (("pledge", "equity_pledge_history"), ("forecast", "earnings_forecast_history"),
+                    ("fin_cpd", "financial_cpd"), ("fin_balance", "financial_balance"),
+                    ("fin_cashflow", "financial_cashflow"), ("shares", "share_capital"),
+                    ("valuation", "valuation_daily_v1"))
+
+    def step_fundamentals(self, step, share):
+        """Incremental refresh of the fundamentals history (catalog 3.9). One dataset failing does not
+        stop the others; the failure is recorded and the next daily run repairs it (updates are idempotent)."""
+        day = step["dates"][0]
+        for name, dataset_id in self.FUNDAMENTALS:
+            self.check()
+            try:
+                output = self.sh(["scripts/collect/fundamentals_history.py", "update", "--dataset", name,
+                                  "--through", day], keep_awake=True)
+                info = self.last_json(output)
+                self.result_dataset(dataset_id, through=day, files_written=info.get("done", 0))
+            except RuntimeError as exc:
+                message = f"基本面 {dataset_id} 更新失败：{exc}"
+                self.log(message)
+                self.result_dataset(dataset_id, failures=[message])
+                self.deferred_errors.append(message)
+
     def step_seal(self, step, share):
         from quantlab.data import day_seals
         for position, day in enumerate(step["dates"]):

@@ -353,7 +353,7 @@ result.to_dict()   # 可直接 JSON 序列化
 
 - 财报三张表：以 `financial_cpd` 的 `NOTICE_DATE`（原始披露日）作为可见日，按（`SECURITY_CODE`, 报告期）去关联资产负债表和现金流表。**不要用** `financial_balance` 和 `financial_cashflow` 自己的 `NOTICE_DATE`：资产负债表有 7 行披露日被写成 1900-01-01、338 行缺失，现金流表有很多行是后来重述的更新日。资产负债表的 28.4 万行里 99.6%（28.26 万行）能在 `financial_cpd` 找到披露日，其余没有可见日，回测里应当丢弃。
 - 业绩预告：`notice_date` 当天可见。
-- 质押：统计日是周五，数据通常过几天才公开，回测建议以"统计日 + 5 天"作为可见日。
+- 质押：统计日是每周最后一个交易日（多数是周五，节假日周会提前到周四或更早，例如 2026-09-24、2026-09-30），数据通常过几天才公开，回测建议以"统计日 + 5 天"作为可见日。
 - 股本：`NOTICE_DATE` 当天可见，生效日是 `END_DATE`；只取 `END_DATE <= 当日` 且 `NOTICE_DATE <= 当日` 的最近一行（文件里有未来日期的行，最晚到 2026-10-14）。
 - PE/PB：由供应商按当日收盘价和**最近已披露的财报**计算，当日收盘后可见；字段本身是字符串，使用时自行转数值。
 
@@ -374,7 +374,7 @@ result.to_dict()   # 可直接 JSON 序列化
 | `earnings_forecast_history` | FILE | 业绩预告历史（预增、预减、首亏、扭亏、减亏…） | `.../provider=eastmoney/earnings_forecast_history/month=YYYY-MM.parquet` | 列同 `earnings_forecast_em`（§3.1）；按公告月一个文件 | 2007-01-05 起至 2026-09-30，约 18.5 万行，5,643 只；按（代码、公告日、报告期、指标）无重复 | `READY` | 取 `indicator` 为归母净利润的行；`notice_date` 当天可见 |
 | `equity_pledge_history` | FILE | 股权质押比例历史（中国结算每周统计） | `.../provider=eastmoney/equity_pledge_history/date=YYYY-MM-DD.parquet` | 列同 `equity_pledge_em`（§3.1）；每个统计日一个文件，含统计日当天有质押的股票 | 2014-03-07 至 2026-09-18，604 个统计日，约 154 万行；之后的统计日尚未公布 | `READY` | 不在表里 = 该统计日无质押记录；沪深，无北交所 |
 
-**更新**：这七项目前是一次性历史回补，脚本 `scripts/collect/fundamentals_history.py`（`plan` 后 `apply --plan --approve`，按文件落盘、可续跑）。每日追加还没有接入收盘任务：财报季（4、7、8、10 月）、质押每周、估值和股本每日的增量，DATA 下一步接入 `daily_close_update`。在此之前，最新一期财报和 2026-09-30 之后的估值请当作缺失处理。
+**更新**：脚本 `scripts/collect/fundamentals_history.py`。历史回补用 `plan` 后 `apply --plan --approve`；每日增量用 `update --dataset <名> [--through 日期] [--shard K/N]`，已经接入 `daily_close_update` 的"基本面与估值历史"步骤，收盘后自动按下面的规则追加：质押按每周最后一个交易日补缺（上线时已把早先漏掉的节假日周补齐）；业绩预告和三张财报表只刷新最近两期并补缺；股本按披露日增量（保留 7 天重叠）；PE/PB 每只股票只补缺的交易日。七项里任何一项失败，会记录在当天任务里并让当天收盘任务显示为失败，其余几项照常更新，下次收盘任务会自动补上。财报季（4、7、8、10 月）新披露的一期，在披露当晚的收盘任务里入库。
 
 ## 4. 尚不可用、待审查或只供 DATA 内部使用
 
