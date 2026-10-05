@@ -59,14 +59,14 @@ def fused(order, w=0.05, G=1.0, caps=None, N=20, H=20, cash_yield=0.0, t0=None):
                     size = min((w[s] if isinstance(w, dict) else w) * equity, caps.get(s, 9.0) * equity - inv_s, G * equity - invested)
                     if size <= 1e-9: break
                     cash -= size; invested += size; inv_s += size
-                    e = t + 1; o0 = float(O_[e, j]); raw_e = o0 / float(F_[e, j]); ex = _exit_index(C_, j, t + H, nd)
-                    pos = dict(j=int(j), s=s, e=e, x=ex[0] if ex else t + H, inv=size, v=size, o0=o0, net=None, last=o0)
+                    e = t + 1; o0 = float(O_[e, j]); raw_e = o0 / float(F_[e, j]); Hs = H[s] if isinstance(H, dict) else H; ex = _exit_index(C_, j, t + Hs, nd)
+                    pos = dict(j=int(j), s=s, e=e, x=ex[0] if ex else t + Hs, inv=size, v=size, o0=o0, net=None, last=o0)
                     if ex is not None:
                         xi, px = ex; raw_x = px / float(F_[xi, j])
                         pos['net'] = (px * (1 - 0.01 / raw_x)) / (o0 * (1 + 0.01 / raw_e)) - 1 - fee[xi]
                         pos['cost_e'] = 0.01 / raw_e + fee[xi] / 2
                     else:
-                        pos['cost_e'] = 0.01 / raw_e + fee[min(t + H, nd - 1)] / 2
+                        pos['cost_e'] = 0.01 / raw_e + fee[min(t + Hs, nd - 1)] / 2
                     active.append(pos); held.add(int(j))
         if cash < 0: cash -= -cash * rate[t] / 242.0
         elif cash > 0 and cash_yield > 0: cash += cash * cash_yield / 242.0

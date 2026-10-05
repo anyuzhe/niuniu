@@ -50,6 +50,22 @@ if __name__ == '__main__':
     if st == 'e':
         print('=== 去掉 B（行业层触发太广，拉低平均质量），层级按“每笔质量”排', flush=True)
         run('A>C>G', 'ACG'); run('A>C>M>G', 'ACMG'); run('A>M>C', 'AMC'); run('C>A（成交额层优先）', 'CA'); run('A>G', 'AG')
+    if st == 'g':
+        print('=== 成交额层(C)触发日内部再分层：看行业层 / 大盘层是否同时触发，按层调仓位（池=C 层候选）', flush=True)
+        SL['P'] = (gC & ~gB & ~gA, fcC.e6, fcC.ret20); SL['Q'] = (gC & gB & ~gA, fcC.e6, fcC.ret20); SL['R'] = (gC & gA, fcC.e6, fcC.ret20)
+        for lab_, w_ in (('各 5%（=单C）', (.05, .05, .05)), ('3%/5%/8%', (.03, .05, .08)), ('2.5%/5%/7.5%', (.025, .05, .075)), ('5%/5%/8%', (.05, .05, .08)), ('0/5%/8% 只买共振', (1e-9, .05, .08)), ('4%/6%/10%', (.04, .06, .10))):
+            show(f'C 分层 {lab_}', order='PQR', w={'P': w_[0], 'Q': w_[1], 'R': w_[2]}, G=1.0, cash_yield=0.02)
+        print('--- 只在 C 没触发、B 触发的日子加一层小仓位（B-only，2.5%）', flush=True)
+        SL['S'] = (gB & ~gC & ~gA, fcB.e6, fcB.ret20)
+        show('C分层 3/5/8% + B-only 2.5%', order='RQPS', w={'P': .03, 'Q': .05, 'R': .08, 'S': .025}, G=1.0, cash_yield=0.02)
+    if st == 'h':
+        print('=== 分层持有期（共振层数 k：Z=1 层，Y=2 层，X=3 层；仓位 2.5%/5%/7.5%）', flush=True)
+        k = gA.astype(int) + gB.astype(int) + gC.astype(int)
+        poolU = (gA[:, None] & cand.e6) | (gB[:, None] & fcB.e6) | (gC[:, None] & fcC.e6)
+        SL['Z'] = (k == 1, poolU, cand.ret20); SL['Y'] = (k == 2, poolU, cand.ret20); SL['X'] = (k == 3, poolU, cand.ret20)
+        W = {'X': .075, 'Y': .05, 'Z': .025}
+        for hh in ({'X': 20, 'Y': 20, 'Z': 20}, {'X': 20, 'Y': 20, 'Z': 10}, {'X': 20, 'Y': 15, 'Z': 10}, {'X': 15, 'Y': 15, 'Z': 10}, {'X': 30, 'Y': 20, 'Z': 10}, {'X': 30, 'Y': 25, 'Z': 20}, {'X': 10, 'Y': 10, 'Z': 10}):
+            show(f'持有期 强/中/弱 = {hh["X"]}/{hh["Y"]}/{hh["Z"]}', order='XYZ', w=W, H=hh, G=1.0, cash_yield=0.02)
     if st == 'f':
         print('=== 共振加权，放大每只仓位提高利用率（总仓位仍 ≤1x，无杠杆）', flush=True)
         k = gA.astype(int) + gB.astype(int) + gC.astype(int)
