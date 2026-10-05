@@ -56,7 +56,7 @@ def fused(order, w=0.05, G=1.0, caps=None, N=20, H=20, cash_yield=0.0, t0=None):
                 invested = sum(p['v'] for p in active); equity = cash + invested
                 inv_s = sum(p['v'] for p in active if p['s'] == s)
                 for j in pool[:N - n_s]:
-                    size = min(w * equity, caps.get(s, 9.0) * equity - inv_s, G * equity - invested)
+                    size = min((w[s] if isinstance(w, dict) else w) * equity, caps.get(s, 9.0) * equity - inv_s, G * equity - invested)
                     if size <= 1e-9: break
                     cash -= size; invested += size; inv_s += size
                     e = t + 1; o0 = float(O_[e, j]); raw_e = o0 / float(F_[e, j]); ex = _exit_index(C_, j, t + H, nd)
