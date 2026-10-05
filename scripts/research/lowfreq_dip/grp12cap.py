@@ -22,4 +22,4 @@ for a in range(0, nd, 400):
     b = min(nd, a + 400); v = np.where(uni[a:b] & np.isfinite(cap[a:b]), cap[a:b], np.nan)
     pct = pd.DataFrame(v).rank(axis=1, pct=True).to_numpy()
     out[a:b] = np.where(np.isfinite(pct), np.minimum((pct * 5).astype(np.int16), 4), -1).astype(np.int8)
-np.save('capq.npy', out); print('coverage', n, 'labelled/day', int((out >= 0).sum(1).mean()))
+np.save('cap.npy', cap); np.save('capq.npy', out); print('coverage', n, 'labelled/day', int((out >= 0).sum(1).mean()))
