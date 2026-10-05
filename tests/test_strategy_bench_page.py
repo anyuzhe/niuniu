@@ -1,4 +1,4 @@
-"""策略工作台页面（离屏）：用缓存好的合成面板走一遍四个标签、沙盒回测、前向记录。"""
+"""策略工作台页面（离屏）：用缓存好的合成面板走一遍五个标签（含行业恐慌）、沙盒回测、前向记录。"""
 import json
 import os
 import sys
@@ -60,9 +60,12 @@ class BenchPageTests(unittest.TestCase):
         self.out.mkdir()
         self.fake = self.root / 'lake'
         self.fake.mkdir()
+        self.sw = self.root / 'sw'
+        self.write_sw_classification()
         for target, value in (('quantlab.desktop.strategy_bench_page.is_data_ready', True),
                               ('quantlab.dipbuy.panel.ready_dirs', (self.fake, self.fake)),
                               ('quantlab.dipbuy.panel.source_signature', 'sig'),
+                              ('quantlab.dipbuy.industry.industry_dir', self.sw),
                               ('quantlab.dipbuy.panel.load_names', {'sh.600000': '甲股份'})):
             patcher = mock.patch(target, return_value=value)
             patcher.start()
@@ -76,6 +79,12 @@ class BenchPageTests(unittest.TestCase):
         self.window.close()
         QTest.qWait(10)
         self.temp.cleanup()
+
+    def write_sw_classification(self):
+        import pandas as pd
+        self.sw.mkdir()
+        rows = [dict(code=f'60000{i}', start_date='2014-01-01', l1_code=('110000', '220000', '230000')[i // 10 % 3]) for i in range(40)]
+        pd.DataFrame(rows).to_parquet(self.sw / '2026-09-23.parquet')
 
     def cache_panel(self):
         panel = crash_panel()
@@ -104,11 +113,11 @@ class BenchPageTests(unittest.TestCase):
         self.assertEqual(self.window.bench_state['panel'].shape, (340, 30))
         self.assertTrue(any('数据面板：30 只股票' in t for t in self.labels()))
 
-    def test_four_tabs_signal_and_forward_record(self):
+    def test_five_tabs_signal_and_forward_record(self):
         self.cache_panel()
         self.go()
         tabs = self.window.scroll.widget().findChild(QTabWidget)
-        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ['今日信号', '回测与风险', '参数沙盒', '前向跟踪'])
+        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ['今日信号', '回测与风险', '参数沙盒', '前向跟踪', '行业恐慌'])
         sig = self.window.bench_state['default']
         self.assertEqual(sig['format'], 'niuniu-dipbuy-run-v1')
         # 今日信号：闸门开，10 只收复，计划里 20 只上限内全部是计划内
@@ -137,6 +146,40 @@ class BenchPageTests(unittest.TestCase):
         self.button('再点一次确认清空').click()
         QTest.qWait(50)
         self.assertFalse((self.out / '_home' / 'dip_forward.json').exists())
+
+    def test_industry_tab_shows_signal_backtest_and_keeps_its_own_ledger(self):
+        self.cache_panel()
+        self.go()
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        ind = self.window.bench_state['industry']
+        self.assertNotIn('error', ind)
+        self.assertEqual(ind['run']['kind'], 'industry')
+        tab = tabs.widget(4)
+        texts = [w.text() for w in tab.findChildren(QLabel)]
+        self.assertTrue(any('这是什么' in t or '恐慌分' in t for t in texts))
+        grids = tab.findChildren(QTableWidget)
+        self.assertEqual(grids[0].rowCount(), 3)                      # 合成面板里只有 3 个行业
+        self.assertEqual(grids[0].item(0, 5).text(), '触发')           # 最后 20 天一起下滑：触发
+        for chart in tab.findChildren(page_mod.SeriesChart) + tab.findChildren(page_mod.BarChart):
+            self.assertFalse(chart.grab().isNull())
+        self.button('把今天的信号记入行业前向跟踪').click()
+        QTest.qWait(50)
+        ledger = json.loads((self.out / '_home' / 'dip_industry_forward.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(ledger['records']), 1)
+        self.assertTrue(ledger['records'][0]['industries'])
+        self.assertFalse((self.out / '_home' / 'dip_forward.json').exists())      # 大盘恐慌的记录不受影响
+        self.button('清空行业记录').click()
+        self.button('再点一次确认清空').click()
+        QTest.qWait(50)
+        self.assertFalse((self.out / '_home' / 'dip_industry_forward.json').exists())
+
+    def test_industry_tab_degrades_when_classification_is_missing(self):
+        self.cache_panel()
+        with mock.patch('quantlab.dipbuy.industry.industry_dir', side_effect=dpanel.DipDataError('数据侧尚未交付 sw_industry_history')):
+            self.go()
+        self.assertIn('error', self.window.bench_state['industry'])
+        self.assertTrue(any('行业恐慌暂不可用' in t for t in self.labels()))
+        self.assertIsNotNone(self.window.bench_state['default'])      # 其余标签照常
 
     def test_sandbox_runs_saves_and_compares(self):
         self.cache_panel()

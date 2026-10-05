@@ -1,6 +1,6 @@
 """策略工作台：把“恐慌日抄底”策略做成可看、可调、可跟踪的页面。
 
-四个标签：今日信号 / 回测与风险 / 参数沙盒 / 前向跟踪。
+五个标签：今日信号 / 回测与风险 / 参数沙盒 / 前向跟踪 / 行业恐慌（只看信号，单独一份回测和前向记录）。
 数据只来自数据清单里 READY 的前复权日线和日状态（quantlab.dipbuy.panel），第一次要读 5000 多个文件，
 结果缓存在输出目录里；回测在后台线程里跑，页面轮询进度。这里不下单、不连券商。
 """
@@ -14,11 +14,11 @@ from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 from quantlab.data.dataset_catalog import is_data_ready
-from quantlab.dipbuy import backtest, engine, panel as dpanel, tracker
+from quantlab.dipbuy import backtest, engine, industry, panel as dpanel, tracker
 from .widgets import Card, button, kpis, label, row, table
 
 UP, DOWN, GOLD, BLUE, GREY = QColor('#f35f62'), QColor('#22d787'), QColor('#f6b72f'), QColor('#4e96ff'), QColor('#8fa4b7')
-TABS = (('signal', '今日信号'), ('risk', '回测与风险'), ('sandbox', '参数沙盒'), ('forward', '前向跟踪'))
+TABS = (('signal', '今日信号'), ('risk', '回测与风险'), ('sandbox', '参数沙盒'), ('forward', '前向跟踪'), ('industry', '行业恐慌'))
 DISCLAIMER = ('这是研究工具，不是买卖建议，也不会下单。回测是历史结果：样本只有约 45 段恐慌期，参数是看过数据后定的，'
               '面板只含现存股票（有幸存者偏差），没有计入冲击成本和跌停卖不出；融资需要券商两融资格，2 倍杠杆的历史最大回撤约 −51%。')
 YEAR_CHOICES = ('2008', '2012', '2017', '2020')
@@ -53,8 +53,8 @@ def _clear(layout):
 def _state(window):
     state = getattr(window, 'bench_state', None)
     if state is None:
-        state = {'panel': None, 'names': {}, 'default': None, 'forward': None, 'loading': None, 'running': None,
-                 'sandbox': None, 'error': None}
+        state = {'panel': None, 'names': {}, 'default': None, 'forward': None, 'industry': None, 'loading': None,
+                 'running': None, 'sandbox': None, 'error': None}
         window.bench_state = state
     return state
 
@@ -189,7 +189,7 @@ def _align(curves):
 # ---------------------------------------------------------------------- the page
 def strategy_bench_page(window):
     box = window.page('策略工作台', '恐慌日抄底：大盘恐慌时（闸门）买入个股布林下轨收复的票，20 只等权、持有 20 个交易日，可加融资杠杆。'
-                                  '看今日信号、回测与风险、调参数、记前向结果。')
+                                  '看今日信号、回测与风险、调参数、记前向结果；“行业恐慌”标签是另一套入场条件，只看信号。')
     catalog = getattr(window, 'data_catalog_path', None)
     missing = [d for d in (dpanel.QFQ_DATASET, dpanel.STATUS_DATASET) if not is_data_ready(catalog, dataset_id=d)]
     if missing:
@@ -251,7 +251,7 @@ class BenchPage:
 
     def reload(self):
         if self.state['loading'] is None and self.state['running'] is None:
-            self.state.update(panel=None, default=None, sandbox=None)
+            self.state.update(panel=None, default=None, sandbox=None, industry=None)
             self.rendered = False
             self.load()
 
@@ -268,7 +268,9 @@ class BenchPage:
             job.update(label='计算信号并回测', done=0, total=1)
             names = dpanel.load_names(catalog)
             default = backtest.run_backtest(panel, engine.DipConfig(), progress=hook, stop=job['stop'])
-            return {'panel': panel, 'names': names, 'default': default, 'forward': _forward(win.output, panel)}
+            job.update(label='行业恐慌', done=0, total=1)
+            return {'panel': panel, 'names': names, 'default': default, 'forward': _forward(win.output, panel),
+                    'industry': _industry_bundle(win.output, panel, catalog, hook, job['stop'])}
 
         self.reload_button.setEnabled(False)
         self.timer.start()
@@ -313,6 +315,7 @@ class BenchPage:
         self.build_risk()
         self.build_sandbox()
         self.build_forward()
+        self.build_industry()
 
     # ---- tab 1: today's signal
     def build_signal(self):
@@ -620,12 +623,150 @@ class BenchPage:
         self.build_forward()
         self.build_signal()
 
+    # ---- tab 5: industry panic (signal only)
+    def build_industry(self):
+        v = self.boxes['industry']
+        _clear(v)
+        ind = self.state.get('industry')
+        if not ind or ind.get('error'):
+            v.addWidget(label('行业恐慌暂不可用：' + str((ind or {}).get('error') or '数据还没准备好'), 'note', True))
+            v.addStretch(1)
+            return
+        cfg, cls, panel = industry.default_config(), ind['cls'], self.state['panel']
+        sig = industry.latest_industry_signal(panel, cfg, cls, names=self.state['names'])
+        self.ind_signal, self.ind_cfg = sig, cfg
+        intro = Card('这是什么')
+        intro.add(label('每天给 31 个申万一级行业各算一个“恐慌分”（行业内股票等权 20 日涨跌 ÷ 该行业平时的波动），低于 −1.5 就说明这个行业被集体砸得异常狠。'
+                        '哪个行业触发，就在触发的行业里买 20 日跌得最多的股票（多个行业同时触发时按跌幅混排取前 20 只），'
+                        f'次日开盘买、持有 {cfg.hold_days} 个交易日，默认 {cfg.leverage:g} 倍。和左边“大盘恐慌”是两套入场条件，不要求布林下轨收复。'
+                        '注意：把行业标签随机打乱再跑同样的规则也有年化约 12%，所以行业信息本身的增量有限（详见下面的风险与口径）。这里只显示信号并做前向记录，不下单、不建议买卖。', 'muted', True))
+        v.addWidget(intro)
+        weakest = sig['industries'][0] if sig['industries'] else None
+        v.addWidget(kpis([
+            ('数据截至', sig['date'], f"分类文件 {sig['classification']['as_of']}（今天的分类）"),
+            ('触发的行业', '、'.join(sig['triggered']) if sig['triggered'] else '无', f"阈值 {cfg.z_threshold:g}"),
+            ('最弱行业', f"{weakest['name']} {_num(weakest['z'])}" if weakest and weakest['z'] is not None else '—', '行业分越低越恐慌'),
+            ('大盘 z', _num(sig['market_z']), '参考，行业恐慌不要求大盘恐慌'),
+            ('触发行业里的候选', f"{sig['n_e6']} 只", '可交易、非 ST、流动性够')]))
+        table_card = Card('31 个行业的恐慌分（从最弱开始）')
+        rows = [[r['name'], r['stocks'], r['members'], _pct(r['ret20']), _num(r['z']), '触发' if r['triggered'] else '']
+                for r in sig['industries']]
+        table_card.add(table(['行业', '股票数', '当日参与', '20日涨跌（等权）', '恐慌分', '状态'], rows))
+        v.addWidget(table_card)
+        pick_card = Card('触发时会选到的股票' if sig['gate_open'] else '今天没有行业触发（下面为空）')
+        self.ind_record_button = button('把今天的信号记入行业前向跟踪', self.record_industry, True)
+        self.ind_record_button.setEnabled(bool(sig['gate_open'] and sig['picks']))
+        self.ind_record_message = label('', 'muted', True)
+        pick_card.add(row(self.ind_record_button, self.ind_record_message))
+        if sig['picks']:
+            prow = [[p['rank'], p['code'], p['name'] or '—', p.get('industry') or '—', f"{p['close']:.2f}", _pct(p['ret20']),
+                     '前 20（计划内）' if p['in_plan'] else '备选'] for p in sig['picks'][:MAX_ROWS]]
+            pick_card.add(table(['排名', '代码', '名称', '行业', '收盘价', '20日涨跌', '位置'], prow))
+        else:
+            pick_card.add(label('没有行业触发，或触发行业里今天没有可买的股票。', 'muted', True))
+        v.addWidget(pick_card)
+        self.build_industry_forward(v, ind)
+        run = ind['run']
+        head = Card('行业恐慌的回测与风险')
+        head.add(label(_config_text(run['config']) + f"　引擎 {run['engine_version']}　哈希 {run['content_hash']}", 'muted', True))
+        head.add(label('口径：任一行业触发即开仓（不看大盘状态）；候选 = 触发行业里全部可交易股票，按 20 日跌幅混排；次日开盘一字涨停买不进的顺延。', 'muted', True))
+        v.addWidget(head)
+        v.addWidget(result_view(run, panel))
+        v.addStretch(1)
+
+    def record_industry(self):
+        try:
+            record = tracker.record_signal(self.window.output, self.ind_signal, self.ind_cfg, kind='industry')
+        except ValueError as exc:
+            self.ind_record_message.setText(str(exc))
+            return
+        self.ind_record_message.setText(f"已记录 {record['signal_date']} 的信号（{len(record['picks'])} 只），后续用真实行情结算。")
+        self.ind_record_button.setEnabled(False)
+        self.refresh_industry_forward()
+
+    def refresh_industry_forward(self):
+        ind = self.state.get('industry')
+        if ind and not ind.get('error'):
+            ind['forward'] = _industry_forward(self.window.output, self.state['panel'], ind['cls'])
+        self.build_industry()
+
+    def build_industry_forward(self, v, ind):
+        fwd = ind.get('forward') or {}
+        card = Card('行业恐慌的前向跟踪')
+        if fwd.get('error'):
+            card.add(label('前向记录读取失败：' + str(fwd['error']), 'note', True))
+            v.addWidget(card)
+            return
+        records, summary, ledger = fwd['settled']['records'], fwd['settled']['summary'], fwd['settled']['ledger']
+        card.add(label('规则同左边的前向跟踪：只能记最新一天、不能事后补记，参数冻结，用真实后续行情按同一套成本结算；纸面记录，不下单。'
+                       + (f"开始日 {ledger['start_date']}，参数哈希 {ledger['config_hash']}。" if ledger.get('started_at') else ''), 'muted', True))
+        card.add(kpis([
+            ('已记录信号', str(summary['n_records']), f"其中已结算 {summary['n_closed']} 条"),
+            ('平均每次信号收益', _pct(summary['mean_signal_ret']), '计划内股票等权，扣成本'),
+            ('信号胜率', _pct(summary['signal_win_rate'], 0, False), f"个股胜率 {_pct(summary['pick_win_rate'], 0, False)}（{summary['n_picks']} 笔）"),
+            ('回测同口径', _pct(ind['run']['summary']['trades']['mean']), '回测里每笔平均净收益（供对照）')]))
+        if summary['note']:
+            card.add(label(summary['note'], 'note', True))
+        status_names = {'waiting': '等待下一个交易日', 'open': '持有中', 'closed': '已结算'}
+        rows = []
+        for r in records:
+            res = r.get('result') or {}
+            shown = res.get('mean_ret') if res.get('mean_ret') is not None else res.get('mean_mtm')
+            rows.append([r['signal_date'], '、'.join(r.get('industries') or []) or '—', _num(r.get('z')),
+                         status_names.get(r.get('status'), r.get('status')), res.get('n_filled', 0), _pct(shown)])
+        card.add(table(['信号日', '触发行业', '最弱行业分', '状态', '买入只数', '收益（持有中为浮动）'], rows) if rows
+                 else label('还没有记录。哪天有行业触发，在上面点“记入行业前向跟踪”。', 'muted', True))
+        port = fwd.get('portfolio')
+        if port:
+            s = port['summary']['stats']
+            if s:
+                card.add(label(f"按冻结参数从开始日起的组合净值：累计 {_pct(s['total'])}，最大回撤 {_pct(s['max_drawdown'], 0)}，共 {s['days']} 个交易日。", 'muted', True))
+            chart = SeriesChart('行业恐慌前向净值', y_format='{:.3f}×')
+            chart.set_data([{'name': '前向净值', 'color': '#f6b72f', 'values': port['equity']}], (port['dates'][0], port['dates'][-1]))
+            card.add(chart)
+        self.ind_clear_armed = False
+        if records:
+            self.ind_clear_button = button('清空行业记录', self.clear_industry_ledger)
+            self.ind_clear_message = label('', 'muted', True)
+            card.add(row(self.ind_clear_button, self.ind_clear_message))
+        v.addWidget(card)
+
+    def clear_industry_ledger(self):
+        if not self.ind_clear_armed:
+            self.ind_clear_armed = True
+            self.ind_clear_button.setText('再点一次确认清空')
+            self.ind_clear_message.setText('清空后不能恢复。')
+            return
+        tracker.clear_ledger(self.window.output, 'industry')
+        self.refresh_industry_forward()
+
 
 # ---------------------------------------------------------------------- pieces shared by tabs
 def _forward(output, panel):
     try:
         settled = tracker.settle_ledger(output, panel)
         return {'settled': settled, 'portfolio': tracker.forward_portfolio(output, panel)}
+    except Exception as exc:
+        return {'error': f'{type(exc).__name__}: {exc}'}
+
+
+def _industry_forward(output, panel, cls):
+    try:
+        settled = tracker.settle_ledger(output, panel, kind='industry')
+        return {'settled': settled, 'portfolio': tracker.forward_portfolio(
+            output, panel, kind='industry', features=lambda cfg: industry.build_inputs(panel, cfg, cls)[:2])}
+    except Exception as exc:
+        return {'error': f'{type(exc).__name__}: {exc}'}
+
+
+def _industry_bundle(output, panel, catalog, progress, stop):
+    """行业分类、行业恐慌回测、前向记录；任何一步失败只影响这个标签页，其余照常。"""
+    try:
+        cls = industry.load_classification_for(panel, catalog)
+        run = industry.run_backtest(panel, industry.default_config(), cls, progress=progress, stop=stop)
+        return {'cls': cls, 'run': run, 'forward': _industry_forward(output, panel, cls)}
+    except dpanel.Cancelled:
+        raise
     except Exception as exc:
         return {'error': f'{type(exc).__name__}: {exc}'}
 

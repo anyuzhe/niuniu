@@ -20,16 +20,19 @@ from quantlab.dipbuy.engine import DipConfig, settle_picks, simulate, summarize,
 from quantlab.dipbuy.panel import Panel
 
 FORMAT = 'niuniu-dip-forward-v1'
+LEDGER_FILES = {'market': 'dip_forward.json', 'industry': 'dip_industry_forward.json'}   # 大盘恐慌 / 行业恐慌，各记各的
 MAX_RECORDS = 500
 MIN_STATS = 5     # 少于这么多条已结算信号，只给数字，不下结论
 
 
-def _path(output) -> Path:
-    return Path(output).resolve() / '_home' / 'dip_forward.json'
+def _path(output, kind: str = 'market') -> Path:
+    if kind not in LEDGER_FILES:
+        raise ValueError('记录类型不认识')
+    return Path(output).resolve() / '_home' / LEDGER_FILES[kind]
 
 
-def load_ledger(output) -> dict:
-    path = _path(output)
+def load_ledger(output, kind: str = 'market') -> dict:
+    path = _path(output, kind)
     empty = dict(format=FORMAT, config=None, config_hash=None, started_at=None, start_date=None, records=[])
     if not path.is_file() or path.is_symlink():
         return empty
@@ -43,8 +46,8 @@ def load_ledger(output) -> dict:
     return value | {k: value.get(k) for k in ('config', 'config_hash', 'started_at', 'start_date')}
 
 
-def _save(output, ledger: dict) -> None:
-    path = _path(output)
+def _save(output, ledger: dict, kind: str = 'market') -> None:
+    path = _path(output, kind)
     if path.parent.is_symlink() or path.is_symlink():
         raise ValueError('记录目录不能是符号链接')
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,21 +56,22 @@ def _save(output, ledger: dict) -> None:
     tmp.replace(path)
 
 
-def clear_ledger(output) -> None:
-    path = _path(output)
+def clear_ledger(output, kind: str = 'market') -> None:
+    path = _path(output, kind)
     if path.is_file() and not path.is_symlink():
         path.unlink()
 
 
-def record_signal(output, signal: dict, cfg: DipConfig, *, now: datetime | None = None) -> dict:
-    """signal 是 engine.latest_signal 的结果。成功返回记录；不满足条件抛 ValueError（给页面直接显示）。"""
+def record_signal(output, signal: dict, cfg: DipConfig, *, now: datetime | None = None, kind: str = 'market') -> dict:
+    """signal 是 engine.latest_signal（行业恐慌用 industry.latest_industry_signal）的结果。成功返回记录；不满足条件抛 ValueError（给页面直接显示）。"""
     if not signal.get('is_last_day'):
         raise ValueError('只能记录数据里最后一个交易日的信号，不能事后补记')
+    industry = kind == 'industry'
     if not signal.get('gate_open'):
-        raise ValueError('今天闸门没开（z 没低于阈值），没有可记录的开仓信号')
+        raise ValueError('今天没有行业触发恐慌线，没有可记录的开仓信号' if industry else '今天闸门没开（z 没低于阈值），没有可记录的开仓信号')
     if not signal.get('picks'):
-        raise ValueError('闸门开了，但今天没有符合“布林下轨收复”的股票')
-    ledger = load_ledger(output)
+        raise ValueError('有行业触发了，但触发行业里今天没有可买的股票' if industry else '闸门开了，但今天没有符合“布林下轨收复”的股票')
+    ledger = load_ledger(output, kind)
     if ledger['records'] and ledger.get('config_hash') != cfg.hash():
         raise ValueError('已有前向记录，参数已冻结；要换参数请先清空记录')
     if any(r['signal_date'] == signal['date'] for r in ledger['records']):
@@ -77,11 +81,14 @@ def record_signal(output, signal: dict, cfg: DipConfig, *, now: datetime | None 
     when = (now or datetime.now(timezone.utc)).isoformat(timespec='seconds')
     if not ledger.get('config_hash'):
         ledger.update(config=cfg.to_dict(), config_hash=cfg.hash(), started_at=when, start_date=signal['date'])
+    keys = ('rank', 'code', 'name', 'close', 'ret20') + (('industry',) if industry else ())
     record = dict(id=uuid.uuid4().hex[:10], signal_date=signal['date'], recorded_at=when, data_last_date=signal['date'],
                   z=signal['z'], mk20=signal['mk20'], n_e6=signal['n_e6'], status='waiting', result=None,
-                  picks=[{k: p.get(k) for k in ('rank', 'code', 'name', 'close', 'ret20')} for p in signal['picks']])
+                  picks=[{k: p.get(k) for k in keys} for p in signal['picks']])
+    if industry:
+        record['industries'] = list(signal.get('triggered') or [])
     ledger['records'].append(record)
-    _save(output, ledger)
+    _save(output, ledger, kind)
     return record
 
 
@@ -103,9 +110,9 @@ def _evaluate(panel: Panel, record: dict, cfg: DipConfig) -> dict:
                 win_rate=(sum(1 for x in rets if x > 0) / len(rets)) if rets else None)
 
 
-def settle_ledger(output, panel: Panel, cfg: DipConfig | None = None) -> dict:
+def settle_ledger(output, panel: Panel, cfg: DipConfig | None = None, kind: str = 'market') -> dict:
     """按最新面板结算所有记录；完成的记录写回。返回 {ledger, records(含明细), summary}。"""
-    ledger = load_ledger(output)
+    ledger = load_ledger(output, kind)
     cfg = DipConfig.from_dict(ledger['config']) if ledger.get('config') else (cfg or DipConfig())
     out = []
     changed = False
@@ -121,7 +128,7 @@ def settle_ledger(output, panel: Panel, cfg: DipConfig | None = None) -> dict:
             changed = True
         out.append(shown)
     if changed:
-        _save(output, ledger)
+        _save(output, ledger, kind)
     return dict(ledger=ledger, records=out, summary=summarize_records(out))
 
 
@@ -140,15 +147,16 @@ def summarize_records(records: list[dict]) -> dict:
                 note=None if len(done) >= MIN_STATS else f'已结算的信号只有 {len(done)} 条（至少 {MIN_STATS} 条才有参考意义），数字只当记录看')
 
 
-def forward_portfolio(output, panel: Panel) -> dict | None:
-    """用冻结的参数，从记录开始日起在真实数据上跑一遍组合（含杠杆和借款利息），给出前向净值。没有记录返回 None。"""
-    ledger = load_ledger(output)
+def forward_portfolio(output, panel: Panel, kind: str = 'market', features=None) -> dict | None:
+    """用冻结的参数，从记录开始日起在真实数据上跑一遍组合（含杠杆和借款利息），给出前向净值。没有记录返回 None。
+    features(cfg) -> (Market, Candidates)：行业恐慌传入自己的闸门与候选；缺省走大盘恐慌的特征。"""
+    ledger = load_ledger(output, kind)
     if not ledger.get('config') or not ledger.get('start_date'):
         return None
     if int(panel.index_of(ledger['start_date'])) >= len(panel.dates) - 1:
         return None          # 记录日就是最新一天，还没有后续行情
     cfg = replace(DipConfig.from_dict(ledger['config']), start=ledger['start_date'], end=None)
-    market, cand = compute_features(panel, cfg.min_amount, cfg.min_price)
+    market, cand = features(cfg) if features else compute_features(panel, cfg.min_amount, cfg.min_price)
     raw = simulate(panel, market, cand, cfg)
     summary = summarize(panel, market, raw, cfg)
     codes_by_day: dict[str, set] = {}
