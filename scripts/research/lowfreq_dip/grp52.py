@@ -3,7 +3,7 @@ import grp11 as g
 from grp11 import *
 from quantlab.dipbuy.engine import _exit_index
 W0 = {'A': .08, 'C': .08, 'B': .025}
-def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yield=0.02, stats=None, ekey='old', hist=None, ecost=0.0, evlog=None, esell='close'):
+def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yield=0.02, stats=None, ekey='old', hist=None, ecost=0.0, evlog=None, esell='close', buylog=None):
     caps = caps or {}; evict = evict or {}
     t0 = int(np.searchsorted(dates, '2008-01-01')); cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd)
     ev = 0
@@ -54,6 +54,7 @@ def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yie
                         pos['net'] = (px * (1 - 0.01 / raw_x)) / (o0 * (1 + 0.01 / raw_e)) - 1 - fee[xi]; pos['cost_e'] = 0.01 / raw_e + fee[xi] / 2
                     else: pos['cost_e'] = 0.01 / raw_e + fee[min(t + H, nd - 1)] / 2
                     active.append(pos); held.add(int(j))
+                    if buylog is not None: buylog.append((t, s, size / equity))
                 if stats is not None:
                     st = stats.setdefault(s, dict(days=0, clipped=0, zero=0, short=0.0, ideal=0.0, got=0.0, pre_inv=[], ep=[]))
                     st['days'] += 1; st['ideal'] += ideal / equity; st['got'] += got / equity
