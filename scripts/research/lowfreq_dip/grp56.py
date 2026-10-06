@@ -26,11 +26,12 @@ canbuy = ok55 & np.isfinite(Ct) & (chg < 0.095)      # not at limit-up at decisi
 cansell = ok55 & np.isfinite(Ct) & (chg > -0.095)    # not locked at limit-down
 T0 = int(np.searchsorted(dates, '2020-03-02'))
 W0 = {'A': .08, 'C': .08, 'B': .025}
-def fused3(order='ACB', w=W0, G=1.0, N=20, H=20, cash_yield=0.02, evict=None, ecost=0.0, entry='close'):
+def fused3(order='ACB', w=W0, G=1.0, N=20, H=20, cash_yield=0.02, evict=None, ecost=0.0, entry='close', evlog=None, tlog=None, minage=0):
     evict = evict or {}; cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd); ev = 0; ntr = 0
     for t in range(T0, nd):
         for p in [p for p in active if p['x'] == t and p['net'] is not None]:
             cash += p['inv'] * (1 + p['net']); active.remove(p)
+            if tlog is not None: tlog.append((p['s'], p['net'], p['x'] - p['e']))
         held = {p['j'] for p in active}
         for s in order:
             gate, e6, r20 = SL[s]
@@ -45,10 +46,12 @@ def fused3(order='ACB', w=W0, G=1.0, N=20, H=20, cash_yield=0.02, evict=None, ec
             want = min(N - n_s, len(pool)); ideal = want * w[s] * equity; room = G * equity - invested
             if evict.get(s) and room < ideal - 1e-9:
                 need = ideal - room
-                for p in sorted([p for p in active if p['s'] in evict[s] and p['e'] <= t and cansell[t, p['j']]], key=lambda p: p['e']):
+                for p in sorted([p for p in active if p['s'] in evict[s] and p['e'] <= t - minage and cansell[t, p['j']]], key=lambda p: p['e']):
                     if need <= 1e-9: break
                     j = p['j']; rx = Ct[t, j] / float(F_[t, j])
-                    cash += p['v'] * (1 - 0.01 / rx - fee[t] / 2 - ecost); need -= p['v']; active.remove(p); held.discard(j); ev += 1
+                    cash += p['v'] * (1 - 0.01 / rx - fee[t] / 2 - ecost); need -= p['v']
+                    if evlog is not None: evlog.append((t, s, p['s'], t - p['e'], p['v'] / p['inv'] - 1, p['net'], p['v'] / p['inv'] - 1 - 0.01 / rx - fee[t] / 2))
+                    active.remove(p); held.discard(j); ev += 1
                 invested = sum(p['v'] for p in active); equity = cash + invested
             for j in pool[:N - n_s]:
                 size = min(w[s] * equity, G * equity - invested)
