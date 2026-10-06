@@ -1,0 +1,425 @@
+"""策略 D：大盘恐慌（A）、成交额分档恐慌（C）、申万行业恐慌（B）三层信号共用一笔钱。纯函数，不读文件、不联网。
+
+研究依据：docs/archive/testing/20260930-低频抄底扣成本重测与ETF.md。三层用同一个恐慌分：
+  z = 一组股票的等权 20 日涨跌 / (该组近 60 日日收益波动 x sqrt(20))，z <= 阈值（默认 -1.5）就算这一组“恐慌”。
+  A 大盘      组 = 全市场流动性股票；候选 = 满足布林下轨收复（E6）的票，沿用 engine 的大盘闸门与候选。
+  C 成交额    组 = 按近 60 日平均成交额分五档（每天重新分档）；任一档触发，候选 = 触发档里全部可交易股票。
+  B 行业      组 = 申万一级行业（至少 8 只有收益）；任一行业触发，候选 = 触发行业里全部可交易股票。
+触发范围嵌套：A 触发的日子 C 一定触发，C 触发的日子 B 一定触发；所以越往后信号越频繁、质量越低。
+账户：一笔钱、不借钱（总仓位上限 1 倍）。优先级 A > C > B，钱不够时先给前面的层。每层最多 positions 只，每只的权重各层不同
+（A 与 C 各 8% 净值、B 2.5% 净值），候选按 20 日跌幅从大到小排。同一只股票不会在两层里重复买。
+次日开盘买、持有 hold_days 个交易日后收盘卖，成本与 engine 一致；闲置资金按 cash_yield 计息。
+结果是历史回测，参数在同一份样本上调过；面板只含现存股票（幸存者偏差）。
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+from dataclasses import asdict, dataclass, fields, replace
+
+import numpy as np
+
+from quantlab.dipbuy import industry as ind_mod
+from quantlab.dipbuy import tracker
+from quantlab.dipbuy.engine import (DipConfig, Candidates, Market, _exit_index, _fee_by_day, _open_row, _trade_row,
+                                    compute_features, curve, drawdown_series, summarize)
+from quantlab.dipbuy.panel import Cancelled, DipDataError, Panel
+
+FUSION_VERSION = 'dipbuy-fusion-1'
+ORDER = ('A', 'C', 'B')
+SLEEVE_NAMES = {'A': '大盘恐慌', 'C': '成交额分档恐慌', 'B': '行业恐慌'}
+QUINTILE_NAMES = ('成交额最小档', '较小档', '中间档', '较大档', '成交额最大档')
+N_QUINTILES = 5
+AMOUNT_WINDOW = 60
+MIN_MEMBERS = 8
+RET_WINDOW = 20
+STD_WINDOW = 60
+STD_MIN = 40
+
+CAVEATS = (
+    '历史回测：参数（权重、阈值、持有天数）是在同一份数据上试过很多组后定的，没有做多重检验修正，更像局部最优，不是样本外验证过的结论。',
+    '面板只含现存股票（幸存者偏差）：D 买的恰恰是跌得最多的票，后来退市的那批不在数据里，回测收益大概率偏高。',
+    '持有 20 天比 19 天明显好，卖出日换成第 21 天结果也会变；行业分类用的是今天的申万一级分类（轻微前视）。',
+    '回测用次日开盘买、第 20 个交易日收盘卖，不计整手、最低佣金和冲击成本；40 万本金按 9:35 买、21 日 9:30 卖的测算，实盘预期年化约 +18% 到 +25%，最大回撤约 −31% 到 −37%。',
+    'A 触发的日子 C 一定触发，C 触发的日子 B 一定触发，三层不是三份独立证据；B 层单笔收益最低，作用是把 A、C 空着的钱填起来。',
+)
+
+
+# ---------------------------------------------------------------- 参数
+@dataclass(frozen=True)
+class FusionConfig:
+    z_threshold: float = -1.5
+    positions: int = 20                # 每层最多同时持有几只
+    hold_days: int = 20
+    weight_a: float = 0.08             # 每只占净值的比例
+    weight_c: float = 0.08
+    weight_b: float = 0.025
+    gross_cap: float = 1.0             # 总仓位上限（占净值），D 不借钱，最大 1 倍
+    cash_yield: float = 0.02           # 闲置资金年化收益
+    min_amount: float = 5e7
+    min_price: float = 3.0
+    slippage_bp: float = 0.0
+    start: str = '2008-01-01'
+    end: str | None = None
+
+    def __post_init__(self):
+        checks = (
+            (-4.0 <= self.z_threshold <= 0.0, 'z 阈值应在 -4 到 0 之间'),
+            (1 <= self.positions <= 100, '每层持仓只数应在 1 到 100 之间'),
+            (1 <= self.hold_days <= 60, '持有天数应在 1 到 60 之间'),
+            (all(0.0 < w <= 0.5 for w in (self.weight_a, self.weight_c, self.weight_b)), '单只权重应在 0 到 50% 之间'),
+            (0.1 <= self.gross_cap <= 1.0, '总仓位上限应在 10% 到 100% 之间（不借钱）'),
+            (0.0 <= self.cash_yield <= 0.1, '闲置资金收益应在 0 到 10% 之间'),
+            (0.0 <= self.min_amount <= 1e10, '成交额下限不合理'),
+            (0.0 <= self.min_price <= 1000.0, '价格下限不合理'),
+            (0.0 <= self.slippage_bp <= 200.0, '冲击成本应在 0 到 200 基点之间'),
+        )
+        for ok, message in checks:
+            if not ok:
+                raise ValueError(message)
+
+    @property
+    def weights(self) -> dict:
+        return {'A': self.weight_a, 'C': self.weight_c, 'B': self.weight_b}
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: dict | None) -> 'FusionConfig':
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in (value or {}).items() if k in known})
+
+    def hash(self) -> str:
+        blob = json.dumps(self.to_dict(), sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256((FUSION_VERSION + blob).encode()).hexdigest()[:12]
+
+    def dip_config(self) -> DipConfig:
+        """借用 engine / industry 里按 DipConfig 取参数的函数。"""
+        return DipConfig(z_threshold=self.z_threshold, positions=self.positions, hold_days=self.hold_days, leverage=1.0,
+                         cash_yield=self.cash_yield, min_amount=self.min_amount, min_price=self.min_price,
+                         slippage_bp=self.slippage_bp, start=self.start, end=self.end)
+
+
+def default_config() -> FusionConfig:
+    return FusionConfig()
+
+
+# ---------------------------------------------------------------- 成交额分档与分档恐慌分
+def amount_labels(panel: Panel, cand: Candidates, *, stop=None) -> np.ndarray:
+    """每天把候选池里的股票按近 60 日平均成交额从小到大分五档（0 最小 … 4 最大）；不在池里或没有成交额为 -1。"""
+    import pandas as pd
+    nd, nc = panel.shape
+    a = np.nan_to_num(panel.a, nan=0.0).astype(np.float64)
+    cs = np.cumsum(a, 0)
+    del a
+    amt = np.full((nd, nc), np.nan, np.float32)
+    if nd > AMOUNT_WINDOW:
+        amt[AMOUNT_WINDOW:] = ((cs[AMOUNT_WINDOW:] - cs[:-AMOUNT_WINDOW]) / AMOUNT_WINDOW).astype(np.float32)
+    del cs
+    labels = np.full((nd, nc), -1, np.int8)
+    for s0 in range(0, nd, 400):
+        if stop is not None and stop.is_set():
+            raise Cancelled()
+        b = min(nd, s0 + 400)
+        v = np.where(cand.uni[s0:b] & np.isfinite(amt[s0:b]), amt[s0:b], np.nan)
+        pct = pd.DataFrame(v).rank(axis=1, pct=True).to_numpy()
+        labels[s0:b] = np.where(np.isfinite(pct), np.minimum(np.nan_to_num(pct * N_QUINTILES).astype(np.int16), N_QUINTILES - 1), -1).astype(np.int8)
+    return labels
+
+
+def group_state(panel: Panel, cand: Candidates, labels: np.ndarray, *, stop=None):
+    """按“前一天收盘后已知”的每日分档，算各档的恐慌分 z、等权 20 日涨跌、当天参与的股票数，形状都是 [nd, 档数]。"""
+    import pandas as pd
+    nd, nc = panel.shape
+    uni_prev = np.vstack([np.zeros((1, nc), bool), cand.uni[:-1]])
+    lab_prev = np.vstack([np.full((1, nc), -1, labels.dtype), labels[:-1]])
+    c = panel.c.astype(np.float32)
+    ret1 = np.full((nd, nc), np.nan, np.float32)
+    ret1[1:] = c[1:] / c[:-1] - 1
+    del c
+    ok_all = uni_prev & np.isfinite(ret1)
+    ret1 = np.where(ok_all, ret1, 0.0).astype(np.float32)
+    z = np.full((nd, N_QUINTILES), np.nan)
+    r20 = np.full((nd, N_QUINTILES), np.nan)
+    cnt = np.zeros((nd, N_QUINTILES), np.int32)
+    for g in range(N_QUINTILES):
+        if stop is not None and stop.is_set():
+            raise Cancelled()
+        member = (lab_prev == g) & ok_all
+        n = member.sum(1)
+        s = (ret1 * member).sum(1, dtype=np.float64)
+        mean = np.where(n >= MIN_MEMBERS, s / np.maximum(n, 1), np.nan)
+        ser = pd.Series(mean)
+        c20 = np.exp(np.log1p(ser).rolling(RET_WINDOW, min_periods=RET_WINDOW).sum()) - 1
+        sd = ser.rolling(STD_WINDOW, min_periods=STD_MIN).std()
+        with np.errstate(invalid='ignore', divide='ignore'):
+            z[:, g] = (c20 / (sd * np.sqrt(RET_WINDOW))).to_numpy()
+        r20[:, g] = c20.to_numpy()
+        cnt[:, g] = n
+    return z, r20, cnt
+
+
+# ---------------------------------------------------------------- 三层闸门与候选
+@dataclass
+class FusionInputs:
+    market: Market
+    cand: Candidates
+    gates: dict                 # 'A'/'C'/'B' -> bool[nd]
+    pools: dict                 # 'A'/'C'/'B' -> bool[nd, nc]
+    rank: np.ndarray            # float32 [nd, nc]，20 日涨跌，越小越先买
+    buyok: np.ndarray
+    labels: np.ndarray          # int8 [nd, nc] 成交额分档
+    z_c: np.ndarray             # [nd, 5]
+    r20_c: np.ndarray
+    n_c: np.ndarray
+    ind_state: object           # industry.IndustryState
+    cls: object                 # industry.Classification
+    any_gate: np.ndarray
+
+
+def build_inputs(panel: Panel, cfg: FusionConfig, cls, *, progress=None, stop=None) -> FusionInputs:
+    key = ('fusion-inputs', cls.as_of, float(cfg.z_threshold), float(cfg.min_amount), float(cfg.min_price))
+    if key in panel.cache:
+        return panel.cache[key]
+    thr = cfg.z_threshold
+    market, cand = compute_features(panel, cfg.min_amount, cfg.min_price, progress=progress, stop=stop)
+    b_market, b_cand, ind_state = ind_mod.build_inputs(panel, cfg.dip_config(), cls, progress=progress, stop=stop)
+    labels = amount_labels(panel, cand, stop=stop)
+    z_c, r20_c, n_c = group_state(panel, cand, labels, stop=stop)
+    trig = np.isfinite(z_c) & (z_c <= thr)
+    in_trig = np.zeros(cand.uni.shape, bool)
+    for g in range(N_QUINTILES):
+        in_trig |= (labels == g) & trig[:, g:g + 1]
+    pool_c = cand.uni & in_trig & np.isfinite(cand.ret20)
+    zmin = np.where(np.isfinite(z_c), z_c, np.inf).min(axis=1)
+    zmin = np.where(np.isfinite(zmin), zmin, np.nan)
+    with np.errstate(invalid='ignore'):
+        gates = {'A': np.isfinite(market.z) & (market.z <= thr), 'C': np.isfinite(zmin) & (zmin <= thr),
+                 'B': np.isfinite(b_market.z) & (b_market.z <= thr)}
+    out = FusionInputs(market=market, cand=cand, gates=gates, pools={'A': cand.e6, 'C': pool_c, 'B': b_cand.e6},
+                       rank=cand.ret20, buyok=cand.buyok, labels=labels, z_c=z_c, r20_c=r20_c, n_c=n_c,
+                       ind_state=ind_state, cls=cls, any_gate=gates['A'] | gates['C'] | gates['B'])
+    panel.cache[key] = out
+    return out
+
+
+# ---------------------------------------------------------------- 共享资金回测
+def simulate_fused(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, progress=None, stop=None) -> dict:
+    nd, nc = panel.shape
+    dates, c, o, f = panel.dates, panel.c, panel.o, panel.f
+    H, N, G, W = cfg.hold_days, cfg.positions, cfg.gross_cap, cfg.weights
+    t0 = int(np.searchsorted(dates, cfg.start))
+    tend = nd - 1 if cfg.end is None else min(int(np.searchsorted(dates, cfg.end, side='right')) - 1, nd - 1)
+    if t0 >= tend:
+        raise DipDataError('回测区间内没有数据')
+    fee = _fee_by_day(dates)
+    slip = cfg.slippage_bp / 1e4
+    cash = 1.0
+    active: list[dict] = []
+    trades: list[dict] = []
+    eq = np.full(nd, np.nan)
+    expo = np.zeros(nd)
+    earned = 0.0
+    for t in range(t0, tend + 1):
+        if stop is not None and stop.is_set():
+            raise Cancelled()
+        if progress and t % 250 == 0:
+            progress(t - t0, tend - t0, '回测')
+        for p in [p for p in active if p['x'] == t and p['net'] is not None]:
+            cash += p['inv'] * (1 + p['net'])
+            trades.append(dict(_trade_row(panel, p, closed='exit'), sleeve=p['s']))
+            active.remove(p)
+        if t + 1 <= min(tend, nd - 1):
+            held = {p['j'] for p in active}
+            for s in ORDER:
+                if not inp.gates[s][t]:
+                    continue
+                n_s = sum(1 for p in active if p['s'] == s)
+                if n_s >= N:
+                    continue
+                pool = np.nonzero(inp.pools[s][t] & inp.buyok[t])[0]
+                pool = np.array([j for j in pool if j not in held], dtype=int)
+                if not len(pool):
+                    continue
+                pool = pool[np.argsort(inp.rank[t, pool], kind='stable')]
+                invested = sum(p['v'] for p in active)
+                equity = cash + invested
+                for j in pool[:N - n_s]:
+                    size = min(W[s] * equity, G * equity - invested)
+                    if size <= 1e-9:
+                        break
+                    cash -= size
+                    invested += size
+                    e = t + 1
+                    o0 = float(o[e, j])
+                    raw_e = o0 / float(f[e, j])
+                    ex = _exit_index(c, j, t + H, nd)
+                    pos = dict(j=int(j), s=s, sig=t, e=e, x=ex[0] if ex else t + H, inv=size, v=size, o0=o0, net=None,
+                               px_x=None, last=o0)
+                    if ex is not None:
+                        xi, px = ex
+                        raw_x = px / float(f[xi, j])
+                        pos['net'] = (px * (1 - 0.01 / raw_x - slip)) / (o0 * (1 + 0.01 / raw_e + slip)) - 1 - fee[xi]
+                        pos['px_x'] = px
+                        pos['cost_e'] = 0.01 / raw_e + fee[xi] / 2 + slip
+                    else:
+                        pos['cost_e'] = 0.01 / raw_e + fee[min(t + H, nd - 1)] / 2 + slip
+                    active.append(pos)
+                    held.add(int(j))
+        if cash > 0 and cfg.cash_yield > 0:
+            ey = cash * cfg.cash_yield / 242.0
+            cash += ey
+            earned += ey
+        vs = 0.0
+        for p in active:
+            if p['e'] <= t:
+                ct = c[t, p['j']]
+                if np.isfinite(ct):
+                    p['last'] = float(ct)
+                p['v'] = p['inv'] * (p['last'] / p['o0']) * (1 - p['cost_e'])
+            vs += p['v']
+        tot = cash + vs
+        eq[t] = tot
+        expo[t] = vs / max(tot, 1e-9)
+    open_positions = [dict(_open_row(panel, p, tend), sleeve=p['s']) for p in active]
+    info = dict(interest=0.0, cash_earned=earned, n_liquidations=0, liquidation_days=[], min_margin_ratio=None,
+                n_warn_days=0, peak_debt_ratio=0.0, ruined=False)
+    return dict(eq=eq, expo=expo, trades=trades, open_positions=open_positions, info=info, gate=inp.any_gate,
+                gates=inp.gates, t0=t0, tend=tend)
+
+
+def sleeve_stats(raw: dict) -> dict:
+    t0, tend = raw['t0'], raw['tend']
+    out = {}
+    for s in ORDER:
+        rets = np.array([t['ret'] for t in raw['trades'] if t.get('sleeve') == s])
+        out[s] = dict(name=SLEEVE_NAMES[s], gate_days=int(raw['gates'][s][t0:tend + 1].sum()), n=int(len(rets)),
+                      mean=float(rets.mean()) if len(rets) else None,
+                      win_rate=float((rets > 0).mean()) if len(rets) else None,
+                      open=int(sum(1 for p in raw['open_positions'] if p.get('sleeve') == s)))
+    return out
+
+
+def run_backtest(panel: Panel, cfg: FusionConfig, cls, *, progress=None, stop=None) -> dict:
+    from quantlab.dipbuy.backtest import RUN_FORMAT, content_hash
+    inp = build_inputs(panel, cfg, cls, progress=progress, stop=stop)
+    raw = simulate_fused(panel, inp, cfg, progress=progress, stop=stop)
+    summary = summarize(panel, inp.market, raw, cfg.dip_config())
+    summary['sleeves'] = sleeve_stats(raw)
+    cv = curve(panel, inp.market, raw)
+    meta = panel.meta or {}
+    result = dict(
+        format=RUN_FORMAT, kind='fusion', engine_version=FUSION_VERSION, config=cfg.to_dict(), config_hash=cfg.hash(),
+        classification=dict(as_of=cls.as_of, n_mapped=cls.n_mapped, n_industries=len(cls.codes)),
+        panel={k: meta.get(k) for k in ('signature', 'first_date', 'last_date', 'n_stocks', 'n_days')} | {
+            'last_date': panel.last_date, 'n_stocks': int(panel.shape[1]), 'n_days': int(panel.shape[0])},
+        summary=summary, curve=cv, drawdown=drawdown_series(cv['equity']), trades=raw['trades'], caveats=list(CAVEATS))
+    result['content_hash'] = content_hash(result)
+    return result
+
+
+# ---------------------------------------------------------------- 当日信号
+def _num(x):
+    return None if x is None or not np.isfinite(x) else float(x)
+
+
+def latest_fusion_signal(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, equity: float | None = None,
+                         day: str | None = None, names: dict | None = None, top: int | None = None) -> dict:
+    """某个交易日收盘后三层的状态，以及触发的层按优先级分到的候选。equity 给了就按“空仓、一笔新钱”估算每只金额和股数。"""
+    t = panel.index_of(day) if day else len(panel.dates) - 1
+    thr = cfg.z_threshold
+    cls = inp.cls
+    quint = []
+    for g in range(N_QUINTILES):
+        zg = _num(inp.z_c[t, g])
+        quint.append(dict(q=g, name=QUINTILE_NAMES[g], z=zg, ret20=_num(inp.r20_c[t, g]), members=int(inp.n_c[t, g]),
+                          triggered=bool(zg is not None and zg <= thr)))
+    inds = []
+    for g in range(len(cls.codes)):
+        zg = _num(inp.ind_state.z[t, g])
+        inds.append(dict(code=cls.codes[g], name=cls.names[g], stocks=cls.sizes[g], members=int(inp.ind_state.n[t, g]),
+                         ret20=_num(inp.ind_state.ret20[t, g]), z=zg, triggered=bool(zg is not None and zg <= thr)))
+    inds.sort(key=lambda r: (r['z'] is None, r['z'] if r['z'] is not None else 0.0))
+    weakest_q = min((r for r in quint if r['z'] is not None), key=lambda r: r['z'], default=None)
+    weakest_i = next((r for r in inds if r['z'] is not None), None)
+    z_a = _num(inp.market.z[t])
+    sleeves = {
+        'A': dict(name=SLEEVE_NAMES['A'], gate=bool(inp.gates['A'][t]), z=z_a, detail='全市场等权', n_pool=int(inp.pools['A'][t].sum())),
+        'C': dict(name=SLEEVE_NAMES['C'], gate=bool(inp.gates['C'][t]), z=weakest_q and weakest_q['z'],
+                  detail=weakest_q['name'] if weakest_q else '—', n_pool=int(inp.pools['C'][t].sum())),
+        'B': dict(name=SLEEVE_NAMES['B'], gate=bool(inp.gates['B'][t]), z=weakest_i and weakest_i['z'],
+                  detail=weakest_i['name'] if weakest_i else '—', n_pool=int(inp.pools['B'][t].sum())),
+    }
+    limit = top if top is not None else cfg.positions * 2
+    invested, taken, picks = 0.0, set(), []
+    code_of = [str(c) for c in panel.codes]
+    for s in ORDER:
+        if not inp.gates[s][t]:
+            continue
+        pool = np.nonzero(inp.pools[s][t])[0]
+        pool = pool[np.argsort(inp.rank[t, pool], kind='stable')]
+        rank = 0
+        for j in pool:
+            code = code_of[j]
+            if code in taken:
+                continue
+            rank += 1
+            if rank > limit:
+                break
+            taken.add(code)
+            raw = float(panel.c[t, j]) / float(panel.f[t, j])
+            in_plan = rank <= cfg.positions
+            row = dict(sleeve=s, rank=rank, code=code, name=(names or {}).get(code, ''), close=round(raw, 3),
+                       ret20=_num(inp.rank[t, j]), in_plan=in_plan, weight=cfg.weights[s],
+                       group=(QUINTILE_NAMES[int(inp.labels[t, j])] if s == 'C' and inp.labels[t, j] >= 0 else
+                              cls.name_of(int(j)) if s == 'B' else ''))
+            if equity is not None and in_plan and raw > 0:
+                size = min(cfg.weights[s] * equity, cfg.gross_cap * equity - invested)
+                size = max(size, 0.0)
+                invested += size
+                row['plan_amount'] = round(size, 2)
+                row['plan_shares'] = int(size / raw // 100 * 100)
+            picks.append(row)
+    z_all = [r for r in (z_a, sleeves['C']['z'], sleeves['B']['z']) if r is not None]
+    recent = []
+    for i in range(max(0, t - 9), t + 1):
+        zc_i = _num(np.nanmin(inp.z_c[i])) if np.isfinite(inp.z_c[i]).any() else None
+        zb_i = _num(np.nanmin(inp.ind_state.z[i])) if np.isfinite(inp.ind_state.z[i]).any() else None
+        recent.append(dict(date=str(panel.dates[i]), a=_num(inp.market.z[i]), c=zc_i, b=zb_i))
+    plan_size = sum(1 for p in picks if p['in_plan'])
+    return dict(date=str(panel.dates[t]), index=int(t), is_last_day=bool(t == len(panel.dates) - 1),
+                gate_open=bool(inp.any_gate[t]), fired=[s for s in ORDER if sleeves[s]['gate']], z=z_a,
+                mk20=_num(inp.market.mk20[t]), n_e6=int(sum(sl['n_pool'] for s, sl in sleeves.items() if sl['gate'])),
+                z_threshold=thr, sleeves=sleeves, quintiles=quint, industries=inds, picks=picks, plan_size=plan_size,
+                recent=recent, config_hash=cfg.hash(), nearest=min(z_all) if z_all else None, fusion=True,
+                classification=dict(as_of=cls.as_of, n_mapped=cls.n_mapped))
+
+
+# ---------------------------------------------------------------- 前向跟踪的组合净值
+def forward_portfolio(output, panel: Panel, cls) -> dict | None:
+    """用冻结的参数，从记录开始日起在真实数据上跑一遍共享资金组合，给出前向净值。没有记录返回 None。"""
+    ledger = tracker.load_ledger(output, 'fusion')
+    if not ledger.get('config') or not ledger.get('start_date'):
+        return None
+    if int(panel.index_of(ledger['start_date'])) >= len(panel.dates) - 1:
+        return None
+    cfg = replace(FusionConfig.from_dict(ledger['config']), start=ledger['start_date'], end=None)
+    inp = build_inputs(panel, cfg, cls)
+    raw = simulate_fused(panel, inp, cfg)
+    summary = summarize(panel, inp.market, raw, cfg.dip_config())
+    by_day: dict[str, set] = {}
+    for t in raw['trades']:
+        by_day.setdefault(t['signal'], set()).add(t['code'])
+    for p in raw['open_positions']:
+        by_day.setdefault(p['signal'], set()).add(p['code'])
+    mismatched = []
+    for record in ledger['records']:
+        recorded = {p['code'] for p in record['picks']}
+        extra = sorted(by_day.get(record['signal_date'], set()) - recorded)
+        if extra:
+            mismatched.append(dict(date=record['signal_date'], extra=extra))
+    eq = [None if not math.isfinite(v) else round(float(v), 5) for v in raw['eq'][raw['t0']:raw['tend'] + 1]]
+    return dict(start_date=ledger['start_date'], dates=[str(d) for d in panel.dates[raw['t0']:raw['tend'] + 1]], equity=eq,
+                summary=summary, mismatched=mismatched, trades=raw['trades'], open_positions=raw['open_positions'])

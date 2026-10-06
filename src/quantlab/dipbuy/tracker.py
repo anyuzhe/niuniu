@@ -20,7 +20,7 @@ from quantlab.dipbuy.engine import DipConfig, settle_picks, simulate, summarize,
 from quantlab.dipbuy.panel import Panel
 
 FORMAT = 'niuniu-dip-forward-v1'
-LEDGER_FILES = {'market': 'dip_forward.json', 'industry': 'dip_industry_forward.json'}   # 大盘恐慌 / 行业恐慌，各记各的
+LEDGER_FILES = {'market': 'dip_forward.json', 'industry': 'dip_industry_forward.json', 'fusion': 'dip_fusion_forward.json'}   # 大盘恐慌 / 行业恐慌 / 策略 D，各记各的
 MAX_RECORDS = 500
 MIN_STATS = 5     # 少于这么多条已结算信号，只给数字，不下结论
 
@@ -67,10 +67,13 @@ def record_signal(output, signal: dict, cfg: DipConfig, *, now: datetime | None 
     if not signal.get('is_last_day'):
         raise ValueError('只能记录数据里最后一个交易日的信号，不能事后补记')
     industry = kind == 'industry'
+    fusion = kind == 'fusion'
     if not signal.get('gate_open'):
-        raise ValueError('今天没有行业触发恐慌线，没有可记录的开仓信号' if industry else '今天闸门没开（z 没低于阈值），没有可记录的开仓信号')
+        raise ValueError('今天三层闸门都没开，没有可记录的开仓信号' if fusion else
+                         '今天没有行业触发恐慌线，没有可记录的开仓信号' if industry else '今天闸门没开（z 没低于阈值），没有可记录的开仓信号')
     if not signal.get('picks'):
-        raise ValueError('有行业触发了，但触发行业里今天没有可买的股票' if industry else '闸门开了，但今天没有符合“布林下轨收复”的股票')
+        raise ValueError('有闸门开了，但今天没有可买的股票' if fusion else
+                         '有行业触发了，但触发行业里今天没有可买的股票' if industry else '闸门开了，但今天没有符合“布林下轨收复”的股票')
     ledger = load_ledger(output, kind)
     if ledger['records'] and ledger.get('config_hash') != cfg.hash():
         raise ValueError('已有前向记录，参数已冻结；要换参数请先清空记录')
@@ -81,12 +84,14 @@ def record_signal(output, signal: dict, cfg: DipConfig, *, now: datetime | None 
     when = (now or datetime.now(timezone.utc)).isoformat(timespec='seconds')
     if not ledger.get('config_hash'):
         ledger.update(config=cfg.to_dict(), config_hash=cfg.hash(), started_at=when, start_date=signal['date'])
-    keys = ('rank', 'code', 'name', 'close', 'ret20') + (('industry',) if industry else ())
+    keys = ('rank', 'code', 'name', 'close', 'ret20') + (('industry',) if industry else ()) + (('sleeve', 'weight', 'group') if fusion else ())
     record = dict(id=uuid.uuid4().hex[:10], signal_date=signal['date'], recorded_at=when, data_last_date=signal['date'],
                   z=signal['z'], mk20=signal['mk20'], n_e6=signal['n_e6'], status='waiting', result=None,
                   picks=[{k: p.get(k) for k in keys} for p in signal['picks']])
     if industry:
         record['industries'] = list(signal.get('triggered') or [])
+    if fusion:
+        record['fired'] = list(signal.get('fired') or [])
     ledger['records'].append(record)
     _save(output, ledger, kind)
     return record
@@ -95,18 +100,25 @@ def record_signal(output, signal: dict, cfg: DipConfig, *, now: datetime | None 
 def _evaluate(panel: Panel, record: dict, cfg: DipConfig) -> dict:
     """取前 N 个“买得进”的，算每只的结果和合计。"""
     rows = settle_picks(panel, record['picks'], record['signal_date'], cfg)
-    filled = [r for r in rows if not r['not_filled']][:cfg.positions]
+    filled, taken = [], {}
+    for r in rows:        # 策略 D 的记录里每层各取前 positions 只买得进的；其它记录没有 sleeve 字段，等于整体取前 positions 只
+        if r['not_filled'] or taken.get(r.get('sleeve'), 0) >= cfg.positions:
+            continue
+        taken[r.get('sleeve')] = taken.get(r.get('sleeve'), 0) + 1
+        filled.append(r)
     closed = [r for r in filled if r['status'] == 'closed']
     done = bool(filled) and len(closed) == len(filled)
     rets = [r['ret'] for r in closed]
-    mtm = [r['ret'] if r['status'] == 'closed' else r['mtm'] for r in filled if r['status'] == 'closed' or r['mtm'] is not None]
+    weight = lambda r: r.get('weight') or 1.0
+    mtm_rows = [r for r in filled if r['status'] == 'closed' or r['mtm'] is not None]
+    mtm = [r['ret'] if r['status'] == 'closed' else r['mtm'] for r in mtm_rows]
     status = 'closed' if done else ('open' if filled and any(r['status'] != 'waiting' for r in filled) else 'waiting')
     plan_codes = {r['code'] for r in filled}
     for r in rows:
         r['in_plan'] = r['code'] in plan_codes
     return dict(status=status, rows=rows, n_filled=len(filled), n_closed=len(closed),
-                mean_ret=(sum(rets) / len(rets)) if rets else None,
-                mean_mtm=(sum(mtm) / len(mtm)) if mtm else None,
+                mean_ret=(sum(weight(r) * r['ret'] for r in closed) / sum(weight(r) for r in closed)) if rets else None,
+                mean_mtm=(sum(weight(r) * m for r, m in zip(mtm_rows, mtm)) / sum(weight(r) for r in mtm_rows)) if mtm else None,
                 win_rate=(sum(1 for x in rets if x > 0) / len(rets)) if rets else None)
 
 

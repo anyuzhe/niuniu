@@ -1,4 +1,4 @@
-"""策略工作台页面（离屏）：用缓存好的合成面板走一遍五个标签（含行业恐慌）、沙盒回测、前向记录。"""
+"""策略工作台页面（离屏）：用缓存好的合成面板走一遍六个标签（含行业恐慌、策略 D）、沙盒回测、前向记录。"""
 import json
 import os
 import sys
@@ -113,11 +113,11 @@ class BenchPageTests(unittest.TestCase):
         self.assertEqual(self.window.bench_state['panel'].shape, (340, 30))
         self.assertTrue(any('数据面板：30 只股票' in t for t in self.labels()))
 
-    def test_five_tabs_signal_and_forward_record(self):
+    def test_six_tabs_signal_and_forward_record(self):
         self.cache_panel()
         self.go()
         tabs = self.window.scroll.widget().findChild(QTabWidget)
-        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ['今日信号', '回测与风险', '参数沙盒', '前向跟踪', '行业恐慌'])
+        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ['今日信号', '回测与风险', '参数沙盒', '前向跟踪', '行业恐慌', '策略 D'])
         sig = self.window.bench_state['default']
         self.assertEqual(sig['format'], 'niuniu-dipbuy-run-v1')
         # 今日信号：闸门开，10 只收复，计划里 20 只上限内全部是计划内
@@ -180,6 +180,48 @@ class BenchPageTests(unittest.TestCase):
         self.assertIn('error', self.window.bench_state['industry'])
         self.assertTrue(any('行业恐慌暂不可用' in t for t in self.labels()))
         self.assertIsNotNone(self.window.bench_state['default'])      # 其余标签照常
+
+    def test_fusion_tab_shows_three_layers_records_and_keeps_its_own_ledger(self):
+        self.cache_panel()
+        self.go()
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        fus = self.window.bench_state['fusion']
+        self.assertNotIn('error', fus)
+        self.assertEqual(fus['run']['kind'], 'fusion')
+        tab = tabs.widget(5)
+        texts = [w.text() for w in tab.findChildren(QLabel)]
+        self.assertTrue(any('三层恐慌分' in t for t in texts))
+        self.assertTrue(any('三层各自的成交' in t for t in texts))
+        self.assertFalse(any('最低担保比例' in t for t in texts))               # D 不借钱，没有担保比例
+        grids = tab.findChildren(QTableWidget)
+        self.assertEqual(grids[0].rowCount(), 5)                               # 成交额五档
+        self.assertEqual(grids[0].item(2, 4).text(), '触发')                    # 合成面板里成交额都一样，全落在中间档，最后 20 天一起下滑
+        self.assertEqual(grids[1].rowCount(), 3)                               # 三个行业
+        self.assertGreater(grids[2].rowCount(), 0)                             # 触发的层有候选
+        self.assertIn(grids[2].item(0, 0).text(), ('A', 'C', 'B'))
+        for chart in tab.findChildren(page_mod.SeriesChart) + tab.findChildren(page_mod.BarChart):
+            self.assertFalse(chart.grab().isNull())
+        self.button('把今天的信号记入策略 D 前向跟踪').click()
+        QTest.qWait(50)
+        ledger = json.loads((self.out / '_home' / 'dip_fusion_forward.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(ledger['records']), 1)
+        self.assertTrue(ledger['records'][0]['fired'])
+        self.assertTrue(all(p['sleeve'] in 'ACB' for p in ledger['records'][0]['picks']))
+        self.assertFalse((self.out / '_home' / 'dip_forward.json').exists())            # 其它两本记录不受影响
+        self.assertFalse((self.out / '_home' / 'dip_industry_forward.json').exists())
+        self.assertTrue(any('已记录' in t for t in self.labels()))
+        self.button('清空策略 D 记录').click()
+        self.button('再点一次确认清空').click()
+        QTest.qWait(50)
+        self.assertFalse((self.out / '_home' / 'dip_fusion_forward.json').exists())
+
+    def test_fusion_tab_degrades_without_industry_classification(self):
+        self.cache_panel()
+        with mock.patch('quantlab.dipbuy.industry.industry_dir', side_effect=dpanel.DipDataError('数据侧尚未交付 sw_industry_history')):
+            self.go()
+        self.assertIn('error', self.window.bench_state['fusion'])
+        self.assertTrue(any('策略 D 暂不可用' in t for t in self.labels()))
+        self.assertIsNotNone(self.window.bench_state['default'])                       # 其余标签照常
 
     def test_sandbox_runs_saves_and_compares(self):
         self.cache_panel()

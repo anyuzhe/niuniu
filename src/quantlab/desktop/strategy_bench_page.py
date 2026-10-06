@@ -1,6 +1,6 @@
 """策略工作台：把“恐慌日抄底”策略做成可看、可调、可跟踪的页面。
 
-五个标签：今日信号 / 回测与风险 / 参数沙盒 / 前向跟踪 / 行业恐慌（只看信号，单独一份回测和前向记录）。
+六个标签：今日信号 / 回测与风险 / 参数沙盒 / 前向跟踪 / 行业恐慌（只看信号，单独一份回测和前向记录）/ 策略 D（大盘、成交额分档、行业三层恐慌共用一笔钱，单独一份回测和前向记录）。
 数据只来自数据清单里 READY 的前复权日线和日状态（quantlab.dipbuy.panel），第一次要读 5000 多个文件，
 结果缓存在输出目录里；回测在后台线程里跑，页面轮询进度。这里不下单、不连券商。
 """
@@ -14,11 +14,11 @@ from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 from quantlab.data.dataset_catalog import is_data_ready
-from quantlab.dipbuy import backtest, engine, industry, panel as dpanel, tracker
+from quantlab.dipbuy import backtest, engine, fusion, industry, panel as dpanel, tracker
 from .widgets import Card, button, kpis, label, row, table
 
 UP, DOWN, GOLD, BLUE, GREY = QColor('#f35f62'), QColor('#22d787'), QColor('#f6b72f'), QColor('#4e96ff'), QColor('#8fa4b7')
-TABS = (('signal', '今日信号'), ('risk', '回测与风险'), ('sandbox', '参数沙盒'), ('forward', '前向跟踪'), ('industry', '行业恐慌'))
+TABS = (('signal', '今日信号'), ('risk', '回测与风险'), ('sandbox', '参数沙盒'), ('forward', '前向跟踪'), ('industry', '行业恐慌'), ('fusion', '策略 D'))
 DISCLAIMER = ('这是研究工具，不是买卖建议，也不会下单。回测是历史结果：样本只有约 45 段恐慌期，参数是看过数据后定的，'
               '面板只含现存股票（有幸存者偏差），没有计入冲击成本和跌停卖不出；融资需要券商两融资格，2 倍杠杆的历史最大回撤约 −51%。')
 YEAR_CHOICES = ('2008', '2012', '2017', '2020')
@@ -53,7 +53,7 @@ def _clear(layout):
 def _state(window):
     state = getattr(window, 'bench_state', None)
     if state is None:
-        state = {'panel': None, 'names': {}, 'default': None, 'forward': None, 'industry': None, 'loading': None,
+        state = {'panel': None, 'names': {}, 'default': None, 'forward': None, 'industry': None, 'fusion': None, 'loading': None,
                  'running': None, 'sandbox': None, 'error': None}
         window.bench_state = state
     return state
@@ -251,7 +251,7 @@ class BenchPage:
 
     def reload(self):
         if self.state['loading'] is None and self.state['running'] is None:
-            self.state.update(panel=None, default=None, sandbox=None, industry=None)
+            self.state.update(panel=None, default=None, sandbox=None, industry=None, fusion=None)
             self.rendered = False
             self.load()
 
@@ -269,8 +269,10 @@ class BenchPage:
             names = dpanel.load_names(catalog)
             default = backtest.run_backtest(panel, engine.DipConfig(), progress=hook, stop=job['stop'])
             job.update(label='行业恐慌', done=0, total=1)
+            ind = _industry_bundle(win.output, panel, catalog, hook, job['stop'])
+            job.update(label='策略 D', done=0, total=1)
             return {'panel': panel, 'names': names, 'default': default, 'forward': _forward(win.output, panel),
-                    'industry': _industry_bundle(win.output, panel, catalog, hook, job['stop'])}
+                    'industry': ind, 'fusion': _fusion_bundle(win.output, panel, ind, hook, job['stop'])}
 
         self.reload_button.setEnabled(False)
         self.timer.start()
@@ -316,6 +318,7 @@ class BenchPage:
         self.build_sandbox()
         self.build_forward()
         self.build_industry()
+        self.build_fusion()
 
     # ---- tab 1: today's signal
     def build_signal(self):
@@ -740,6 +743,177 @@ class BenchPage:
         tracker.clear_ledger(self.window.output, 'industry')
         self.refresh_industry_forward()
 
+    # ---- tab 6: strategy D (three panic layers sharing one account)
+    def build_fusion(self):
+        v = self.boxes['fusion']
+        _clear(v)
+        fus = self.state.get('fusion')
+        if not fus or fus.get('error'):
+            v.addWidget(label('策略 D 暂不可用：' + str((fus or {}).get('error') or '数据还没准备好'), 'note', True))
+            v.addStretch(1)
+            return
+        cfg, cls, panel = fus['cfg'], fus['cls'], self.state['panel']
+        self.fus_cfg = cfg
+        inp = fusion.build_inputs(panel, cfg, cls)
+        sig = fusion.latest_fusion_signal(panel, inp, cfg, names=self.state['names'])
+        self.fus_signal = sig
+        w = cfg.weights
+        intro = Card('这是什么')
+        intro.add(label('三套恐慌信号共用一笔钱、不借钱：A 大盘恐慌（且个股布林下轨收复）、C 按近 60 日成交额分五档的某一档恐慌、B 申万一级某个行业恐慌。'
+                        '恐慌分都是“一组股票的等权 20 日涨跌 ÷ 它平时的波动”，低于 −1.5 就触发。触发的层按 A → C → B 的顺序分钱，'
+                        f"每只权重 A {w['A'] * 100:g}%、C {w['C'] * 100:g}%、B {w['B'] * 100:g}%（占净值），每层最多 {cfg.positions} 只，总仓位不超过 {cfg.gross_cap * 100:g}%，"
+                        f'买 20 日跌得最多的；次日开盘买、持有 {cfg.hold_days} 个交易日后收盘卖，同一只股票不会在两层里重复买。'
+                        'A 触发的日子 C 一定触发，C 触发的日子 B 一定触发，所以 B 层最频繁、单笔质量最低，作用是把 A、C 空着的钱用起来。'
+                        '这里只显示信号并做前向记录，不下单、不建议买卖。', 'muted', True))
+        v.addWidget(intro)
+        tiles = [('数据截至', sig['date'], f"分类文件 {sig['classification']['as_of']}（今天的分类）"),
+                 ('触发的层', '、'.join(sig['fired']) if sig['fired'] else '无', f"阈值 {cfg.z_threshold:g}，任一层触发就买")]
+        for s_ in fusion.ORDER:
+            g = sig['sleeves'][s_]
+            note = f"已触发，候选 {g['n_pool']} 只" if g['gate'] else ('未触发，还差 %.2f' % (g['z'] - cfg.z_threshold) if g['z'] is not None else '未触发')
+            tiles.append((f"{s_} {g['name']}", _num(g['z']), f"{g['detail']}　{note}"))
+        v.addWidget(kpis(tiles))
+        recent = sig['recent']
+        chart = SeriesChart('三层恐慌分', y_format='{:+.2f}', height=190)
+        chart.set_data([{'name': 'A 大盘', 'color': '#4e96ff', 'values': [r['a'] for r in recent]},
+                        {'name': 'C 最弱的成交额档', 'color': '#f6b72f', 'values': [r['c'] for r in recent]},
+                        {'name': 'B 最弱的行业', 'color': '#22d787', 'values': [r['b'] for r in recent]}],
+                       (recent[0]['date'], recent[-1]['date']), [(cfg.z_threshold, '#f35f62', f'触发线 {cfg.z_threshold:g}')])
+        card = Card('三层恐慌分（最近 10 个交易日）')
+        card.add(chart)
+        v.addWidget(card)
+        qcard = Card('成交额五档的恐慌分')
+        qcard.add(table(['档', '当日参与', '20日涨跌（等权）', '恐慌分', '状态'],
+                        [[r['name'], r['members'], _pct(r['ret20']), _num(r['z']), '触发' if r['triggered'] else ''] for r in sig['quintiles']]))
+        v.addWidget(qcard)
+        icard = Card('申万行业最弱的 10 个')
+        icard.add(table(['行业', '股票数', '当日参与', '20日涨跌（等权）', '恐慌分', '状态'],
+                        [[r['name'], r['stocks'], r['members'], _pct(r['ret20']), _num(r['z']), '触发' if r['triggered'] else '']
+                         for r in sig['industries'][:10]]))
+        v.addWidget(icard)
+        plan = Card('明天的计划' if sig['gate_open'] else '今天不用买（三层闸门都没开）')
+        self.fus_equity = QDoubleSpinBox()
+        self.fus_equity.setAccessibleName('策略D账户本金')
+        self.fus_equity.setRange(1, 100000)
+        self.fus_equity.setDecimals(1)
+        self.fus_equity.setValue(40)
+        self.fus_equity.setSuffix(' 万元本金')
+        self.fus_equity.valueChanged.connect(lambda _: self.fill_fusion_picks())
+        self.fus_record_button = button('把今天的信号记入策略 D 前向跟踪', self.record_fusion, True)
+        self.fus_record_button.setEnabled(bool(sig['gate_open'] and sig['picks']))
+        self.fus_record_message = label('', 'muted', True)
+        plan.add(row(label('按'), self.fus_equity, label('本金估算每只金额（按账户空仓算，已有持仓要自己扣掉）：'), self.fus_record_button))
+        plan.add(self.fus_record_message)
+        self.fus_pick_host = QWidget()
+        self.fus_pick_box = QVBoxLayout(self.fus_pick_host)
+        self.fus_pick_box.setContentsMargins(0, 0, 0, 0)
+        plan.add(self.fus_pick_host)
+        plan.add(label('规则：明天开盘买入，A 先、C 次之、B 最后分钱，钱不够就少买；每只股票只出现在最先选中它的那一层；'
+                       f'持有 {cfg.hold_days} 个交易日后收盘卖出；明天开盘一字涨停买不进的顺延到下一名。股数按今天收盘价估算，实际以明天开盘价为准。', 'muted', True))
+        v.addWidget(plan)
+        self.fill_fusion_picks()
+        self.build_fusion_forward(v, fus)
+        run = fus['run']
+        head = Card('策略 D 的回测与风险')
+        head.add(label(_fusion_config_text(run['config']) + f"　引擎 {run['engine_version']}　哈希 {run['content_hash']}", 'muted', True))
+        head.add(label('口径：一笔钱、不借钱，次日开盘买、持有到期收盘卖，同一套手续费和 1 个最小价位滑点；闲置资金按年化 2% 计息；'
+                       '候选里次日开盘一字涨停的排除。', 'muted', True))
+        v.addWidget(head)
+        scard = Card('三层各自的成交')
+        sl = run['summary']['sleeves']
+        scard.add(table(['层', '触发天数', '成交笔数', '单笔平均净收益', '胜率', '未平仓'],
+                        [[f"{k} {sl[k]['name']}", sl[k]['gate_days'], sl[k]['n'], _pct(sl[k]['mean']), _pct(sl[k]['win_rate'], 0, False), sl[k]['open']]
+                         for k in fusion.ORDER]))
+        v.addWidget(scard)
+        v.addWidget(result_view(run, panel, levered=False))
+        v.addStretch(1)
+
+    def fill_fusion_picks(self):
+        if getattr(self, 'fus_pick_host', None) is None or not _alive(self.fus_pick_host):
+            return
+        _clear(self.fus_pick_box)
+        fus, panel = self.state['fusion'], self.state['panel']
+        inp = fusion.build_inputs(panel, fus['cfg'], fus['cls'])
+        sig = fusion.latest_fusion_signal(panel, inp, fus['cfg'], equity=self.fus_equity.value() * 1e4, names=self.state['names'])
+        self.fus_signal = sig
+        if not sig['picks']:
+            self.fus_pick_box.addWidget(label('今天没有层触发，或触发的层里没有可买的股票，没有计划。', 'muted', True))
+            return
+        rows = [[p['sleeve'], p['rank'], p['code'], p['name'] or '—', p['group'] or '—', f"{p['close']:.2f}", _pct(p['ret20']),
+                 '计划内' if p['in_plan'] else '备选',
+                 f"{p.get('plan_amount', 0):,.0f}" if p['in_plan'] else '—', f"{p.get('plan_shares', 0):,}" if p['in_plan'] else '—']
+                for p in sig['picks'][:MAX_ROWS]]
+        self.fus_pick_box.addWidget(table(['层', '排名', '代码', '名称', '分组', '收盘价', '20日涨跌', '位置', '计划金额（元）', '估算股数'], rows))
+
+    def record_fusion(self):
+        try:
+            record = tracker.record_signal(self.window.output, self.fus_signal, self.fus_cfg, kind='fusion')
+        except ValueError as exc:
+            self.fus_record_message.setText(str(exc))
+            return
+        self.fus_record_message.setText(f"已记录 {record['signal_date']} 的信号（{len(record['picks'])} 只），后续用真实行情结算。")
+        self.fus_record_button.setEnabled(False)
+        self.refresh_fusion_forward()
+
+    def refresh_fusion_forward(self):
+        fus = self.state.get('fusion')
+        if fus and not fus.get('error'):
+            fus['forward'] = _fusion_forward(self.window.output, self.state['panel'], fus['cls'])
+        self.build_fusion()
+
+    def build_fusion_forward(self, v, fus):
+        fwd = fus.get('forward') or {}
+        card = Card('策略 D 的前向跟踪')
+        if fwd.get('error'):
+            card.add(label('前向记录读取失败：' + str(fwd['error']), 'note', True))
+            v.addWidget(card)
+            return
+        records, summary, ledger = fwd['settled']['records'], fwd['settled']['summary'], fwd['settled']['ledger']
+        card.add(label('规则同其它前向跟踪：只能记最新一天、不能事后补记，参数冻结，用真实后续行情按同一套成本结算；纸面记录，不下单。'
+                       '一条记录里各层各取前 20 只买得进的，收益按各层单只权重加权。'
+                       + (f"开始日 {ledger['start_date']}，参数哈希 {ledger['config_hash']}。" if ledger.get('started_at') else ''), 'muted', True))
+        card.add(kpis([
+            ('已记录信号', str(summary['n_records']), f"其中已结算 {summary['n_closed']} 条"),
+            ('平均每次信号收益', _pct(summary['mean_signal_ret']), '计划内股票按权重加权，扣成本'),
+            ('信号胜率', _pct(summary['signal_win_rate'], 0, False), f"个股胜率 {_pct(summary['pick_win_rate'], 0, False)}（{summary['n_picks']} 笔）"),
+            ('回测同口径', _pct(fus['run']['summary']['trades']['mean']), '回测里每笔平均净收益（供对照）')]))
+        if summary['note']:
+            card.add(label(summary['note'], 'note', True))
+        status_names = {'waiting': '等待下一个交易日', 'open': '持有中', 'closed': '已结算'}
+        rows = []
+        for r in records:
+            res = r.get('result') or {}
+            shown = res.get('mean_ret') if res.get('mean_ret') is not None else res.get('mean_mtm')
+            rows.append([r['signal_date'], '、'.join(r.get('fired') or []) or '—', _num(r.get('z')),
+                         status_names.get(r.get('status'), r.get('status')), res.get('n_filled', 0), _pct(shown)])
+        card.add(table(['信号日', '触发的层', '大盘 z', '状态', '买入只数', '收益（持有中为浮动）'], rows) if rows
+                 else label('还没有记录。哪天有层触发，在上面点“记入策略 D 前向跟踪”。', 'muted', True))
+        port = fwd.get('portfolio')
+        if port:
+            s = port['summary']['stats']
+            if s:
+                card.add(label(f"按冻结参数从开始日起的组合净值：累计 {_pct(s['total'])}，最大回撤 {_pct(s['max_drawdown'], 0)}，共 {s['days']} 个交易日。", 'muted', True))
+            chart = SeriesChart('策略D前向净值', y_format='{:.3f}×')
+            chart.set_data([{'name': '前向净值', 'color': '#f6b72f', 'values': port['equity']}], (port['dates'][0], port['dates'][-1]))
+            card.add(chart)
+            if port['mismatched']:
+                card.add(label('提示：有 %d 个信号日，组合重算选出的股票不在当时的记录里（数据可能被修订）。' % len(port['mismatched']), 'note', True))
+        self.fus_clear_armed = False
+        if records:
+            self.fus_clear_button = button('清空策略 D 记录', self.clear_fusion_ledger)
+            self.fus_clear_message = label('', 'muted', True)
+            card.add(row(self.fus_clear_button, self.fus_clear_message))
+        v.addWidget(card)
+
+    def clear_fusion_ledger(self):
+        if not self.fus_clear_armed:
+            self.fus_clear_armed = True
+            self.fus_clear_button.setText('再点一次确认清空')
+            self.fus_clear_message.setText('清空后不能恢复。')
+            return
+        tracker.clear_ledger(self.window.output, 'fusion')
+        self.refresh_fusion_forward()
+
 
 # ---------------------------------------------------------------------- pieces shared by tabs
 def _forward(output, panel):
@@ -755,6 +929,28 @@ def _industry_forward(output, panel, cls):
         settled = tracker.settle_ledger(output, panel, kind='industry')
         return {'settled': settled, 'portfolio': tracker.forward_portfolio(
             output, panel, kind='industry', features=lambda cfg: industry.build_inputs(panel, cfg, cls)[:2])}
+    except Exception as exc:
+        return {'error': f'{type(exc).__name__}: {exc}'}
+
+
+def _fusion_forward(output, panel, cls):
+    try:
+        settled = tracker.settle_ledger(output, panel, kind='fusion')
+        return {'settled': settled, 'portfolio': fusion.forward_portfolio(output, panel, cls)}
+    except Exception as exc:
+        return {'error': f'{type(exc).__name__}: {exc}'}
+
+
+def _fusion_bundle(output, panel, ind, progress, stop):
+    """策略 D：需要行业分类（B 层）。回测、前向记录；任何一步失败只影响这个标签页。"""
+    try:
+        if not ind or ind.get('error'):
+            raise dpanel.DipDataError('B 层需要申万行业分类：' + str((ind or {}).get('error') or '行业数据还没准备好'))
+        cfg, cls = fusion.default_config(), ind['cls']
+        run = fusion.run_backtest(panel, cfg, cls, progress=progress, stop=stop)
+        return {'cfg': cfg, 'cls': cls, 'run': run, 'forward': _fusion_forward(output, panel, cls)}
+    except dpanel.Cancelled:
+        raise
     except Exception as exc:
         return {'error': f'{type(exc).__name__}: {exc}'}
 
@@ -778,6 +974,12 @@ def _config_text(cfg):
             f"成交额≥{cfg['min_amount'] / 1e4:g} 万　价≥{cfg['min_price']:g}　起点 {cfg['start']}")
 
 
+def _fusion_config_text(cfg):
+    return (f"z≤{cfg['z_threshold']:g}　每层最多 {cfg['positions']} 只　A {cfg['weight_a'] * 100:g}% · C {cfg['weight_c'] * 100:g}% · B {cfg['weight_b'] * 100:g}%　"
+            f"总仓位≤{cfg['gross_cap'] * 100:g}%（不借钱）　持有 {cfg['hold_days']} 日　闲置收益 {cfg['cash_yield'] * 100:g}%　冲击 {cfg['slippage_bp']:g} 基点/边　"
+            f"成交额≥{cfg['min_amount'] / 1e4:g} 万　价≥{cfg['min_price']:g}　起点 {cfg['start']}")
+
+
 def _compare_rows(a, b):
     def get(r):
         s, t, i = r['summary']['stats'] or {}, r['summary']['trades'], r['summary']['info']
@@ -789,7 +991,7 @@ def _compare_rows(a, b):
     return list(zip(names, get(a), get(b)))
 
 
-def result_view(result, panel):
+def result_view(result, panel, *, levered=True):
     """一次回测的完整展示：指标、净值与回撤曲线、年度收益、分时期、风险说明。"""
     host = QWidget()
     lay = QVBoxLayout(host)
@@ -805,7 +1007,8 @@ def result_view(result, panel):
     lay.addWidget(kpis([
         ('交易笔数', str(tr['n']), f"胜率 {_pct(tr['win_rate'], 0, False)}　赔率 {_num(tr['payoff'])}"),
         ('单笔平均净收益', _pct(tr['mean']), f"最差一笔 {_pct(tr['worst'], 0)}"),
-        ('最低担保比例', _pct(info['min_margin_ratio'], 0, False), f"强平线 {result['config']['liquidation_line'] * 100:.0f}%，强平 {info['n_liquidations']} 次"),
+        (('最低担保比例', _pct(info['min_margin_ratio'], 0, False), f"强平线 {result['config']['liquidation_line'] * 100:.0f}%，强平 {info['n_liquidations']} 次") if levered else
+         ('闲置资金收益', _pct(result['config']['cash_yield'], 1, False) + '/年', '不借钱，没有利息和强平')),
         ('信号', f"{s['gate_days']} 天 / {s['episodes']} 段", '闸门打开的交易日与相隔 5 日以上的段数')]))
     cv = result['curve']
     chart = SeriesChart('净值曲线', log=True, y_format='{:.2f}×')
@@ -832,7 +1035,7 @@ def result_view(result, panel):
     card.add(table(['时期', '年化', '夏普', '最大回撤', '平均仓位'], eras))
     lay.addWidget(card)
     risk = Card('风险与口径')
-    notes = [f"融资利息累计约为初始本金的 {info['interest']:.2f} 倍；预警线 {result['config']['warn_line'] * 100:.0f}% 以下 {info['n_warn_days']} 天。"]
+    notes = [f"融资利息累计约为初始本金的 {info['interest']:.2f} 倍；预警线 {result['config']['warn_line'] * 100:.0f}% 以下 {info['n_warn_days']} 天。"] if levered else []
     notes += result['caveats']
     risk.add(label('\n'.join('· ' + n for n in notes), 'muted', True))
     lay.addWidget(risk)
