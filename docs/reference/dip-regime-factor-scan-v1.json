@@ -19,7 +19,37 @@
       "coverage": "注册表内字段齐全的日线因子 231 个（已完成 204 个，其余为单个计算超过 30 分钟的病态实现），每个跑 5 个状态 × 2 个方向 = 约 2000 组",
       "accounting": "喂进 quantlab.dipbuy.engine.simulate（N=20 槽位、到期腾位、涨停开盘过滤、引擎成本模型），与原策略同时级",
       "result": "恐慌态有 3 个候选的原始超额超过 2 个标准误：ALPHA101.ALPHA85 买最高 +904bp（4.0σ，120 笔）、买最低 +476bp（2.1σ，120 笔）；BASE.MOMENTUM 买最低 +229bp（2.6σ，760 笔）。偏弱态 BASE.MOMENTUM 买最低 +160bp（3.1σ，2180 笔）、COMB.SCORE 买最低 +113bp（2.2σ，2180 笔）。每个状态做了 460 次检验，纯噪声下最大值期望约 3.2σ，故除 ALPHA85 买最高外均未过校正。",
-      "negative_by_state": "中性/偏强/强势三个状态，460 次检验中没有一次超过 2 个标准误；强势态同状态随机选股本身即每笔 +189bp、样本外年化 +12.3%/夏普 0.74，231 个因子里仅 8 个能超过它。"
+      "negative_by_state": "中性/偏强/强势三个状态，460 次检验中没有一次超过 2 个标准误；强势态同状态随机选股本身即每笔 +189bp、样本外年化 +12.3%/夏普 0.74，231 个因子里仅 8 个能超过它。",
+      "episode_clustered": {
+        "method": "信号日间隔 20 个交易日内合并为一段，对每段均值超额做 t 检验",
+        "results": {
+          "ALPHA85_买最低": {
+            "trades": 140,
+            "episodes": 7,
+            "t": 1.12,
+            "episodes_positive": "57%"
+          },
+          "ALPHA85_买最高": {
+            "trades": 140,
+            "episodes": 7,
+            "t": 1.51,
+            "episodes_positive": "57%"
+          },
+          "MOMENTUM_买最低": {
+            "trades": 760,
+            "episodes": 38,
+            "t": 2.49,
+            "episodes_positive": "71%"
+          },
+          "MOMENTUM_买最高": {
+            "trades": 760,
+            "episodes": 38,
+            "t": -2.62,
+            "episodes_positive": "29%"
+          }
+        },
+        "conclusion": "ALPHA85 的按笔 4.0σ 是 7 段内的聚类假象，已排除；MOMENTUM 买最低通过段聚类（t=2.49，38 段中 71% 为正），列为待验候选"
+      }
     }
   },
   "market_state": {
@@ -64,9 +94,9 @@
       "parameters": {},
       "formula": "pow2(cs_rank(ts_corr(high*0.876703 + close*0.123297, ts_mean(volume,30), 10)), cs_rank(ts_corr(ts_rank((high+low)/2, 4), ts_rank(volume,10), 7)))",
       "mechanism": "量价相关性（价格与成交量耦合程度），与 E6 的纯价格/波动率收复机制不同",
-      "rule": "必须同时检验买最高与买最低两个方向",
+      "rule": "保留记录，不再作为待验候选",
       "pool": "同 E6",
-      "role": "宿主侧唯一超过 460 次检验噪声上限的候选：恐慌态买最高超额 +904bp（4.0σ，120 笔，胜率 87%）；但笔数少、双向都超 2σ（买最低 +476bp/2.1σ）、未做段聚类显著性"
+      "role": "已判定不成立：段聚类后 t 仅 +1.12/+1.51（140 笔只落在 7 个独立段），4.0σ 为聚类假象；且单次全市场计算超过 1 小时 CPU，工程不可用"
     }
   ],
   "execution": {
