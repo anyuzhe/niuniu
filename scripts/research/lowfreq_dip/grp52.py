@@ -3,7 +3,7 @@ import grp11 as g
 from grp11 import *
 from quantlab.dipbuy.engine import _exit_index
 W0 = {'A': .08, 'C': .08, 'B': .025}
-def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yield=0.02, stats=None, ekey='old', hist=None, ecost=0.0, evlog=None):
+def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yield=0.02, stats=None, ekey='old', hist=None, ecost=0.0, evlog=None, esell='close'):
     caps = caps or {}; evict = evict or {}
     t0 = int(np.searchsorted(dates, '2008-01-01')); cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd)
     ev = 0
@@ -28,11 +28,15 @@ def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yie
                 room = G * equity - invested
                 if evict.get(s) and room < ideal - 1e-9:
                     need = ideal - room
-                    cands = sorted([p for p in active if p['s'] in evict[s] and p['e'] <= t and np.isfinite(C_[t, p['j']])], key=(lambda p: p['e']) if ekey == 'old' else (lambda p: -p['e']) if ekey == 'new' else (lambda p: p['v'] / p['inv']))
+                    cands = sorted([p for p in active if p['s'] in evict[s] and p['e'] <= t and np.isfinite(C_[t, p['j']]) and (esell == 'close' or (np.isfinite(O_[t + 1, p['j']]) and O_[t + 1, p['j']] > 0.905 * C_[t, p['j']]))], key=(lambda p: p['e']) if ekey == 'old' else (lambda p: -p['e']) if ekey == 'new' else (lambda p: p['v'] / p['inv']))
                     for p in cands:
                         if need <= 1e-9: break
-                        j = p['j']; rx = float(C_[t, j]) / float(F_[t, j])
-                        cash += p['v'] * (1 - 0.01 / rx - fee[t] / 2 - ecost); need -= p['v']
+                        j = p['j']
+                        if esell == 'close':
+                            rx = float(C_[t, j]) / float(F_[t, j]); val = p['v']; tf = fee[t]
+                        else:
+                            rx = float(O_[t + 1, j]) / float(F_[t + 1, j]); val = p['inv'] * (float(O_[t + 1, j]) / p['o0']) * (1 - p['cost_e']); tf = fee[t + 1]
+                        cash += val * (1 - 0.01 / rx - tf / 2 - ecost); need -= p['v']
                         if evlog is not None: evlog.append((t, s, p['s'], p['v'] / p['inv'] - 1, p['net'], t - p['e']))
                         active.remove(p); held.discard(j); ev += 1
                     invested = sum(p['v'] for p in active); equity = cash + invested; inv_s = sum(p['v'] for p in active if p['s'] == s)
