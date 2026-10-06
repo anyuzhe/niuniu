@@ -3,7 +3,7 @@ import grp11 as g
 from grp11 import *
 from quantlab.dipbuy.engine import _exit_index
 W0 = {'A': .08, 'C': .08, 'B': .025}
-def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yield=0.02, stats=None, ekey='old', hist=None, ecost=0.0, evlog=None, esell='close', buylog=None):
+def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yield=0.02, stats=None, ekey='old', hist=None, ecost=0.0, evlog=None, esell='close', buylog=None, quota=None):
     caps = caps or {}; evict = evict or {}
     t0 = int(np.searchsorted(dates, '2008-01-01')); cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd)
     ev = 0
@@ -43,7 +43,7 @@ def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yie
                     ideal = min(want * w[s] * equity, max(caps.get(s, 9.0) * equity - inv_s, 0))
                 got = 0.0
                 if hist is not None: hist[-1] = hist[-1] + (room if False else (G * equity - invested) / equity, want)
-                for j in pool[:N - n_s]:
+                for j in pool[:min(N - n_s, quota or N)]:
                     size = min(w[s] * equity, caps.get(s, 9.0) * equity - inv_s, G * equity - invested)
                     if size <= 1e-9: break
                     cash -= size; invested += size; inv_s += size; got += size
