@@ -3,7 +3,7 @@ import grp11 as g
 from grp11 import *
 from quantlab.dipbuy.engine import _exit_index
 W0 = {'A': .08, 'C': .08, 'B': .025}
-def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yield=0.02, stats=None, ekey='old', hist=None):
+def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yield=0.02, stats=None, ekey='old', hist=None, ecost=0.0, evlog=None):
     caps = caps or {}; evict = evict or {}
     t0 = int(np.searchsorted(dates, '2008-01-01')); cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd)
     ev = 0
@@ -32,7 +32,9 @@ def fused2(order='ACB', w=W0, G=1.0, caps=None, evict=None, N=20, H=20, cash_yie
                     for p in cands:
                         if need <= 1e-9: break
                         j = p['j']; rx = float(C_[t, j]) / float(F_[t, j])
-                        cash += p['v'] * (1 - 0.01 / rx - fee[t] / 2); need -= p['v']; active.remove(p); held.discard(j); ev += 1
+                        cash += p['v'] * (1 - 0.01 / rx - fee[t] / 2 - ecost); need -= p['v']
+                        if evlog is not None: evlog.append((t, s, p['s'], p['v'] / p['inv'] - 1, p['net'], t - p['e']))
+                        active.remove(p); held.discard(j); ev += 1
                     invested = sum(p['v'] for p in active); equity = cash + invested; inv_s = sum(p['v'] for p in active if p['s'] == s)
                     ideal = min(want * w[s] * equity, max(caps.get(s, 9.0) * equity - inv_s, 0))
                 got = 0.0
