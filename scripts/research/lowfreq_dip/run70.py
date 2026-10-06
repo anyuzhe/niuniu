@@ -21,6 +21,21 @@ def jobs(phase):
     if phase == 'rank1':
         for r in ('r5', 'zown', 'dd60', 'dma20', 'volhi', 'vollo', 'ret1', 'sighi', 'siglo'): J[f'排序:{r}'] = dict(rank=r)
         for sd in (1, 2, 3): J[f'排序:随机(对照){sd}'] = dict(rank='rand', seed=sd)
+    if phase == 'combo':
+        T = lambda x: ['target', x]
+        J['止盈20% 或 止损20%'] = dict(rules=[T(.20), ['stop', .20]])
+        J['止盈25%'] = dict(rules=[T(.25)]); J['止盈30%'] = dict(rules=[T(.30)])
+        J['波动率1.5× 或 止损15%'] = dict(rules=[['volt', 1.5], ['stop', .15]])
+        J['收复100% 或 止盈20%'] = dict(rules=[['recover', 1.0], T(.20)])
+        J['恐慌分≥1.0 或 止盈20%'] = dict(rules=[['mz', 1.0, 3], T(.20)])
+        J['止盈20% 或 跟踪(峰值15%回撤7%)'] = dict(rules=[T(.20), ['trail', .15, .07]])
+        J['止盈20% 或 收复100% 或 止损20%'] = dict(rules=[T(.20), ['recover', 1.0], ['stop', .20]])
+        J['同时满足: 盈利≥8% 且 恐慌分≥0'] = dict(rules=[['all', T(.08), ['mz', 0, 3]]])
+        J['同时满足: 盈利≥10% 且 恐慌分≥0.5'] = dict(rules=[['all', T(.10), ['mz', .5, 3]]])
+        J['同时满足: 盈利≥8% 且 回到MA20'] = dict(rules=[['all', T(.08), ['ma20', 0, 2]]])
+        J['同时满足: 盈利≥10% 且 收复50%'] = dict(rules=[['all', T(.10), ['recover', .5]]])
+        J['同时满足: 收复100% 且 恐慌分≥0'] = dict(rules=[['all', ['recover', 1.0], ['mz', 0, 3]]])
+        J['同时满足: 回到MA20+5% 且 恐慌分≥0.5'] = dict(rules=[['all', ['ma20', .05, 2], ['mz', .5, 3]]])
     if phase == 'nw':
         for N, k in ((10, 1.5), (10, 2.0), (5, 3.0), (5, 4.0)): J[f'名额 {N} 每只权重×{k}'] = dict(N=N, W={'A': .08 * k, 'C': .08 * k, 'B': .025 * k})
     if phase == 'pred':

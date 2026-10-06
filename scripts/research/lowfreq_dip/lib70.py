@@ -57,31 +57,35 @@ def pred_value(t, j, s):
     v = feat_vec(t, j, s)
     if not np.isfinite(v).all(): return np.nan
     mu, sd, b, m0 = p; return m0 + float(((v - mu) / sd) @ b)
+def _cond(rule, j, e, t, o0, dmin, dmax, path, ret, s):
+    kind, *p = rule; n = len(path)
+    if kind == 'target': return ret >= p[0]
+    if kind == 'volt':
+        sg = float(SIG[t, j]); return ret >= p[0] * sg * np.sqrt(20) if np.isfinite(sg) else np.zeros(n, bool)
+    if kind == 'ma20':
+        h = np.asarray(DIST[dmin - 1:dmax + 1, j], np.float64) >= p[0]; h[:max(p[1], 0)] = False; return h
+    if kind == 'recover':
+        pre = float(C[t - 20, j]) if t >= 20 else np.nan; ref = float(C[t, j])
+        return (path - ref) / (pre - ref) >= p[0] if (np.isfinite(pre) and pre > ref > 0) else np.zeros(n, bool)
+    if kind == 'mz':
+        h = np.nan_to_num(MZ[dmin - 1:dmax + 1] >= p[0], nan=0).astype(bool); h[:max(p[1], 0)] = False; return h
+    if kind == 'trail':
+        pk = np.maximum.accumulate(path); return ((pk / o0 - 1) >= p[0]) & (path <= pk * (1 - p[1]))
+    if kind == 'stop': return ret <= -p[0]
+    if kind == 'minhold': h = np.ones(n, bool); h[:p[0]] = False; return h
+    if kind == 'all':
+        h = np.ones(n, bool)
+        for r in p: h &= _cond(tuple(r), j, e, t, o0, dmin, dmax, path, ret, s)
+        return h
+    if kind == 'predt':
+        pv = pred_value(t, j, s); return ret >= max(p[0] * pv, p[1]) if np.isfinite(pv) else np.zeros(n, bool)
+    raise KeyError(kind)
 def dyn_exit(rules, j, e, t, o0, H, s=None):
-    """first trigger (decision at close d, exit at next tradable open). returns (xi, px) or None."""
+    """OR over rules (a rule may be ('all', r1, r2...) = AND). decision at close d, exit at next tradable open; None -> fixed H."""
     dmax = t + H - 1; dmin = e + 1
     if dmax < dmin: return None
-    path = np.asarray(C[dmin - 1:dmax + 1, j], np.float64); days = np.arange(dmin - 1, dmax + 1)   # includes close of day e (index 0)
-    ret = path / o0 - 1; hit = np.zeros(len(path), bool)
-    for kind, *p in rules:
-        if kind == 'target': hit |= ret >= p[0]
-        elif kind == 'volt':
-            s = float(SIG[t, j]) if np.isfinite(SIG[t, j]) else np.nan
-            if np.isfinite(s): hit |= ret >= p[0] * s * np.sqrt(20)
-        elif kind == 'ma20':
-            h = np.asarray(DIST[dmin - 1:dmax + 1, j], np.float64) >= p[0]; h[:max(p[1], 0)] = False; hit |= h
-        elif kind == 'recover':
-            pre = float(C[t - 20, j]) if t >= 20 else np.nan; ref = float(C[t, j])
-            if np.isfinite(pre) and pre > ref > 0: hit |= (path - ref) / (pre - ref) >= p[0]
-        elif kind == 'mz':
-            h = MZ[dmin - 1:dmax + 1] >= p[0]; h[:max(p[1], 0)] = False; hit |= np.nan_to_num(h, nan=0).astype(bool)
-        elif kind == 'trail':
-            pk = np.maximum.accumulate(path); hit |= ((pk / o0 - 1) >= p[0]) & (path <= pk * (1 - p[1]))
-        elif kind == 'stop': hit |= ret <= -p[0]
-        elif kind == 'predt':
-            pv = pred_value(t, j, s)
-            if np.isfinite(pv): hit |= ret >= max(p[0] * pv, p[1])
-    hit[0] = hit[0] and False if False else hit[0]
+    path = np.asarray(C[dmin - 1:dmax + 1, j], np.float64); days = np.arange(dmin - 1, dmax + 1); ret = path / o0 - 1; hit = np.zeros(len(path), bool)
+    for rule in rules: hit |= _cond(tuple(rule), j, e, t, o0, dmin, dmax, path, ret, s)
     for k in np.nonzero(hit)[0]:
         d = int(days[k])
         for kk in (d + 1, d + 2, d + 3):
