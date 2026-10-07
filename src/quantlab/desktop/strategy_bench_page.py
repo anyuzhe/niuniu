@@ -1,26 +1,27 @@
 """策略工作台：把“恐慌日抄底”策略做成可看、可调、可跟踪的页面。
 
-七个标签：今日信号 / 回测与风险 / 参数沙盒 / 前向跟踪 / 行业恐慌（只看信号，单独一份回测和前向记录）/ 策略 D（大盘、成交额分档、行业三层恐慌共用一笔钱，单独一份回测和前向记录）/ 策略说明（A、B、C、D、D1 的规则、用法、回测口径和风险）。
+八个标签：今日信号 / 回测与风险 / 参数沙盒 / 前向跟踪 / 行业恐慌（只看信号，单独一份回测和前向记录）/ 策略 D（大盘、成交额分档、行业三层恐慌共用一笔钱，单独一份回测和前向记录）/ 策略说明（A、B、C、D、D1 的规则、用法、回测口径和风险）。
 数据只来自数据清单里 READY 的前复权日线和日状态（quantlab.dipbuy.panel），第一次要读 5000 多个文件，
 结果缓存在输出目录里；回测在后台线程里跑，页面轮询进度。这里不下单、不连券商。
 """
 import math
 import threading
 from dataclasses import replace
+from datetime import datetime
 
 from PyQt6 import sip
 from PyQt6.QtCore import QRectF, QPointF, Qt, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QLineEdit, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 from quantlab.data.dataset_catalog import is_data_ready
-from quantlab.dipbuy import autorecord, backtest, engine, fusion, industry, panel as dpanel, tracker
+from quantlab.dipbuy import autorecord, backtest, engine, fusion, industry, panel as dpanel, portfolio, tracker
 from . import strategy_guide
 from .strategy_calendar import CalendarCard
 from .widgets import Card, button, kpis, label, row, table
 
 UP, DOWN, GOLD, BLUE, GREY = QColor('#f35f62'), QColor('#22d787'), QColor('#f6b72f'), QColor('#4e96ff'), QColor('#8fa4b7')
-TABS = (('signal', '今日信号'), ('risk', '回测与风险'), ('sandbox', '参数沙盒'), ('forward', '前向跟踪'), ('industry', '行业恐慌'), ('fusion', '策略 D'), ('guide', '策略说明'))
+TABS = (('signal', '今日信号'), ('risk', '回测与风险'), ('sandbox', '参数沙盒'), ('forward', '前向跟踪'), ('industry', '行业恐慌'), ('fusion', '策略 D'), ('holdings', '我的持仓'), ('guide', '策略说明'))
 DISCLAIMER = ('这是研究工具，不是买卖建议，也不会下单。回测是历史结果：样本只有约 45 段恐慌期，参数是看过数据后定的，'
               '面板是否已并入退市股看页面顶部的数据状态（没并入时有幸存者偏差）；没有计入冲击成本，也没有模拟跌停卖不出和退市整理期卖不出；融资需要券商两融资格，2 倍杠杆的历史最大回撤约 −51%。')
 YEAR_CHOICES = ('2008', '2012', '2017', '2020')
@@ -238,6 +239,8 @@ class BenchPage:
         self.timer.timeout.connect(self.tick)
         self.equity_spin = None
         self.pick_host = None
+        self.hold_host = None
+        self.today_override = None
         self.message = {}
 
     # ---- auto-record forward signals
@@ -393,6 +396,7 @@ class BenchPage:
         self.build_forward()
         self.build_industry()
         self.build_fusion()
+        self.build_holdings()
 
     # ---- tab 1: today's signal
     def build_signal(self):
@@ -974,6 +978,185 @@ class BenchPage:
         if variant in ('D', 'D1') and variant != self.state.get('fusion_variant'):
             self.state['fusion_variant'] = variant
             self.build_fusion()
+            self.build_holdings()
+
+    # ---- tab: 我的持仓（录入真实持仓，按 D / D1 的规则算明天该卖什么、该买什么）
+    def today(self):
+        return getattr(self, 'today_override', None) or datetime.now(autorecord.SHANGHAI).date()
+
+    def build_holdings(self):
+        v = self.boxes['holdings']
+        _clear(v)
+        top = self.state.get('fusion')
+        variant, fus = self.fus_cur() if top and not top.get('error') else ('D', None)
+        if not top or top.get('error') or not fus or fus.get('error'):
+            why = (top or {}).get('error') or (fus or {}).get('error') or '数据还没准备好'
+            v.addWidget(label('我的持仓暂不可用：' + str(why), 'note', True))
+            v.addStretch(1)
+            return
+        cfg, cls, panel = fus['cfg'], fus['cls'], self.state['panel']
+        self.hold_ctx = (cfg, fusion.build_inputs(panel, cfg, cls))
+        data = portfolio.load(self.window.output)
+        intro = Card('这是什么')
+        intro.add(label(f'把你真实买的股票录进来，工作台按{fusion.VARIANT_NAMES[variant]}的规则算“下一个开市日”要做什么：哪些到期该卖、哪些新信号该买（已经持有的不会重复买，'
+                        f'每层名额和总仓位会扣掉已有持仓）。持有 {cfg.hold_days} 个交易日：买入当天算第 1 天，第 {cfg.hold_days} 天收盘卖出。'
+                        '候选排序跟随“策略 D”标签里选的 D / D1。这里只是辅助计算，不下单、不连券商；持仓只存在这台电脑上。'
+                        '每天的用法：收盘后数据更新 → 看“明天要卖/要买” → 明天照单操作 → 买完点“记为已持有”→ 卖完等数据更新后点“清掉已到期的”。', 'muted', True))
+        v.addWidget(intro)
+        self.hold_equity = QDoubleSpinBox()
+        self.hold_equity.setAccessibleName('账户总资产')
+        self.hold_equity.setRange(1, 100000)
+        self.hold_equity.setDecimals(1)
+        self.hold_equity.setValue(data['equity_wan'])
+        self.hold_equity.setSuffix(' 万元')
+        self.hold_equity.editingFinished.connect(self.save_hold_equity)
+        card = Card('账户')
+        card.add(row(label('账户总资产（现金 + 持仓市值，用来按权重算每只买多少）'), self.hold_equity))
+        v.addWidget(card)
+        self.hold_host = QWidget()
+        self.hold_box = QVBoxLayout(self.hold_host)
+        self.hold_box.setContentsMargins(0, 0, 0, 0)
+        self.hold_box.setSpacing(12)
+        v.addWidget(self.hold_host)
+        self.fill_holdings_plan()
+        # 录入与维护
+        form = Card('录入 / 维护持仓')
+        self.hold_code = QLineEdit()
+        self.hold_code.setPlaceholderText('代码，如 600000')
+        self.hold_code.setAccessibleName('持仓代码')
+        self.hold_shares = QSpinBox()
+        self.hold_shares.setAccessibleName('持仓股数')
+        self.hold_shares.setRange(1, 100_000_000)
+        self.hold_shares.setSingleStep(100)
+        self.hold_shares.setValue(1000)
+        self.hold_shares.setSuffix(' 股')
+        self.hold_date = QLineEdit(autorecord.next_open_day(str(panel.dates[-1])).isoformat())
+        self.hold_date.setAccessibleName('持仓买入日')
+        self.hold_cost = QDoubleSpinBox()
+        self.hold_cost.setAccessibleName('持仓成本价')
+        self.hold_cost.setRange(0, 100000)
+        self.hold_cost.setDecimals(3)
+        self.hold_cost.setSpecialValueText('成本价（不填）')
+        self.hold_sleeve = QComboBox()
+        self.hold_sleeve.setAccessibleName('持仓所属层')
+        for text, key in (('哪一层不确定', ''), ('A 大盘恐慌', 'A'), ('C 成交额档', 'C'), ('B 行业', 'B')):
+            self.hold_sleeve.addItem(text, key)
+        self.hold_message = label('', 'muted', True)
+        self.hold_message.setAccessibleName('持仓提示')
+        form.add(row(self.hold_code, self.hold_shares, self.hold_date, self.hold_cost, self.hold_sleeve,
+                     button('添加持仓', self.add_holding_clicked, True)))
+        self.hold_pick = QComboBox()
+        self.hold_pick.setAccessibleName('选择要删除的持仓')
+        for h in data['holdings']:
+            self.hold_pick.addItem(f"{h['code']} {self.state['names'].get(h['code'], '')}　{h['shares']} 股　{h['entry_date']} 买入", h['id'])
+        form.add(row(self.hold_pick, button('删除所选', self.remove_holding_clicked),
+                     button('清掉已到期的持仓（卖完、数据更新后点）', self.clear_expired_clicked)))
+        form.add(label('买入日要写成 2026-10-08 这样；买入当天算第 1 个持有日。层不确定也可以，只是它不占 A / C / B 的名额。'
+                       '成交价和股数以你实际成交为准；录错了就删掉重录。', 'muted', True))
+        form.add(self.hold_message)
+        v.addWidget(form)
+        v.addStretch(1)
+
+    def hold_data(self):
+        return portfolio.load(self.window.output)
+
+    def save_hold_equity(self):
+        try:
+            portfolio.set_equity(self.window.output, self.hold_equity.value())
+        except ValueError as exc:
+            self.hold_message.setText(str(exc))
+            return
+        self.fill_holdings_plan()
+
+    def fill_holdings_plan(self):
+        if getattr(self, 'hold_host', None) is None or not _alive(self.hold_host):
+            return
+        _clear(self.hold_box)
+        cfg, inp = self.hold_ctx
+        panel = self.state['panel']
+        data = self.hold_data()
+        plan = portfolio.plan_operations(panel, inp, cfg, data['holdings'], equity=self.hold_equity.value() * 1e4,
+                                         names=self.state['names'], today=self.today())
+        self.hold_plan = plan
+        fired = '、'.join(plan['fired']) if plan['fired'] else '无'
+        self.hold_box.addWidget(kpis([
+            ('数据截至', plan['data_date'], f"计划日 {plan['plan_day']}（下一个开市日）"),
+            ('触发的层', fired, '今天没有层触发，就没有新买入' if not plan['gate_open'] else '新买入按 A → C → B 分钱'),
+            ('明天要卖', f"{len(plan['sells'])} 只", f"约回笼 {plan['proceeds']:,.0f} 元"),
+            ('明天要买', f"{len(plan['buys'])} 只", f"约 {plan['new_money']:,.0f} 元"),
+        ]))
+        for n in plan['notes']:
+            self.hold_box.addWidget(label(n, 'note', True))
+        sells = Card('明天要卖')
+        if plan['sells']:
+            sells.add(table(['代码', '名称', '层', '股数', '买入日', '已持有', '现价', '浮盈', '市值（元）', '怎么卖'],
+                            [[r['code'], r['name'] or '—', r['sleeve'] or '—', f"{r['shares']:,}", r['entry_date'], r['days_held'],
+                              _num(r['close']), _pct(r['pnl']), f"{(r['value'] or 0):,.0f}", r['advice']] for r in plan['sells']]))
+            sells.add(label('“已到期”的最好明天开盘就卖；“明天收盘前卖”的按回测是收盘价卖出（可以用收盘集合竞价）。', 'muted', True))
+        else:
+            sells.add(label('明天没有到期要卖的。', 'muted', True))
+        self.hold_box.addWidget(sells)
+        buys = Card('明天开盘要买' if plan['buys'] else '明天没有要买的')
+        if plan['buys']:
+            buys.add(table(['层', '排名', '代码', '名称', '收盘价（估算）', '权重', '计划金额（元）', '估算股数'],
+                           [[b['sleeve'], b['rank'], b['code'], b['name'] or '—', _num(b['close']), _pct(b['weight'], 1, False),
+                             f"{b['amount']:,.0f}", f"{b['shares']:,}"] for b in plan['buys']]))
+            buys.add(row(button('把这些记为已持有（买完后点）', self.record_plan_buys, True),
+                         label('日期记为计划日，成本价留空；实际成交价不同，可以删掉重录。')))
+            if plan['spares']:
+                buys.add(label('备选（明天开盘一字涨停买不进时顺延）：' + '、'.join(
+                    f"{b['code']} {b['name'] or ''}".strip() for b in plan['spares'][:10]), 'muted', True))
+        elif plan['stale']:
+            buys.add(label('数据过期，不出买入计划。', 'muted', True))
+        else:
+            buys.add(label('三层闸门都没开，或触发的层名额已满、候选已被持有，没有新买入。', 'muted', True))
+        self.hold_box.addWidget(buys)
+        allh = Card(f"全部持仓（{len(plan['holdings'])} 只，市值约 {sum(r['value'] or 0 for r in plan['holdings']):,.0f} 元）")
+        if plan['holdings']:
+            allh.add(table(['代码', '名称', '层', '股数', '买入日', '已持有', '现价', '浮盈', '市值（元）', '状态'],
+                           [[r['code'], r['name'] or '—', r['sleeve'] or '—', f"{r['shares']:,}", r['entry_date'],
+                             r['days_held'] if r['days_held'] is not None else '—', _num(r['close']), _pct(r['pnl']),
+                             f"{(r['value'] or 0):,.0f}", r['advice']] for r in plan['holdings']]))
+        else:
+            allh.add(label('还没有录入持仓。买了之后在下面录入，或者买完点上面的“记为已持有”。', 'muted', True))
+        self.hold_box.addWidget(allh)
+
+    def add_holding_clicked(self):
+        try:
+            cost = self.hold_cost.value() or None
+            portfolio.add_holding(self.window.output, code=self.hold_code.text(), shares=int(self.hold_shares.value()),
+                                  entry_date=self.hold_date.text(), cost=cost, sleeve=self.hold_sleeve.currentData() or '')
+        except ValueError as exc:
+            self.hold_message.setText(str(exc))
+            return
+        self.hold_message.setText('已添加。')
+        self.build_holdings()
+
+    def remove_holding_clicked(self):
+        hid = self.hold_pick.currentData()
+        if not hid:
+            self.hold_message.setText('没有可删除的持仓。')
+            return
+        portfolio.remove_holding(self.window.output, hid)
+        self.build_holdings()
+
+    def clear_expired_clicked(self):
+        cfg, _ = self.hold_ctx
+        n = portfolio.clear_expired(self.window.output, self.state['panel'], cfg.hold_days)
+        self.build_holdings()
+        self.hold_message.setText(f'已清掉 {n} 只已到期的持仓。' if n else '没有已到期的持仓。')
+
+    def record_plan_buys(self):
+        plan = self.hold_plan
+        added, skipped = 0, []
+        for b in plan['buys']:
+            try:
+                portfolio.add_holding(self.window.output, code=b['code'], shares=b['shares'], entry_date=plan['plan_day'], sleeve=b['sleeve'])
+                added += 1
+            except ValueError as exc:
+                skipped.append(f"{b['code']}（{exc}）")
+        self.build_holdings()
+        self.hold_message.setText(f'已记入 {added} 只。' + (' 跳过：' + '；'.join(skipped) if skipped else ''))
 
     def build_fusion_forward(self, v, fus):
         fwd = fus.get('forward') or {}

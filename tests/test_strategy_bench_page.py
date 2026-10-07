@@ -1,4 +1,4 @@
-"""策略工作台页面（离屏）：用缓存好的合成面板走一遍七个标签（含行业恐慌、策略 D）、沙盒回测、前向记录。"""
+"""策略工作台页面（离屏）：用缓存好的合成面板走一遍八个标签（含行业恐慌、策略 D）、沙盒回测、前向记录。"""
 import json
 import os
 import sys
@@ -114,11 +114,11 @@ class BenchPageTests(unittest.TestCase):
         self.assertEqual(self.window.bench_state['panel'].shape, (340, 30))
         self.assertTrue(any('数据面板：30 只股票' in t for t in self.labels()))
 
-    def test_seven_tabs_signal_and_forward_record(self):
+    def test_eight_tabs_signal_and_forward_record(self):
         self.cache_panel()
         self.go()
         tabs = self.window.scroll.widget().findChild(QTabWidget)
-        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ['今日信号', '回测与风险', '参数沙盒', '前向跟踪', '行业恐慌', '策略 D', '策略说明'])
+        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ['今日信号', '回测与风险', '参数沙盒', '前向跟踪', '行业恐慌', '策略 D', '我的持仓', '策略说明'])
         sig = self.window.bench_state['default']
         self.assertEqual(sig['format'], 'niuniu-dipbuy-run-v1')
         # 今日信号：闸门开，10 只收复，计划里 20 只上限内全部是计划内
@@ -147,6 +147,82 @@ class BenchPageTests(unittest.TestCase):
         self.button('再点一次确认清空').click()
         QTest.qWait(50)
         self.assertFalse((self.out / '_home' / 'dip_forward.json').exists())
+
+    def holdings_page(self, plan_day):
+        """把“今天”钉在计划日，免得合成面板的 2025 年日期被当成过期数据；返回页面对象列表（最后一个是当前页面）。"""
+        pages = []
+
+        def today(page):
+            pages.append(page)
+            return plan_day
+        patcher = mock.patch.object(page_mod.BenchPage, 'today', today)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return pages
+
+    def test_holdings_tab_plans_buys_sells_and_keeps_its_own_file(self):
+        from quantlab.dipbuy import autorecord
+        panel = self.cache_panel()
+        plan_day = autorecord.next_open_day(panel.last_date)
+        pages = self.holdings_page(plan_day)
+        self.go()
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        self.assertEqual(tabs.tabText(6), '我的持仓')
+        texts = [w.text() for w in tabs.widget(6).findChildren(QLabel)]
+        self.assertTrue(any('明天开盘要买' in t for t in texts))
+        self.assertTrue(any('还没有录入持仓' in t for t in texts))
+        page = pages[-1]
+        self.assertEqual(page.hold_plan['plan_day'], plan_day.isoformat())
+        self.assertGreater(len(page.hold_plan['buys']), 0)
+        # 手动录入：一只明天到期的、一只早已到期的（合成面板里真实存在的代码只有 600000–600009）
+        H = page.hold_plan['hold_days']
+        due_day = str(panel.dates[len(panel.dates) - 1 - (H - 2)])
+        old_day = str(panel.dates[len(panel.dates) - 1 - (H + 2)])
+        for code, day in (('600001', due_day), ('600002', old_day)):
+            pages[-1].hold_code.setText(code)
+            pages[-1].hold_date.setText(day)
+            self.button('添加持仓').click()
+            QTest.qWait(30)
+        sells = {r['code']: r for r in pages[-1].hold_plan['sells']}
+        self.assertEqual(sells['sh.600001']['status'], 'due')
+        self.assertEqual(sells['sh.600002']['status'], 'overdue')
+        self.assertTrue(any('明天要卖' in t for t in self.labels()))
+        self.assertNotIn('sh.600001', [b['code'] for b in pages[-1].hold_plan['buys']])         # 还没卖的不重复买
+        pages[-1].hold_code.setText('abc')
+        self.button('添加持仓').click()
+        self.assertTrue(any('6 位数字' in t for t in self.labels()))
+        # 卖完、数据更新后清掉已到期的：只清早已到期的
+        self.button('清掉已到期的持仓（卖完、数据更新后点）').click()
+        QTest.qWait(30)
+        path = self.out / '_home' / 'dip_holdings.json'
+        left = {h['code'] for h in json.loads(path.read_text(encoding='utf-8'))['holdings']}
+        self.assertEqual(left, {'sh.600001'})
+        self.assertTrue(any('已清掉 1 只' in t for t in self.labels()))
+        # 买完记为已持有：计划日作为买入日，之后的计划不再出现这些票
+        buys = [b for b in pages[-1].hold_plan['buys'] if len(b['code']) == 9]       # 合成面板里 sh.6000010 这类 7 位代码不是真代码，录不进去
+        self.assertGreater(len(buys), 0)
+        self.button('把这些记为已持有（买完后点）').click()
+        QTest.qWait(50)
+        saved = json.loads(path.read_text(encoding='utf-8'))['holdings']
+        self.assertEqual({h['code'] for h in saved}, {'sh.600001'} | {b['code'] for b in buys})
+        self.assertTrue(all(h['entry_date'] == plan_day.isoformat() for h in saved if h['code'] != 'sh.600001'))
+        self.assertFalse({h['code'] for h in saved} & {b['code'] for b in pages[-1].hold_plan['buys']})
+        self.assertTrue(any('已记入' in t for t in self.labels()))
+        self.assertFalse((self.out / '_home' / 'dip_fusion_forward.json').exists())              # 其它记录文件不受影响
+
+    def test_holdings_tab_refuses_stale_data_and_saves_equity(self):
+        panel = self.cache_panel()
+        self.go()                                          # 不钉“今天”：合成面板是 2025 年的，早已过期
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        texts = [w.text() for w in tabs.widget(6).findChildren(QLabel)]
+        self.assertTrue(any('先更新数据' in t for t in texts))
+        self.assertTrue(any('数据过期' in t for t in texts))
+        box = next(b for b in tabs.widget(6).findChildren(QDoubleSpinBox) if b.accessibleName() == '账户总资产')
+        box.setValue(88.0)
+        box.editingFinished.emit()
+        QTest.qWait(30)
+        saved = json.loads((self.out / '_home' / 'dip_holdings.json').read_text(encoding='utf-8'))
+        self.assertEqual(saved['equity_wan'], 88.0)
 
     def test_industry_tab_shows_signal_backtest_and_keeps_its_own_ledger(self):
         self.cache_panel()
