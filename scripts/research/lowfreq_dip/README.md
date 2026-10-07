@@ -96,3 +96,4 @@
 - `build_panel_del.py` / `run_delisted.sh`：把数据侧补回的 290 只退市股（baostock 不复权 + 前复权）并进面板，生成 `panel_del.npz`（含 `isdel` 标记）；`run_delisted.sh` 是 `bars_delisted.py` 计划 → 批准 → 执行的可续跑封装（§90）。
 - `prep80.py` / `prep80b.py` / `an80.py` / `an80b.py`：含退市股的数组导出（`PANEL_NPZ=panel_del.npz`，`DROPDEL=1` 导出不含退市的对照闸门）、D 的含 / 不含退市对照与退市股成交明细；结果 `res80_del.json` / `res80_nodel.json`（§90）。`lib70.py` / `lib72.py` / `lib73.py` / `grp_lib.py` 同步更新为可用环境变量切换数据目录（`C70DIR`、`SERIES`、`NODEL`、`DROPDEL`）。
 - `build_val80.py` / `an81.py` / `an81b.py`：把 baostock 每日估值对齐到含退市股面板；价格 / 成交额 / 回撤 / 市盈率 / 市净率类买入前过滤的批量检验，以及退市股与在市股买入前特征对比（§91）；结果 `res81_del.json`。
+- `fin_del.py` / `build_fintab.py` / `an82.py`：取退市股年报（baostock，带披露日）与在市股年报（东方财富）合表，按披露日对齐后测“亏损 + 营收 < 1 亿、连续亏损、净资产为负”这类退市规则条件的买入前过滤；结果 `res82_del.json`（§92）。
