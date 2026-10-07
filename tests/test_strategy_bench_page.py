@@ -15,7 +15,7 @@ import numpy as np
 
 if find_spec('PyQt6'):
     from PyQt6.QtTest import QTest
-    from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QLabel, QPushButton, QSpinBox, QTableWidget, QTabWidget
+    from PyQt6.QtWidgets import QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QPushButton, QSpinBox, QTableWidget, QTabWidget
     from quantlab.desktop.app import MainWindow
     from quantlab.desktop import strategy_bench_page as page_mod
     from quantlab.desktop.strategy_calendar import CalendarCard
@@ -209,6 +209,36 @@ class BenchPageTests(unittest.TestCase):
         self.assertFalse({h['code'] for h in saved} & {b['code'] for b in pages[-1].hold_plan['buys']})
         self.assertTrue(any('已记入' in t for t in self.labels()))
         self.assertFalse((self.out / '_home' / 'dip_fusion_forward.json').exists())              # 其它记录文件不受影响
+
+    def test_near_high_switch_is_off_by_default_and_never_touches_the_forward_record(self):
+        from quantlab.dipbuy import autorecord
+        panel = self.cache_panel()
+        pages = self.holdings_page(autorecord.next_open_day(panel.last_date))
+        self.go()
+        page = pages[-1]
+        root = self.window.scroll.widget()
+
+        def box():
+            return next(b for b in root.findChildren(QCheckBox) if b.accessibleName() == '近高点过滤')
+        self.assertFalse(box().isChecked())
+        self.assertFalse(page.near_high_on)
+        self.assertTrue(any('大盘离近 120 日高点' in t for t in self.labels()))               # 只读显示行一直在
+        base_buys = [b['code'] for b in page.hold_plan['buys']]
+        would_block = page.fus_signal['market_position']['would_block']
+        box().setChecked(True)
+        QTest.qWait(50)
+        self.assertTrue(page.near_high_on)
+        self.assertTrue(box().isChecked())
+        self.assertFalse(page.fus_cfg.near_high_on)                                       # 前向记录用的配置不带过滤
+        self.assertEqual(page.fus_cfg.hash(), page_mod.fusion.default_config().hash())
+        self.assertTrue(page.hold_ctx[0].near_high_on)
+        self.assertEqual([b['code'] for b in page.hold_plan['buys']], [] if would_block else base_buys)
+        if would_block:
+            self.assertTrue(any('近高点过滤已打开' in n for n in page.hold_plan['notes']))
+        box().setChecked(False)
+        QTest.qWait(50)
+        self.assertFalse(page.near_high_on)
+        self.assertEqual([b['code'] for b in page.hold_plan['buys']], base_buys)
 
     def test_holdings_tab_refuses_stale_data_and_saves_equity(self):
         panel = self.cache_panel()

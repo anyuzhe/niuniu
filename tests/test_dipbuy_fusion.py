@@ -3,6 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from dataclasses import replace
+from types import SimpleNamespace
+
 import numpy as np
 
 from quantlab.dipbuy import fusion, industry, tracker
@@ -378,6 +381,77 @@ class RankOptionLedgerTests(unittest.TestCase):
         self.assertEqual(run['config_hash'], self.d1.hash())
         self.assertGreater(len(run['trades']), 0)
         self.assertTrue(any('D1' in c for c in run['caveats']))
+
+
+class NearHighFilterTests(unittest.TestCase):
+    """可选的近高点过滤：大盘离近 window 日高点不足 pct 时，三层闸门全部关掉。默认关，关着时和没有这个选项完全一样。"""
+
+    def market_inp(self, gate_days=(30, 150, 250), nd=330):
+        panel, inp = scripted(nd=nd, gates={'A': list(gate_days)}, pools={'A': (list(gate_days), [0, 1])})
+        mret = np.where(np.arange(nd) < 200, 0.005, -0.02)               # 前 200 天一路涨到高点，之后天天跌 2%
+        mk = Market(mret=mret, mk20=np.zeros(nd), z=np.zeros(nd), count=np.full(nd, 30))
+        stub_cls = SimpleNamespace(codes=[], names=[], sizes=[], as_of='2024-01-01', n_mapped=0, name_of=lambda j: '')
+        stub_ind = SimpleNamespace(z=np.zeros((nd, 0)), n=np.zeros((nd, 0), int), ret20=np.zeros((nd, 0)))
+        return panel, replace(inp, market=mk, cls=stub_cls, ind_state=stub_ind)
+
+    def test_off_by_default_keeps_the_old_hash_and_validates(self):
+        d, on = FusionConfig(), FusionConfig(near_high_on=True)
+        self.assertEqual((d.near_high_on, d.near_high_window, d.near_high_pct), (False, 120, 0.05))
+        self.assertEqual(d.hash(), '50af776c23a6')                       # 关着时哈希不变，已有前向记录照常对账
+        self.assertEqual(FusionConfig(near_high_window=250, near_high_pct=0.03).hash(), d.hash())
+        self.assertNotEqual(on.hash(), d.hash())
+        self.assertNotEqual(on.hash(), FusionConfig(near_high_on=True, near_high_pct=0.03).hash())
+        self.assertEqual(FusionConfig.from_dict(on.to_dict()), on)
+        self.assertEqual(FusionConfig.from_dict({k: v for k, v in d.to_dict().items() if not k.startswith('near_high')}), d)
+        for bad in ({'near_high_window': 5}, {'near_high_window': 5000}, {'near_high_pct': 0.0}, {'near_high_pct': 0.5}):
+            with self.assertRaises(ValueError):
+                FusionConfig(**bad)
+
+    def test_gap_matches_a_naive_loop(self):
+        _, inp = self.market_inp()
+        idx = np.cumprod(1 + inp.market.mret)
+        gap = fusion.near_high_gap(inp.market, 60)
+        self.assertTrue(np.isnan(gap[:59]).all())
+        for t in (59, 100, 199, 200, 250, 329):
+            self.assertAlmostEqual(gap[t], idx[t] / idx[t - 59:t + 1].max() - 1, places=12)
+        self.assertEqual(gap[150], 0.0)                                   # 一路涨：就在高点上
+        self.assertLess(gap[250], -0.5)
+
+    def test_filter_closes_gates_near_the_high_and_keeps_the_rest(self):
+        panel, inp = self.market_inp()
+        off = FusionConfig(near_high_window=60)
+        self.assertIs(fusion.with_near_high_filter(inp, off), inp)        # 关着：原样返回
+        cfg = FusionConfig(near_high_on=True, near_high_window=60)
+        f = fusion.with_near_high_filter(inp, cfg)
+        self.assertEqual([bool(f.any_gate[t]) for t in (30, 150, 250)], [True, False, True])    # 30 天历史不够不过滤，150 在高点被挡，250 已深跌放行
+        self.assertEqual([bool(f.gates['A'][t]) for t in (30, 150, 250)], [True, False, True])
+        self.assertTrue(f.raw_any_gate[150] and not f.any_gate[150])
+        self.assertTrue(inp.any_gate[150])                                # 原对象不被改动
+        loose = fusion.with_near_high_filter(inp, FusionConfig(near_high_on=True, near_high_window=60, near_high_pct=0.20))
+        self.assertFalse(loose.any_gate[150])
+
+    def test_simulation_skips_the_blocked_signal_day_and_signal_reports_it(self):
+        panel, inp = self.market_inp()
+        cfg = FusionConfig(near_high_on=True, near_high_window=60)
+        base = fusion.simulate_fused(panel, inp, FusionConfig())
+        raw = fusion.simulate_fused(panel, fusion.with_near_high_filter(inp, cfg), cfg)
+        days = lambda r: sorted({str(t['signal']) for t in r['trades']})
+        self.assertEqual(len(base['trades']), 6)
+        self.assertEqual(len(raw['trades']), 4)
+        self.assertNotIn(str(panel.dates[150]), days(raw))
+        self.assertIn(str(panel.dates[150]), days(base))
+        sig = fusion.latest_fusion_signal(panel, fusion.with_near_high_filter(inp, cfg), cfg, day=str(panel.dates[150]))
+        self.assertFalse(sig['gate_open'])
+        self.assertEqual(sig['picks'], [])
+        mp = sig['market_position']
+        self.assertTrue(mp['on'] and mp['blocked'] and mp['would_block'])
+        self.assertEqual((mp['window'], mp['pct']), (60, 0.05))
+        deep = fusion.latest_fusion_signal(panel, fusion.with_near_high_filter(inp, cfg), cfg, day=str(panel.dates[250]))
+        self.assertTrue(deep['gate_open'])
+        self.assertFalse(deep['market_position']['blocked'] or deep['market_position']['would_block'])
+        plain = fusion.latest_fusion_signal(panel, inp, FusionConfig(near_high_window=60), day=str(panel.dates[150]))
+        self.assertTrue(plain['gate_open'])                               # 过滤关着：照常有信号
+        self.assertTrue(plain['market_position']['would_block'] and not plain['market_position']['blocked'])
 
 
 if __name__ == '__main__':

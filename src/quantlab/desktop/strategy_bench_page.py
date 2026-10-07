@@ -240,6 +240,7 @@ class BenchPage:
         self.equity_spin = None
         self.pick_host = None
         self.hold_host = None
+        self.near_high_on = False
         self.today_override = None
         self.message = {}
 
@@ -863,6 +864,10 @@ class BenchPage:
             g = sig['sleeves'][s_]
             note = f"已触发，候选 {g['n_pool']} 只" if g['gate'] else ('未触发，还差 %.2f' % (g['z'] - cfg.z_threshold) if g['z'] is not None else '未触发')
             tiles.append((f"{s_} {g['name']}", _num(g['z']), f"{g['detail']}　{note}"))
+        mp = sig['market_position']
+        if mp['gap'] is not None:
+            tiles.append((f"大盘离近 {mp['window']} 日高点", _pct(mp['gap']),
+                          f"不足 {mp['pct'] * 100:g}%（研究里这类日子的信号表现差，过滤打开时会被挡掉）" if mp['would_block'] else f"超过 {mp['pct'] * 100:g}%，不会被近高点过滤挡掉"))
         v.addWidget(kpis(tiles))
         recent = sig['recent']
         chart = SeriesChart('三层恐慌分', y_format='{:+.2f}', height=190)
@@ -882,7 +887,8 @@ class BenchPage:
                         [[r['name'], r['stocks'], r['members'], _pct(r['ret20']), _num(r['z']), '触发' if r['triggered'] else '']
                          for r in sig['industries'][:10]]))
         v.addWidget(icard)
-        plan = Card('明天的计划' if sig['gate_open'] else '今天不用买（三层闸门都没开）')
+        plan_open = bool(fusion.build_inputs(panel, self.plan_cfg(cfg), cls).any_gate[sig['index']]) if self.near_high_on else bool(sig['gate_open'])
+        plan = Card('明天的计划' if plan_open else '今天不用买（三层闸门都没开）' if not (self.near_high_on and sig['gate_open']) else '今天不用买（被近高点过滤挡掉）')
         self.fus_equity = QDoubleSpinBox()
         self.fus_equity.setAccessibleName('策略D账户本金')
         self.fus_equity.setRange(1, 100000)
@@ -895,6 +901,13 @@ class BenchPage:
         self.fus_record_message = label('', 'muted', True)
         plan.add(row(label('按'), self.fus_equity, label('本金估算每只金额（按账户空仓算，已有持仓要自己扣掉）：'), self.fus_record_button))
         plan.add(self.fus_record_message)
+        self.near_high_box = QCheckBox(f'近高点过滤（默认关）：大盘离近 {cfg.near_high_window} 日高点不足 {cfg.near_high_pct * 100:g}% 时不开新仓')
+        self.near_high_box.setAccessibleName('近高点过滤')
+        self.near_high_box.setChecked(self.near_high_on)
+        self.near_high_box.toggled.connect(self.toggle_near_high)
+        plan.add(self.near_high_box)
+        plan.add(label('只影响下面的计划和“我的持仓”，回测数字和前向记录仍按原规则。研究（含退市股，见 §103）：D 年化 15.9% → 18.8%、D1 18.3% → 21.3%，最大回撤不变；'
+                       '增益几乎全来自 2013、2021–2023 年，参数是看过数据后选的，实际预期只有每年 +1.5 到 +3 个点，所以默认不开，留给前向记录去验证。', 'muted', True))
         self.fus_pick_host = QWidget()
         self.fus_pick_box = QVBoxLayout(self.fus_pick_host)
         self.fus_pick_box.setContentsMargins(0, 0, 0, 0)
@@ -919,6 +932,16 @@ class BenchPage:
         v.addWidget(result_view(run, panel, levered=False))
         v.addStretch(1)
 
+    def plan_cfg(self, cfg):
+        """“明天的计划”和“我的持仓”用的配置：近高点过滤打开时带上过滤；回测和前向记录永远用原配置。"""
+        return replace(cfg, near_high_on=True) if self.near_high_on else cfg
+
+    def toggle_near_high(self, on):
+        if bool(on) != self.near_high_on:
+            self.near_high_on = bool(on)
+            self.build_fusion()
+            self.build_holdings()
+
     def fill_fusion_picks(self):
         if getattr(self, 'fus_pick_host', None) is None or not _alive(self.fus_pick_host):
             return
@@ -927,7 +950,15 @@ class BenchPage:
         panel = self.state['panel']
         inp = fusion.build_inputs(panel, fus['cfg'], fus['cls'])
         sig = fusion.latest_fusion_signal(panel, inp, fus['cfg'], equity=self.fus_equity.value() * 1e4, names=self.state['names'])
-        self.fus_signal = sig
+        self.fus_signal = sig                      # 前向记录永远按原规则（不带近高点过滤）
+        if self.near_high_on:
+            pcfg = self.plan_cfg(fus['cfg'])
+            sig = fusion.latest_fusion_signal(panel, fusion.build_inputs(panel, pcfg, fus['cls']), pcfg,
+                                              equity=self.fus_equity.value() * 1e4, names=self.state['names'])
+            if sig['market_position']['blocked']:
+                self.fus_pick_box.addWidget(label(f"近高点过滤已打开：大盘离近 {pcfg.near_high_window} 日高点只有 {abs(sig['market_position']['gap']) * 100:.1f}%"
+                                                  f"（不足 {pcfg.near_high_pct * 100:g}%），今天本来触发的信号被挡掉，不新开仓。", 'note', True))
+                return
         if not sig['picks']:
             self.fus_pick_box.addWidget(label('今天没有层触发，或触发的层里没有可买的股票，没有计划。', 'muted', True))
             return
@@ -995,7 +1026,8 @@ class BenchPage:
             v.addStretch(1)
             return
         cfg, cls, panel = fus['cfg'], fus['cls'], self.state['panel']
-        self.hold_ctx = (cfg, fusion.build_inputs(panel, cfg, cls))
+        pcfg = self.plan_cfg(cfg)
+        self.hold_ctx = (pcfg, fusion.build_inputs(panel, pcfg, cls))
         data = portfolio.load(self.window.output)
         intro = Card('这是什么')
         intro.add(label(f'把你真实买的股票录进来，工作台按{fusion.VARIANT_NAMES[variant]}的规则算“下一个开市日”要做什么：哪些到期该卖、哪些新信号该买（已经持有的不会重复买，'

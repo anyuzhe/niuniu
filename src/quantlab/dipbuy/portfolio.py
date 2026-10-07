@@ -215,6 +215,11 @@ def plan_operations(panel: Panel, inp, cfg, holdings: list[dict], *, equity: flo
     if n_unlabeled:
         notes.append(f'{n_unlabeled} 只持仓没有标注是哪一层买的，它们不占 A / C / B 的名额，只占资金和“不重复买”。')
 
+    if inp.raw_any_gate is not None and inp.raw_any_gate[t] and not inp.any_gate[t]:
+        gap = fusion.near_high_gap(inp.market, cfg.near_high_window)[t]
+        notes.append(f'近高点过滤已打开：大盘离近 {cfg.near_high_window} 日高点只有 {abs(gap) * 100:.1f}%（不足 {cfg.near_high_pct * 100:g}%），'
+                     '今天本来触发的信号被挡掉，不新开仓；到期的持仓照常卖。')
+
     sells = [r for r in held_rows if r['status'] in ('overdue', 'due')]
     buys, spares = [], []
     sleeves = {}

@@ -72,6 +72,9 @@ class FusionConfig:
     end: str | None = None
     rank_mode: str = 'ret20'           # 'ret20' = D（20 日跌幅最大优先）；'dd60' = D1（先取跌幅前 rank_k，再按 60 日回撤最深优先）
     rank_k: int = 40
+    near_high_on: bool = False         # 可选过滤：大盘离近 window 日高点不足 pct 时，三层信号一律不开（默认关；研究 §101/§102）
+    near_high_window: int = 120
+    near_high_pct: float = 0.05
 
     def __post_init__(self):
         checks = (
@@ -86,6 +89,8 @@ class FusionConfig:
             (0.0 <= self.slippage_bp <= 200.0, '冲击成本应在 0 到 200 基点之间'),
             (self.rank_mode in RANK_MODES, '候选排序只支持 ret20 或 dd60'),
             (5 <= self.rank_k <= 200, '二段排序的候选数应在 5 到 200 之间'),
+            (20 <= self.near_high_window <= 1000, '近高点过滤的窗口应在 20 到 1000 日之间'),
+            (0.01 <= self.near_high_pct <= 0.20, '近高点过滤的距离应在 1% 到 20% 之间'),
         )
         for ok, message in checks:
             if not ok:
@@ -111,6 +116,9 @@ class FusionConfig:
         payload = self.to_dict()
         if self.rank_mode == 'ret20':       # D 的哈希保持和加排序选项之前一样，已有的前向记录和缓存不受影响
             payload.pop('rank_mode'), payload.pop('rank_k')
+        if not self.near_high_on:           # 过滤关着时哈希与加这个选项之前完全一样，已有的前向记录和缓存不受影响
+            for k in ('near_high_on', 'near_high_window', 'near_high_pct'):
+                payload.pop(k)
         blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256((FUSION_VERSION + blob).encode()).hexdigest()[:12]
 
@@ -240,9 +248,40 @@ class FusionInputs:
     ind_state: object           # industry.IndustryState
     cls: object                 # industry.Classification
     any_gate: np.ndarray
+    raw_any_gate: np.ndarray | None = None     # 近高点过滤打开时，过滤之前的“有信号”日（用来告诉你过滤挡掉了什么）
+
+
+def market_index(market: Market) -> np.ndarray:
+    """等权大盘指数（从 1 起累乘，缺失的日收益当 0）。"""
+    return np.cumprod(1.0 + np.where(np.isfinite(market.mret), market.mret, 0.0))
+
+
+def near_high_gap(market: Market, window: int) -> np.ndarray:
+    """大盘指数相对近 window 日（含当天）最高点的涨跌，≤0；前 window−1 天没有足够历史，给 NaN。"""
+    idx = market_index(market)
+    out = np.full(idx.shape, np.nan)
+    if len(idx) >= window:
+        peak = np.lib.stride_tricks.sliding_window_view(idx, window).max(axis=1)
+        out[window - 1:] = idx[window - 1:] / peak - 1.0
+    return out
+
+
+def with_near_high_filter(inp: FusionInputs, cfg: FusionConfig) -> FusionInputs:
+    """过滤关着原样返回；打开时，大盘离近 window 日高点不足 pct 的日子，三层闸门全部关掉（历史不足的日子不过滤）。"""
+    if not cfg.near_high_on:
+        return inp
+    gap = near_high_gap(inp.market, cfg.near_high_window)
+    with np.errstate(invalid='ignore'):
+        keep = ~(np.isfinite(gap) & (gap > -cfg.near_high_pct))
+    gates = {k: v & keep for k, v in inp.gates.items()}
+    return replace(inp, gates=gates, any_gate=gates['A'] | gates['C'] | gates['B'], raw_any_gate=inp.any_gate)
 
 
 def build_inputs(panel: Panel, cfg: FusionConfig, cls, *, progress=None, stop=None) -> FusionInputs:
+    return with_near_high_filter(_build_inputs(panel, cfg, cls, progress=progress, stop=stop), cfg)
+
+
+def _build_inputs(panel: Panel, cfg: FusionConfig, cls, *, progress=None, stop=None) -> FusionInputs:
     key = ('fusion-inputs', cls.as_of, float(cfg.z_threshold), float(cfg.min_amount), float(cfg.min_price))
     if key in panel.cache:
         return panel.cache[key]
@@ -458,11 +497,15 @@ def latest_fusion_signal(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, 
         zb_i = _num(np.nanmin(inp.ind_state.z[i])) if np.isfinite(inp.ind_state.z[i]).any() else None
         recent.append(dict(date=str(panel.dates[i]), a=_num(inp.market.z[i]), c=zc_i, b=zb_i))
     plan_size = sum(1 for p in picks if p['in_plan'])
+    gap_now = _num(near_high_gap(inp.market, cfg.near_high_window)[t])
+    blocked = bool(inp.raw_any_gate is not None and inp.raw_any_gate[t] and not inp.any_gate[t])
+    market_position = dict(window=cfg.near_high_window, pct=cfg.near_high_pct, gap=gap_now, on=cfg.near_high_on,
+                           would_block=bool(gap_now is not None and gap_now > -cfg.near_high_pct), blocked=blocked)
     return dict(date=str(panel.dates[t]), index=int(t), is_last_day=bool(t == len(panel.dates) - 1),
                 gate_open=bool(inp.any_gate[t]), fired=[s for s in ORDER if sleeves[s]['gate']], z=z_a,
                 mk20=_num(inp.market.mk20[t]), n_e6=int(sum(sl['n_pool'] for s, sl in sleeves.items() if sl['gate'])),
                 z_threshold=thr, sleeves=sleeves, quintiles=quint, industries=inds, picks=picks, plan_size=plan_size,
-                recent=recent, config_hash=cfg.hash(), variant=cfg.variant, rank_mode=cfg.rank_mode, nearest=min(z_all) if z_all else None, fusion=True,
+                recent=recent, config_hash=cfg.hash(), variant=cfg.variant, rank_mode=cfg.rank_mode, nearest=min(z_all) if z_all else None, fusion=True, market_position=market_position,
                 classification=dict(as_of=cls.as_of, n_mapped=cls.n_mapped))
 
 

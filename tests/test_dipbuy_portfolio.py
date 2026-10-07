@@ -168,6 +168,25 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(p['buys'], [])
         self.assertEqual([r['code'] for r in p['sells']], ['sh.600001'])
 
+    def test_near_high_filter_blocks_new_buys_but_not_sells_and_says_why(self):
+        from dataclasses import replace
+        from quantlab.dipbuy.engine import Market
+        panel, inp = fixture()
+        mret = np.full(ND, 0.001)                                          # 一路微涨：大盘就在高点上
+        inp = replace(inp, market=Market(mret=mret, mk20=np.zeros(ND), z=np.zeros(ND), count=np.full(ND, NC)))
+        cfg = FusionConfig(positions=5, near_high_on=True)
+        filtered = portfolio.fusion.with_near_high_filter(inp, cfg)
+        old = dict(id='h1', code='sh.600001', shares=1000, entry_date=day(panel, self.cfg.hold_days), cost=None, sleeve='A')
+        p = portfolio.plan_operations(panel, filtered, cfg, [old], equity=1_000_000)
+        self.assertFalse(p['gate_open'])
+        self.assertEqual(p['buys'], [])
+        self.assertEqual([r['code'] for r in p['sells']], ['sh.600001'])       # 到期照常卖
+        self.assertTrue(any('近高点过滤已打开' in n for n in p['notes']))
+        plain = portfolio.plan_operations(panel, inp, FusionConfig(positions=5), [], equity=1_000_000)
+        self.assertEqual(len(plain['buys']), 5)
+        self.assertFalse(any('近高点' in n for n in plain['notes']))
+
+
     def test_clear_expired_only_removes_overdue(self):
         with tempfile.TemporaryDirectory() as tmp:
             for col, back in ((1, 2), (2, self.cfg.hold_days - 1), (3, self.cfg.hold_days + 4)):
