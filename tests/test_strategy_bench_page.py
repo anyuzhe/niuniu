@@ -18,6 +18,7 @@ if find_spec('PyQt6'):
     from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QLabel, QPushButton, QSpinBox, QTableWidget, QTabWidget
     from quantlab.desktop.app import MainWindow
     from quantlab.desktop import strategy_bench_page as page_mod
+    from quantlab.desktop.strategy_calendar import CalendarCard
 from quantlab.dipbuy import panel as dpanel
 from test_dipbuy import make_panel
 
@@ -201,6 +202,12 @@ class BenchPageTests(unittest.TestCase):
         self.assertIn(grids[2].item(0, 0).text(), ('A', 'C', 'B'))
         for chart in tab.findChildren(page_mod.SeriesChart) + tab.findChildren(page_mod.BarChart):
             self.assertFalse(chart.grab().isNull())
+        cals = tab.findChildren(CalendarCard)                                   # 回测结果里有收益日历，年历 ⇄ 月历能切
+        self.assertEqual(len(cals), 1)
+        self.assertEqual(cals[0].view, 'year')
+        cals[0].set_view('month')
+        self.assertFalse(cals[0].chart.grab().isNull())
+        self.assertIn('月累计收益', cals[0].summary.text())
         self.button('把今天的信号记入策略 D 前向跟踪').click()
         QTest.qWait(50)
         ledger = json.loads((self.out / '_home' / 'dip_fusion_forward.json').read_text(encoding='utf-8'))

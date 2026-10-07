@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QSpinBox, Q
 
 from quantlab.data.dataset_catalog import is_data_ready
 from quantlab.dipbuy import backtest, engine, fusion, industry, panel as dpanel, tracker
+from .strategy_calendar import CalendarCard
 from .widgets import Card, button, kpis, label, row, table
 
 UP, DOWN, GOLD, BLUE, GREY = QColor('#f35f62'), QColor('#22d787'), QColor('#f6b72f'), QColor('#4e96ff'), QColor('#8fa4b7')
@@ -937,6 +938,7 @@ class BenchPage:
             chart = SeriesChart(f"{name.replace(' ', '')}前向净值", y_format='{:.3f}×')
             chart.set_data([{'name': '前向净值', 'color': '#f6b72f', 'values': port['equity']}], (port['dates'][0], port['dates'][-1]))
             card.add(chart)
+            card.add(CalendarCard(port['dates'], port['equity'], title='前向收益日历'))
             if port['mismatched']:
                 card.add(label('提示：有 %d 个信号日，组合重算选出的股票不在当时的记录里（数据可能被修订）。' % len(port['mismatched']), 'note', True))
         self.fus_clear_armed = False
@@ -1091,6 +1093,7 @@ def result_view(result, panel, *, levered=True):
     card = Card('各年收益（%）')
     card.add(bars)
     lay.addWidget(card)
+    lay.addWidget(CalendarCard(cv['dates'], cv['equity'], cv.get('benchmark')))
     eras = [[name, _pct(v and v['cagr']), _num(v and v['sharpe']), _pct(v and v['max_drawdown'], 0), _pct(v and v['exposure'], 0, False)]
             for name, v in s['eras'].items() if v]
     card = Card('分时期')
