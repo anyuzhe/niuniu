@@ -99,3 +99,4 @@
 - `fin_del.py` / `build_fintab.py` / `an82.py`：取退市股年报（baostock，带披露日）与在市股年报（东方财富）合表，按披露日对齐后测“亏损 + 营收 < 1 亿、连续亏损、净资产为负”这类退市规则条件的买入前过滤；结果 `res82_del.json`（§92）。
 - `yr83.py` / `parity83.py`：含退市股口径下 D 与 D1 的逐年收益；产品引擎 `quantlab.dipbuy.fusion` 与研究引擎在含退市股面板上的对账（§93）。
 - `build_c55_del.py` / `grp56.py` / `diag94.py`：含退市股口径下重跑“14:55 判断、收盘集合竞价买入”（§79 → §94）；`build_c55_del.py` 把 14:55 价并到含退市股面板，`grp56.py` 用 `C55FILE` / `SIG` / `DROPDEL` / `BAN` 等环境变量切口径，`diag94.py` 导出逐笔明细用于对账；结果 `grp56_del_c55.json` / `grp56_nodel_c55.json` / `grp56_del_true.json`。
+- `ord94.py`：提前平仓顺序（最老 / 最新 / 浮亏最多 / 浮盈最多）对比（§95）；`grp56.py` 新增 `EVORD` 环境变量。

@@ -30,6 +30,8 @@ if os.environ.get('BAN'):
     for _j in os.environ['BAN'].split(','): canbuy[:, int(_j)] = False
 T0 = int(np.searchsorted(dates, '2020-03-02'))
 W0 = {'A': .08, 'C': .08, 'B': .025}
+_ord = os.environ.get('EVORD', 'old')
+EVKEY = {'old': lambda p: p['e'], 'new': lambda p: -p['e'], 'worst': lambda p: p['v'] / p['inv'], 'best': lambda p: -p['v'] / p['inv']}[_ord]
 def fused3(order='ACB', w=W0, G=1.0, N=20, H=20, cash_yield=0.02, evict=None, ecost=0.0, entry='close', evlog=None, tlog=None, minage=0):
     evict = evict or {}; cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd); ev = 0; ntr = 0
     for t in range(T0, nd):
@@ -50,7 +52,7 @@ def fused3(order='ACB', w=W0, G=1.0, N=20, H=20, cash_yield=0.02, evict=None, ec
             want = min(N - n_s, len(pool)); ideal = want * w[s] * equity; room = G * equity - invested
             if evict.get(s) and room < ideal - 1e-9:
                 need = ideal - room
-                for p in sorted([p for p in active if p['s'] in evict[s] and p['e'] <= t - minage and cansell[t, p['j']]], key=lambda p: p['e']):
+                for p in sorted([p for p in active if p['s'] in evict[s] and p['e'] <= t - minage and cansell[t, p['j']]], key=EVKEY):
                     if need <= 1e-9: break
                     j = p['j']; rx = Ct[t, j] / float(F_[t, j])
                     cash += p['v'] * (1 - 0.01 / rx - fee[t] / 2 - ecost); need -= p['v']
