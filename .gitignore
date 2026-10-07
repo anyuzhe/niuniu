@@ -17,3 +17,6 @@ htmlcov/
 playbooks/**/source_raw/
 research_skills/**/references/source_raw/
 research_skills/**/upstream/
+
+# 数据侧接口探测等临时文件
+.tmp/
