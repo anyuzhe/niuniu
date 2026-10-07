@@ -291,6 +291,26 @@ class Runner:
                 self.result_dataset(dataset_id, failures=[message])
                 self.deferred_errors.append(message)
 
+    MACRO = ("etf_shares_sse", "etf_shares_szse", "cn_yield_curve", "cn_repo_fixing", "cn_lpr_history",
+             "cn_macro_monthly", "cn_social_financing", "index_valuation_csindex")
+
+    def step_macro(self, step, share):
+        """ETF shares, rates, macro series and index valuation (catalog 3.10).  Same contract as
+        step_fundamentals: one dataset failing is recorded and the rest still run."""
+        day = step["dates"][0]
+        for dataset_id in self.MACRO:
+            self.check()
+            try:
+                output = self.sh(["scripts/collect/macro_rates.py", "update", "--dataset", dataset_id,
+                                  "--through", day, "--max-seconds", "900"], keep_awake=True)
+                info = self.last_json(output).get("datasets", {}).get(dataset_id, {})
+                self.result_dataset(dataset_id, through=day, files_written=info.get("done", 0))
+            except RuntimeError as exc:
+                message = f"宏观利率 {dataset_id} 更新失败：{exc}"
+                self.log(message)
+                self.result_dataset(dataset_id, failures=[message])
+                self.deferred_errors.append(message)
+
     def step_seal(self, step, share):
         from quantlab.data import day_seals
         for position, day in enumerate(step["dates"]):

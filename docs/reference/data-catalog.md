@@ -373,9 +373,34 @@ result.to_dict()   # 可直接 JSON 序列化
 | `valuation_daily_v1` | FILE | 每日 PE(TTM)、PB(MRQ)、PS(TTM)、PCF，不复权收盘价 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/valuation_daily_v1/<sh_600519>.parquet` | `date, code, close, peTTM, pbMRQ, psTTM, pcfNcfTTM, fetch_ts`，字符串类型；每只股票一个文件 | 5,560 只，从上市日起到 2026-09-30，约 1,854 万行；`pbMRQ` 约 4,483 行为空 | `READY` | 自行转数值；亏损股 PE 的含义以供应商为准 |
 | `share_capital` | FILE | 股本变动历史（总股本、流通股、变动原因） | `.../provider=eastmoney/share_capital/<600519>.parquet` | 东财原列名，主要列 `SECURITY_CODE, END_DATE, NOTICE_DATE, TOTAL_SHARES, LISTED_A_SHARES, FREE_SHARES, CHANGE_REASON` | 5,560 只，约 16.7 万行 | `READY` | 总市值 = 生效股本 × 不复权收盘价 |
 | `earnings_forecast_history` | FILE | 业绩预告历史（预增、预减、首亏、扭亏、减亏…） | `.../provider=eastmoney/earnings_forecast_history/month=YYYY-MM.parquet` | 列同 `earnings_forecast_em`（§3.1）；按公告月一个文件 | 2007-01-05 起至 2026-09-30，约 18.5 万行，5,643 只；按（代码、公告日、报告期、指标）无重复 | `READY` | 取 `indicator` 为归母净利润的行；`notice_date` 当天可见 |
-| `equity_pledge_history` | FILE | 股权质押比例历史（中国结算每周统计） | `.../provider=eastmoney/equity_pledge_history/date=YYYY-MM-DD.parquet` | 列同 `equity_pledge_em`（§3.1）；每个统计日一个文件，含统计日当天有质押的股票 | 2014-03-07 至 2026-09-18，604 个统计日，约 154 万行；之后的统计日尚未公布 | `READY` | 不在表里 = 该统计日无质押记录；沪深，无北交所 |
+| `equity_pledge_history` | FILE | 股权质押比例历史（中国结算每周统计） | `.../provider=eastmoney/equity_pledge_history/date=YYYY-MM-DD.parquet` | 列同 `equity_pledge_em`（§3.1）；每个统计日一个文件，含统计日当天有质押的股票 | 2014-03-07 至 2026-09-30，643 个统计日，约 164 万行 | `READY` | 不在表里 = 该统计日无质押记录；沪深，无北交所 |
 
 **更新**：脚本 `scripts/collect/fundamentals_history.py`。历史回补用 `plan` 后 `apply --plan --approve`；每日增量用 `update --dataset <名> [--through 日期] [--shard K/N]`，已经接入 `daily_close_update` 的"基本面与估值历史"步骤，收盘后自动按下面的规则追加：质押按每周最后一个交易日补缺（上线时已把早先漏掉的节假日周补齐）；业绩预告和三张财报表只刷新最近两期并补缺；股本按披露日增量（保留 7 天重叠）；PE/PB 每只股票只补缺的交易日。七项里任何一项失败，会记录在当天任务里并让当天收盘任务显示为失败，其余几项照常更新，下次收盘任务会自动补上。财报季（4、7、8、10 月）新披露的一期，在披露当晚的收盘任务里入库。
+
+### 3.10 ETF 份额、利率与宏观（FILE，2026-10-07 开放）
+
+回答"回测里要用资金面、利率和宏观背景"。都是 **research_only**，来源为交易所、中国债券信息网、外汇交易中心、中国人民银行和东财公开页面。目录下的 `_empty/` 存放"该分区确认没有数据"的标记，**不要当数据读**。路径前缀都是 `/Volumes/Lexar/niuniu-data/lake/bronze/`。
+
+**可见日规则（防未来函数，CODE 必须遵守）**
+
+- 宏观月度表（`cn_macro_monthly`、`cn_social_financing`）：东财只给统计月，**没有发布日**。DATA 加了 `period`（统计月）和保守的 `visible_from`（月末 + 滞后天数）：PMI 1 天；CPI/PPI 15 天；货币供应（M2）、人民币贷款、工业增加值、社零、固定资产投资、海关进出口、社融 20 天；外汇储备 12 天；GDP 25 天。回测只能用 `visible_from <= 当日` 的行；数值为最新修订值。
+- ETF 份额：上交所 D 日数据，保守地 D+1 才可见。深交所只提供"当前快照"，**D 日晚上的值是预估，D+1 早上才是确认值**；深交所份额只从快照日 2026-09-30 起有，往前没有历史。
+- LPR：`date` 是名义上的每月 20 日；遇周末顺延到下一个工作日公布，回测按顺延后的日期算可见。
+- 国债/政策性金融债等收益率曲线、FR/FDR 回购定盘利率：当日收盘后可见。
+- 中证指数估值：当日收盘后可见；供应商只给约一个月的历史，所以从 2026-09-03 起每天累积，更早的没有。
+
+| 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
+|---|---|---|---|---|---|---|---|
+| `etf_shares_sse` | FILE | 上交所 ETF 每日份额（万份） | `provider=sse/etf_shares/date=YYYY-MM-DD.parquet` | `date, exchange, code, name, etf_type, shares_10k, fetched_at`；每个交易日一个文件 | 2012-01-04 至 2026-09-30，3,581 个交易日，约 93.5 万行，累计 1,001 只（单日约 920 只）；更早没有数据；78 行份额为空或 ≤0，使用时过滤 | `READY` | 份额日变化 × 净值 ≈ 资金申赎；D+1 可见 |
+| `etf_shares_szse` | FILE | 深交所 ETF 份额快照（万份） | `provider=szse/etf_shares/date=<快照日>.parquet` | `date, exchange, code, name, fund_category, shares_10k, manager, listing_date, fetched_at`；每个快照日一个文件，重复抓取会覆盖 | 2026-09-30 起，约 749 只；从此每天累积 | `READY` | 只有前向数据，不能回测更早；预估值次日确认 |
+| `cn_yield_curve` | FILE | 中债收益率曲线：国债、银行间 AAA、中短期票据 AAA | `provider=chinabond/yield_curve/year=YYYY.parquet` | `date, curve, 3m … 30y, fetched_at`；主键（date, curve） | 国债 2006-03-01 起 5,150 行；银行间 AAA 2009-12-24 起 4,192 行；中票 AAA 2006-12-25 起 4,943 行；共 14,285 行 | `READY` | 期限利差、信用利差；每次更新重取最近 10 天 |
+| `cn_repo_fixing` | FILE | 回购定盘利率 FR001/FR007/FR014、存款类机构 FDR | `provider=chinamoney/repo_fixing/FR.parquet`、`.../FDR.parquet` | 每个文件一张表，主键 `date` | FR：2023-10-07 至 2026-09-30，747 行；FDR：2025-09-30 至 2026-09-30，248 行 | `READY` | 资金面松紧 |
+| `cn_lpr_history` | FILE | 贷款市场报价利率 LPR（1 年、5 年） | `provider=eastmoney/lpr_history/lpr.parquet` | `date, lpr_1y, lpr_5y, fetched_at`；每次整表覆盖 | 2013-10-25 至 2026-09-20，1,538 行；`lpr_5y` 在早期 1,452 行为空（5 年期从 2019-08-20 起才有） | `READY` | 见上面的 LPR 可见日规则 |
+| `cn_macro_monthly` | FILE | PMI、CPI、PPI、货币供应、人民币贷款、工业增加值、社零、固定资产投资、海关进出口、外汇储备、GDP | `provider=eastmoney/macro_monthly/<pmi,cpi,ppi,currency_supply,rmb_loan,industry_growth,retail_sales,asset_investment,customs,reserves,gdp>.parquet` | 东财原列名 + `period, visible_from, fetched_at`；每张表一个文件，整表覆盖 | 11 张表共 2,251 行；各表起始月不同 | `READY` | 只用 `visible_from <= 当日` 的行 |
+| `cn_social_financing` | FILE | 社会融资规模增量（人民银行） | `provider=pbc/social_financing/social_financing.parquet` | `month, visible_from, afre_total, rmb_loans, fx_loans, entrusted_loans, trust_loans, undiscounted_bankers_acceptance, corporate_bonds, government_bonds, equity_financing, abs_by_depository, loans_written_off, fetched_at` | 2021-01 至 2026-08，68 个月 | `READY` | 供应商只提供 2021 年起的月度明细 |
+| `index_valuation_csindex` | FILE | 中证指数估值（滚动市盈率、股息率） | `provider=csindex/index_valuation/<指数代码>.parquet` | `date, index_code, pe_total, pe_calculation, dividend_yield_total_percent, dividend_yield_calculation_percent, fetched_at`；按日期合并 | 000016、000300、000905、000852、000510、932000、000688、000906、000985，各 20 个交易日（2026-09-03 起，每天累积） | `READY` | 只能前向使用；`pe_total` 与 `pe_calculation` 是供应商两种口径，使用前对照供应商说明 |
+
+**更新**：脚本 `scripts/collect/macro_rates.py`，`update [--dataset <名> ...] [--through 日期] [--max-seconds N]`，已经接入 `daily_close_update` 的"ETF 份额、利率与宏观"步骤，收盘后自动追加：上交所 ETF 份额按交易日补缺（最近 7 天内没有数据的日子暂不标记为确认空）；深交所份额每次覆盖快照；收益率曲线重取最近 10 天；LPR、宏观月表整表覆盖；社融首次回补 2021 年起，之后只刷新当年（1–3 月加上一年）；中证估值按日期合并。八项里任何一项失败，会记录在当天任务里并让当天收盘任务显示为失败，其余照常更新，下次收盘任务会补上。每次运行在 `lake/bronze/_macro_receipts/` 留一份回执。
 
 ## 4. 尚不可用、待审查或只供 DATA 内部使用
 

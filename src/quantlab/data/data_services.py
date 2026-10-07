@@ -607,12 +607,16 @@ PUBLIC_IDS = {"sw_industry_history": "sw_industry_history", "cninfo_announcement
 
 JOBS_SPEC = [
     {"job_id": "daily_close_update", "name": "收盘后日常更新",
-     "description": "参考快照、公开数据（含热度榜）、板块成分、日状态、日K、5 分钟、前复权，最后封存当天并刷新状态。"
+     "description": "参考快照、公开数据（含热度榜）、板块成分、日状态、日K、5 分钟、前复权、通达信分钟线、基本面与估值、ETF 份额与利率宏观，最后封存当天并刷新状态。"
                     "只能当天观察的数据只在当天执行时采集。",
      "params": [{"name": "date", "type": "date", "required": False, "default": "today", "description": "交易日"}],
      "estimated_seconds": 6 * 3600, "needs_data_disk": True, "uses_network": True,
      "writes": ["reference_snapshot_baostock", "bars_daily_baostock_raw", "bars_min5_baostock_raw",
                 "security_status_baostock_v2", "qfq_published_f24", "sector_board_constituents",
+                "equity_pledge_history", "earnings_forecast_history", "financial_cpd", "financial_balance",
+                "financial_cashflow", "share_capital", "valuation_daily_v1",
+                "etf_shares_sse", "etf_shares_szse", "cn_yield_curve", "cn_repo_fixing", "cn_lpr_history",
+                "cn_macro_monthly", "cn_social_financing", "index_valuation_csindex",
                 *sorted(set(PUBLIC_IDS.values()) - {"sw_industry_history", "lockup_expiry_em"})]},
     {"job_id": "sector_recorder_start", "name": "启动盘中记录器",
      "description": "先刷新板块成分，然后交易时间每分钟记录全部板块，并在 09:25/10:00/11:30/14:00/14:57/15:00 记录全市场个股快照，15:25 自动结束。",
@@ -927,6 +931,11 @@ class DataUpdateJobs:
                                 "fundamentals", overwrites=True, weight=10,
                                 note="质押按周补、业绩预告和财报只刷新最近两期、股本按披露日增量、PE/PB 每只股票只补缺的交易日；"
                                      "单项失败会记录，下次执行时自动补上"))
+        steps.append(self._step("ETF 份额、利率与宏观", "fetch",
+            ["etf_shares_sse", "etf_shares_szse", "cn_yield_curve", "cn_repo_fixing", "cn_lpr_history",
+             "cn_macro_monthly", "cn_social_financing", "index_valuation_csindex"],
+            [day], "macro", overwrites=True, weight=5,
+            note="上交所和深交所 ETF 份额、国债曲线、回购利率、LPR、月度宏观、社融、中证指数估值；单项失败会记录，下次执行时自动补上"))
         prev = calendar.previous(day)
         steps.append(self._step("封存", "seal", ["*"], [prev, day], "seal", trading_day=True,
                                 note=f"封存 {day}；同时把 {prev} 待封存的次日数据补封"))
