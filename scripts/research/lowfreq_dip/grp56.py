@@ -6,11 +6,13 @@ import grp_lib
 SIG = os.environ.get('SIG', 'c55')
 _orig = grp_lib.load_panel
 def _lp():
-    p = _orig(); z = np.load('c55.npz', allow_pickle=True)
-    assert p.shape == z['c55'].shape, (p.shape, z['c55'].shape)
+    p = _orig(); z = np.load(os.environ.get('C55FILE', 'c55.npz'), allow_pickle=True)
+    c55 = z['c55']
+    if os.environ.get('DROPDEL') == '1': c55 = c55[:, ~np.load(os.environ['PANEL_NPZ'], allow_pickle=True)['isdel'].astype(bool)]
+    assert p.shape == c55.shape, (p.shape, c55.shape)
     p.meta['c_true'] = p.c.copy()
     if SIG == 'c55':
-        a = z['c55'].astype(np.float64) * p.f.astype(np.float64)
+        a = c55.astype(np.float64) * p.f.astype(np.float64)
         p.c = np.where(np.isfinite(a), a, p.c.astype(np.float64)).astype(np.float32)
         p.meta['c55ok'] = np.isfinite(a)
     return p
@@ -24,6 +26,8 @@ prevC = np.vstack([np.full((1, nc), np.nan), Ct[:-1]])
 chg = Cs / prevC - 1
 canbuy = ok55 & np.isfinite(Ct) & (chg < 0.095)      # not at limit-up at decision time
 cansell = ok55 & np.isfinite(Ct) & (chg > -0.095)    # not locked at limit-down
+if os.environ.get('BAN'):
+    for _j in os.environ['BAN'].split(','): canbuy[:, int(_j)] = False
 T0 = int(np.searchsorted(dates, '2020-03-02'))
 W0 = {'A': .08, 'C': .08, 'B': .025}
 def fused3(order='ACB', w=W0, G=1.0, N=20, H=20, cash_yield=0.02, evict=None, ecost=0.0, entry='close', evlog=None, tlog=None, minage=0):
@@ -31,7 +35,7 @@ def fused3(order='ACB', w=W0, G=1.0, N=20, H=20, cash_yield=0.02, evict=None, ec
     for t in range(T0, nd):
         for p in [p for p in active if p['x'] == t and p['net'] is not None]:
             cash += p['inv'] * (1 + p['net']); active.remove(p)
-            if tlog is not None: tlog.append((p['s'], p['net'], p['x'] - p['e']))
+            if tlog is not None: tlog.append((p['s'], p['net'], p['x'] - p['e'], p['j'], p['e']))
         held = {p['j'] for p in active}
         for s in order:
             gate, e6, r20 = SL[s]
@@ -97,13 +101,14 @@ if __name__ == '__main__':
                 ev = {k: v for k, v in (('A', ea), ('C', ec), ('B', eb)) if v}
                 lab = f'收盘买 + 让位 A:{ea or "-"} C:{ec or "-"} B:{eb or "-"}'
                 (cons if (not eb and 'A' not in ec and 'C' not in ea) else rest).append((lab, dict(evict=ev)))
-    fn = f'grp56_{SIG}.json'; res = json.load(open(fn)) if os.path.exists(fn) else {}
+    fn = os.environ.get('OUTJSON', f'grp56_{SIG}.json'); res = json.load(open(fn)) if os.path.exists(fn) else {}
     todo = [j for j in jobs + cons + rest if j[0] not in res]; KEEP = {'次日开盘买(原规则)', '收盘买(14:55 判断)', '收盘买 + 让位 A:BC C:- B:-', '收盘买 + 让位 A:B C:- B:-', '收盘买 + 让位 A:C C:- B:-', '收盘买 + 让位 A:BC C:B B:-', '收盘买 + 让位 A:B C:B B:AC'}
+    if os.environ.get('ONLY'): todo = [j for j in todo if j[0] in os.environ['ONLY'].split('|')]
     if os.environ.get('LIM'): todo = [j for j in todo if j[0] in KEEP]
     print('todo', len(todo), flush=True)
     with mp.get_context('fork').Pool(2) as p:
         for lab, r in p.imap_unordered(one, todo):
             res[lab] = r
             print(f'{lab:34s} 年化{r["cagr"]*100:+6.1f}% 夏普{r["sharpe"]:.2f} 回撤{r["dd"]*100:4.0f}% 仓位{r["expo"]*100:3.0f}% 终值{r["final"]:.2f} 开仓{r["ntr"]} 提前平仓{r["ev"]}', flush=True)
-            json.dump(res, open(f'grp56_{SIG}.json', 'w'), ensure_ascii=False)
+            json.dump(res, open(fn, 'w'), ensure_ascii=False)
     print('ALLDONE', flush=True)
