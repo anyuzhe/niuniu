@@ -240,7 +240,7 @@ class BenchPage:
         self.equity_spin = None
         self.pick_host = None
         self.hold_host = None
-        self.near_high_on = False
+        self.near_high_on = True        # 默认打开：只影响计划和“我的持仓”，回测与前向记录仍按原规则
         self.today_override = None
         self.message = {}
 
@@ -901,13 +901,13 @@ class BenchPage:
         self.fus_record_message = label('', 'muted', True)
         plan.add(row(label('按'), self.fus_equity, label('本金估算每只金额（按账户空仓算，已有持仓要自己扣掉）：'), self.fus_record_button))
         plan.add(self.fus_record_message)
-        self.near_high_box = QCheckBox(f'近高点过滤（默认关）：大盘离近 {cfg.near_high_window} 日高点不足 {cfg.near_high_pct * 100:g}% 时不开新仓')
+        self.near_high_box = QCheckBox(f'近高点过滤（默认开）：大盘离近 {cfg.near_high_window} 日高点不足 {cfg.near_high_pct * 100:g}% 时不开新仓')
         self.near_high_box.setAccessibleName('近高点过滤')
         self.near_high_box.setChecked(self.near_high_on)
         self.near_high_box.toggled.connect(self.toggle_near_high)
         plan.add(self.near_high_box)
         plan.add(label('只影响下面的计划和“我的持仓”，回测数字和前向记录仍按原规则。研究（含退市股，见 §103）：D 年化 15.9% → 18.8%、D1 18.3% → 21.3%，最大回撤不变；'
-                       '增益几乎全来自 2013、2021–2023 年，参数是看过数据后选的，实际预期只有每年 +1.5 到 +3 个点，所以默认不开，留给前向记录去验证。', 'muted', True))
+                       '增益几乎全来自 2013、2021–2023 年，参数是看过数据后选的，实际预期只有每年 +1.5 到 +3 个点，所以这里默认打开但不改回测和前向记录；前向记录继续按原规则，用来检验它到底有没有用。', 'muted', True))
         self.fus_pick_host = QWidget()
         self.fus_pick_box = QVBoxLayout(self.fus_pick_host)
         self.fus_pick_box.setContentsMargins(0, 0, 0, 0)
