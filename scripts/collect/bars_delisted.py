@@ -14,6 +14,9 @@ the listed-only datasets keep their contract:
     python scripts/collect/bars_delisted.py plan [--since 2020-01-01]
     python scripts/collect/bars_delisted.py apply --plan PATH --approve SHA
 
+``plan --since 2007-01-01 --daily-floor 2006-01-01 --datasets baostock-daily-ext,baostock-daily-ext-qfq`` backfills the full pre-2020 delisted history
+(raw plus baostock forward-adjusted twin written to ``stock_kline_daily_delisted_qfq_bs``).
+
 ``apply`` is resumable (state file per plan) and paces requests >= 1 s on one login.
 """
 from __future__ import annotations
@@ -35,7 +38,8 @@ from collect.daily_common import select_stock_basic  # noqa: E402
 
 BASE = "lake/bronze/provider=baostock"
 MIN5_FLOOR = "2020-01-02"
-DIRS = {"baostock-daily-ext": "stock_kline_daily_delisted", "baostock-min5": "stock_kline_min5_delisted"}
+DIRS = {"baostock-daily-ext": "stock_kline_daily_delisted", "baostock-min5": "stock_kline_min5_delisted",
+        "baostock-daily-ext-qfq": "stock_kline_daily_delisted_qfq_bs"}
 
 
 def _atomic(path: Path, data: bytes) -> None:
@@ -45,7 +49,7 @@ def _atomic(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
-def plan(root: Path, since: str) -> tuple[Path, str]:
+def plan(root: Path, since: str, daily_floor: str = "2019-12-01", datasets: tuple = ("baostock-daily-ext", "baostock-min5")) -> tuple[Path, str]:
     import pandas as pd
     from datetime import date
     basic_path, _ = select_stock_basic(date.today(), lake=root / "lake/bronze", fallback=None)
@@ -55,10 +59,10 @@ def plan(root: Path, since: str) -> tuple[Path, str]:
     targets = []
     for row in sel.sort_values("code").itertuples(index=False):
         code, ipo, out = str(row.code), str(row.ipoDate), str(row.outDate)
-        start = max(ipo, "2019-12-01")
+        start = max(ipo, daily_floor)
         targets.append({"symbol": code, "name": str(row.code_name), "ipo": ipo, "out": out,
-                        "daily": [start, out], "min5": [max(ipo, MIN5_FLOOR), out] if out >= MIN5_FLOOR else None})
-    body = {"kind": "baostock_delisted_bars", "since": since, "data_root": str(root),
+                        "daily": [start, out], "min5": [max(ipo, MIN5_FLOOR), out] if (out >= MIN5_FLOOR and "baostock-min5" in datasets) else None})
+    body = {"kind": "baostock_delisted_bars", "since": since, "daily_floor": daily_floor, "datasets": list(datasets), "data_root": str(root),
             "stock_basic": str(basic_path), "created_at": datetime.now(timezone.utc).isoformat(), "targets": targets}
     data = json.dumps(body, ensure_ascii=False, sort_keys=True).encode()
     sha = hashlib.sha256(data).hexdigest()
@@ -91,8 +95,8 @@ def apply(plan_path: Path, approve: str, *, max_seconds: float, pace: float = 1.
     state_path = root / BASE / "_state" / f"delisted-bars-{sha[:12]}.json"
     state = json.loads(state_path.read_text()) if state_path.is_file() else {"done": {}, "failed": {}}
     start = time.monotonic()
-    for dataset in DIRS:
-        key_name = "daily" if dataset == "baostock-daily-ext" else "min5"
+    for dataset in (body.get("datasets") or ["baostock-daily-ext", "baostock-min5"]):
+        key_name = "min5" if dataset == "baostock-min5" else "daily"
         todo = [t for t in body["targets"] if t[key_name] and f"{dataset}/{t['symbol']}" not in state["done"]]
         if not todo:
             continue
@@ -141,13 +145,15 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("plan")
     p.add_argument("--since", default="2020-01-01")
+    p.add_argument("--daily-floor", default="2019-12-01", help="earliest daily bar to fetch (default keeps the original 2019-12-01 behaviour)")
+    p.add_argument("--datasets", default="baostock-daily-ext,baostock-min5", help="comma list: baostock-daily-ext (raw), baostock-daily-ext-qfq (adjustflag=2), baostock-min5")
     a = sub.add_parser("apply")
     a.add_argument("--plan", required=True)
     a.add_argument("--approve", required=True)
     a.add_argument("--max-seconds", type=float, default=6 * 3600)
     args = parser.parse_args(argv)
     if args.command == "plan":
-        path, sha = plan(paths.DATA_ROOT, args.since)
+        path, sha = plan(paths.DATA_ROOT, args.since, args.daily_floor, tuple(x for x in args.datasets.split(",") if x))
         print(json.dumps({"plan": str(path), "sha256": sha, "targets": len(json.loads(path.read_text())["targets"])}))
         return 0
     summary = apply(Path(args.plan), args.approve, max_seconds=args.max_seconds, log=lambda m: print(m, flush=True))

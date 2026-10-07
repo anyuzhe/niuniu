@@ -15,7 +15,11 @@ PANEL = os.environ.get('PANEL_NPZ', '')
 
 def load_panel():
     if PANEL and os.path.exists(PANEL):
-        return Panel.from_npz(PANEL)
+        p = Panel.from_npz(PANEL)
+        if os.environ.get('DROPDEL') == '1':   # keep only currently-listed columns of a with-delisted panel
+            keep = ~np.load(PANEL, allow_pickle=True)['isdel'].astype(bool)
+            p = Panel(dates=p.dates, codes=p.codes[keep], o=p.o[:, keep], c=p.c[:, keep], f=p.f[:, keep], a=p.a[:, keep], st=p.st[:, keep], ts=p.ts[:, keep], meta=p.meta)
+        return p
     from pathlib import Path
     L = Path(LAKE)
     return build_panel(L / 'silver/qfq_kline_daily_v2', L / 'bronze/provider=baostock/daily_status_v2')

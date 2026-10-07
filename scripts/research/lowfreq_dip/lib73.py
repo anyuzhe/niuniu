@@ -43,7 +43,7 @@ def fused5(rank='r20', N=20, H=20, W=None, G=1.0, cash_yield=0.02, start='2008-0
                 p['pend'] = False; p['o0'] = px; p['last'] = px; _fin(p, t); continue
             p['pend'] = False; p['o0'] = float(O[t, p['j']]); p['last'] = p['o0']; _fin(p, t)
         for p in [p for p in active if p['x'] == t and p['net'] is not None and not p.get('pend')]:
-            cash += p['inv'] * (1 + p['net']); trades.append((p['s'], p['net'], p['x'] - p['e'] + 1)); active.remove(p)
+            cash += p['inv'] * (1 + p['net']); trades.append((p['s'], p['net'], p['x'] - p['e'] + 1, p['j'], p['e'])); active.remove(p)
         if t + 1 <= min(tend, nd - 1):
             held = {p['j'] for p in active}
             act = [s for s in sleeves if GATE[s][t]]
@@ -132,7 +132,9 @@ def _fin(p, t):
     j = p['j']; e = p['e']; o0 = p['o0']; raw_e = o0 / float(F[e, j]); ex = baseline_exit(j, p['xsig'], p['H']); H = p['H']
     p['x'] = ex[0] if ex else p['xsig'] + H
     if ex is not None:
-        xi, px = ex; raw_x = px / float(F[xi, j]); p['net'] = (px * (1 - 0.01 / raw_x)) / (o0 * (1 + 0.01 / raw_e)) - 1 - fee[xi]; p['cost_e'] = 0.01 / raw_e + fee[xi] / 2
+        xi, px = ex; fx = float(F[xi, j]); k_ = xi
+        while not np.isfinite(fx) and k_ > 0: k_ -= 1; fx = float(F[k_, j])   # delisted / suspended exit: use last known adj factor
+        raw_x = px / fx; p['net'] = (px * (1 - 0.01 / raw_x)) / (o0 * (1 + 0.01 / raw_e)) - 1 - fee[xi]; p['cost_e'] = 0.01 / raw_e + fee[xi] / 2
     else: p['cost_e'] = 0.01 / raw_e + fee[min(p['xsig'] + H, nd - 1)] / 2
 def _enter(active, s, j, t, size, H, tr, lim, pyr):
     ENTRIES.append((s, j, t + 1))

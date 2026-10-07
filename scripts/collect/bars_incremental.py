@@ -43,9 +43,11 @@ REQUEST_FIELDS = {
 # daily bars with the exchange's previous close and ST flag (used for delisted stocks)
 REQUEST_FIELDS["baostock-daily-ext"] = ("date,code,open,high,low,close,preclose,volume,amount,"
                                         "adjustflag,tradestatus,isST")
-FREQUENCY = {"baostock-daily": "d", "baostock-min5": "5", "baostock-daily-ext": "d"}
+REQUEST_FIELDS["baostock-daily-ext-qfq"] = REQUEST_FIELDS["baostock-daily-ext"]   # baostock forward-adjusted (adjustflag=2) twin, research-grade single source
+FREQUENCY = {"baostock-daily": "d", "baostock-min5": "5", "baostock-daily-ext": "d", "baostock-daily-ext-qfq": "d"}
 KEYS = {"baostock-daily": ["date"], "baostock-min5": ["date", "time"]}
 ADJUSTFLAG = "3"
+ADJUSTFLAG_BY_DATASET = {"baostock-daily-ext-qfq": "2"}
 
 
 def load_plan(path: Path) -> dict[str, Any]:
@@ -238,7 +240,7 @@ def _baostock_worker(dataset: str, connection) -> None:
             try:
                 result = bs.query_history_k_data_plus(
                     symbol, REQUEST_FIELDS[dataset], start_date=start, end_date=end,
-                    frequency=FREQUENCY[dataset], adjustflag=ADJUSTFLAG,
+                    frequency=FREQUENCY[dataset], adjustflag=ADJUSTFLAG_BY_DATASET.get(dataset, ADJUSTFLAG),
                 )
                 if result.error_code != "0":
                     raise RuntimeError(f"query failed {result.error_code}: {result.error_msg}")

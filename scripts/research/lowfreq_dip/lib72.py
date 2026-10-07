@@ -1,8 +1,9 @@
 """Rebuild the three panic gates / pools for any panic window W (return window; std window stays 60), aligned to the c70 panel. Research only."""
 import numpy as np, pandas as pd
 import lib70 as L
-Z = np.load('c72/series.npz'); nd = L.nd
-cn = np.load('c72/codes_new.npy'); c70 = np.load('c70/codes.npy'); ix = {c: i for i, c in enumerate(cn)}; cols = np.array([ix[c] for c in c70])
+import os
+Z = np.load(os.environ.get('SERIES', 'c72/series.npz')); nd = L.nd
+cn = Z['codes'] if 'codes' in Z.files else np.load('c72/codes_new.npy'); c70 = np.load(L.D + 'codes.npy'); ix = {c: i for i, c in enumerate(cn)}; cols = np.array([ix[c] for c in c70])
 mret = Z['mret'][:nd]; Ri = Z['Ri'][:nd]; Rq = Z['Rq'][:nd]
 l1 = Z['l1'][cols]; lab = Z['lab'][:nd][:, cols]; uni = Z['uni'][:nd][:, cols]; poolA0 = Z['poolA'][:nd][:, cols]
 TH = -1.5

@@ -1,9 +1,10 @@
 """Fast D account simulator with pluggable ranking and dynamic exits; loads from c70/*.npy. Research only."""
 import numpy as np, os, json, time
-D = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'c70') + '/'
+D = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.environ.get('C70DIR', 'c70')) + '/'
+PFX = '0' if os.environ.get('NODEL') == '1' else ''   # NODEL=1: gates/pools built without the delisted stocks (only meaningful for c80)
 L = lambda n, mm='r': np.load(D + n + '.npy', mmap_mode=mm)
 dates = L('dates', None); nd = len(dates); O, C, F = L('O'), L('C'), L('F'); fee = L('fee', None); buyok = L('buyok')
-GATE = {s: L('gate' + s) for s in 'ACB'}; POOL = {s: L('pool' + s) for s in 'ACB'}; R20 = L('r20A'); MZ = L('mz', None)
+GATE = {s: L('gate' + PFX + s) for s in 'ACB'}; POOL = {s: L('pool' + PFX + s) for s in 'ACB'}; R20 = L('r20A'); MZ = L('mz', None)
 SIG = L('sig60'); DIST = L('distma20'); yr = np.array([int(d[:4]) for d in dates]); nc = C.shape[1]
 W0 = {'A': .08, 'C': .08, 'B': .025}
 _cache = {}

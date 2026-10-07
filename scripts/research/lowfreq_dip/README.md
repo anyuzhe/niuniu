@@ -93,3 +93,5 @@
 - `prep72.py` / `lib72.py` / `run72.py`：改恐慌窗口 W（5~60 天）重建三层闸门并扫描持有期，检验“窗口 = 持有期”（§87）；结果 `res72.json`；需要 `c72/series.npz`（由 `prep72.py` 生成，未提交）和 `c70/`。
 - `prep73.py` / `lib73.py` / `an73.py`：D 账户 v5（动态优先级、统一排序、共振 / 深度加权、预留、互斥、分批 / 限价 / 加仓）及优先级与分散买入的批量检验（§88）；结果 `res73.json`；需要 `c72/lowhigh.npz`（由 `prep73.py` 生成，未提交）、`c72/series.npz` 和 `c70/`。
 - `lib74.py` / `an74.py` / `ic74.py` / `ic74b.py`：排序因子、筛选、权重、行业集中度、动态优先级与学习打分的批量检验，候选样本因子预测力（§89）；`lib73.py` 新增 `fmask` / `skip` / `gcap` 选项；结果 `res74.json`；`ic74.py` 生成 `rows74.npy`（未提交）。
+- `build_panel_del.py` / `run_delisted.sh`：把数据侧补回的 290 只退市股（baostock 不复权 + 前复权）并进面板，生成 `panel_del.npz`（含 `isdel` 标记）；`run_delisted.sh` 是 `bars_delisted.py` 计划 → 批准 → 执行的可续跑封装（§90）。
+- `prep80.py` / `prep80b.py` / `an80.py` / `an80b.py`：含退市股的数组导出（`PANEL_NPZ=panel_del.npz`，`DROPDEL=1` 导出不含退市的对照闸门）、D 的含 / 不含退市对照与退市股成交明细；结果 `res80_del.json` / `res80_nodel.json`（§90）。`lib70.py` / `lib72.py` / `lib73.py` / `grp_lib.py` 同步更新为可用环境变量切换数据目录（`C70DIR`、`SERIES`、`NODEL`、`DROPDEL`）。
