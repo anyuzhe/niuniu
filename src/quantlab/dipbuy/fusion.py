@@ -7,7 +7,8 @@
   B 行业      组 = 申万一级行业（至少 8 只有收益）；任一行业触发，候选 = 触发行业里全部可交易股票。
 触发范围嵌套：A 触发的日子 C 一定触发，C 触发的日子 B 一定触发；所以越往后信号越频繁、质量越低。
 账户：一笔钱、不借钱（总仓位上限 1 倍）。优先级 A > C > B，钱不够时先给前面的层。每层最多 positions 只，每只的权重各层不同
-（A 与 C 各 8% 净值、B 2.5% 净值），候选按 20 日跌幅从大到小排。同一只股票不会在两层里重复买。
+（A 与 C 各 8% 净值、B 2.5% 净值），候选按 20 日跌幅从大到小排（D）。同一只股票不会在两层里重复买。
+D1 = D 只换一件事：候选先取 20 日跌幅最大的前 rank_k（默认 40）只，再按 60 日回撤从深到浅排（rank_mode='dd60'）；其余与 D 完全一样。
 次日开盘买、持有 hold_days 个交易日后收盘卖，成本与 engine 一致；闲置资金按 cash_yield 计息。
 结果是历史回测，参数在同一份样本上调过；面板只含现存股票（幸存者偏差）。
 """
@@ -27,6 +28,10 @@ from quantlab.dipbuy.engine import (DipConfig, Candidates, Market, _exit_index, 
 from quantlab.dipbuy.panel import Cancelled, DipDataError, Panel
 
 FUSION_VERSION = 'dipbuy-fusion-1'
+RANK_MODES = ('ret20', 'dd60')
+DD_WINDOW = 60
+DD_MIN = 40
+VARIANT_NAMES = {'D': '策略 D', 'D1': '策略 D1'}
 ORDER = ('A', 'C', 'B')
 SLEEVE_NAMES = {'A': '大盘恐慌', 'C': '成交额分档恐慌', 'B': '行业恐慌'}
 QUINTILE_NAMES = ('成交额最小档', '较小档', '中间档', '较大档', '成交额最大档')
@@ -39,10 +44,11 @@ STD_MIN = 40
 
 CAVEATS = (
     '历史回测：参数（权重、阈值、持有天数）是在同一份数据上试过很多组后定的，没有做多重检验修正，更像局部最优，不是样本外验证过的结论。',
-    '面板只含现存股票（幸存者偏差）：D 买的恰恰是跌得最多的票，后来退市的那批不在数据里，回测收益大概率偏高。',
+    '面板只含现存股票（幸存者偏差）：D 买的恰恰是跌得最多的票，后来退市的那批不在数据里，回测收益偏高。研究里补进 290 只退市股后（2008 起，扣成本）：D 年化约 +15.9%（面板里不含退市股时 +18.0%）、最大回撤约 −42%（−36%）；D1 +18.3%（+19.6%）、−36%（−35%）。',
     '持有 20 天比 19 天明显好，卖出日换成第 21 天结果也会变；行业分类用的是今天的申万一级分类（轻微前视）。',
     '回测用次日开盘买、第 20 个交易日收盘卖，不计整手、最低佣金和冲击成本；40 万本金按 9:35 买、21 日 9:30 卖的测算，实盘预期年化约 +18% 到 +25%，最大回撤约 −31% 到 −37%。',
     'A 触发的日子 C 一定触发，C 触发的日子 B 一定触发，三层不是三份独立证据；B 层单笔收益最低，作用是把 A、C 空着的钱填起来。',
+    'D1 的“60 日回撤”排序是看过全样本后挑的，属于样本内线索：逐年看，它在 2008、2012、2015、2022 比 D 好很多，在 2024、2025 反而少赚 15 到 20 个点，建议当可选增强，不是替代 D。',
 )
 
 
@@ -62,6 +68,8 @@ class FusionConfig:
     slippage_bp: float = 0.0
     start: str = '2008-01-01'
     end: str | None = None
+    rank_mode: str = 'ret20'           # 'ret20' = D（20 日跌幅最大优先）；'dd60' = D1（先取跌幅前 rank_k，再按 60 日回撤最深优先）
+    rank_k: int = 40
 
     def __post_init__(self):
         checks = (
@@ -74,6 +82,8 @@ class FusionConfig:
             (0.0 <= self.min_amount <= 1e10, '成交额下限不合理'),
             (0.0 <= self.min_price <= 1000.0, '价格下限不合理'),
             (0.0 <= self.slippage_bp <= 200.0, '冲击成本应在 0 到 200 基点之间'),
+            (self.rank_mode in RANK_MODES, '候选排序只支持 ret20 或 dd60'),
+            (5 <= self.rank_k <= 200, '二段排序的候选数应在 5 到 200 之间'),
         )
         for ok, message in checks:
             if not ok:
@@ -91,8 +101,15 @@ class FusionConfig:
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in (value or {}).items() if k in known})
 
+    @property
+    def variant(self) -> str:
+        return 'D1' if self.rank_mode == 'dd60' else 'D'
+
     def hash(self) -> str:
-        blob = json.dumps(self.to_dict(), sort_keys=True, ensure_ascii=False)
+        payload = self.to_dict()
+        if self.rank_mode == 'ret20':       # D 的哈希保持和加排序选项之前一样，已有的前向记录和缓存不受影响
+            payload.pop('rank_mode'), payload.pop('rank_k')
+        blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256((FUSION_VERSION + blob).encode()).hexdigest()[:12]
 
     def dip_config(self) -> DipConfig:
@@ -104,6 +121,14 @@ class FusionConfig:
 
 def default_config() -> FusionConfig:
     return FusionConfig()
+
+
+def d1_config() -> FusionConfig:
+    return FusionConfig(rank_mode='dd60')
+
+
+def config_for(variant: str) -> FusionConfig:
+    return d1_config() if variant == 'D1' else default_config()
 
 
 # ---------------------------------------------------------------- 成交额分档与分档恐慌分
@@ -159,6 +184,42 @@ def group_state(panel: Panel, cand: Candidates, labels: np.ndarray, *, stop=None
         r20[:, g] = c20.to_numpy()
         cnt[:, g] = n
     return z, r20, cnt
+
+
+# ---------------------------------------------------------------- 候选排序（D：20 日跌幅；D1：跌幅前 K 再按 60 日回撤）
+def drawdown60(panel: Panel) -> np.ndarray:
+    """收盘价相对近 60 个交易日（至少 40 个有价）最高收盘价的回撤，<= 0；缓存在面板上。"""
+    key = ('fusion-dd60',)
+    if key in panel.cache:
+        return panel.cache[key]
+    c = panel.c
+    nd, nc = c.shape
+    out = np.full((nd, nc), np.nan, np.float32)
+    pad = np.full((DD_WINDOW - 1, 1), np.nan, np.float32)
+    for b0 in range(0, nc, 256):
+        blk = c[:, b0:b0 + 256].astype(np.float32)
+        ext = np.concatenate([np.repeat(pad, blk.shape[1], axis=1), blk], axis=0)
+        win = np.lib.stride_tricks.sliding_window_view(ext, DD_WINDOW, axis=0)      # [nd, w, 60]
+        mx = np.fmax.reduce(win, axis=-1)
+        n_ok = np.isfinite(win).sum(axis=-1)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            out[:, b0:b0 + 256] = np.where(n_ok >= DD_MIN, blk / mx - 1.0, np.nan)
+    panel.cache[key] = out
+    return out
+
+
+def order_candidates(panel: Panel, inp, cfg: FusionConfig, t: int, base: np.ndarray, pool: np.ndarray) -> np.ndarray:
+    """pool（已去掉持仓的候选下标）按买入先后排序。base 是该层当日全部候选（去持仓之前）。
+    D：20 日涨跌从小到大。D1：先在 base 里取 20 日涨跌最小的 rank_k 只，再按 60 日回撤从深到浅；没入选的排在后面（保持下标顺序）。"""
+    if cfg.rank_mode != 'dd60' or not len(pool):
+        return pool[np.argsort(inp.rank[t, pool], kind='stable')]
+    v = inp.rank[t, base]
+    ok = np.isfinite(v)
+    top = base[ok][np.argsort(v[ok], kind='stable')[:cfg.rank_k]]
+    dd = drawdown60(panel)[t, top].astype(np.float64)
+    key = np.full(panel.shape[1], np.inf)
+    key[top] = np.where(np.isfinite(dd), dd, np.inf)
+    return pool[np.argsort(key[pool], kind='stable')]
 
 
 # ---------------------------------------------------------------- 三层闸门与候选
@@ -239,11 +300,11 @@ def simulate_fused(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, progre
                 n_s = sum(1 for p in active if p['s'] == s)
                 if n_s >= N:
                     continue
-                pool = np.nonzero(inp.pools[s][t] & inp.buyok[t])[0]
-                pool = np.array([j for j in pool if j not in held], dtype=int)
+                base = np.nonzero(inp.pools[s][t] & inp.buyok[t])[0]
+                pool = np.array([j for j in base if j not in held], dtype=int)
                 if not len(pool):
                     continue
-                pool = pool[np.argsort(inp.rank[t, pool], kind='stable')]
+                pool = order_candidates(panel, inp, cfg, t, base, pool)
                 invested = sum(p['v'] for p in active)
                 equity = cash + invested
                 for j in pool[:N - n_s]:
@@ -260,7 +321,11 @@ def simulate_fused(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, progre
                                px_x=None, last=o0)
                     if ex is not None:
                         xi, px = ex
-                        raw_x = px / float(f[xi, j])
+                        fx, k = float(f[xi, j]), xi
+                        while not np.isfinite(fx) and k > 0:      # 退市 / 长期停牌：退出价是最后一个有价的收盘价，复权因子也沿用最近一个已知值
+                            k -= 1
+                            fx = float(f[k, j])
+                        raw_x = px / fx
                         pos['net'] = (px * (1 - 0.01 / raw_x - slip)) / (o0 * (1 + 0.01 / raw_e + slip)) - 1 - fee[xi]
                         pos['px_x'] = px
                         pos['cost_e'] = 0.01 / raw_e + fee[xi] / 2 + slip
@@ -359,7 +424,7 @@ def latest_fusion_signal(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, 
         if not inp.gates[s][t]:
             continue
         pool = np.nonzero(inp.pools[s][t])[0]
-        pool = pool[np.argsort(inp.rank[t, pool], kind='stable')]
+        pool = order_candidates(panel, inp, cfg, t, pool, pool)
         rank = 0
         for j in pool:
             code = code_of[j]
@@ -372,7 +437,8 @@ def latest_fusion_signal(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, 
             raw = float(panel.c[t, j]) / float(panel.f[t, j])
             in_plan = rank <= cfg.positions
             row = dict(sleeve=s, rank=rank, code=code, name=(names or {}).get(code, ''), close=round(raw, 3),
-                       ret20=_num(inp.rank[t, j]), in_plan=in_plan, weight=cfg.weights[s],
+                       ret20=_num(inp.rank[t, j]), dd60=_num(drawdown60(panel)[t, j]) if cfg.rank_mode == 'dd60' else None,
+                       in_plan=in_plan, weight=cfg.weights[s],
                        group=(QUINTILE_NAMES[int(inp.labels[t, j])] if s == 'C' and inp.labels[t, j] >= 0 else
                               cls.name_of(int(j)) if s == 'B' else ''))
             if equity is not None and in_plan and raw > 0:
@@ -393,14 +459,14 @@ def latest_fusion_signal(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, 
                 gate_open=bool(inp.any_gate[t]), fired=[s for s in ORDER if sleeves[s]['gate']], z=z_a,
                 mk20=_num(inp.market.mk20[t]), n_e6=int(sum(sl['n_pool'] for s, sl in sleeves.items() if sl['gate'])),
                 z_threshold=thr, sleeves=sleeves, quintiles=quint, industries=inds, picks=picks, plan_size=plan_size,
-                recent=recent, config_hash=cfg.hash(), nearest=min(z_all) if z_all else None, fusion=True,
+                recent=recent, config_hash=cfg.hash(), variant=cfg.variant, rank_mode=cfg.rank_mode, nearest=min(z_all) if z_all else None, fusion=True,
                 classification=dict(as_of=cls.as_of, n_mapped=cls.n_mapped))
 
 
 # ---------------------------------------------------------------- 前向跟踪的组合净值
-def forward_portfolio(output, panel: Panel, cls) -> dict | None:
+def forward_portfolio(output, panel: Panel, cls, kind: str = 'fusion') -> dict | None:
     """用冻结的参数，从记录开始日起在真实数据上跑一遍共享资金组合，给出前向净值。没有记录返回 None。"""
-    ledger = tracker.load_ledger(output, 'fusion')
+    ledger = tracker.load_ledger(output, kind)
     if not ledger.get('config') or not ledger.get('start_date'):
         return None
     if int(panel.index_of(ledger['start_date'])) >= len(panel.dates) - 1:

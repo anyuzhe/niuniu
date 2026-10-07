@@ -165,6 +165,16 @@ class SharedAccountTests(unittest.TestCase):
         self.assertAlmostEqual(raw['expo'][303], 0.08 * 3 + 0.08 * 2 + 0.025 * 4, delta=0.01)
         self.assertEqual(sum(1 for t in raw['trades'] if t['entry'] != raw['trades'][0]['entry']), 0)
 
+    def test_delisted_stock_exits_at_last_price_and_equity_stays_finite(self):
+        panel, inp = scripted(gates={'A': [300]}, pools={'A': ([300], [0, 1])})
+        panel.c[305:, 0] = np.nan                       # 0 号股票 305 日起退市：没有价格，也没有复权因子
+        panel.o[305:, 0] = np.nan
+        panel.f[305:, 0] = np.nan
+        raw = fusion.simulate_fused(panel, inp, FusionConfig(hold_days=20, start='2024-01-02'))
+        self.assertEqual(len(raw['trades']), 2)
+        self.assertTrue(all(np.isfinite(t['ret']) for t in raw['trades']))
+        self.assertTrue(np.isfinite(raw['eq'][raw['t0']:raw['tend'] + 1]).all())
+
     def test_gross_cap_stops_buying_and_there_is_no_borrowing(self):
         days = [300]
         cfg = FusionConfig(weight_a=0.3, weight_c=0.3, weight_b=0.3, gross_cap=0.5, **self.cfg)
@@ -264,6 +274,110 @@ class BacktestAndLedgerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as out:
             with self.assertRaisesRegex(ValueError, '三层闸门都没开'):
                 tracker.record_signal(out, sig, self.cfg, kind='fusion')
+
+
+class RankOptionTests(unittest.TestCase):
+    """D1 = D 只换候选排序：先取 20 日跌幅前 K，再按 60 日回撤最深优先。"""
+
+    def test_default_hash_is_unchanged_and_d1_is_a_separate_config(self):
+        d, d1 = FusionConfig(), fusion.d1_config()
+        self.assertEqual(d.hash(), '50af776c23a6')                       # 加排序选项之前 D 的哈希，已有前向记录靠它对账
+        self.assertEqual((d.variant, d1.variant), ('D', 'D1'))
+        self.assertNotEqual(d.hash(), d1.hash())
+        self.assertEqual(FusionConfig.from_dict(d1.to_dict()), d1)
+        legacy = {k: v for k, v in d.to_dict().items() if k not in ('rank_mode', 'rank_k')}
+        self.assertEqual(FusionConfig.from_dict(legacy), d)              # 旧台账里的参数没有排序字段，读出来仍是 D
+        self.assertEqual(FusionConfig(rank_k=60).hash(), d.hash())       # D 不用 rank_k，不影响哈希
+        self.assertNotEqual(FusionConfig(rank_mode='dd60', rank_k=60).hash(), d1.hash())
+        for bad in ({'rank_mode': 'x'}, {'rank_mode': 'dd60', 'rank_k': 1}, {'rank_k': 500}):
+            with self.assertRaises(ValueError):
+                FusionConfig(**bad)
+        self.assertEqual(fusion.config_for('D1'), d1)
+        self.assertEqual(fusion.config_for('D'), d)
+
+    def test_drawdown60_matches_a_naive_loop(self):
+        rng = np.random.default_rng(3)
+        c = 10 * np.cumprod(1 + rng.normal(0, 0.02, (150, 6)), axis=0)
+        c[40:70, 1] = np.nan                                              # 停牌
+        c[:90, 2] = np.nan                                                # 还没上市
+        panel = make_panel(c)
+        got = fusion.drawdown60(panel)
+        want = np.full(c.shape, np.nan)
+        for t in range(c.shape[0]):
+            win = panel.c[max(0, t - 59):t + 1].astype(np.float64)
+            for j in range(c.shape[1]):
+                col = win[:, j]
+                if np.isfinite(col).sum() >= 40 and np.isfinite(panel.c[t, j]):
+                    want[t, j] = panel.c[t, j] / np.nanmax(col) - 1
+        np.testing.assert_allclose(got, want, rtol=1e-5, atol=1e-6, equal_nan=True)
+        self.assertLessEqual(float(np.nanmax(got)), 1e-6)
+        self.assertIs(fusion.drawdown60(panel), got)                      # 缓存在面板上
+
+    def dd_setup(self):
+        panel, inp = scripted(gates={'A': [300]}, pools={'A': ([300], list(range(10)))})        # 20 日跌幅排名 = 列号
+        dd = np.zeros(panel.shape, np.float32)
+        dd[300, :5] = [-0.1, -0.5, -0.3, -0.9, -0.2]
+        dd[300, 5:] = -0.99                                                                    # 没入选前 K 的，回撤再深也排在后面
+        panel.cache[('fusion-dd60',)] = dd
+        return panel, inp
+
+    def test_two_stage_order_takes_top_k_by_drop_then_deepest_drawdown(self):
+        panel, inp = self.dd_setup()
+        base = np.nonzero(inp.pools['A'][300] & inp.buyok[300])[0]
+        pool = np.array([j for j in base if j != 3])                                           # 3 号已持有
+        d1 = fusion.order_candidates(panel, inp, FusionConfig(rank_mode='dd60', rank_k=5), 300, base, pool)
+        self.assertEqual(list(d1), [1, 2, 4, 0, 5, 6, 7, 8, 9])
+        d = fusion.order_candidates(panel, inp, FusionConfig(), 300, base, pool)
+        self.assertEqual(list(d), [0, 1, 2, 4, 5, 6, 7, 8, 9])
+
+    def test_simulation_buys_d1_picks_in_drawdown_order_and_d_unchanged(self):
+        panel, inp = self.dd_setup()
+        got = {}
+        for name, cfg in (('D', FusionConfig(positions=3, hold_days=20, start='2024-01-02')),
+                          ('D1', FusionConfig(positions=3, hold_days=20, start='2024-01-02', rank_mode='dd60', rank_k=5))):
+            raw = fusion.simulate_fused(panel, inp, cfg)
+            got[name] = sorted(t['code'][-1] for t in raw['trades'])
+        self.assertEqual(got, {'D': ['0', '1', '2'], 'D1': ['1', '2', '3']})
+
+
+class RankOptionLedgerTests(unittest.TestCase):
+    def setUp(self):
+        self.panel = sector_panel(330, drop_days=20, recover_days=30)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        write_class(self.tmp.name, self.panel)
+        self.cls = industry.load_classification(self.tmp.name, self.panel.codes)
+        self.d = FusionConfig(positions=5, hold_days=10, start='2024-01-02')
+        self.d1 = FusionConfig(positions=5, hold_days=10, start='2024-01-02', rank_mode='dd60', rank_k=10)
+
+    def cut(self, n):
+        p = self.panel
+        return Panel(dates=p.dates[:n], codes=p.codes, o=p.o[:n], c=p.c[:n], f=p.f[:n], a=p.a[:n], st=p.st[:n], ts=p.ts[:n], meta={})
+
+    def test_d1_has_its_own_ledger_signal_fields_and_backtest(self):
+        cut = self.cut(350)
+        sig_d = fusion.latest_fusion_signal(cut, fusion.build_inputs(cut, self.d, self.cls), self.d)
+        sig = fusion.latest_fusion_signal(cut, fusion.build_inputs(cut, self.d1, self.cls), self.d1)
+        self.assertEqual((sig_d['variant'], sig['variant']), ('D', 'D1'))
+        self.assertTrue(all(p['dd60'] is None for p in sig_d['picks']))
+        self.assertTrue(sig['picks'] and all(p['dd60'] is not None and p['dd60'] <= 0 for p in sig['picks']))
+        with tempfile.TemporaryDirectory() as out:
+            tracker.record_signal(out, sig, self.d1, kind='fusion1')
+            self.assertTrue((Path(out) / '_home' / 'dip_fusion1_forward.json').is_file())
+            self.assertFalse((Path(out) / '_home' / 'dip_fusion_forward.json').exists())     # D 的记录不受影响
+            self.assertEqual(tracker.load_ledger(out, 'fusion1')['config']['rank_mode'], 'dd60')
+            with self.assertRaisesRegex(ValueError, '已有前向记录'):
+                tracker.record_signal(out, dict(sig, date='2099-01-01'), self.d, kind='fusion1')   # 参数冻结：不能把 D 记进 D1 的台账
+            port = fusion.forward_portfolio(out, self.panel, self.cls, kind='fusion1')
+            self.assertIsNotNone(port)
+            self.assertIsNone(fusion.forward_portfolio(out, self.panel, self.cls, kind='fusion'))
+            tracker.clear_ledger(out, 'fusion1')
+            self.assertEqual(tracker.load_ledger(out, 'fusion1')['records'], [])
+        run = fusion.run_backtest(self.panel, self.d1, self.cls)
+        self.assertEqual(run['config']['rank_mode'], 'dd60')
+        self.assertEqual(run['config_hash'], self.d1.hash())
+        self.assertGreater(len(run['trades']), 0)
+        self.assertTrue(any('D1' in c for c in run['caveats']))
 
 
 if __name__ == '__main__':

@@ -53,7 +53,7 @@ def _clear(layout):
 def _state(window):
     state = getattr(window, 'bench_state', None)
     if state is None:
-        state = {'panel': None, 'names': {}, 'default': None, 'forward': None, 'industry': None, 'fusion': None, 'loading': None,
+        state = {'panel': None, 'names': {}, 'default': None, 'forward': None, 'industry': None, 'fusion': None, 'fusion_variant': 'D', 'loading': None,
                  'running': None, 'sandbox': None, 'error': None}
         window.bench_state = state
     return state
@@ -747,22 +747,35 @@ class BenchPage:
     def build_fusion(self):
         v = self.boxes['fusion']
         _clear(v)
-        fus = self.state.get('fusion')
-        if not fus or fus.get('error'):
-            v.addWidget(label('策略 D 暂不可用：' + str((fus or {}).get('error') or '数据还没准备好'), 'note', True))
+        top = self.state.get('fusion')
+        if not top or top.get('error'):
+            v.addWidget(label('策略 D 暂不可用：' + str((top or {}).get('error') or '数据还没准备好'), 'note', True))
+            v.addStretch(1)
+            return
+        variant, fus = self.fus_cur()
+        name = fusion.VARIANT_NAMES[variant]
+        v.addWidget(self.fusion_selector(variant))
+        if fus.get('error'):
+            v.addWidget(label(f'{name} 暂不可用：' + str(fus['error']), 'note', True))
             v.addStretch(1)
             return
         cfg, cls, panel = fus['cfg'], fus['cls'], self.state['panel']
+        rank_text = ('买 20 日跌得最多的' if variant == 'D' else
+                     f'先取 20 日跌得最多的前 {cfg.rank_k} 只，再买其中 60 日回撤（离近 60 日最高收盘价跌得最深）最大的')
         self.fus_cfg = cfg
         inp = fusion.build_inputs(panel, cfg, cls)
         sig = fusion.latest_fusion_signal(panel, inp, cfg, names=self.state['names'])
         self.fus_signal = sig
         w = cfg.weights
         intro = Card('这是什么')
+        if variant == 'D1':
+            intro.add(label('D1 = 策略 D 只换一件事：同一批触发的候选，D 直接买 20 日跌得最多的；D1 先留下 20 日跌得最多的前 40 只，再按 60 日回撤从深到浅买。'
+                            '闸门、权重、仓位、持有期、成本都和 D 一样，单独一份回测和前向记录。注意：这个排序是看过全样本后挑出来的，属于样本内线索，'
+                            '逐年看有的年份比 D 好很多、有的年份少赚，建议当可选增强，别当成 D 的替代品。', 'note', True))
         intro.add(label('三套恐慌信号共用一笔钱、不借钱：A 大盘恐慌（且个股布林下轨收复）、C 按近 60 日成交额分五档的某一档恐慌、B 申万一级某个行业恐慌。'
                         '恐慌分都是“一组股票的等权 20 日涨跌 ÷ 它平时的波动”，低于 −1.5 就触发。触发的层按 A → C → B 的顺序分钱，'
                         f"每只权重 A {w['A'] * 100:g}%、C {w['C'] * 100:g}%、B {w['B'] * 100:g}%（占净值），每层最多 {cfg.positions} 只，总仓位不超过 {cfg.gross_cap * 100:g}%，"
-                        f'买 20 日跌得最多的；次日开盘买、持有 {cfg.hold_days} 个交易日后收盘卖，同一只股票不会在两层里重复买。'
+                        f'{rank_text}；次日开盘买、持有 {cfg.hold_days} 个交易日后收盘卖，同一只股票不会在两层里重复买。'
                         'A 触发的日子 C 一定触发，C 触发的日子 B 一定触发，所以 B 层最频繁、单笔质量最低，作用是把 A、C 空着的钱用起来。'
                         '这里只显示信号并做前向记录，不下单、不建议买卖。', 'muted', True))
         v.addWidget(intro)
@@ -799,7 +812,7 @@ class BenchPage:
         self.fus_equity.setValue(40)
         self.fus_equity.setSuffix(' 万元本金')
         self.fus_equity.valueChanged.connect(lambda _: self.fill_fusion_picks())
-        self.fus_record_button = button('把今天的信号记入策略 D 前向跟踪', self.record_fusion, True)
+        self.fus_record_button = button(f'把今天的信号记入{name} 前向跟踪', self.record_fusion, True)
         self.fus_record_button.setEnabled(bool(sig['gate_open'] and sig['picks']))
         self.fus_record_message = label('', 'muted', True)
         plan.add(row(label('按'), self.fus_equity, label('本金估算每只金额（按账户空仓算，已有持仓要自己扣掉）：'), self.fus_record_button))
@@ -814,7 +827,7 @@ class BenchPage:
         self.fill_fusion_picks()
         self.build_fusion_forward(v, fus)
         run = fus['run']
-        head = Card('策略 D 的回测与风险')
+        head = Card(f'{name} 的回测与风险')
         head.add(label(_fusion_config_text(run['config']) + f"　引擎 {run['engine_version']}　哈希 {run['content_hash']}", 'muted', True))
         head.add(label('口径：一笔钱、不借钱，次日开盘买、持有到期收盘卖，同一套手续费和 1 个最小价位滑点；闲置资金按年化 2% 计息；'
                        '候选里次日开盘一字涨停的排除。', 'muted', True))
@@ -832,22 +845,26 @@ class BenchPage:
         if getattr(self, 'fus_pick_host', None) is None or not _alive(self.fus_pick_host):
             return
         _clear(self.fus_pick_box)
-        fus, panel = self.state['fusion'], self.state['panel']
+        _, fus = self.fus_cur()
+        panel = self.state['panel']
         inp = fusion.build_inputs(panel, fus['cfg'], fus['cls'])
         sig = fusion.latest_fusion_signal(panel, inp, fus['cfg'], equity=self.fus_equity.value() * 1e4, names=self.state['names'])
         self.fus_signal = sig
         if not sig['picks']:
             self.fus_pick_box.addWidget(label('今天没有层触发，或触发的层里没有可买的股票，没有计划。', 'muted', True))
             return
-        rows = [[p['sleeve'], p['rank'], p['code'], p['name'] or '—', p['group'] or '—', f"{p['close']:.2f}", _pct(p['ret20']),
-                 '计划内' if p['in_plan'] else '备选',
-                 f"{p.get('plan_amount', 0):,.0f}" if p['in_plan'] else '—', f"{p.get('plan_shares', 0):,}" if p['in_plan'] else '—']
+        d1 = sig.get('rank_mode') == 'dd60'
+        rows = [[p['sleeve'], p['rank'], p['code'], p['name'] or '—', p['group'] or '—', f"{p['close']:.2f}", _pct(p['ret20'])]
+                + ([_pct(p.get('dd60'))] if d1 else [])
+                + ['计划内' if p['in_plan'] else '备选',
+                   f"{p.get('plan_amount', 0):,.0f}" if p['in_plan'] else '—', f"{p.get('plan_shares', 0):,}" if p['in_plan'] else '—']
                 for p in sig['picks'][:MAX_ROWS]]
-        self.fus_pick_box.addWidget(table(['层', '排名', '代码', '名称', '分组', '收盘价', '20日涨跌', '位置', '计划金额（元）', '估算股数'], rows))
+        heads = ['层', '排名', '代码', '名称', '分组', '收盘价', '20日涨跌'] + (['60日回撤'] if d1 else []) + ['位置', '计划金额（元）', '估算股数']
+        self.fus_pick_box.addWidget(table(heads, rows))
 
     def record_fusion(self):
         try:
-            record = tracker.record_signal(self.window.output, self.fus_signal, self.fus_cfg, kind='fusion')
+            record = tracker.record_signal(self.window.output, self.fus_signal, self.fus_cfg, kind=_fusion_kind(self.fus_cfg.variant))
         except ValueError as exc:
             self.fus_record_message.setText(str(exc))
             return
@@ -856,14 +873,38 @@ class BenchPage:
         self.refresh_fusion_forward()
 
     def refresh_fusion_forward(self):
-        fus = self.state.get('fusion')
+        if (self.state.get('fusion') or {}).get('error'):
+            return
+        variant, fus = self.fus_cur()
         if fus and not fus.get('error'):
-            fus['forward'] = _fusion_forward(self.window.output, self.state['panel'], fus['cls'])
+            fus['forward'] = _fusion_forward(self.window.output, self.state['panel'], fus['cls'], variant)
         self.build_fusion()
+
+    def fus_cur(self):
+        """当前选中的是 D 还是 D1，以及对应的那一份回测 / 前向包（D1 的包挂在 D 的包下面）。"""
+        top = self.state.get('fusion') or {}
+        if self.state.get('fusion_variant') == 'D1':
+            return 'D1', top.get('d1') or {'error': '没有算出 D1'}
+        return 'D', top
+
+    def fusion_selector(self, variant):
+        box = QComboBox()
+        box.setAccessibleName('候选排序')
+        box.addItem('D：买 20 日跌得最多的', 'D')
+        box.addItem('D1：先取跌幅前 40，再买 60 日回撤最深的', 'D1')
+        box.setCurrentIndex(1 if variant == 'D1' else 0)
+        box.currentIndexChanged.connect(lambda _: self.set_fusion_variant(box.currentData()))
+        return row(label('候选排序'), box)
+
+    def set_fusion_variant(self, variant):
+        if variant in ('D', 'D1') and variant != self.state.get('fusion_variant'):
+            self.state['fusion_variant'] = variant
+            self.build_fusion()
 
     def build_fusion_forward(self, v, fus):
         fwd = fus.get('forward') or {}
-        card = Card('策略 D 的前向跟踪')
+        name = fusion.VARIANT_NAMES[fus['cfg'].variant]
+        card = Card(f'{name} 的前向跟踪')
         if fwd.get('error'):
             card.add(label('前向记录读取失败：' + str(fwd['error']), 'note', True))
             v.addWidget(card)
@@ -887,20 +928,20 @@ class BenchPage:
             rows.append([r['signal_date'], '、'.join(r.get('fired') or []) or '—', _num(r.get('z')),
                          status_names.get(r.get('status'), r.get('status')), res.get('n_filled', 0), _pct(shown)])
         card.add(table(['信号日', '触发的层', '大盘 z', '状态', '买入只数', '收益（持有中为浮动）'], rows) if rows
-                 else label('还没有记录。哪天有层触发，在上面点“记入策略 D 前向跟踪”。', 'muted', True))
+                 else label(f'还没有记录。哪天有层触发，在上面点“记入{name} 前向跟踪”。', 'muted', True))
         port = fwd.get('portfolio')
         if port:
             s = port['summary']['stats']
             if s:
                 card.add(label(f"按冻结参数从开始日起的组合净值：累计 {_pct(s['total'])}，最大回撤 {_pct(s['max_drawdown'], 0)}，共 {s['days']} 个交易日。", 'muted', True))
-            chart = SeriesChart('策略D前向净值', y_format='{:.3f}×')
+            chart = SeriesChart(f"{name.replace(' ', '')}前向净值", y_format='{:.3f}×')
             chart.set_data([{'name': '前向净值', 'color': '#f6b72f', 'values': port['equity']}], (port['dates'][0], port['dates'][-1]))
             card.add(chart)
             if port['mismatched']:
                 card.add(label('提示：有 %d 个信号日，组合重算选出的股票不在当时的记录里（数据可能被修订）。' % len(port['mismatched']), 'note', True))
         self.fus_clear_armed = False
         if records:
-            self.fus_clear_button = button('清空策略 D 记录', self.clear_fusion_ledger)
+            self.fus_clear_button = button(f'清空{name} 记录', self.clear_fusion_ledger)
             self.fus_clear_message = label('', 'muted', True)
             card.add(row(self.fus_clear_button, self.fus_clear_message))
         v.addWidget(card)
@@ -911,7 +952,7 @@ class BenchPage:
             self.fus_clear_button.setText('再点一次确认清空')
             self.fus_clear_message.setText('清空后不能恢复。')
             return
-        tracker.clear_ledger(self.window.output, 'fusion')
+        tracker.clear_ledger(self.window.output, _fusion_kind(self.fus_cfg.variant))
         self.refresh_fusion_forward()
 
 
@@ -933,22 +974,43 @@ def _industry_forward(output, panel, cls):
         return {'error': f'{type(exc).__name__}: {exc}'}
 
 
-def _fusion_forward(output, panel, cls):
+def _fusion_kind(variant):
+    return 'fusion1' if variant == 'D1' else 'fusion'
+
+
+def _fusion_forward(output, panel, cls, variant='D'):
     try:
-        settled = tracker.settle_ledger(output, panel, kind='fusion')
-        return {'settled': settled, 'portfolio': fusion.forward_portfolio(output, panel, cls)}
+        kind = _fusion_kind(variant)
+        settled = tracker.settle_ledger(output, panel, kind=kind)
+        return {'settled': settled, 'portfolio': fusion.forward_portfolio(output, panel, cls, kind=kind)}
     except Exception as exc:
         return {'error': f'{type(exc).__name__}: {exc}'}
 
 
 def _fusion_bundle(output, panel, ind, progress, stop):
-    """策略 D：需要行业分类（B 层）。回测、前向记录；任何一步失败只影响这个标签页。"""
+    """策略 D / D1：需要行业分类（B 层）。回测、前向记录；任何一步失败只影响这个标签页。
+    D1 = D 换一种候选排序，单独一份回测和前向记录；D1 失败不影响 D。"""
     try:
         if not ind or ind.get('error'):
             raise dpanel.DipDataError('B 层需要申万行业分类：' + str((ind or {}).get('error') or '行业数据还没准备好'))
-        cfg, cls = fusion.default_config(), ind['cls']
-        run = fusion.run_backtest(panel, cfg, cls, progress=progress, stop=stop)
-        return {'cfg': cfg, 'cls': cls, 'run': run, 'forward': _fusion_forward(output, panel, cls)}
+        cls = ind['cls']
+        out = None
+        for variant in ('D', 'D1'):
+            try:
+                cfg = fusion.config_for(variant)
+                run = fusion.run_backtest(panel, cfg, cls, progress=progress, stop=stop)
+                bundle = {'cfg': cfg, 'cls': cls, 'run': run, 'forward': _fusion_forward(output, panel, cls, variant)}
+            except dpanel.Cancelled:
+                raise
+            except Exception as exc:
+                if variant == 'D':
+                    raise
+                bundle = {'error': f'{type(exc).__name__}: {exc}'}
+            if variant == 'D':
+                out = bundle
+            else:
+                out['d1'] = bundle
+        return out
     except dpanel.Cancelled:
         raise
     except Exception as exc:

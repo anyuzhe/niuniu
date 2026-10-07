@@ -15,7 +15,7 @@ import numpy as np
 
 if find_spec('PyQt6'):
     from PyQt6.QtTest import QTest
-    from PyQt6.QtWidgets import QApplication, QDoubleSpinBox, QLabel, QPushButton, QSpinBox, QTableWidget, QTabWidget
+    from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QLabel, QPushButton, QSpinBox, QTableWidget, QTabWidget
     from quantlab.desktop.app import MainWindow
     from quantlab.desktop import strategy_bench_page as page_mod
 from quantlab.dipbuy import panel as dpanel
@@ -214,6 +214,47 @@ class BenchPageTests(unittest.TestCase):
         self.button('再点一次确认清空').click()
         QTest.qWait(50)
         self.assertFalse((self.out / '_home' / 'dip_fusion_forward.json').exists())
+
+    def test_fusion_tab_d1_option_switches_ranking_and_keeps_a_separate_ledger(self):
+        self.cache_panel()
+        self.go()
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        fus = self.window.bench_state['fusion']
+        self.assertNotIn('error', fus['d1'])
+        self.assertEqual(fus['d1']['run']['config']['rank_mode'], 'dd60')
+        self.assertEqual(fus['run']['config']['rank_mode'], 'ret20')
+        tab = tabs.widget(5)
+        selector = next(c for c in tab.findChildren(QComboBox) if c.accessibleName() == '候选排序')
+        self.assertEqual(selector.currentData(), 'D')
+        self.assertFalse(any('D1 = 策略 D 只换一件事' in w.text() for w in tab.findChildren(QLabel)))
+        selector.setCurrentIndex(1)                                            # 选 D1：页面重建
+        QTest.qWait(50)
+        self.assertEqual(self.window.bench_state['fusion_variant'], 'D1')
+        tab = tabs.widget(5)
+        texts = [w.text() for w in tab.findChildren(QLabel)]
+        self.assertTrue(any('D1 = 策略 D 只换一件事' in t for t in texts))
+        self.assertTrue(any('策略 D1 的回测与风险' in t for t in texts))
+        self.assertTrue(any('60 日回撤' in t for t in texts))
+        self.assertIn('60日回撤', [g.horizontalHeaderItem(i).text() for g in tab.findChildren(QTableWidget) for i in range(g.columnCount())])
+        self.button('把今天的信号记入策略 D1 前向跟踪').click()
+        QTest.qWait(50)
+        ledger = json.loads((self.out / '_home' / 'dip_fusion1_forward.json').read_text(encoding='utf-8'))
+        self.assertEqual(ledger['config']['rank_mode'], 'dd60')
+        self.assertEqual(len(ledger['records']), 1)
+        self.assertFalse((self.out / '_home' / 'dip_fusion_forward.json').exists())      # D 的台账不受影响
+        selector = next(c for c in tabs.widget(5).findChildren(QComboBox) if c.accessibleName() == '候选排序')
+        selector.setCurrentIndex(0)                                            # 切回 D：看到的是 D 自己的（空）台账
+        QTest.qWait(50)
+        self.assertEqual(self.window.bench_state['fusion_variant'], 'D')
+        self.button('把今天的信号记入策略 D 前向跟踪')
+        self.assertFalse(any('清空策略 D 记录' == b.text() for b in self.window.scroll.widget().findChildren(QPushButton)))
+        selector = next(c for c in tabs.widget(5).findChildren(QComboBox) if c.accessibleName() == '候选排序')
+        selector.setCurrentIndex(1)
+        QTest.qWait(50)
+        self.button('清空策略 D1 记录').click()
+        self.button('再点一次确认清空').click()
+        QTest.qWait(50)
+        self.assertFalse((self.out / '_home' / 'dip_fusion1_forward.json').exists())
 
     def test_fusion_tab_degrades_without_industry_classification(self):
         self.cache_panel()
