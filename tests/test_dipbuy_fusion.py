@@ -407,6 +407,17 @@ class NearHighFilterTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 FusionConfig(**bad)
 
+    def test_d2_is_d1_plus_the_filter_with_its_own_identity(self):
+        d, d1, d2 = FusionConfig(), fusion.d1_config(), fusion.d2_config()
+        self.assertEqual((d.variant, d1.variant, d2.variant), ('D', 'D1', 'D2'))
+        self.assertEqual((d2.rank_mode, d2.rank_k, d2.near_high_on, d2.near_high_window, d2.near_high_pct), ('dd60', 40, True, 120, 0.05))
+        self.assertEqual(len({d.hash(), d1.hash(), d2.hash()}), 3)
+        self.assertEqual(d1.hash(), FusionConfig(rank_mode='dd60').hash())
+        self.assertEqual(fusion.config_for('D2'), d2)
+        self.assertEqual(fusion.config_for('D1'), d1)
+        self.assertEqual(FusionConfig.from_dict(d2.to_dict()), d2)
+        self.assertEqual(fusion.VARIANT_NAMES['D2'], '策略 D2')
+
     def test_gap_matches_a_naive_loop(self):
         _, inp = self.market_inp()
         idx = np.cumprod(1 + inp.market.mret)

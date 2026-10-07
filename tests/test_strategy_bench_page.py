@@ -210,35 +210,40 @@ class BenchPageTests(unittest.TestCase):
         self.assertTrue(any('已记入' in t for t in self.labels()))
         self.assertFalse((self.out / '_home' / 'dip_fusion_forward.json').exists())              # 其它记录文件不受影响
 
-    def test_near_high_switch_is_on_by_default_and_never_touches_the_forward_record(self):
+    def test_d2_is_a_third_variant_with_its_own_backtest_and_forward_ledger(self):
         from quantlab.dipbuy import autorecord
         panel = self.cache_panel()
         pages = self.holdings_page(autorecord.next_open_day(panel.last_date))
         self.go()
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        selector = next(c for c in tabs.widget(5).findChildren(QComboBox) if c.accessibleName() == '候选排序')
+        self.assertEqual([selector.itemData(i) for i in range(selector.count())], ['D', 'D1', 'D2'])
+        selector.setCurrentIndex(2)
+        QTest.qWait(50)
+        self.assertEqual(self.window.bench_state['fusion_variant'], 'D2')
         page = pages[-1]
-        root = self.window.scroll.widget()
-
-        def box():
-            return next(b for b in root.findChildren(QCheckBox) if b.accessibleName() == '近高点过滤')
-        self.assertTrue(box().isChecked())
-        self.assertTrue(page.near_high_on)
-        self.assertTrue(any('大盘离近 120 日高点' in t for t in self.labels()))
-        would_block = page.fus_signal['market_position']['would_block']
-        self.assertTrue(page.hold_ctx[0].near_high_on)
-        self.assertFalse(page.fus_cfg.near_high_on)                                       # 前向记录用的配置不带过滤
-        self.assertEqual(page.fus_cfg.hash(), page_mod.fusion.default_config().hash())
-        on_buys = [b['code'] for b in page.hold_plan['buys']]
-        if would_block:
-            self.assertEqual(on_buys, [])
-            self.assertTrue(any('近高点过滤已打开' in n for n in page.hold_plan['notes']))
-        box().setChecked(False)
+        self.assertEqual(page.fus_cfg.variant, 'D2')
+        self.assertTrue(page.fus_cfg.near_high_on)
+        self.assertTrue(page.hold_ctx[0].near_high_on)                                    # 我的持仓跟着 D2
+        texts = [w.text() for w in tabs.widget(5).findChildren(QLabel)]
+        self.assertTrue(any('D2 = D1 再加一件事' in t for t in texts))
+        self.assertTrue(any('策略 D2 的回测与风险' in t for t in texts))
+        self.assertTrue(any('大盘离近 120 日高点' in t for t in texts))
+        sig = page.fus_signal
+        if sig['gate_open'] and sig['picks']:
+            self.button('把今天的信号记入策略 D2 前向跟踪').click()
+            QTest.qWait(50)
+            ledger = json.loads((self.out / '_home' / 'dip_fusion2_forward.json').read_text(encoding='utf-8'))
+            self.assertTrue(ledger['config']['near_high_on'])
+            self.assertEqual(ledger['config']['rank_mode'], 'dd60')
+            self.assertFalse((self.out / '_home' / 'dip_fusion1_forward.json').exists())     # D1 的台账不受影响
+            self.assertFalse((self.out / '_home' / 'dip_fusion_forward.json').exists())
+        else:
+            self.assertTrue(sig['market_position']['blocked'] or not sig['gate_open'])
+        selector = next(c for c in tabs.widget(5).findChildren(QComboBox) if c.accessibleName() == '候选排序')
+        selector.setCurrentIndex(0)
         QTest.qWait(50)
-        self.assertFalse(page.near_high_on)
-        self.assertFalse(page.hold_ctx[0].near_high_on)
-        self.assertGreater(len(page.hold_plan['buys']), 0)                                # 关掉后回到不过滤的计划
-        box().setChecked(True)
-        QTest.qWait(50)
-        self.assertEqual([b['code'] for b in page.hold_plan['buys']], on_buys)
+        self.assertFalse(pages[-1].fus_cfg.near_high_on)                                  # 切回 D：不带过滤
 
     def test_holdings_tab_refuses_stale_data_and_saves_equity(self):
         panel = self.cache_panel()

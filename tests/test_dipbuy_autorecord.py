@@ -110,6 +110,7 @@ class RecordLatestTests(unittest.TestCase):
             self.assertEqual(res['market']['status'], 'closed')
             self.assertEqual(res['fusion']['status'], 'error')                                    # 没有行业分类，D / D1 / B 算不了
             self.assertEqual(res['fusion1']['status'], 'error')
+            self.assertEqual(res['fusion2']['status'], 'error')
             self.assertEqual(res['industry']['status'], 'error')
             self.assertIn('行业分类', res['fusion']['message'])
 

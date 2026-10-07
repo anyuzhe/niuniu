@@ -209,7 +209,7 @@ class BenchPage:
         self.status = label('', 'muted', True)
         self.reload_button = button('重新读取数据', self.reload)
         box.addWidget(row(self.status, self.reload_button))
-        self.auto_box = QCheckBox('每个交易日数据更新后，自动记录前向信号（牛牛开着时；D、D1、A、B 各记各的，只记最新一天）')
+        self.auto_box = QCheckBox('每个交易日数据更新后，自动记录前向信号（牛牛开着时；D、D1、D2、A、B 各记各的，只记最新一天）')
         self.auto_box.setAccessibleName('自动记录前向信号')
         self.auto_box.setChecked(autorecord.load_state(window.output)['enabled'])
         self.auto_box.toggled.connect(self.set_auto)
@@ -240,7 +240,6 @@ class BenchPage:
         self.equity_spin = None
         self.pick_host = None
         self.hold_host = None
-        self.near_high_on = True        # 默认打开：只影响计划和“我的持仓”，回测与前向记录仍按原规则
         self.today_override = None
         self.message = {}
 
@@ -295,7 +294,7 @@ class BenchPage:
         if ind and not ind.get('error'):
             ind['forward'] = _industry_forward(out, panel, ind['cls'])
         top = self.state.get('fusion') or {}
-        for variant, bundle in (('D', top), ('D1', top.get('d1') or {})):
+        for variant, bundle in (('D', top), ('D1', top.get('d1') or {}), ('D2', top.get('d2') or {})):
             if bundle and not bundle.get('error'):
                 bundle['forward'] = _fusion_forward(out, panel, bundle['cls'], variant)
         if _alive(self.tabs):
@@ -847,6 +846,10 @@ class BenchPage:
         self.fus_signal = sig
         w = cfg.weights
         intro = Card('这是什么')
+        if variant == 'D2':
+            intro.add(label('D2 = D1 再加一件事：大盘（全部股票的等权指数）离近 120 日高点不足 5% 的日子，三层闸门全部关掉、不开新仓；候选排序、闸门、权重、仓位、持有期、成本都和 D1 一样，'
+                            '单独一份回测和前向记录。研究里（含退市股）它比 D1 多约 3 个点年化（D1 18.3% → D2 21.3%），最大回撤不变；但增益几乎全来自 2013、2021–2023 年，'
+                            '过滤的窗口和距离是看过网格后选的，样本内、没做多重检验修正，真实预期只有每年多 1.5 到 3 个点。前向记录就是用来检验它的。', 'note', True))
         if variant == 'D1':
             intro.add(label('D1 = 策略 D 只换一件事：同一批触发的候选，D 直接买 20 日跌得最多的；D1 先留下 20 日跌得最多的前 40 只，再按 60 日回撤从深到浅买。'
                             '闸门、权重、仓位、持有期、成本都和 D 一样，单独一份回测和前向记录。注意：这个排序是看过全样本后挑出来的，属于样本内线索，'
@@ -866,8 +869,12 @@ class BenchPage:
             tiles.append((f"{s_} {g['name']}", _num(g['z']), f"{g['detail']}　{note}"))
         mp = sig['market_position']
         if mp['gap'] is not None:
-            tiles.append((f"大盘离近 {mp['window']} 日高点", _pct(mp['gap']),
-                          f"不足 {mp['pct'] * 100:g}%（研究里这类日子的信号表现差，过滤打开时会被挡掉）" if mp['would_block'] else f"超过 {mp['pct'] * 100:g}%，不会被近高点过滤挡掉"))
+            if cfg.near_high_on:
+                cap = (f"不足 {mp['pct'] * 100:g}%：今天的信号被过滤挡掉" if mp['blocked'] else
+                       f"不足 {mp['pct'] * 100:g}%，今天没有信号可挡" if mp['would_block'] else f"超过 {mp['pct'] * 100:g}%，不挡信号")
+            else:
+                cap = (f"不足 {mp['pct'] * 100:g}%：D2 会挡掉今天的信号" if mp['would_block'] else f"超过 {mp['pct'] * 100:g}%：D2 不会挡")
+            tiles.append((f"大盘离近 {mp['window']} 日高点", _pct(mp['gap']), cap))
         v.addWidget(kpis(tiles))
         recent = sig['recent']
         chart = SeriesChart('三层恐慌分', y_format='{:+.2f}', height=190)
@@ -887,8 +894,8 @@ class BenchPage:
                         [[r['name'], r['stocks'], r['members'], _pct(r['ret20']), _num(r['z']), '触发' if r['triggered'] else '']
                          for r in sig['industries'][:10]]))
         v.addWidget(icard)
-        plan_open = bool(fusion.build_inputs(panel, self.plan_cfg(cfg), cls).any_gate[sig['index']]) if self.near_high_on else bool(sig['gate_open'])
-        plan = Card('明天的计划' if plan_open else '今天不用买（三层闸门都没开）' if not (self.near_high_on and sig['gate_open']) else '今天不用买（被近高点过滤挡掉）')
+        blocked = sig['market_position']['blocked']
+        plan = Card('明天的计划' if sig['gate_open'] else '今天不用买（被近高点过滤挡掉）' if blocked else '今天不用买（三层闸门都没开）')
         self.fus_equity = QDoubleSpinBox()
         self.fus_equity.setAccessibleName('策略D账户本金')
         self.fus_equity.setRange(1, 100000)
@@ -901,13 +908,6 @@ class BenchPage:
         self.fus_record_message = label('', 'muted', True)
         plan.add(row(label('按'), self.fus_equity, label('本金估算每只金额（按账户空仓算，已有持仓要自己扣掉）：'), self.fus_record_button))
         plan.add(self.fus_record_message)
-        self.near_high_box = QCheckBox(f'近高点过滤（默认开）：大盘离近 {cfg.near_high_window} 日高点不足 {cfg.near_high_pct * 100:g}% 时不开新仓')
-        self.near_high_box.setAccessibleName('近高点过滤')
-        self.near_high_box.setChecked(self.near_high_on)
-        self.near_high_box.toggled.connect(self.toggle_near_high)
-        plan.add(self.near_high_box)
-        plan.add(label('只影响下面的计划和“我的持仓”，回测数字和前向记录仍按原规则。研究（含退市股，见 §103）：D 年化 15.9% → 18.8%、D1 18.3% → 21.3%，最大回撤不变；'
-                       '增益几乎全来自 2013、2021–2023 年，参数是看过数据后选的，实际预期只有每年 +1.5 到 +3 个点，所以这里默认打开但不改回测和前向记录；前向记录继续按原规则，用来检验它到底有没有用。', 'muted', True))
         self.fus_pick_host = QWidget()
         self.fus_pick_box = QVBoxLayout(self.fus_pick_host)
         self.fus_pick_box.setContentsMargins(0, 0, 0, 0)
@@ -932,16 +932,6 @@ class BenchPage:
         v.addWidget(result_view(run, panel, levered=False))
         v.addStretch(1)
 
-    def plan_cfg(self, cfg):
-        """“明天的计划”和“我的持仓”用的配置：近高点过滤打开时带上过滤；回测和前向记录永远用原配置。"""
-        return replace(cfg, near_high_on=True) if self.near_high_on else cfg
-
-    def toggle_near_high(self, on):
-        if bool(on) != self.near_high_on:
-            self.near_high_on = bool(on)
-            self.build_fusion()
-            self.build_holdings()
-
     def fill_fusion_picks(self):
         if getattr(self, 'fus_pick_host', None) is None or not _alive(self.fus_pick_host):
             return
@@ -950,15 +940,12 @@ class BenchPage:
         panel = self.state['panel']
         inp = fusion.build_inputs(panel, fus['cfg'], fus['cls'])
         sig = fusion.latest_fusion_signal(panel, inp, fus['cfg'], equity=self.fus_equity.value() * 1e4, names=self.state['names'])
-        self.fus_signal = sig                      # 前向记录永远按原规则（不带近高点过滤）
-        if self.near_high_on:
-            pcfg = self.plan_cfg(fus['cfg'])
-            sig = fusion.latest_fusion_signal(panel, fusion.build_inputs(panel, pcfg, fus['cls']), pcfg,
-                                              equity=self.fus_equity.value() * 1e4, names=self.state['names'])
-            if sig['market_position']['blocked']:
-                self.fus_pick_box.addWidget(label(f"近高点过滤已打开：大盘离近 {pcfg.near_high_window} 日高点只有 {abs(sig['market_position']['gap']) * 100:.1f}%"
-                                                  f"（不足 {pcfg.near_high_pct * 100:g}%），今天本来触发的信号被挡掉，不新开仓。", 'note', True))
-                return
+        self.fus_signal = sig
+        if sig['market_position']['blocked']:
+            mp = sig['market_position']
+            self.fus_pick_box.addWidget(label(f"近高点过滤：大盘离近 {mp['window']} 日高点只有 {abs(mp['gap']) * 100:.1f}%（不足 {mp['pct'] * 100:g}%），"
+                                              '今天本来触发的信号被挡掉，不新开仓。', 'note', True))
+            return
         if not sig['picks']:
             self.fus_pick_box.addWidget(label('今天没有层触发，或触发的层里没有可买的股票，没有计划。', 'muted', True))
             return
@@ -992,8 +979,9 @@ class BenchPage:
     def fus_cur(self):
         """当前选中的是 D 还是 D1，以及对应的那一份回测 / 前向包（D1 的包挂在 D 的包下面）。"""
         top = self.state.get('fusion') or {}
-        if self.state.get('fusion_variant') == 'D1':
-            return 'D1', top.get('d1') or {'error': '没有算出 D1'}
+        v_ = self.state.get('fusion_variant')
+        if v_ in ('D1', 'D2'):
+            return v_, top.get(v_.lower()) or {'error': f'没有算出 {v_}'}
         return 'D', top
 
     def fusion_selector(self, variant):
@@ -1001,17 +989,18 @@ class BenchPage:
         box.setAccessibleName('候选排序')
         box.addItem('D：买 20 日跌得最多的', 'D')
         box.addItem('D1：先取跌幅前 40，再买 60 日回撤最深的', 'D1')
-        box.setCurrentIndex(1 if variant == 'D1' else 0)
+        box.addItem('D2：D1 再加近高点过滤（大盘离 120 日高点不足 5% 不开新仓）', 'D2')
+        box.setCurrentIndex({'D': 0, 'D1': 1, 'D2': 2}.get(variant, 0))
         box.currentIndexChanged.connect(lambda _: self.set_fusion_variant(box.currentData()))
         return row(label('候选排序'), box)
 
     def set_fusion_variant(self, variant):
-        if variant in ('D', 'D1') and variant != self.state.get('fusion_variant'):
+        if variant in ('D', 'D1', 'D2') and variant != self.state.get('fusion_variant'):
             self.state['fusion_variant'] = variant
             self.build_fusion()
             self.build_holdings()
 
-    # ---- tab: 我的持仓（录入真实持仓，按 D / D1 的规则算明天该卖什么、该买什么）
+    # ---- tab: 我的持仓（录入真实持仓，按 D / D1 / D2 的规则算明天该卖什么、该买什么）
     def today(self):
         return getattr(self, 'today_override', None) or datetime.now(autorecord.SHANGHAI).date()
 
@@ -1026,13 +1015,12 @@ class BenchPage:
             v.addStretch(1)
             return
         cfg, cls, panel = fus['cfg'], fus['cls'], self.state['panel']
-        pcfg = self.plan_cfg(cfg)
-        self.hold_ctx = (pcfg, fusion.build_inputs(panel, pcfg, cls))
+        self.hold_ctx = (cfg, fusion.build_inputs(panel, cfg, cls))
         data = portfolio.load(self.window.output)
         intro = Card('这是什么')
         intro.add(label(f'把你真实买的股票录进来，工作台按{fusion.VARIANT_NAMES[variant]}的规则算“下一个开市日”要做什么：哪些到期该卖、哪些新信号该买（已经持有的不会重复买，'
                         f'每层名额和总仓位会扣掉已有持仓）。持有 {cfg.hold_days} 个交易日：买入当天算第 1 天，第 {cfg.hold_days} 天收盘卖出。'
-                        '候选排序跟随“策略 D”标签里选的 D / D1。这里只是辅助计算，不下单、不连券商；持仓只存在这台电脑上。'
+                        '候选排序跟随“策略 D”标签里选的 D / D1 / D2。这里只是辅助计算，不下单、不连券商；持仓只存在这台电脑上。'
                         '每天的用法：收盘后数据更新 → 看“明天要卖/要买” → 明天照单操作 → 买完点“记为已持有”→ 卖完等数据更新后点“清掉已到期的”。', 'muted', True))
         v.addWidget(intro)
         self.hold_equity = QDoubleSpinBox()
@@ -1265,7 +1253,7 @@ def _industry_forward(output, panel, cls):
 
 
 def _fusion_kind(variant):
-    return 'fusion1' if variant == 'D1' else 'fusion'
+    return {'D1': 'fusion1', 'D2': 'fusion2'}.get(variant, 'fusion')
 
 
 def _fusion_forward(output, panel, cls, variant='D'):
@@ -1285,7 +1273,7 @@ def _fusion_bundle(output, panel, ind, progress, stop):
             raise dpanel.DipDataError('B 层需要申万行业分类：' + str((ind or {}).get('error') or '行业数据还没准备好'))
         cls = ind['cls']
         out = None
-        for variant in ('D', 'D1'):
+        for variant in ('D', 'D1', 'D2'):
             try:
                 cfg = fusion.config_for(variant)
                 run = fusion.run_backtest(panel, cfg, cls, progress=progress, stop=stop)
@@ -1299,7 +1287,7 @@ def _fusion_bundle(output, panel, ind, progress, stop):
             if variant == 'D':
                 out = bundle
             else:
-                out['d1'] = bundle
+                out[variant.lower()] = bundle
         return out
     except dpanel.Cancelled:
         raise

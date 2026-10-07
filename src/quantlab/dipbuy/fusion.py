@@ -9,6 +9,7 @@
 账户：一笔钱、不借钱（总仓位上限 1 倍）。优先级 A > C > B，钱不够时先给前面的层。每层最多 positions 只，每只的权重各层不同
 （A 与 C 各 8% 净值、B 2.5% 净值），候选按 20 日跌幅从大到小排（D）。同一只股票不会在两层里重复买。
 D1 = D 只换一件事：候选先取 20 日跌幅最大的前 rank_k（默认 40）只，再按 60 日回撤从深到浅排（rank_mode='dd60'）；其余与 D 完全一样。
+D2 = D1 再加一件事：大盘（等权指数）离近 120 日高点不足 5% 的日子，三层闸门全部关掉，不开新仓（near_high_on）；其余与 D1 完全一样。
 次日开盘买、持有 hold_days 个交易日后收盘卖，成本与 engine 一致；闲置资金按 cash_yield 计息。
 结果是历史回测，参数在同一份样本上调过；面板只含现存股票（幸存者偏差）。
 """
@@ -31,7 +32,7 @@ FUSION_VERSION = 'dipbuy-fusion-1'
 RANK_MODES = ('ret20', 'dd60')
 DD_WINDOW = 60
 DD_MIN = 40
-VARIANT_NAMES = {'D': '策略 D', 'D1': '策略 D1'}
+VARIANT_NAMES = {'D': '策略 D', 'D1': '策略 D1', 'D2': '策略 D2'}
 ORDER = ('A', 'C', 'B')
 SLEEVE_NAMES = {'A': '大盘恐慌', 'C': '成交额分档恐慌', 'B': '行业恐慌'}
 QUINTILE_NAMES = ('成交额最小档', '较小档', '中间档', '较大档', '成交额最大档')
@@ -42,7 +43,7 @@ RET_WINDOW = 20
 STD_WINDOW = 60
 STD_MIN = 40
 
-DELISTED_DETAIL = '研究里同口径对比（2008 起，扣成本）：D 含退市股 +15.9% / 回撤 −42%，不含 +18.0% / −36%；D1 含 +18.3% / −36%，不含 +19.6% / −35%。'
+DELISTED_DETAIL = '研究里同口径对比（2008 起，扣成本）：D 含退市股 +15.9% / 回撤 −42%，不含 +18.0% / −36%；D1 含 +18.3% / −36%，不含 +19.6% / −35%。；D2（D1 + 近高点过滤）含退市股 +21.3% / 回撤 −36%（样本内）。'
 
 CAVEATS = (
     '历史回测：参数（权重、阈值、持有天数）是在同一份数据上试过很多组后定的，没有做多重检验修正，更像局部最优，不是样本外验证过的结论。',
@@ -51,6 +52,7 @@ CAVEATS = (
     '回测用次日开盘买、第 20 个交易日收盘卖，不计整手、最低佣金和冲击成本；40 万本金按 9:35 买、21 日 9:30 卖的测算，实盘预期年化约 +18% 到 +25%，最大回撤约 −31% 到 −37%。',
     'A 触发的日子 C 一定触发，C 触发的日子 B 一定触发，三层不是三份独立证据；B 层单笔收益最低，作用是把 A、C 空着的钱填起来。',
     'D1 的“60 日回撤”排序是看过全样本后挑的，属于样本内线索：逐年看，它在 2008、2012、2015、2022 比 D 好很多，在 2024、2025 反而少赚 15 到 20 个点，建议当可选增强，不是替代 D。',
+    'D2 = D1 + 近高点过滤：过滤的窗口和距离是看过 129 个组合的网格后选的（样本内，没做多重检验修正）；安慰剂检验里挑出来的最好一格不比运气好多少，增益几乎全来自 2013、2021–2023 年，2008–2019 年多数年份没有差别。回测里 D2 比 D1 多约 3 个点年化是样本内数字，真实预期只有每年多 1.5 到 3 个点；最大回撤不变。',
 )
 
 
@@ -110,7 +112,9 @@ class FusionConfig:
 
     @property
     def variant(self) -> str:
-        return 'D1' if self.rank_mode == 'dd60' else 'D'
+        if self.rank_mode == 'dd60':
+            return 'D2' if self.near_high_on else 'D1'
+        return 'D'
 
     def hash(self) -> str:
         payload = self.to_dict()
@@ -137,8 +141,13 @@ def d1_config() -> FusionConfig:
     return FusionConfig(rank_mode='dd60')
 
 
+def d2_config() -> FusionConfig:
+    """D2 = D1 + 近高点过滤：大盘离近 120 日高点不足 5% 的日子，三层闸门全关（研究 §102、§103）。"""
+    return FusionConfig(rank_mode='dd60', near_high_on=True)
+
+
 def config_for(variant: str) -> FusionConfig:
-    return d1_config() if variant == 'D1' else default_config()
+    return d2_config() if variant == 'D2' else d1_config() if variant == 'D1' else default_config()
 
 
 # ---------------------------------------------------------------- 成交额分档与分档恐慌分
