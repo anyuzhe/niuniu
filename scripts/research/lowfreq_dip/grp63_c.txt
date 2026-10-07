@@ -1,0 +1,15 @@
+D sim secs 0.2
+D gate days 1141 near-high gate days (dd250>-6%) 122
+D skip dd250>-0.03 [np.float64(0.175), np.float64(0.831), np.float64(-0.419), 2251, 0.363] masked gate days 44
+D skip dd250>-0.06 [np.float64(0.182), np.float64(0.859), np.float64(-0.419), 2081, 0.34] masked gate days 122
+D skip dd250>-0.10 [np.float64(0.154), np.float64(0.787), np.float64(-0.419), 1762, 0.306] masked gate days 289
+D base [np.float64(0.159), np.float64(0.769), np.float64(-0.419), 2260, 0.363]
+D random mask same count: CAGR mean 0.1529 p5/p95 0.1285 0.1753
+D1 sim secs 1.2
+D1 gate days 1141 near-high gate days (dd250>-6%) 122
+D1 skip dd250>-0.03 [np.float64(0.198), np.float64(0.91), np.float64(-0.362), 2254, 0.362] masked gate days 44
+D1 skip dd250>-0.06 [np.float64(0.204), np.float64(0.934), np.float64(-0.362), 2083, 0.34] masked gate days 122
+D1 skip dd250>-0.10 [np.float64(0.177), np.float64(0.87), np.float64(-0.362), 1763, 0.306] masked gate days 289
+D1 base [np.float64(0.183), np.float64(0.852), np.float64(-0.362), 2263, 0.363]
+D1 random mask same count: CAGR mean 0.1736 p5/p95 0.1494 0.1948
+done
