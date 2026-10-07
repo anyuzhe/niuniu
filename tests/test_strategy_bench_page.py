@@ -1,4 +1,4 @@
-"""策略工作台页面（离屏）：用缓存好的合成面板走一遍六个标签（含行业恐慌、策略 D）、沙盒回测、前向记录。"""
+"""策略工作台页面（离屏）：用缓存好的合成面板走一遍七个标签（含行业恐慌、策略 D）、沙盒回测、前向记录。"""
 import json
 import os
 import sys
@@ -114,11 +114,11 @@ class BenchPageTests(unittest.TestCase):
         self.assertEqual(self.window.bench_state['panel'].shape, (340, 30))
         self.assertTrue(any('数据面板：30 只股票' in t for t in self.labels()))
 
-    def test_six_tabs_signal_and_forward_record(self):
+    def test_seven_tabs_signal_and_forward_record(self):
         self.cache_panel()
         self.go()
         tabs = self.window.scroll.widget().findChild(QTabWidget)
-        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ['今日信号', '回测与风险', '参数沙盒', '前向跟踪', '行业恐慌', '策略 D'])
+        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ['今日信号', '回测与风险', '参数沙盒', '前向跟踪', '行业恐慌', '策略 D', '策略说明'])
         sig = self.window.bench_state['default']
         self.assertEqual(sig['format'], 'niuniu-dipbuy-run-v1')
         # 今日信号：闸门开，10 只收复，计划里 20 只上限内全部是计划内
@@ -313,6 +313,61 @@ class BenchPageTests(unittest.TestCase):
         wait(self.window)
         self.assertIs(self.window.bench_state['panel'], panel)
         self.assertTrue(any('数据面板：30 只股票' in t for t in self.labels()))
+
+    def test_guide_tab_is_available_before_data_is_loaded(self):
+        self.window.navigate_page('bench')
+        wait(self.window)
+        self.assertIsNone(self.window.bench_state['panel'])
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        self.assertEqual(tabs.tabText(tabs.count() - 1), '策略说明')
+        guide = tabs.widget(tabs.count() - 1)
+        text = '\n'.join(w.text() for w in guide.findChildren(QLabel))
+        for needle in ('A　大盘恐慌', 'B　行业恐慌', 'C　成交额分档恐慌', 'D　三层共用一笔钱', 'D1　D 换一种排序', '每天怎么用这个工作台', '风险与局限'):
+            self.assertIn(needle, text)
+        self.assertGreaterEqual(len(guide.findChildren(QTableWidget)), 3)
+
+    def test_auto_record_row_without_recorder_explains_and_toggles(self):
+        from quantlab.dipbuy import autorecord
+        self.window.navigate_page('bench')
+        wait(self.window)
+        box = next(c for c in self.window.scroll.widget().findChildren(page_mod.QCheckBox) if c.accessibleName() == '自动记录前向信号')
+        self.assertTrue(box.isChecked())
+        self.assertTrue(any('只在正式启动牛牛时运行' in t for t in self.labels()))
+        box.setChecked(False)
+        self.assertFalse(autorecord.load_state(self.out)['enabled'])
+        self.assertTrue(any('自动记录已关闭' in t for t in self.labels()))
+        box.setChecked(True)
+        self.assertTrue(autorecord.load_state(self.out)['enabled'])
+
+    def test_auto_record_row_with_recorder_checks_and_refreshes_after_a_new_record(self):
+        from PyQt6.QtCore import QObject, pyqtSignal
+
+        class Stub(QObject):
+            finished = pyqtSignal(object)
+            running = False
+
+            def __init__(self):
+                super().__init__()
+                self.calls = []
+
+            def check(self, force=False):
+                self.calls.append(force)
+                return True
+
+        stub = Stub()
+        self.window.dip_autorecorder = stub
+        self.cache_panel()
+        self.go()
+        self.button('现在检查一次').click()
+        self.assertEqual(stub.calls, [True])
+        self.assertTrue(any('正在检查数据' in t for t in self.labels()))
+        stub.finished.emit({'error': '读取失败'})
+        self.assertTrue(any('自动检查出错：读取失败' in t for t in self.labels()))
+        # 自动记录写了台账以后，页面应当用真实行情重新结算并刷新
+        with mock.patch.object(page_mod.BenchPage, 'refresh_all_forward') as refresh:
+            stub.finished.emit({'checked_at': '2026-10-07T10:00:00', 'data_date': '2026-10-06',
+                                'results': {'fusion': {'status': 'recorded', 'n_picks': 3}}})
+            refresh.assert_called_once()
 
     def test_not_ready_shows_note_only(self):
         with mock.patch('quantlab.desktop.strategy_bench_page.is_data_ready', return_value=False):

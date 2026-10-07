@@ -210,6 +210,16 @@ def _rate_by_day(dates: np.ndarray, override) -> np.ndarray:
     return np.where(dates < '2020-01-01', 0.085, np.where(dates < '2023-01-01', 0.07, 0.06))
 
 
+def _known_f(f: np.ndarray, i: int, j: int) -> float:
+    """退出日的复权因子。退市 / 长期停牌的股票退出价取最后一个有价的收盘价，那天的因子可能缺失，沿用最近一个已知值。"""
+    k = i
+    v = float(f[k, j])
+    while not np.isfinite(v) and k > 0:
+        k -= 1
+        v = float(f[k, j])
+    return v
+
+
 def _exit_index(c: np.ndarray, j: int, x0: int, nd: int):
     """第 x0 天收盘价缺失就顺延最多 3 天；仍没有就用此前最后一个收盘价（视作停牌卡住，按原价平仓）。"""
     for k in range(4):
@@ -293,7 +303,7 @@ def simulate(panel: Panel, market: Market, cand: Candidates, cfg: DipConfig, *, 
                                    px_x=None, last=o0)
                         if ex is not None:
                             xi, px = ex
-                            raw_x = px / float(f[xi, j])
+                            raw_x = px / _known_f(f, xi, j)
                             pos['net'] = (px * (1 - 0.01 / raw_x - slip)) / (o0 * (1 + 0.01 / raw_e + slip)) - 1 - fee[xi]
                             pos['px_x'] = px
                             pos['cost_e'] = 0.01 / raw_e + fee[xi] / 2 + slip
@@ -507,7 +517,7 @@ def settle_picks(panel: Panel, picks: list[dict], signal_day: str, cfg: DipConfi
         ex = _exit_index(panel.c, j, t + cfg.hold_days, nd)
         if ex is not None and t + cfg.hold_days < nd:
             xi, px = ex
-            raw_x = px / float(panel.f[xi, j])
+            raw_x = px / _known_f(panel.f, xi, j)
             net = (px * (1 - 0.01 / raw_x - slip)) / (o0 * (1 + 0.01 / raw_e + slip)) - 1 - fee[xi]
             row.update(exit_date=str(panel.dates[xi]), exit_px=round(raw_x, 3), ret=float(net), status='closed')
         else:

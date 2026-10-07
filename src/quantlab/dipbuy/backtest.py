@@ -11,7 +11,7 @@ from pathlib import Path
 
 from quantlab.dipbuy.engine import (ENGINE_VERSION, DipConfig, compute_features, curve, drawdown_series, simulate,
                                     summarize)
-from quantlab.dipbuy.panel import Panel
+from quantlab.dipbuy.panel import Panel, survivorship_caveats
 
 RUN_FORMAT = 'niuniu-dipbuy-run-v1'
 MAX_LIST = 30
@@ -35,7 +35,7 @@ def run_backtest(panel: Panel, cfg: DipConfig, *, progress=None, stop=None) -> d
         panel={k: meta.get(k) for k in ('signature', 'first_date', 'last_date', 'n_stocks', 'n_days')} | {
             'last_date': panel.last_date, 'n_stocks': int(panel.shape[1]), 'n_days': int(panel.shape[0])},
         summary=summary, curve=cv, drawdown=drawdown_series(cv['equity']),
-        trades=raw['trades'], caveats=list(CAVEATS))
+        trades=raw['trades'], caveats=survivorship_caveats(CAVEATS, panel))
     result['content_hash'] = content_hash(result)
     return result
 

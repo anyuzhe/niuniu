@@ -1,6 +1,6 @@
 """策略工作台：把“恐慌日抄底”策略做成可看、可调、可跟踪的页面。
 
-六个标签：今日信号 / 回测与风险 / 参数沙盒 / 前向跟踪 / 行业恐慌（只看信号，单独一份回测和前向记录）/ 策略 D（大盘、成交额分档、行业三层恐慌共用一笔钱，单独一份回测和前向记录）。
+七个标签：今日信号 / 回测与风险 / 参数沙盒 / 前向跟踪 / 行业恐慌（只看信号，单独一份回测和前向记录）/ 策略 D（大盘、成交额分档、行业三层恐慌共用一笔钱，单独一份回测和前向记录）/ 策略说明（A、B、C、D、D1 的规则、用法、回测口径和风险）。
 数据只来自数据清单里 READY 的前复权日线和日状态（quantlab.dipbuy.panel），第一次要读 5000 多个文件，
 结果缓存在输出目录里；回测在后台线程里跑，页面轮询进度。这里不下单、不连券商。
 """
@@ -11,17 +11,18 @@ from dataclasses import replace
 from PyQt6 import sip
 from PyQt6.QtCore import QRectF, QPointF, Qt, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PyQt6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 from quantlab.data.dataset_catalog import is_data_ready
-from quantlab.dipbuy import backtest, engine, fusion, industry, panel as dpanel, tracker
+from quantlab.dipbuy import autorecord, backtest, engine, fusion, industry, panel as dpanel, tracker
+from . import strategy_guide
 from .strategy_calendar import CalendarCard
 from .widgets import Card, button, kpis, label, row, table
 
 UP, DOWN, GOLD, BLUE, GREY = QColor('#f35f62'), QColor('#22d787'), QColor('#f6b72f'), QColor('#4e96ff'), QColor('#8fa4b7')
-TABS = (('signal', '今日信号'), ('risk', '回测与风险'), ('sandbox', '参数沙盒'), ('forward', '前向跟踪'), ('industry', '行业恐慌'), ('fusion', '策略 D'))
+TABS = (('signal', '今日信号'), ('risk', '回测与风险'), ('sandbox', '参数沙盒'), ('forward', '前向跟踪'), ('industry', '行业恐慌'), ('fusion', '策略 D'), ('guide', '策略说明'))
 DISCLAIMER = ('这是研究工具，不是买卖建议，也不会下单。回测是历史结果：样本只有约 45 段恐慌期，参数是看过数据后定的，'
-              '面板只含现存股票（有幸存者偏差），没有计入冲击成本和跌停卖不出；融资需要券商两融资格，2 倍杠杆的历史最大回撤约 −51%。')
+              '面板是否已并入退市股看页面顶部的数据状态（没并入时有幸存者偏差）；没有计入冲击成本，也没有模拟跌停卖不出和退市整理期卖不出；融资需要券商两融资格，2 倍杠杆的历史最大回撤约 −51%。')
 YEAR_CHOICES = ('2008', '2012', '2017', '2020')
 MAX_ROWS = 400
 
@@ -207,6 +208,19 @@ class BenchPage:
         self.status = label('', 'muted', True)
         self.reload_button = button('重新读取数据', self.reload)
         box.addWidget(row(self.status, self.reload_button))
+        self.auto_box = QCheckBox('每个交易日数据更新后，自动记录前向信号（牛牛开着时；D、D1、A、B 各记各的，只记最新一天）')
+        self.auto_box.setAccessibleName('自动记录前向信号')
+        self.auto_box.setChecked(autorecord.load_state(window.output)['enabled'])
+        self.auto_box.toggled.connect(self.set_auto)
+        self.auto_button = button('现在检查一次', self.auto_check_now)
+        self.auto_label = label('', 'muted', True)
+        self.auto_label.setAccessibleName('自动记录状态')
+        box.addWidget(row(self.auto_box, self.auto_button))
+        box.addWidget(self.auto_label)
+        self.recorder = getattr(window, 'dip_autorecorder', None)
+        if self.recorder is not None:
+            self.recorder.finished.connect(self.on_auto_finished)
+        self.refresh_auto_label()
         self.tabs = QTabWidget()
         box.addWidget(self.tabs)
         self.boxes = {}
@@ -217,6 +231,7 @@ class BenchPage:
             lay.setSpacing(12)
             self.tabs.addTab(tab, title)
             self.boxes[key] = lay
+        strategy_guide.fill(self.boxes['guide'])      # 说明不依赖数据，页面一打开就能看
         box.addWidget(label(DISCLAIMER, 'muted', True))
         self.timer = QTimer(self.tabs)
         self.timer.setInterval(300)
@@ -224,6 +239,63 @@ class BenchPage:
         self.equity_spin = None
         self.pick_host = None
         self.message = {}
+
+    # ---- auto-record forward signals
+    def refresh_auto_label(self):
+        state = autorecord.load_state(self.window.output)
+        text = autorecord.describe_last(state['last'])
+        if not state['enabled']:
+            text = '自动记录已关闭。' + ('' if not state['last'] else text)
+        elif self.recorder is None:
+            text += '（自动记录只在正式启动牛牛时运行）'
+        elif getattr(self.recorder, 'running', False):
+            text = '正在检查数据…　' + text
+        self.auto_label.setText(text)
+
+    def set_auto(self, checked):
+        autorecord.set_enabled(self.window.output, checked)
+        if checked and self.recorder is not None:
+            self.recorder.check()
+        self.refresh_auto_label()
+
+    def auto_check_now(self):
+        if self.recorder is None:
+            self.auto_label.setText('自动记录只在正式启动牛牛时运行；这里没有可用的后台检查。你也可以在各标签里手动记录。')
+        elif not self.recorder.check(force=True):
+            self.auto_label.setText('上一次检查还没结束，稍后再试。')
+        else:
+            self.auto_label.setText('正在检查数据…')
+
+    def on_auto_finished(self, result):
+        if not _alive(self.tabs):
+            try:
+                self.recorder.finished.disconnect(self.on_auto_finished)
+            except (TypeError, RuntimeError):
+                pass
+            return
+        if isinstance(result, dict) and result.get('error'):
+            self.auto_label.setText('自动检查出错：' + str(result['error']))
+            return
+        self.refresh_auto_label()
+        if result and any(r.get('status') == 'recorded' for r in (result.get('results') or {}).values()):
+            self.refresh_all_forward()
+
+    def refresh_all_forward(self):
+        """自动记录写了新台账后，重新结算各本台账并刷新页面。"""
+        panel = self.state['panel']
+        if panel is None or self.state['loading'] is not None:
+            return
+        out = self.window.output
+        self.state['forward'] = _forward(out, panel)
+        ind = self.state.get('industry')
+        if ind and not ind.get('error'):
+            ind['forward'] = _industry_forward(out, panel, ind['cls'])
+        top = self.state.get('fusion') or {}
+        for variant, bundle in (('D', top), ('D1', top.get('d1') or {})):
+            if bundle and not bundle.get('error'):
+                bundle['forward'] = _fusion_forward(out, panel, bundle['cls'], variant)
+        if _alive(self.tabs):
+            self.render_all()
 
     # ---- loading
     def open(self):
@@ -313,7 +385,8 @@ class BenchPage:
         panel = self.state['panel']
         self.rendered = True
         meta = panel.meta or {}
-        self.status.setText(f"数据面板：{panel.shape[1]} 只股票，{panel.dates[0]} 至 {panel.dates[-1]}（{panel.shape[0]} 个交易日）。")
+        dead = f"（含 {panel.n_delisted} 只已退市股）" if panel.n_delisted else '（只含现存股票，有幸存者偏差）'
+        self.status.setText(f"数据面板：{panel.shape[1]} 只股票{dead}，{panel.dates[0]} 至 {panel.dates[-1]}（{panel.shape[0]} 个交易日）。")
         self.build_signal()
         self.build_risk()
         self.build_sandbox()

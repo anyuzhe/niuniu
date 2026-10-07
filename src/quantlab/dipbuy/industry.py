@@ -20,7 +20,7 @@ import numpy as np
 from quantlab.data.dataset_catalog import DataCatalogError, get_ready_data_source
 from quantlab.dipbuy.engine import (Candidates, DipConfig, ENGINE_VERSION, Market, compute_features, curve,
                                     drawdown_series, latest_signal, simulate, summarize)
-from quantlab.dipbuy.panel import Cancelled, DipDataError, Panel
+from quantlab.dipbuy.panel import Cancelled, DipDataError, Panel, survivorship_caveats
 
 INDUSTRY_DATASET = 'sw_industry_history'
 RET_WINDOW = 20
@@ -184,7 +184,7 @@ def run_backtest(panel: Panel, cfg: DipConfig, cls: Classification, *, progress=
         panel={k: meta.get(k) for k in ('signature', 'first_date', 'last_date', 'n_stocks', 'n_days')} | {
             'last_date': panel.last_date, 'n_stocks': int(panel.shape[1]), 'n_days': int(panel.shape[0])},
         summary=summary, curve=cv, drawdown=drawdown_series(cv['equity']), trades=raw['trades'],
-        caveats=list(CAVEATS) + [c for c in MARKET_CAVEATS if '幸存者' not in c])
+        caveats=survivorship_caveats(list(CAVEATS) + [c for c in MARKET_CAVEATS if '幸存者' not in c], panel))
     result['content_hash'] = content_hash(result)
     return result
 

@@ -823,4 +823,7 @@ class MainWindow(QMainWindow):
 def launch(output=Path('artifacts'),data_root=None):
     app=QApplication.instance() or QApplication(sys.argv[:1]);app.setApplicationName('牛牛平台');app.setStyle('Fusion')
     from .data_workbench import DataConnectedWorkbench
-    window=DataConnectedWorkbench(output,data_root);window.show();return app.exec()
+    window=DataConnectedWorkbench(output,data_root);window.show()
+    from .dip_autorecord import DipAutoRecorder
+    window.dip_autorecorder=DipAutoRecorder(window);window.dip_autorecorder.start()      # 抄底策略前向信号：数据有新的一天就自动记（可在策略工作台页关掉）
+    return app.exec()

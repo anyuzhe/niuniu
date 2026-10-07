@@ -25,7 +25,7 @@ from quantlab.dipbuy import industry as ind_mod
 from quantlab.dipbuy import tracker
 from quantlab.dipbuy.engine import (DipConfig, Candidates, Market, _exit_index, _fee_by_day, _open_row, _trade_row,
                                     compute_features, curve, drawdown_series, summarize)
-from quantlab.dipbuy.panel import Cancelled, DipDataError, Panel
+from quantlab.dipbuy.panel import Cancelled, DipDataError, Panel, survivorship_caveats
 
 FUSION_VERSION = 'dipbuy-fusion-1'
 RANK_MODES = ('ret20', 'dd60')
@@ -41,6 +41,8 @@ MIN_MEMBERS = 8
 RET_WINDOW = 20
 STD_WINDOW = 60
 STD_MIN = 40
+
+DELISTED_DETAIL = '研究里同口径对比（2008 起，扣成本）：D 含退市股 +15.9% / 回撤 −42%，不含 +18.0% / −36%；D1 含 +18.3% / −36%，不含 +19.6% / −35%。'
 
 CAVEATS = (
     '历史回测：参数（权重、阈值、持有天数）是在同一份数据上试过很多组后定的，没有做多重检验修正，更像局部最优，不是样本外验证过的结论。',
@@ -380,7 +382,8 @@ def run_backtest(panel: Panel, cfg: FusionConfig, cls, *, progress=None, stop=No
         classification=dict(as_of=cls.as_of, n_mapped=cls.n_mapped, n_industries=len(cls.codes)),
         panel={k: meta.get(k) for k in ('signature', 'first_date', 'last_date', 'n_stocks', 'n_days')} | {
             'last_date': panel.last_date, 'n_stocks': int(panel.shape[1]), 'n_days': int(panel.shape[0])},
-        summary=summary, curve=cv, drawdown=drawdown_series(cv['equity']), trades=raw['trades'], caveats=list(CAVEATS))
+        summary=summary, curve=cv, drawdown=drawdown_series(cv['equity']), trades=raw['trades'],
+        caveats=survivorship_caveats(CAVEATS, panel, DELISTED_DETAIL))
     result['content_hash'] = content_hash(result)
     return result
 

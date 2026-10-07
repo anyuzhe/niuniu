@@ -135,6 +135,17 @@ class SimulateTests(unittest.TestCase):
         self.assertAlmostEqual(res['eq'][11], 1 + expected, places=6)      # 1x、N=1：全仓
         self.assertEqual(res['info']['n_liquidations'], 0)
 
+    def test_delisted_stock_exits_at_last_price_and_equity_stays_finite(self):
+        panel = make_panel(self.p)
+        panel.c[12:, 0] = np.nan                       # 0 号股票 12 日起退市：没有价格，也没有复权因子
+        panel.o[12:, 0] = np.nan
+        panel.f[12:, 0] = np.nan
+        market, cand = scripted(40, 3, [5], {5: [0]})
+        res = engine.simulate(panel, market, cand, cfg(positions=1, hold_days=20))     # 第 25 天平仓，那天已经没价格也没因子
+        self.assertEqual(len(res['trades']), 1)
+        self.assertTrue(np.isfinite(res['trades'][0]['ret']))
+        self.assertTrue(np.isfinite(res['eq'][res['t0']:res['tend'] + 1]).all())
+
     def test_ranking_prefers_biggest_20d_drop(self):
         ret = np.zeros((40, 3), np.float32)
         ret[5] = [-0.05, -0.30, -0.10]
@@ -372,7 +383,8 @@ class PanelTests(unittest.TestCase):
         return q, s
 
     def test_build_and_cache(self):
-        with tempfile.TemporaryDirectory() as root, mock.patch.object(panel_mod, 'MIN_STOCKS_PER_DAY', 2):
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(panel_mod, 'MIN_STOCKS_PER_DAY', 2), \
+                mock.patch.object(panel_mod, 'ready_delisted_dirs', return_value=None):
             q, s = self.write_lake(root)
             p = panel_mod.build_panel(q, s, start='2022-01-01')
             self.assertEqual(p.shape, (300, 3))
@@ -404,9 +416,98 @@ class PanelTests(unittest.TestCase):
             with self.assertRaisesRegex(DipDataError, '日状态'):
                 panel_mod.build_panel(q, s)
 
+    def write_delisted(self, root, n_days=150, code='sh_600999'):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        r, q = Path(root) / 'del_raw', Path(root) / 'del_qfq'
+        r.mkdir()
+        q.mkdir()
+        days = [str(d) for d in np.busday_offset(np.datetime64('2022-01-03'), np.arange(n_days), roll='forward')]
+        n = len(days)
+        raw_close, qfq_close = np.full(n, 20.0), np.full(n, 10.0)          # 前复权因子 = 0.5
+        trad = ['1'] * n
+        trad[5] = '0'                                                       # 一天停牌
+        pq.write_table(pa.table({'date': days, 'code': [code.replace('_', '.')] * n, 'open': raw_close, 'close': raw_close,
+                                 'amount': np.full(n, 3e7), 'tradestatus': trad, 'isST': ['0'] * 100 + ['1'] * (n - 100)}),
+                       r / f'{code}.parquet')
+        pq.write_table(pa.table({'date': days, 'code': [code.replace('_', '.')] * n, 'open': qfq_close, 'close': qfq_close}),
+                       q / f'{code}.parquet')
+        return r, q
+
+    def test_delisted_stocks_are_appended_with_flag_and_factor(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(panel_mod, 'MIN_STOCKS_PER_DAY', 2):
+            q, s = self.write_lake(root)
+            dr, dq = self.write_delisted(root)
+            listed = panel_mod.build_panel(q, s, start='2022-01-01')
+            p = panel_mod.build_panel(q, s, start='2022-01-01', delisted=(dr, dq))
+            self.assertEqual(p.shape, (300, 4))
+            self.assertEqual(list(p.codes)[-1], 'sh.600999')
+            self.assertEqual(list(p.isdel), [False, False, False, True])
+            self.assertEqual((p.n_delisted, p.meta['n_delisted'], p.meta['n_stocks']), (1, 1, 4))
+            self.assertEqual(listed.n_delisted, 0)
+            self.assertIsNone(listed.isdel)
+            self.assertAlmostEqual(float(p.f[0, 3]), 0.5, places=5)
+            self.assertAlmostEqual(float(p.c[0, 3]), 10.0, places=4)
+            self.assertAlmostEqual(float(p.a[0, 3]), 3e7, delta=10)
+            self.assertTrue(np.isnan(p.c[5, 3]) and p.ts[5, 3] == 0)         # 停牌日没有价格
+            self.assertTrue(p.st[120, 3] and not p.st[10, 3])
+            self.assertTrue(np.isnan(p.c[200:, 3]).all() and (p.ts[200:, 3] == -1).all())   # 退市后没有行
+            self.assertTrue(np.array_equal(p.c[:, :3], listed.c, equal_nan=True))            # 现存股票的数据不受影响
+            self.assertNotEqual(p.meta['signature'], panel_mod.source_signature(q, s))
+            self.assertEqual(p.meta['signature'], panel_mod.source_signature(q, s, (dr, dq)))
+
+    def test_delisted_mismatched_files_are_skipped_and_duplicates_ignored(self):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(panel_mod, 'MIN_STOCKS_PER_DAY', 2):
+            q, s = self.write_lake(root)
+            dr, dq = self.write_delisted(root)
+            bad = pq.read_table(dq / 'sh_600999.parquet').slice(0, 10)       # 前复权文件行数对不上
+            pq.write_table(bad, dq / 'sh_600999.parquet')
+            (dr / 'sh_600000.parquet').write_bytes((dr / 'sh_600999.parquet').read_bytes())   # 与现存股票重名的退市文件
+            (dq / 'sh_600000.parquet').write_bytes((dq / 'sh_600999.parquet').read_bytes())
+            p = panel_mod.build_panel(q, s, start='2022-01-01', delisted=(dr, dq))
+            self.assertEqual(p.shape, (300, 4))                                # 重名的不重复并入
+            self.assertEqual(p.meta['delisted_skipped'], ['sh.600999'])
+            self.assertEqual(p.meta['n_delisted'], 0)
+            self.assertTrue(np.isnan(p.c[:, 3]).all())
+
+    def test_load_panel_includes_delisted_when_ready_and_roundtrips_flag(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(panel_mod, 'MIN_STOCKS_PER_DAY', 2):
+            q, s = self.write_lake(root)
+            dr, dq = self.write_delisted(root)
+            out = Path(root) / 'out'
+            with mock.patch.object(panel_mod, 'ready_dirs', return_value=(q, s)), \
+                    mock.patch.object(panel_mod, 'ready_delisted_dirs', return_value=(dr, dq)):
+                first = panel_mod.load_panel(out)
+                self.assertEqual(first.n_delisted, 1)
+                with mock.patch.object(panel_mod, 'build_panel', side_effect=AssertionError('should use cache')):
+                    again = panel_mod.load_panel(out)
+                self.assertEqual(list(again.isdel), [False, False, False, True])
+                (dq / 'sh_600999.parquet').write_bytes((dq / 'sh_600999.parquet').read_bytes() + b'\0')    # 退市股源数据变了
+                with self.assertRaises(AssertionError):
+                    with mock.patch.object(panel_mod, 'build_panel', side_effect=AssertionError('rebuild')):
+                        panel_mod.load_panel(out)
+            with mock.patch.object(panel_mod, 'ready_dirs', return_value=(q, s)), \
+                    mock.patch.object(panel_mod, 'ready_delisted_dirs', return_value=None):
+                self.assertEqual(panel_mod.load_panel(out).n_delisted, 0)      # 清单没开放就回到只含现存股票
+
+    def test_survivorship_caveat_follows_the_panel(self):
+        listed = make_panel(np.full((30, 2), 10.0))
+        text = ['a', '面板只含现存股票（幸存者偏差）', 'b']
+        self.assertEqual(panel_mod.survivorship_caveats(text, listed), text)
+        withdel = make_panel(np.full((30, 2), 10.0))
+        withdel.isdel = np.array([False, True])
+        out = panel_mod.survivorship_caveats(text, withdel, '补充。')
+        self.assertEqual(len(out), 3)
+        self.assertIn('已并入 1 只已退市股票', out[1])
+        self.assertTrue(out[1].endswith('补充。'))
+        self.assertFalse(any('只含现存股票' in c for c in out))
+
     def test_not_ready_catalog_fails_closed(self):
         with self.assertRaises(DipDataError):
             panel_mod.ready_dirs('/nonexistent/catalog.md')
+        self.assertIsNone(panel_mod.ready_delisted_dirs('/nonexistent/catalog.md'))
 
 
 if __name__ == '__main__':
