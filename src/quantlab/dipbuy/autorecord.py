@@ -3,7 +3,8 @@
   * 记四本：策略 D、D1、A（大盘恐慌）、B（行业恐慌），各记各的台账；闸门没开或没有候选就不记；
   * 规则和手动记录完全一样：只记面板最后一个交易日、参数冻结、同一天不重复；
   * 再加一条：数据必须还“新鲜”——过了下一个交易日 9:30，就不再自动记（那时已经知道开盘价，补记等于带着结果挑日子）；
-    节假日按周一至周五估算，宁可少记也不补记；
+    下一个交易日按“周一至周五，扣掉已知的休市日（见 KNOWN_CLOSURES）和每年 1 月 1 日”估算；
+    不在清单里的节假日会被当成交易日——结果是把窗口算短，宁可少记也不补记；
   * 只在源数据指纹变化时才做一次（读指纹只 stat 文件），所以每天最多算一次；开关和上次结果存在 <output>/_home/dip_autorecord.json。
 """
 from __future__ import annotations
@@ -12,7 +13,6 @@ import json
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-import numpy as np
 
 from quantlab.dipbuy import engine, fusion, industry, panel as dpanel, tracker
 
@@ -21,6 +21,9 @@ KINDS = ('fusion', 'fusion1', 'market', 'industry')
 LABELS = {'fusion': '策略 D', 'fusion1': '策略 D1', 'market': '策略 A（大盘恐慌）', 'industry': '策略 B（行业恐慌）'}
 SHANGHAI = timezone(timedelta(hours=8))
 OPEN_TIME = time(9, 30)
+# 已公告的休市日（只列周一至周五）。数据湖里的交易日历只到已采集的最后一天，没有未来的日期，所以未来的休市日要在这里补；
+# 每次国务院公布新一年的放假安排后追加。来源：沪深北三大交易所 2026 年国庆休市公告（10 月 1 日至 7 日休市，10 月 8 日起开市）。
+KNOWN_CLOSURES = frozenset(date(2026, 10, d) for d in (1, 2, 5, 6, 7))
 
 
 def _path(output) -> Path:
@@ -59,11 +62,19 @@ def set_enabled(output, enabled: bool) -> dict:
     return state
 
 
+def next_open_day(last_date: str) -> date:
+    """数据最后一天之后的第一个开市日：跳过周末、已知休市日和 1 月 1 日。"""
+    d = date.fromisoformat(str(last_date)[:10])
+    for _ in range(40):                 # 最长的假期也不到 40 天；防止清单写错时死循环
+        d += timedelta(days=1)
+        if d.weekday() < 5 and d not in KNOWN_CLOSURES and (d.month, d.day) != (1, 1):
+            return d
+    return d
+
+
 def is_fresh(last_date: str, now: datetime) -> bool:
-    """数据最后一天 T 的信号，次日开盘买入；now 还没到 T 之后第一个工作日的 9:30 才算新鲜。"""
-    nxt = np.busday_offset(np.datetime64(last_date), 1, roll='forward')
-    d = date.fromisoformat(str(nxt))
-    return now.astimezone(SHANGHAI) < datetime.combine(d, OPEN_TIME, tzinfo=SHANGHAI)
+    """数据最后一天 T 的信号，次日开盘买入；now 还没到 T 之后第一个开市日的 9:30 才算新鲜。"""
+    return now.astimezone(SHANGHAI) < datetime.combine(next_open_day(last_date), OPEN_TIME, tzinfo=SHANGHAI)
 
 
 def build_signal(kind: str, panel, cls, names):

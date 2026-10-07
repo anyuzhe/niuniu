@@ -4,7 +4,7 @@ import sys
 import os
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -50,6 +50,23 @@ class FreshnessTests(unittest.TestCase):
         self.assertFalse(autorecord.is_fresh(thu, datetime(2026, 9, 26, 12, 0, tzinfo=SH)))     # 周六：周五已开盘
         utc = datetime(2026, 9, 28, 1, 0, tzinfo=timezone.utc)                                   # = 周一 9:00 上海
         self.assertTrue(autorecord.is_fresh(fri, utc))
+
+    def test_holiday_closures_are_skipped(self):
+        # 国庆休市 10 月 1 日至 7 日，10 月 8 日（周四）开市：9 月 30 日的信号在假期里仍然新鲜
+        last = '2026-09-30'
+        self.assertEqual(autorecord.next_open_day(last), date(2026, 10, 8))
+        self.assertTrue(autorecord.is_fresh(last, datetime(2026, 10, 7, 19, 0, tzinfo=SH)))
+        self.assertTrue(autorecord.is_fresh(last, datetime(2026, 10, 8, 9, 29, tzinfo=SH)))
+        self.assertFalse(autorecord.is_fresh(last, datetime(2026, 10, 8, 9, 30, tzinfo=SH)))
+
+    def test_new_year_day_is_always_closed(self):
+        self.assertEqual(autorecord.next_open_day('2026-12-31'), date(2027, 1, 4))      # 1 月 1 日周五休市，周末，周一开市
+        self.assertEqual(autorecord.next_open_day('2026-09-30') > date(2026, 9, 30), True)
+
+    def test_a_broken_closure_list_cannot_loop_forever(self):
+        everyday = frozenset(date(2026, 10, 1) + timedelta(days=i) for i in range(60))
+        with mock.patch.object(autorecord, 'KNOWN_CLOSURES', everyday):
+            self.assertIsInstance(autorecord.next_open_day('2026-09-30'), date)
 
 
 class StateTests(unittest.TestCase):
