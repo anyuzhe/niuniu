@@ -10,6 +10,8 @@ zA = M.mkt_z(20); zI = M.grp_z(M.Ri, 20); zQ = M.grp_z(M.Rq, 20); l1 = M.l1; lab
 zmin = {'A': zA, 'B': np.where(np.isfinite(zI), zI, np.inf).min(1), 'C': np.where(np.isfinite(zQ), zQ, np.inf).min(1)}
 EPS = {s: np.array([bool(GATE[s][t]) and not bool(np.any(GATE[s][max(0, t - 5):t])) for t in range(nd)]) for s in 'ACB'}
 ENTRIES = []
+TR = []
+CUR_POS = {}
 _LOW = []
 def _low():
     if not _LOW:
@@ -20,10 +22,15 @@ def zstock(s, t, j):
     if s == 'B': return zI[t, l1[j]]
     k = lab[t, j]; return zQ[t, k] if k >= 0 else np.nan
 def fused5(rank='r20', N=20, H=20, W=None, G=1.0, cash_yield=0.02, start='2008-01-01', end=None, sleeves='ACB', order=None, unified=False, urank=None,
-           confl=None, cpar=0.0, wfun=None, caps=None, gfun=None, excl=None, tr=None, log=None, seed=0, diag=None, lim=None, pyr=None, rank_s=None):
-    W = dict(W or W0); rk = L.get_rank(rank, seed) if isinstance(rank, str) else rank; RS = {k: L.get_rank(v) for k, v in rank_s.items()} if rank_s else {}; ur = rk if urank is None else (L.get_rank(urank) if isinstance(urank, str) else urank)
+           confl=None, cpar=0.0, wfun=None, caps=None, gfun=None, excl=None, tr=None, log=None, seed=0, diag=None, lim=None, pyr=None, rank_s=None, fmask=None, skip=0, gcap=None):
+    global TR, CUR_POS
+    W = dict(W or W0); rk = L.get_rank(rank, seed) if isinstance(rank, str) else rank; RS = {k: (L.get_rank(v) if isinstance(v, str) else v) for k, v in rank_s.items()} if rank_s else {}; ur = rk if urank is None else (L.get_rank(urank) if isinstance(urank, str) else urank)
     t0 = int(np.searchsorted(dates, start)); tend = nd - 1 if end is None else int(np.searchsorted(dates, end, side='right')) - 1
-    cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd); trades = []; nclip = 0; natt = 0
+    cash = 1.0; active = []; eq = np.full(nd, np.nan); expo = np.zeros(nd); trades = []; nclip = 0; natt = 0; TR = trades; CUR_POS = {}
+    def _fm(s_):
+        return None if fmask is None else (fmask[s_] if isinstance(fmask, dict) else fmask)
+    def _glab(s_, t_, j_):
+        a = gcap[s_][0]; return int(a[j_]) if a.ndim == 1 else int(a[t_, j_])
     for t in range(t0, tend + 1):
         # pending tranche entries
         for p in [p for p in active if p.get('pend') and p['e'] == t]:
@@ -48,7 +55,7 @@ def fused5(rank='r20', N=20, H=20, W=None, G=1.0, cash_yield=0.02, start='2008-0
                 for s in act:
                     n_s = sum(1 for p in active if p['s'] == s and not p.get('sub'))
                     if n_s >= N and not confl: continue
-                    for j in np.nonzero(POOL[s][t] & buyok[t])[0]:
+                    for j in np.nonzero(POOL[s][t] & buyok[t] & (True if _fm(s) is None else _fm(s)[t]))[0]:
                         if int(j) in held: continue
                         mem.setdefault(int(j), []).append(s)
             if unified:
@@ -61,15 +68,27 @@ def fused5(rank='r20', N=20, H=20, W=None, G=1.0, cash_yield=0.02, start='2008-0
                 for s in act:
                     n_s = sum(1 for p in active if p['s'] == s and not p.get('sub'))
                     if n_s >= N: continue
-                    pool = np.nonzero(POOL[s][t] & buyok[t])[0]; pool = np.array([j for j in pool if j not in held], dtype=int)
+                    m_ = POOL[s][t] & buyok[t]
+                    if _fm(s) is not None: m_ = m_ & _fm(s)[t]
+                    pool = np.nonzero(m_)[0]; pool = np.array([j for j in pool if j not in held], dtype=int)
                     if not len(pool): continue
                     v = np.asarray(RS.get(s, rk)[t, pool], np.float64); v = np.where(np.isfinite(v), v, np.inf); pool = pool[np.argsort(v, kind='stable')]
-                    cand.extend((s, int(j)) for j in pool[:N - n_s])
+                    sk = skip[s] if isinstance(skip, dict) else skip
+                    cand.extend((s, int(j)) for j in pool[sk:sk + N - n_s + (N if gcap else 0)])
             if cand:
                 invested = sum(p['v'] for p in active); equity = cash + invested; cnt = {s: sum(1 for p in active if p['s'] == s and not p.get('sub')) for s in 'ACB'}
                 invs = {s: sum(p['v'] for p in active if p['s'] == s) for s in 'ACB'}
+                glc = {}
+                if gcap:
+                    for p in active:
+                        if p.get('gl') is not None and not p.get('sub'): glc[(p['s'], p['gl'])] = glc.get((p['s'], p['gl']), 0) + 1
+                CUR_POS = {}
                 for s, j in cand:
                     if j in held or cnt[s] >= N: continue
+                    if gcap and s in gcap:
+                        gl_ = _glab(s, t, j)
+                        if glc.get((s, gl_), 0) >= gcap[s][1]: continue
+                    CUR_POS[s] = CUR_POS.get(s, -1) + 1
                     w = W[s]
                     if confl and j in mem:
                         ws = [W[x] for x in mem[j]]
@@ -84,7 +103,8 @@ def fused5(rank='r20', N=20, H=20, W=None, G=1.0, cash_yield=0.02, start='2008-0
                     if size < w * equity - 1e-12: nclip += 1
                     if size <= 1e-9: continue
                     cash -= size; invested += size; invs[s] += size; cnt[s] += 1; held.add(j)
-                    rf = _enter(active, s, j, t, size, H[s] if isinstance(H, dict) else H, tr, lim, pyr) or 0.0
+                    n0 = len(active); rf = _enter(active, s, j, t, size, H[s] if isinstance(H, dict) else H, tr, lim, pyr) or 0.0
+                    if gcap and s in gcap and len(active) > n0: active[n0]['gl'] = gl_; glc[(s, gl_)] = glc.get((s, gl_), 0) + 1
                     if rf: cash += rf; invested -= rf; invs[s] -= rf
         if pyr is not None and t + 1 <= min(tend, nd - 1):
             for p in list(active):
