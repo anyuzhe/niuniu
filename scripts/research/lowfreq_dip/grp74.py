@@ -232,3 +232,11 @@ if mode == 'zthr':
         extra = np.where(lab_ok[None, :], f[:, np.clip(labels, 0, ngrp - 1)], True); o = run([], extra=extra); res[thr2] = o
         print(V, thr2, f"cagr {o['cagr']*100:.1f} pre {o['cagr_pre']*100:.1f} post {o['cagr_post']*100:.1f} sh {o['sharpe']:.2f} mdd {o['mdd']*100:.1f} nB {o['nB']} meanB {o['meanB']*100:.1f} keep {o['keep_frac']:.2f}", flush=True)
     json.dump({str(k): v for k, v in res.items()}, open(f'grp74_zthr_{V}.json', 'w'), ensure_ascii=False)
+
+if mode == 'breadth':
+    # B 层只在“同一天触发的行业数 >= k”（行业信号广泛）时买；或只在“孤立行业恐慌”（<= k）时买，作对照
+    br = np.nansum(z <= -1.5, axis=1); res = {}
+    for lab, f in (('base', np.ones(nd, bool)), ('>=2', br >= 2), ('>=4', br >= 4), ('>=6', br >= 6), ('>=9', br >= 9), ('<=3', br <= 3), ('<=8', br <= 8)):
+        extra = np.repeat(f[:, None], nc, axis=1); o = run([], extra=extra); res[lab] = o
+        print(V, f"{lab:5s} cagr {o['cagr']*100:.1f} pre {o['cagr_pre']*100:.1f} post {o['cagr_post']*100:.1f} sh {o['sharpe']:.2f} mdd {o['mdd']*100:.1f} nB {o['nB']} meanB {(o['meanB'] or 0)*100:.1f} keep {o['keep_frac']:.2f}", flush=True)
+    json.dump(res, open(f'grp74_breadth_{V}.json', 'w'), ensure_ascii=False)

@@ -65,3 +65,18 @@ D2 z<=-1.75 cagr 18.2 pre 16.0 post 20.6 sh 0.87 mdd -35.2 nB 1030 meanB 0.7 kee
 D2 z<=-2.0 cagr 18.0 pre 15.0 post 21.5 sh 0.88 mdd -35.2 nB 533 meanB 1.2 keep 0.29
 D2 z<=-2.25 cagr 18.1 pre 15.6 post 21.1 sh 0.88 mdd -35.2 nB 219 meanB 0.7 keep 0.15
 D2 z<=-2.5 cagr 18.3 pre 15.6 post 21.4 sh 0.89 mdd -35.2 nB 43 meanB 2.8 keep 0.08
+--- breadth (B 层只在同日触发行业数满足条件时买)
+D base cagr 15.9 pre 9.9 post 23.2 sh 0.77 mdd -41.9 nB 1736 keep 1.00
+D >=2 cagr 15.4 pre 13.2 post 17.9 sh 0.75 mdd -39.6 nB 1279 keep 0.97
+D >=4 cagr 15.2 pre 13.1 post 17.8 sh 0.75 mdd -38.4 nB 740 keep 0.89
+D >=6 cagr 16.4 pre 13.8 post 19.4 sh 0.80 mdd -38.4 nB 420 keep 0.81
+D >=9 cagr 15.7 pre 11.7 post 20.4 sh 0.77 mdd -38.4 nB 160 keep 0.68
+D <=3 cagr 17.0 pre 9.4 post 26.3 sh 0.81 mdd -41.9 nB 1616 keep 0.11
+D <=8 cagr 15.7 pre 9.5 post 23.4 sh 0.76 mdd -41.9 nB 1716 keep 0.32
+D2 base cagr 21.3 pre 16.0 post 27.7 sh 0.97 mdd -36.2 nB 1631 keep 1.00
+D2 >=2 cagr 19.0 pre 16.9 post 21.3 sh 0.89 mdd -35.6 nB 1198 keep 0.97
+D2 >=4 cagr 17.5 pre 16.7 post 18.5 sh 0.84 mdd -35.2 nB 679 keep 0.89
+D2 >=6 cagr 19.8 pre 17.2 post 22.8 sh 0.94 mdd -35.2 nB 420 keep 0.81
+D2 >=9 cagr 19.4 pre 15.2 post 24.3 sh 0.93 mdd -35.2 nB 160 keep 0.68
+D2 <=3 cagr 21.3 pre 16.2 post 27.4 sh 0.97 mdd -36.2 nB 1483 keep 0.11
+D2 <=8 cagr 21.0 pre 16.0 post 27.0 sh 0.96 mdd -36.2 nB 1591 keep 0.32
