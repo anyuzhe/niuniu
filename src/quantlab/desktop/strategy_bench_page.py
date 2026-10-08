@@ -209,7 +209,7 @@ class BenchPage:
         self.status = label('', 'muted', True)
         self.reload_button = button('重新读取数据', self.reload)
         box.addWidget(row(self.status, self.reload_button))
-        self.auto_box = QCheckBox('每个交易日数据更新后，自动记录前向信号（牛牛开着时；D、D1、D2、A、B 各记各的，只记最新一天）')
+        self.auto_box = QCheckBox('每个交易日数据更新后，自动记录前向信号（牛牛开着时；D、D1、D2、D3、A、B 各记各的，只记最新一天）')
         self.auto_box.setAccessibleName('自动记录前向信号')
         self.auto_box.setChecked(autorecord.load_state(window.output)['enabled'])
         self.auto_box.toggled.connect(self.set_auto)
@@ -294,7 +294,7 @@ class BenchPage:
         if ind and not ind.get('error'):
             ind['forward'] = _industry_forward(out, panel, ind['cls'])
         top = self.state.get('fusion') or {}
-        for variant, bundle in (('D', top), ('D1', top.get('d1') or {}), ('D2', top.get('d2') or {})):
+        for variant, bundle in (('D', top), ('D1', top.get('d1') or {}), ('D2', top.get('d2') or {}), ('D3', top.get('d3') or {})):
             if bundle and not bundle.get('error'):
                 bundle['forward'] = _fusion_forward(out, panel, bundle['cls'], variant)
         if _alive(self.tabs):
@@ -846,7 +846,13 @@ class BenchPage:
         self.fus_signal = sig
         w = cfg.weights
         intro = Card('这是什么')
-        if variant == 'D2':
+        if variant == 'D3':
+            intro.add(label('D3 = D2 再改一件事：钱不够时三层的先后由 A → C → B 改成 C → A → B；候选排序、近高点过滤、闸门、权重、仓位、持有期、成本都和 D2 一样，'
+                            '单独一份回测和前向记录。因为 A 触发时 C 一定触发、且 C 的候选覆盖 A 的，C 先买满之后 A 层基本买不到东西，效果等同“去掉 A 层”。'
+                            '研究里（含退市股）它比 D2 多约 2 个点年化（D2 21.3% → D3 23.4%），最大回撤差不多（约 −37%）；但这是同一段历史上看出来的样本内数字，'
+                            '研究 §88 早测过同一方向，当时的自助法区间下沿贴近 0、结论是噪声边缘，后来在保守基线上复测只是同一份历史的重复，不算独立证据。'
+                            '前向记录就是用来检验它的：攒够样本之前，不要把 D3 当成比 D2 更好。', 'note', True))
+        if variant in ('D2', 'D3'):
             intro.add(label('D2 = D1 再加一件事：大盘（全部股票的等权指数）离近 120 日高点不足 5% 的日子，三层闸门全部关掉、不开新仓；候选排序、闸门、权重、仓位、持有期、成本都和 D1 一样，'
                             '单独一份回测和前向记录。研究里（含退市股）它比 D1 多约 3 个点年化（D1 18.3% → D2 21.3%），最大回撤不变；但增益几乎全来自 2013、2021–2023 年，'
                             '过滤的窗口和距离是看过网格后选的，样本内、没做多重检验修正，真实预期只有每年多 1.5 到 3 个点。前向记录就是用来检验它的。', 'note', True))
@@ -855,7 +861,7 @@ class BenchPage:
                             '闸门、权重、仓位、持有期、成本都和 D 一样，单独一份回测和前向记录。注意：这个排序是看过全样本后挑出来的，属于样本内线索，'
                             '逐年看有的年份比 D 好很多、有的年份少赚，建议当可选增强，别当成 D 的替代品。', 'note', True))
         intro.add(label('三套恐慌信号共用一笔钱、不借钱：A 大盘恐慌（且个股布林下轨收复）、C 按近 60 日成交额分五档的某一档恐慌、B 申万一级某个行业恐慌。'
-                        '恐慌分都是“一组股票的等权 20 日涨跌 ÷ 它平时的波动”，低于 −1.5 就触发。触发的层按 A → C → B 的顺序分钱，'
+                        '恐慌分都是“一组股票的等权 20 日涨跌 ÷ 它平时的波动”，低于 −1.5 就触发。触发的层按 ' + ' → '.join(cfg.order) + ' 的顺序分钱，'
                         f"每只权重 A {w['A'] * 100:g}%、C {w['C'] * 100:g}%、B {w['B'] * 100:g}%（占净值），每层最多 {cfg.positions} 只，总仓位不超过 {cfg.gross_cap * 100:g}%，"
                         f'{rank_text}；次日开盘买、持有 {cfg.hold_days} 个交易日后收盘卖，同一只股票不会在两层里重复买。'
                         'A 触发的日子 C 一定触发，C 触发的日子 B 一定触发，所以 B 层最频繁、单笔质量最低，作用是把 A、C 空着的钱用起来。'
@@ -863,7 +869,7 @@ class BenchPage:
         v.addWidget(intro)
         tiles = [('数据截至', sig['date'], f"分类文件 {sig['classification']['as_of']}（今天的分类）"),
                  ('触发的层', '、'.join(sig['fired']) if sig['fired'] else '无', f"阈值 {cfg.z_threshold:g}，任一层触发就买")]
-        for s_ in fusion.ORDER:
+        for s_ in cfg.order:
             g = sig['sleeves'][s_]
             note = f"已触发，候选 {g['n_pool']} 只" if g['gate'] else ('未触发，还差 %.2f' % (g['z'] - cfg.z_threshold) if g['z'] is not None else '未触发')
             tiles.append((f"{s_} {g['name']}", _num(g['z']), f"{g['detail']}　{note}"))
@@ -873,7 +879,7 @@ class BenchPage:
                 cap = (f"不足 {mp['pct'] * 100:g}%：今天的信号被过滤挡掉" if mp['blocked'] else
                        f"不足 {mp['pct'] * 100:g}%，今天没有信号可挡" if mp['would_block'] else f"超过 {mp['pct'] * 100:g}%，不挡信号")
             else:
-                cap = (f"不足 {mp['pct'] * 100:g}%：D2 会挡掉今天的信号" if mp['would_block'] else f"超过 {mp['pct'] * 100:g}%：D2 不会挡")
+                cap = (f"不足 {mp['pct'] * 100:g}%：D2 / D3 会挡掉今天的信号" if mp['would_block'] else f"超过 {mp['pct'] * 100:g}%：D2 / D3 不会挡")
             tiles.append((f"大盘离近 {mp['window']} 日高点", _pct(mp['gap']), cap))
         v.addWidget(kpis(tiles))
         recent = sig['recent']
@@ -927,7 +933,7 @@ class BenchPage:
         sl = run['summary']['sleeves']
         scard.add(table(['层', '触发天数', '成交笔数', '单笔平均净收益', '胜率', '未平仓'],
                         [[f"{k} {sl[k]['name']}", sl[k]['gate_days'], sl[k]['n'], _pct(sl[k]['mean']), _pct(sl[k]['win_rate'], 0, False), sl[k]['open']]
-                         for k in fusion.ORDER]))
+                         for k in fusion.config_for(variant).order]))
         v.addWidget(scard)
         v.addWidget(result_view(run, panel, levered=False))
         v.addStretch(1)
@@ -980,7 +986,7 @@ class BenchPage:
         """当前选中的是 D 还是 D1，以及对应的那一份回测 / 前向包（D1 的包挂在 D 的包下面）。"""
         top = self.state.get('fusion') or {}
         v_ = self.state.get('fusion_variant')
-        if v_ in ('D1', 'D2'):
+        if v_ in ('D1', 'D2', 'D3'):
             return v_, top.get(v_.lower()) or {'error': f'没有算出 {v_}'}
         return 'D', top
 
@@ -990,17 +996,18 @@ class BenchPage:
         box.addItem('D：买 20 日跌得最多的', 'D')
         box.addItem('D1：先取跌幅前 40，再买 60 日回撤最深的', 'D1')
         box.addItem('D2：D1 再加近高点过滤（大盘离 120 日高点不足 5% 不开新仓）', 'D2')
-        box.setCurrentIndex({'D': 0, 'D1': 1, 'D2': 2}.get(variant, 0))
+        box.addItem('D3：D2 再把层优先级改成 C 先 A 后（样本内，待前向验证）', 'D3')
+        box.setCurrentIndex({'D': 0, 'D1': 1, 'D2': 2, 'D3': 3}.get(variant, 0))
         box.currentIndexChanged.connect(lambda _: self.set_fusion_variant(box.currentData()))
         return row(label('候选排序'), box)
 
     def set_fusion_variant(self, variant):
-        if variant in ('D', 'D1', 'D2') and variant != self.state.get('fusion_variant'):
+        if variant in ('D', 'D1', 'D2', 'D3') and variant != self.state.get('fusion_variant'):
             self.state['fusion_variant'] = variant
             self.build_fusion()
             self.build_holdings()
 
-    # ---- tab: 我的持仓（录入真实持仓，按 D / D1 / D2 的规则算明天该卖什么、该买什么）
+    # ---- tab: 我的持仓（录入真实持仓，按 D / D1 / D2 / D3 的规则算明天该卖什么、该买什么）
     def today(self):
         return getattr(self, 'today_override', None) or datetime.now(autorecord.SHANGHAI).date()
 
@@ -1020,7 +1027,7 @@ class BenchPage:
         intro = Card('这是什么')
         intro.add(label(f'把你真实买的股票录进来，工作台按{fusion.VARIANT_NAMES[variant]}的规则算“下一个开市日”要做什么：哪些到期该卖、哪些新信号该买（已经持有的不会重复买，'
                         f'每层名额和总仓位会扣掉已有持仓）。持有 {cfg.hold_days} 个交易日：买入当天算第 1 天，第 {cfg.hold_days} 天收盘卖出。'
-                        '候选排序跟随“策略 D”标签里选的 D / D1 / D2。这里只是辅助计算，不下单、不连券商；持仓只存在这台电脑上。'
+                        '候选排序跟随“策略 D”标签里选的 D / D1 / D2 / D3。这里只是辅助计算，不下单、不连券商；持仓只存在这台电脑上。'
                         '每天的用法：收盘后数据更新 → 看“明天要卖/要买” → 明天照单操作 → 买完点“记为已持有”→ 卖完等数据更新后点“清掉已到期的”。', 'muted', True))
         v.addWidget(intro)
         self.hold_equity = QDoubleSpinBox()
@@ -1101,7 +1108,7 @@ class BenchPage:
         fired = '、'.join(plan['fired']) if plan['fired'] else '无'
         self.hold_box.addWidget(kpis([
             ('数据截至', plan['data_date'], f"计划日 {plan['plan_day']}（下一个开市日）"),
-            ('触发的层', fired, '今天没有层触发，就没有新买入' if not plan['gate_open'] else '新买入按 A → C → B 分钱'),
+            ('触发的层', fired, '今天没有层触发，就没有新买入' if not plan['gate_open'] else '新买入按 ' + ' → '.join(fusion.config_for(plan.get('variant') or 'D').order) + ' 分钱'),
             ('明天要卖', f"{len(plan['sells'])} 只", f"约回笼 {plan['proceeds']:,.0f} 元"),
             ('明天要买', f"{len(plan['buys'])} 只", f"约 {plan['new_money']:,.0f} 元"),
         ]))
@@ -1253,7 +1260,7 @@ def _industry_forward(output, panel, cls):
 
 
 def _fusion_kind(variant):
-    return {'D1': 'fusion1', 'D2': 'fusion2'}.get(variant, 'fusion')
+    return {'D1': 'fusion1', 'D2': 'fusion2', 'D3': 'fusion3'}.get(variant, 'fusion')
 
 
 def _fusion_forward(output, panel, cls, variant='D'):
@@ -1266,14 +1273,14 @@ def _fusion_forward(output, panel, cls, variant='D'):
 
 
 def _fusion_bundle(output, panel, ind, progress, stop):
-    """策略 D / D1：需要行业分类（B 层）。回测、前向记录；任何一步失败只影响这个标签页。
+    """策略 D / D1 / D2 / D3：需要行业分类（B 层）。回测、前向记录；任何一步失败只影响这个标签页。
     D1 = D 换一种候选排序，单独一份回测和前向记录；D1 失败不影响 D。"""
     try:
         if not ind or ind.get('error'):
             raise dpanel.DipDataError('B 层需要申万行业分类：' + str((ind or {}).get('error') or '行业数据还没准备好'))
         cls = ind['cls']
         out = None
-        for variant in ('D', 'D1', 'D2'):
+        for variant in ('D', 'D1', 'D2', 'D3'):
             try:
                 cfg = fusion.config_for(variant)
                 run = fusion.run_backtest(panel, cfg, cls, progress=progress, stop=stop)
@@ -1317,7 +1324,8 @@ def _config_text(cfg):
 def _fusion_config_text(cfg):
     return (f"z≤{cfg['z_threshold']:g}　每层最多 {cfg['positions']} 只　A {cfg['weight_a'] * 100:g}% · C {cfg['weight_c'] * 100:g}% · B {cfg['weight_b'] * 100:g}%　"
             f"总仓位≤{cfg['gross_cap'] * 100:g}%（不借钱）　持有 {cfg['hold_days']} 日　闲置收益 {cfg['cash_yield'] * 100:g}%　冲击 {cfg['slippage_bp']:g} 基点/边　"
-            f"成交额≥{cfg['min_amount'] / 1e4:g} 万　价≥{cfg['min_price']:g}　起点 {cfg['start']}")
+            f"成交额≥{cfg['min_amount'] / 1e4:g} 万　价≥{cfg['min_price']:g}　起点 {cfg['start']}"
+            + ('　层优先级 ' + ' > '.join(cfg['priority']) if cfg.get('priority', 'ACB') != 'ACB' else ''))
 
 
 def _compare_rows(a, b):

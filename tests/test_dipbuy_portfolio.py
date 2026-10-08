@@ -145,6 +145,16 @@ class PlanTests(unittest.TestCase):
         self.assertAlmostEqual(sum(b['amount'] for b in p['buys']), 5000, places=6)
         self.assertEqual(len(p['buys']), 1)
 
+    def test_d3_priority_gives_the_cap_to_c_before_a(self):
+        last = ND - 1
+        panel, inp = scripted(nd=ND, nc=NC, gates={'A': [last], 'C': [last]}, pools={'A': ([last], [0, 1, 2]), 'C': ([last], [3, 4, 5])})
+        kw = dict(weight_a=0.3, weight_c=0.3, gross_cap=0.5)
+        acb = portfolio.plan_operations(panel, inp, FusionConfig(**kw), [], equity=1_000_000)
+        cab = portfolio.plan_operations(panel, inp, FusionConfig(priority='CAB', **kw), [], equity=1_000_000)
+        self.assertEqual({b['sleeve'] for b in acb['buys']}, {'A'})                       # 默认：A 先拿，C 没额度
+        self.assertEqual({b['sleeve'] for b in cab['buys']}, {'C'})                       # D3：C 先拿，A 没额度
+        self.assertEqual(list(cab['sleeves']), ['C', 'A', 'B'])
+
     def test_a_plan_that_cannot_afford_one_lot_says_so(self):
         p = self.plan(equity=10_000)                                          # 8% = 800 元 < 一手 1000 元
         self.assertEqual(p['buys'], [])

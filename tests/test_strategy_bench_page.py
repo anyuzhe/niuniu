@@ -217,7 +217,7 @@ class BenchPageTests(unittest.TestCase):
         self.go()
         tabs = self.window.scroll.widget().findChild(QTabWidget)
         selector = next(c for c in tabs.widget(5).findChildren(QComboBox) if c.accessibleName() == '候选排序')
-        self.assertEqual([selector.itemData(i) for i in range(selector.count())], ['D', 'D1', 'D2'])
+        self.assertEqual([selector.itemData(i) for i in range(selector.count())], ['D', 'D1', 'D2', 'D3'])
         selector.setCurrentIndex(2)
         QTest.qWait(50)
         self.assertEqual(self.window.bench_state['fusion_variant'], 'D2')
@@ -243,6 +243,45 @@ class BenchPageTests(unittest.TestCase):
         selector = next(c for c in tabs.widget(5).findChildren(QComboBox) if c.accessibleName() == '候选排序')
         selector.setCurrentIndex(0)
         QTest.qWait(50)
+        self.assertFalse(pages[-1].fus_cfg.near_high_on)                                  # 切回 D：不带过滤
+
+    def test_d3_is_a_fourth_variant_with_its_own_backtest_and_forward_ledger(self):
+        from quantlab.dipbuy import autorecord
+        panel = self.cache_panel()
+        pages = self.holdings_page(autorecord.next_open_day(panel.last_date))
+        self.go()
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        selector = next(c for c in tabs.widget(5).findChildren(QComboBox) if c.accessibleName() == '候选排序')
+        self.assertEqual([selector.itemData(i) for i in range(selector.count())], ['D', 'D1', 'D2', 'D3'])
+        selector.setCurrentIndex(3)
+        QTest.qWait(50)
+        self.assertEqual(self.window.bench_state['fusion_variant'], 'D3')
+        page = pages[-1]
+        self.assertEqual(page.fus_cfg.variant, 'D3')
+        self.assertEqual(page.fus_cfg.order, ('C', 'A', 'B'))
+        self.assertTrue(page.fus_cfg.near_high_on)
+        self.assertTrue(page.hold_ctx[0].near_high_on)                                    # 我的持仓跟着 D3
+        texts = [w.text() for w in tabs.widget(5).findChildren(QLabel)]
+        self.assertTrue(any('D3 = D2 再改一件事' in t for t in texts))
+        self.assertTrue(any('策略 D3 的回测与风险' in t for t in texts))
+        self.assertTrue(any('大盘离近 120 日高点' in t for t in texts))
+        sig = page.fus_signal
+        if sig['gate_open'] and sig['picks']:
+            self.button('把今天的信号记入策略 D3 前向跟踪').click()
+            QTest.qWait(50)
+            ledger = json.loads((self.out / '_home' / 'dip_fusion3_forward.json').read_text(encoding='utf-8'))
+            self.assertTrue(ledger['config']['near_high_on'])
+            self.assertEqual(ledger['config']['rank_mode'], 'dd60')
+            self.assertEqual(ledger['config']['priority'], 'CAB')
+            self.assertFalse((self.out / '_home' / 'dip_fusion2_forward.json').exists())     # D2 的台账不受影响
+            self.assertFalse((self.out / '_home' / 'dip_fusion1_forward.json').exists())     # D1 的台账不受影响
+            self.assertFalse((self.out / '_home' / 'dip_fusion_forward.json').exists())
+        else:
+            self.assertTrue(sig['market_position']['blocked'] or not sig['gate_open'])
+        selector = next(c for c in tabs.widget(5).findChildren(QComboBox) if c.accessibleName() == '候选排序')
+        selector.setCurrentIndex(0)
+        QTest.qWait(50)
+        self.assertEqual(pages[-1].fus_cfg.priority, 'ACB')
         self.assertFalse(pages[-1].fus_cfg.near_high_on)                                  # 切回 D：不带过滤
 
     def test_holdings_tab_refuses_stale_data_and_saves_equity(self):

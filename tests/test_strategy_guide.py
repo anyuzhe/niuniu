@@ -1,4 +1,4 @@
-"""策略说明的内容：六个策略都讲到、数字取自配置、表格行列对齐。"""
+"""策略说明的内容：七个策略都讲到、数字取自配置、表格行列对齐。"""
 import os
 import sys
 import unittest
@@ -24,7 +24,7 @@ class GuideTests(unittest.TestCase):
 
     def test_every_strategy_and_topic_is_covered(self):
         titles = [t for t, _ in guide.sections()]
-        for needle in ('先看这一页', '共同规则', 'A　', 'B　', 'C　', 'D　', 'D1　', 'D2　', '每天怎么用', '回测数字', '试过但没用', '风险与局限', '术语'):
+        for needle in ('先看这一页', '共同规则', 'A　', 'B　', 'C　', 'D　', 'D1　', 'D2　', 'D3　', '每天怎么用', '回测数字', '试过但没用', '风险与局限', '术语'):
             self.assertTrue(any(needle in t for t in titles), needle)
 
     def test_tables_are_rectangular(self):

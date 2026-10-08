@@ -2754,3 +2754,11 @@
 ## 第九十六次：D3（D2 + C 优先）再剔除差行业（研究，未改产品代码）
 - 内容：D3 + 剔除 S1~S4：+23.4% → +24.2% / +25.1% / +25.2% / +26.3%（终值 49.6× → 76.7×），与 C 优先大体可叠加；但样本外（2018 年前挑最差 4 个行业、2018 年后看）D3 为 −1.7 点、原优先级 −0.3 点，随机剔除对照的“高于随机”是事后挑选的必然结果。不建议加行业黑名单，D3 如做只加 C 优先。
 - 文件：低频抄底档案 §122；`scripts/research/lowfreq_dip/` 新增 `grp83.py`、`grp83.txt`、`grp83_named_D2.json`。
+
+## 第九十七次：策略 D3 = D2 + 层优先级 C > A > B（产品）
+- 内容：新增“策略 D”标签里的第四个变体 D3：在 D2 基础上，钱不够时三层的先后由 A > C > B 改成 C > A > B（A 触发时 C 必触发且候选覆盖 A，所以 A 层基本不买，等同去掉 A 层）；**不加行业黑名单**。独立回测、独立前向台账，D / D1 / D2 不变。
+- 代码：`FusionConfig.priority`（'ACB' 默认 / 'CAB'）与 `order` 属性，`simulate_fused` / `latest_fusion_signal` / `portfolio.plan_operations` 改用 `cfg.order`；`d3_config()`、`config_for('D3')`、`VARIANT_NAMES['D3']`；默认优先级时 `hash()` 不带该字段，D / D1 / D2 哈希与已有台账不变；`tracker` 新台账 `fusion3`（`dip_fusion3_forward.json`）；`autorecord` 每天记六本（D、D1、D2、D3、A、B）；页面选择器、介绍、回测配置行、“我的持仓”、“策略说明”都加 D3。
+- D3 回测（含退市股、扣成本）：+23.4% / 夏普 1.01 / 最大回撤 −36.9% / 终值 49.6×（2018 前 18.2%、后 29.6%），D2 为 +21.3% / 0.97 / −36.2% / 36.2×。样本内；同方向 §88 测过、结论是噪声边缘，§120–§122 的复测用同一份历史，需前向记录验证。
+- 注意：研究脚本里 `fusion.ORDER = ...` 的写法在新引擎里不再改优先级（读 `cfg.priority`），复跑要用 `replace(cfg, priority='CAB')`。
+- 文件：低频抄底档案 §123；`scripts/research/lowfreq_dip/grp84.py`、`grp84.txt`、`grp84.json`。
+- 测试：融合、持仓、自动记录、页面、策略说明等相关 123 项全过。

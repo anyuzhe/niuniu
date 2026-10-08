@@ -10,6 +10,8 @@
 （A 与 C 各 8% 净值、B 2.5% 净值），候选按 20 日跌幅从大到小排（D）。同一只股票不会在两层里重复买。
 D1 = D 只换一件事：候选先取 20 日跌幅最大的前 rank_k（默认 40）只，再按 60 日回撤从深到浅排（rank_mode='dd60'）；其余与 D 完全一样。
 D2 = D1 再加一件事：大盘（等权指数）离近 120 日高点不足 5% 的日子，三层闸门全部关掉，不开新仓（near_high_on）；其余与 D1 完全一样。
+D3 = D2 再改一件事：钱不够时的层优先级由 A > C > B 改成 C > A > B（priority='CAB'）；其余与 D2 完全一样。A 触发的日子 C 一定触发，且 C 的候选覆盖 A 的，
+所以 C 先买之后 A 层基本买不到东西，效果等同“去掉 A 层”（研究 §120–§122；§88 测过同一方向，当时结论是增益在噪声边缘）。
 次日开盘买、持有 hold_days 个交易日后收盘卖，成本与 engine 一致；闲置资金按 cash_yield 计息。
 结果是历史回测，参数在同一份样本上调过；面板只含现存股票（幸存者偏差）。
 """
@@ -32,8 +34,9 @@ FUSION_VERSION = 'dipbuy-fusion-1'
 RANK_MODES = ('ret20', 'dd60')
 DD_WINDOW = 60
 DD_MIN = 40
-VARIANT_NAMES = {'D': '策略 D', 'D1': '策略 D1', 'D2': '策略 D2'}
-ORDER = ('A', 'C', 'B')
+VARIANT_NAMES = {'D': '策略 D', 'D1': '策略 D1', 'D2': '策略 D2', 'D3': '策略 D3'}
+ORDER = ('A', 'C', 'B')            # D / D1 / D2 的层优先级；D3 用 PRIORITIES['CAB']（FusionConfig.order）
+PRIORITIES = {'ACB': ('A', 'C', 'B'), 'CAB': ('C', 'A', 'B')}
 SLEEVE_NAMES = {'A': '大盘恐慌', 'C': '成交额分档恐慌', 'B': '行业恐慌'}
 QUINTILE_NAMES = ('成交额最小档', '较小档', '中间档', '较大档', '成交额最大档')
 N_QUINTILES = 5
@@ -43,7 +46,7 @@ RET_WINDOW = 20
 STD_WINDOW = 60
 STD_MIN = 40
 
-DELISTED_DETAIL = '研究里同口径对比（2008 起，扣成本）：D 含退市股 +15.9% / 回撤 −42%，不含 +18.0% / −36%；D1 含 +18.3% / −36%，不含 +19.6% / −35%。；D2（D1 + 近高点过滤）含退市股 +21.3% / 回撤 −36%（样本内）。'
+DELISTED_DETAIL = '研究里同口径对比（2008 起，扣成本）：D 含退市股 +15.9% / 回撤 −42%，不含 +18.0% / −36%；D1 含 +18.3% / −36%，不含 +19.6% / −35%。；D2（D1 + 近高点过滤）含退市股 +21.3% / 回撤 −36%（样本内）；D3（D2 + C 层优先）含退市股 +23.4% / 回撤 −37%（样本内）。'
 
 CAVEATS = (
     '历史回测：参数（权重、阈值、持有天数）是在同一份数据上试过很多组后定的，没有做多重检验修正，更像局部最优，不是样本外验证过的结论。',
@@ -53,6 +56,7 @@ CAVEATS = (
     'A 触发的日子 C 一定触发，C 触发的日子 B 一定触发，三层不是三份独立证据；B 层单笔收益最低，作用是把 A、C 空着的钱填起来。',
     'D1 的“60 日回撤”排序是看过全样本后挑的，属于样本内线索：逐年看，它在 2008、2012、2015、2022 比 D 好很多，在 2024、2025 反而少赚 15 到 20 个点，建议当可选增强，不是替代 D。',
     'D2 = D1 + 近高点过滤：过滤的窗口和距离是看过 129 个组合的网格后选的（样本内，没做多重检验修正）；安慰剂检验里挑出来的最好一格不比运气好多少，增益几乎全来自 2013、2021–2023 年，2008–2019 年多数年份没有差别。回测里 D2 比 D1 多约 3 个点年化是样本内数字，真实预期只有每年多 1.5 到 3 个点；最大回撤不变。',
+    'D3 = D2 + 层优先级改成 C > A > B（等同去掉 A 层）：回测里比 D2 多约 2 个点年化（+23.4% 对 +21.3%），但这是在同一段历史上看出来的，研究 §88 早测过同一方向，当时的自助法区间下沿贴近 0、结论是噪声边缘；§120–§122 在保守基线上重复出同样方向，但用的是同一份历史，不算独立证据。D3 有自己的前向记录，攒够样本之前不要当成比 D2 更好。',
 )
 
 
@@ -77,6 +81,7 @@ class FusionConfig:
     near_high_on: bool = False         # 可选过滤：大盘离近 window 日高点不足 pct 时，三层信号一律不开（默认关；研究 §101/§102）
     near_high_window: int = 120
     near_high_pct: float = 0.05
+    priority: str = 'ACB'              # 钱不够时三层的先后：'ACB' = D / D1 / D2；'CAB' = D3（C 先 A 后，研究 §120–§122）
 
     def __post_init__(self):
         checks = (
@@ -93,6 +98,7 @@ class FusionConfig:
             (5 <= self.rank_k <= 200, '二段排序的候选数应在 5 到 200 之间'),
             (20 <= self.near_high_window <= 1000, '近高点过滤的窗口应在 20 到 1000 日之间'),
             (0.01 <= self.near_high_pct <= 0.20, '近高点过滤的距离应在 1% 到 20% 之间'),
+            (self.priority in PRIORITIES, '层优先级只支持 ACB 或 CAB'),
         )
         for ok, message in checks:
             if not ok:
@@ -111,9 +117,15 @@ class FusionConfig:
         return cls(**{k: v for k, v in (value or {}).items() if k in known})
 
     @property
+    def order(self) -> tuple:
+        return PRIORITIES[self.priority]
+
+    @property
     def variant(self) -> str:
         if self.rank_mode == 'dd60':
-            return 'D2' if self.near_high_on else 'D1'
+            if self.near_high_on:
+                return 'D3' if self.priority == 'CAB' else 'D2'
+            return 'D1'
         return 'D'
 
     def hash(self) -> str:
@@ -123,6 +135,8 @@ class FusionConfig:
         if not self.near_high_on:           # 过滤关着时哈希与加这个选项之前完全一样，已有的前向记录和缓存不受影响
             for k in ('near_high_on', 'near_high_window', 'near_high_pct'):
                 payload.pop(k)
+        if self.priority == 'ACB':           # 默认优先级时哈希与加这个选项之前完全一样（D / D1 / D2 的前向记录和缓存不受影响）
+            payload.pop('priority')
         blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256((FUSION_VERSION + blob).encode()).hexdigest()[:12]
 
@@ -146,8 +160,14 @@ def d2_config() -> FusionConfig:
     return FusionConfig(rank_mode='dd60', near_high_on=True)
 
 
+def d3_config() -> FusionConfig:
+    """D3 = D2 + 层优先级 C > A > B（研究 §120–§122；A 层基本买不到东西，等同去掉 A 层）。"""
+    return FusionConfig(rank_mode='dd60', near_high_on=True, priority='CAB')
+
+
 def config_for(variant: str) -> FusionConfig:
-    return d2_config() if variant == 'D2' else d1_config() if variant == 'D1' else default_config()
+    return (d3_config() if variant == 'D3' else d2_config() if variant == 'D2' else d1_config() if variant == 'D1'
+            else default_config())
 
 
 # ---------------------------------------------------------------- 成交额分档与分档恐慌分
@@ -344,7 +364,7 @@ def simulate_fused(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, progre
             active.remove(p)
         if t + 1 <= min(tend, nd - 1):
             held = {p['j'] for p in active}
-            for s in ORDER:
+            for s in cfg.order:
                 if not inp.gates[s][t]:
                     continue
                 n_s = sum(1 for p in active if p['s'] == s)
@@ -471,7 +491,7 @@ def latest_fusion_signal(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, 
     limit = top if top is not None else cfg.positions * 2
     invested, taken, picks = 0.0, set(), []
     code_of = [str(c) for c in panel.codes]
-    for s in ORDER:
+    for s in cfg.order:
         if not inp.gates[s][t]:
             continue
         pool = np.nonzero(inp.pools[s][t])[0]

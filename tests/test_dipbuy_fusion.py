@@ -135,6 +135,16 @@ class InputsTests(unittest.TestCase):
         self.assertEqual(len(sig['quintiles']), 5)
         self.assertEqual(len(sig['industries']), 3)
 
+    def test_signal_follows_the_config_priority_and_reports_its_variant(self):
+        for cfg in (FusionConfig(positions=5), fusion.d3_config()):
+            inp = fusion.with_near_high_filter(fusion.build_inputs(self.panel, cfg, self.cls), cfg)
+            sig = fusion.latest_fusion_signal(self.panel, inp, cfg, equity=1_000_000)
+            self.assertEqual(sig['variant'], cfg.variant)
+            self.assertEqual(sig['config_hash'], cfg.hash())
+            seen = [p['sleeve'] for p in sig['picks']]
+            rank = {s: i for i, s in enumerate(cfg.order)}
+            self.assertEqual([rank[s] for s in seen], sorted(rank[s] for s in seen))      # 候选表按该配置的层顺序排
+
     def test_calm_day_has_no_picks(self):
         inp = fusion.build_inputs(self.panel, self.cfg, self.cls)
         sig = fusion.latest_fusion_signal(self.panel, inp, self.cfg, day=str(self.panel.dates[ND - 60]))
@@ -463,6 +473,50 @@ class NearHighFilterTests(unittest.TestCase):
         plain = fusion.latest_fusion_signal(panel, inp, FusionConfig(near_high_window=60), day=str(panel.dates[150]))
         self.assertTrue(plain['gate_open'])                               # 过滤关着：照常有信号
         self.assertTrue(plain['market_position']['would_block'] and not plain['market_position']['blocked'])
+
+
+class PriorityTests(unittest.TestCase):
+    """D3 = D2 + 层优先级 C > A > B：只改钱不够时谁先拿。"""
+    cfg = dict(hold_days=20, start='2024-01-02')
+
+    def test_d3_identity_and_hashes_of_older_variants_are_untouched(self):
+        d, d1, d2, d3 = FusionConfig(), fusion.d1_config(), fusion.d2_config(), fusion.d3_config()
+        self.assertEqual((d3.variant, d3.priority, d3.order), ('D3', 'CAB', ('C', 'A', 'B')))
+        self.assertEqual((d.order, d1.order, d2.order), (('A', 'C', 'B'),) * 3)
+        self.assertEqual((d3.rank_mode, d3.rank_k, d3.near_high_on), ('dd60', 40, True))
+        self.assertEqual(len({d.hash(), d1.hash(), d2.hash(), d3.hash()}), 4)
+        self.assertEqual(d.hash(), '50af776c23a6')                                       # 默认优先级时哈希与加这个选项之前一样
+        self.assertEqual(FusionConfig(priority='ACB').hash(), d.hash())
+        self.assertEqual(FusionConfig(rank_mode='dd60', near_high_on=True, priority='ACB').hash(), d2.hash())
+        self.assertNotEqual(FusionConfig(priority='CAB').hash(), d.hash())
+        self.assertEqual(fusion.config_for('D3'), d3)
+        self.assertEqual(fusion.config_for('D2'), d2)
+        self.assertEqual(FusionConfig.from_dict(d3.to_dict()), d3)
+        self.assertEqual(FusionConfig.from_dict({k: v for k, v in d2.to_dict().items() if k != 'priority'}), d2)   # 旧台账里没有这个字段
+        self.assertEqual(fusion.VARIANT_NAMES['D3'], '策略 D3')
+        self.assertEqual(FusionConfig(rank_mode='dd60', priority='CAB').variant, 'D1')      # 只改优先级、不开近高点过滤：不算 D3
+        with self.assertRaises(ValueError):
+            FusionConfig(priority='BCA')
+
+    def test_c_first_takes_the_money_a_would_have_taken(self):
+        days = [300]
+        gates = {s: days for s in 'ACB'}
+        pools = {'A': (days, [0, 1, 2]), 'C': (days, [1, 2, 3, 4, 5]), 'B': (days, [5, 6, 7])}
+        base = dict(weight_a=0.3, weight_c=0.3, weight_b=0.3, gross_cap=0.5, **self.cfg)
+        panel, inp = scripted(gates=gates, pools=pools)
+        acb = fusion.simulate_fused(panel, inp, FusionConfig(**base))
+        cab = fusion.simulate_fused(panel, inp, FusionConfig(priority='CAB', **base))
+        self.assertEqual([t['sleeve'] for t in acb['trades']], ['A', 'A'])
+        self.assertEqual([(t['sleeve'], t['code'][-1]) for t in cab['trades']], [('C', '1'), ('C', '2')])   # C 先拿满，A 买不到
+        self.assertAlmostEqual(sum(t['weight'] for t in cab['trades']), 0.5 * float(cab['eq'][300]), delta=0.005)
+
+    def test_with_room_both_sleeves_buy_and_c_takes_shared_names_first(self):
+        days = [300]
+        panel, inp = scripted(gates={s: days for s in 'AC'}, pools={'A': (days, [0, 1, 2]), 'C': (days, [1, 2, 3])})
+        raw = fusion.simulate_fused(panel, inp, FusionConfig(priority='CAB', **self.cfg))
+        by = {s: sorted(t['code'][-1] for t in raw['trades'] if t['sleeve'] == s) for s in 'AC'}
+        self.assertEqual(by, {'A': ['0'], 'C': ['1', '2', '3']})                         # 重叠的 1、2 归 C，A 只剩 0
+        self.assertEqual(len({t['code'] for t in raw['trades']}), len(raw['trades']))
 
 
 if __name__ == '__main__':

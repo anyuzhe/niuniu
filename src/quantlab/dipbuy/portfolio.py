@@ -226,7 +226,7 @@ def plan_operations(panel: Panel, inp, cfg, holdings: list[dict], *, equity: flo
     small: dict[str, int] = {}
     cap_note = False
     if not stale and equity > 0:
-        for s in ORDER:
+        for s in cfg.order:
             n_s = sum(1 for r in active if r['sleeve'] == s)
             gate = bool(inp.gates[s][t])
             sleeves[s] = dict(gate=gate, held=n_s, slots=max(0, N - n_s))
