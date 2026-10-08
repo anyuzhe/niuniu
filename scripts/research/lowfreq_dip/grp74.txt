@@ -1,0 +1,28 @@
+--- named D
+--- D
+D base cagr 15.9 pre 9.9 post 23.2 sh 0.77 mdd -41.9 nB 1736 keep 1.00
+D R1 cagr 13.3 pre 10.7 post 16.4 sh 0.68 mdd -40.5 nB 1228 keep 0.37
+D R3 cagr 15.3 pre 11.8 post 19.4 sh 0.75 mdd -38.4 nB 932 keep 0.23
+D R3b cagr 15.7 pre 12.1 post 20.0 sh 0.77 mdd -38.4 nB 575 keep 0.16
+D Zup cagr 16.1 pre 10.8 post 22.5 sh 0.78 mdd -37.0 nB 1145 keep 0.36
+D Zoff5 cagr 16.5 pre 11.7 post 22.4 sh 0.80 mdd -38.4 nB 701 keep 0.22
+D N30 cagr 19.3 pre 14.0 post 25.7 sh 0.89 mdd -38.4 nB 1338 keep 0.87
+D R3+N30 cagr 16.5 pre 12.7 post 21.0 sh 0.80 mdd -38.4 nB 739 keep 0.20
+D Zoff5+N30 cagr 16.0 pre 11.0 post 21.9 sh 0.78 mdd -38.4 nB 540 keep 0.19
+D Zup+N30 cagr 16.9 pre 11.6 post 23.2 sh 0.81 mdd -38.4 nB 919 keep 0.31
+--- D2
+D2 base cagr 21.3 pre 16.0 post 27.7 sh 0.97 mdd -36.2 nB 1631 keep 1.00
+D2 R1 cagr 17.9 pre 16.8 post 19.1 sh 0.86 mdd -35.2 nB 1109 keep 0.37
+D2 R3 cagr 20.1 pre 17.8 post 22.9 sh 0.94 mdd -37.2 nB 799 keep 0.23
+D2 R3b cagr 19.8 pre 17.2 post 22.9 sh 0.94 mdd -37.2 nB 467 keep 0.16
+D2 Zup cagr 20.1 pre 16.8 post 23.9 sh 0.94 mdd -32.3 nB 1058 keep 0.36
+D2 Zoff5 cagr 19.8 pre 16.9 post 23.2 sh 0.94 mdd -35.2 nB 581 keep 0.22
+D2 N30 cagr 22.7 pre 18.3 post 28.1 sh 1.02 mdd -32.7 nB 1257 keep 0.87
+D2 R3+N30 cagr 20.7 pre 18.1 post 23.7 sh 0.97 mdd -35.2 nB 619 keep 0.20
+D2 Zoff5+N30 cagr 19.4 pre 16.4 post 23.0 sh 0.93 mdd -35.2 nB 420 keep 0.19
+D2 Zup+N30 cagr 19.9 pre 16.5 post 23.8 sh 0.93 mdd -32.7 nB 820 keep 0.31
+--- hist (自适应黑名单，来自运行输出)
+D last -0.03 cagr 15.2 pre 12.6 post 18.2 mdd -43.0 | D last -0.05 15.4 | D last -0.08 16.2
+D cum -0.03 cagr 18.3 pre 13.6 post 24.0 sh 0.86 mdd -43.0 | D cum -0.05 18.2 (13.5/23.7) | D cum -0.08 17.7 (13.1/23.1)
+D2 last -0.03 22.0 | -0.05 21.6 | -0.08 22.3 (mdd -38.5)
+D2 cum -0.03 cagr 23.1 pre 18.9 post 28.0 sh 1.04 mdd -38.5 | D2 cum -0.05 23.4 (19.0/28.7) sh 1.05 | D2 cum -0.08 22.7 (18.7/27.6)
