@@ -1,0 +1,14 @@
+D 基线 A>C>B cagr 15.9 pre 9.9 post 23.2 sh 0.77 mdd -41.9 nB 1736 meanB 1.7 nB_big 0 meanB_big 0.0 expo 36/100
+D B>A>C cagr 15.5 pre 9.6 post 22.7 sh 0.76 mdd -45.0 nB 2088 meanB 2.9 nB_big 100 meanB_big 2.0 expo 35/100
+D A>B>C cagr 13.8 pre 8.6 post 20.1 sh 0.70 mdd -45.0 nB 1998 meanB 2.2 nB_big 40 meanB_big 5.0 expo 36/100
+D A,C 权重 5%（B 2.5%） cagr 16.0 pre 10.2 post 23.0 sh 0.78 mdd -40.6 nB 1740 meanB 1.7 nB_big 0 meanB_big 0.0 expo 36/100
+D A,C 权重 4% cagr 15.8 pre 10.1 post 22.6 sh 0.77 mdd -40.3 nB 1837 meanB 2.0 nB_big 5 meanB_big 12.7 expo 36/100
+D B 权重 4%（A,C 8%） cagr 14.1 pre 8.9 post 20.2 sh 0.67 mdd -47.3 nB 1634 meanB 1.8 nB_big 0 meanB_big 0.0 expo 42/100
+D B>A>C 且 B 2.5%→5% cagr 15.4 pre 9.9 post 22.0 sh 0.68 mdd -52.3 nB 2073 meanB 3.4 nB_big 120 meanB_big 9.6 expo 47/100
+D2 基线 A>C>B cagr 21.3 pre 16.0 post 27.7 sh 0.97 mdd -36.2 nB 1631 meanB 2.8 nB_big 0 meanB_big 0.0 expo 35/100
+D2 B>A>C cagr 20.4 pre 14.7 post 27.3 sh 0.95 mdd -39.1 nB 1983 meanB 3.7 nB_big 98 meanB_big 2.1 expo 34/100
+D2 A>B>C cagr 19.6 pre 14.6 post 25.7 sh 0.92 mdd -39.9 nB 1892 meanB 3.1 nB_big 40 meanB_big 6.3 expo 34/100
+D2 A,C 权重 5%（B 2.5%） cagr 19.9 pre 12.7 post 28.7 sh 0.92 mdd -40.1 nB 1635 meanB 2.8 nB_big 0 meanB_big 0.0 expo 35/100
+D2 A,C 权重 4% cagr 19.5 pre 12.5 post 27.9 sh 0.91 mdd -39.3 nB 1725 meanB 3.0 nB_big 5 meanB_big 13.4 expo 35/100
+D2 B 权重 4%（A,C 8%） cagr 19.7 pre 13.1 post 27.8 sh 0.86 mdd -48.9 nB 1513 meanB 2.8 nB_big 0 meanB_big 0.0 expo 40/100
+D2 B>A>C 且 B 2.5%→5% cagr 20.7 pre 12.6 post 30.6 sh 0.85 mdd -49.0 nB 1967 meanB 4.2 nB_big 120 meanB_big 10.5 expo 44/100
