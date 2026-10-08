@@ -1,0 +1,18 @@
+D 基线 A>C>B，B 不限 cagr 15.9 pre 9.9 post 23.2 sh 0.77 mdd -41.9 final 15.6x expo 36% nB 1736 meanB +1.7%
+D A>C>B，B 只在 A 当天触发时 cagr 14.7 pre 11.4 post 18.6 sh 0.74 mdd -38.4 final 12.9x expo 24% nB 0 meanB +0.0%
+D A>C>B，B 在 A 触发后 5 天内 cagr 16.5 pre 11.2 post 22.9 sh 0.80 mdd -38.1 final 17.2x expo 25% nB 200 meanB +0.8%
+D A>C>B，B 在 A 触发后 10 天内 cagr 16.2 pre 10.7 post 22.9 sh 0.79 mdd -38.1 final 16.4x expo 26% nB 280 meanB +3.2%
+D A>C>B，B 在 A 触发后 20 天内 cagr 17.4 pre 11.2 post 24.9 sh 0.83 mdd -38.1 final 19.7x expo 26% nB 400 meanB +4.8%
+D B>A>C，B 只在 A 当天触发时 cagr 15.1 pre 11.3 post 19.7 sh 0.75 mdd -36.8 final 13.8x expo 24% nB 280 meanB +5.6%
+D C>A>B，B 只在 A 当天触发时 cagr 16.8 pre 13.0 post 21.3 sh 0.80 mdd -39.9 final 18.0x expo 24% nB 0 meanB +0.0%
+D C>A>B，B 在 A 触发后 10 天内 cagr 18.4 pre 12.3 post 25.7 sh 0.85 mdd -39.6 final 23.1x expo 26% nB 280 meanB +3.2%
+D 去掉 B（对照） cagr 14.7 pre 11.4 post 18.6 sh 0.74 mdd -38.4 final 12.9x expo 24% nB 0 meanB +0.0%
+D2 基线 A>C>B，B 不限 cagr 21.3 pre 16.0 post 27.7 sh 0.97 mdd -36.2 final 36.2x expo 35% nB 1631 meanB +2.8%
+D2 A>C>B，B 只在 A 当天触发时 cagr 18.3 pre 15.6 post 21.5 sh 0.89 mdd -35.2 final 22.9x expo 23% nB 0 meanB +0.0%
+D2 A>C>B，B 在 A 触发后 5 天内 cagr 19.7 pre 15.1 post 25.2 sh 0.93 mdd -35.3 final 28.2x expo 25% nB 180 meanB +1.4%
+D2 A>C>B，B 在 A 触发后 10 天内 cagr 19.7 pre 15.1 post 25.2 sh 0.93 mdd -35.3 final 28.4x expo 25% nB 260 meanB +4.2%
+D2 A>C>B，B 在 A 触发后 20 天内 cagr 20.4 pre 15.6 post 26.1 sh 0.96 mdd -35.3 final 31.4x expo 26% nB 400 meanB +5.5%
+D2 B>A>C，B 只在 A 当天触发时 cagr 18.2 pre 14.3 post 22.9 sh 0.88 mdd -35.2 final 22.5x expo 23% nB 280 meanB +5.5%
+D2 C>A>B，B 只在 A 当天触发时 cagr 20.8 pre 17.8 post 24.3 sh 0.96 mdd -35.2 final 33.5x expo 23% nB 0 meanB +0.0%
+D2 C>A>B，B 在 A 触发后 10 天内 cagr 22.2 pre 17.3 post 28.0 sh 1.00 mdd -36.2 final 41.5x expo 25% nB 260 meanB +4.2%
+D2 去掉 B（对照） cagr 18.3 pre 15.6 post 21.5 sh 0.89 mdd -35.2 final 22.9x expo 23% nB 0 meanB +0.0%
