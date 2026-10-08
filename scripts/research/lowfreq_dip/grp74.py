@@ -223,3 +223,12 @@ if mode == 'quality':
         extra = np.where(lab_ok[None, :], f[:, np.clip(labels, 0, ngrp - 1)], True); o = run([], extra=extra); res[name] = dict(o, F=None)
         print(V, f"{name:26s} cagr {o['cagr']*100:.1f} pre {o['cagr_pre']*100:.1f} post {o['cagr_post']*100:.1f} sh {o['sharpe']:.2f} mdd {o['mdd']*100:.1f} nB {o['nB']} meanB {o['meanB']*100:.1f} keep {o['keep_frac']:.2f}", flush=True)
     json.dump({k: {kk: vv for kk, vv in v.items() if kk != 'F'} for k, v in res.items()}, open(f'grp74_quality_{V}.json', 'w'), ensure_ascii=False)
+
+if mode == 'zthr':
+    # B 层候选只在“行业 z 足够深”时才买（行业 z <= thr2）；其余不变
+    res = {}
+    for thr2 in (-1.5, -1.75, -2.0, -2.25, -2.5):
+        f = ~(z > thr2)                                   # z 为 NaN 视为通过（不会出现在触发行业里）
+        extra = np.where(lab_ok[None, :], f[:, np.clip(labels, 0, ngrp - 1)], True); o = run([], extra=extra); res[thr2] = o
+        print(V, thr2, f"cagr {o['cagr']*100:.1f} pre {o['cagr_pre']*100:.1f} post {o['cagr_post']*100:.1f} sh {o['sharpe']:.2f} mdd {o['mdd']*100:.1f} nB {o['nB']} meanB {o['meanB']*100:.1f} keep {o['keep_frac']:.2f}", flush=True)
+    json.dump({str(k): v for k, v in res.items()}, open(f'grp74_zthr_{V}.json', 'w'), ensure_ascii=False)

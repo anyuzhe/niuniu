@@ -54,3 +54,14 @@ D2 ER<-0.05且未深跌(dd>-35%) cagr 21.5 pre 16.9 post 27.1 sh 0.99 mdd -36.2 
 D2 ER<-0.10且未深跌(dd>-35%) cagr 21.5 pre 16.1 post 28.0 sh 0.98 mdd -36.2 nB 1638 keep 0.92
 D2 r250<0且近60日新低多(>30%) cagr 21.2 pre 15.9 post 27.7 sh 0.97 mdd -33.1 nB 1615 keep 1.00
 D2 ER<-0.05且近60日新低多 cagr 21.2 pre 15.9 post 27.7 sh 0.97 mdd -33.1 nB 1615 keep 1.00
+--- zthr (B 层只在行业 z 足够深时买)
+D z<=-1.5 cagr 15.9 pre 9.9 post 23.2 sh 0.77 mdd -41.9 nB 1736 meanB 1.7 keep 1.00
+D z<=-1.75 cagr 15.1 pre 11.7 post 19.1 sh 0.75 mdd -37.2 nB 1078 meanB 0.5 keep 0.55
+D z<=-2.0 cagr 15.1 pre 11.3 post 19.8 sh 0.75 mdd -38.4 nB 573 meanB 1.7 keep 0.29
+D z<=-2.25 cagr 14.2 pre 11.4 post 17.5 sh 0.72 mdd -38.4 nB 219 meanB 0.3 keep 0.15
+D z<=-2.5 cagr 14.5 pre 11.4 post 18.3 sh 0.73 mdd -38.4 nB 43 meanB 1.1 keep 0.08
+D2 z<=-1.5 cagr 21.3 pre 16.0 post 27.7 sh 0.97 mdd -36.2 nB 1631 meanB 2.8 keep 1.00
+D2 z<=-1.75 cagr 18.2 pre 16.0 post 20.6 sh 0.87 mdd -35.2 nB 1030 meanB 0.7 keep 0.55
+D2 z<=-2.0 cagr 18.0 pre 15.0 post 21.5 sh 0.88 mdd -35.2 nB 533 meanB 1.2 keep 0.29
+D2 z<=-2.25 cagr 18.1 pre 15.6 post 21.1 sh 0.88 mdd -35.2 nB 219 meanB 0.7 keep 0.15
+D2 z<=-2.5 cagr 18.3 pre 15.6 post 21.4 sh 0.89 mdd -35.2 nB 43 meanB 2.8 keep 0.08
