@@ -112,6 +112,7 @@ class RecordLatestTests(unittest.TestCase):
             self.assertEqual(res['fusion1']['status'], 'error')
             self.assertEqual(res['fusion2']['status'], 'error')
             self.assertEqual(res['fusion3']['status'], 'error')
+            self.assertEqual(res['fusion4']['status'], 'error')
             self.assertEqual(res['industry']['status'], 'error')
             self.assertIn('行业分类', res['fusion']['message'])
 

@@ -1,17 +1,18 @@
-"""grp84: 产品引擎 D3（priority='CAB'）回测复现——D / D1 / D2 / D3 用 fusion.config_for 的正式配置，不再改 fusion.ORDER。
+"""grp84: 产品引擎 D3（priority='CAB'）回测复现——D / D1 / D2 / D3 / D4 用 fusion.config_for 的正式配置，不再改 fusion.ORDER。
 python grp84.py   （需要 ~/research/lowfreq 下的 panel_del.npz 与 grp70_inp.pkl）"""
 import os, sys, pickle, json
 sys.path.insert(0, os.path.expanduser('~/mnt/niuniu/src'))
 from dataclasses import replace
 import numpy as np
-from quantlab.dipbuy import fusion
+from quantlab.dipbuy import fusion, industry
 from quantlab.dipbuy.panel import Panel
 panel = Panel.from_npz(os.path.expanduser('~/research/lowfreq/panel_del.npz'))
+cls = industry.load_classification(os.path.expanduser('~/mnt/lake/bronze/provider=swsresearch/industry_classification_history'), panel.codes)
 raw_inp = pickle.load(open(os.path.expanduser('~/research/lowfreq/grp70_inp.pkl'), 'rb'))
 dates = [str(d) for d in panel.dates]; i18 = int(np.searchsorted(dates, '2018-01-01'))
 out = {}
-for V in ('D', 'D1', 'D2', 'D3'):
-    cfg = fusion.config_for(V); inp = fusion.with_near_high_filter(replace(raw_inp), cfg)
+for V in ('D', 'D1', 'D2', 'D3', 'D4'):
+    cfg = fusion.config_for(V); inp = fusion.with_industry_blacklist(fusion.with_near_high_filter(replace(raw_inp), cfg), cfg, cls)
     raw = fusion.simulate_fused(panel, inp, cfg)
     eq = raw['eq']; idx = np.nonzero(np.isfinite(eq))[0]; e = eq[idx]
     cagr = (e[-1] / e[0]) ** (245 / len(e)) - 1; r = e[1:] / e[:-1] - 1; dd = float((e / np.maximum.accumulate(e) - 1).min())

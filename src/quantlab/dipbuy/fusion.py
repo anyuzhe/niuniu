@@ -12,6 +12,7 @@ D1 = D 只换一件事：候选先取 20 日跌幅最大的前 rank_k（默认 4
 D2 = D1 再加一件事：大盘（等权指数）离近 120 日高点不足 5% 的日子，三层闸门全部关掉，不开新仓（near_high_on）；其余与 D1 完全一样。
 D3 = D2 再改一件事：钱不够时的层优先级由 A > C > B 改成 C > A > B（priority='CAB'）；其余与 D2 完全一样。A 触发的日子 C 一定触发，且 C 的候选覆盖 A 的，
 所以 C 先买之后 A 层基本买不到东西，效果等同“去掉 A 层”（研究 §120–§122；§88 测过同一方向，当时结论是增益在噪声边缘）。
+D4 = D3 再加一件事：B 层（行业恐慌）的候选里不买黑名单行业的股票（industry_blacklist，默认房地产、国防军工；研究 §124）；A、C 层不受影响，行业恐慌闸门照常计算。
 次日开盘买、持有 hold_days 个交易日后收盘卖，成本与 engine 一致；闲置资金按 cash_yield 计息。
 结果是历史回测，参数在同一份样本上调过；面板只含现存股票（幸存者偏差）。
 """
@@ -34,7 +35,7 @@ FUSION_VERSION = 'dipbuy-fusion-1'
 RANK_MODES = ('ret20', 'dd60')
 DD_WINDOW = 60
 DD_MIN = 40
-VARIANT_NAMES = {'D': '策略 D', 'D1': '策略 D1', 'D2': '策略 D2', 'D3': '策略 D3'}
+VARIANT_NAMES = {'D': '策略 D', 'D1': '策略 D1', 'D2': '策略 D2', 'D3': '策略 D3', 'D4': '策略 D4'}
 ORDER = ('A', 'C', 'B')            # D / D1 / D2 的层优先级；D3 用 PRIORITIES['CAB']（FusionConfig.order）
 PRIORITIES = {'ACB': ('A', 'C', 'B'), 'CAB': ('C', 'A', 'B')}
 SLEEVE_NAMES = {'A': '大盘恐慌', 'C': '成交额分档恐慌', 'B': '行业恐慌'}
@@ -46,7 +47,7 @@ RET_WINDOW = 20
 STD_WINDOW = 60
 STD_MIN = 40
 
-DELISTED_DETAIL = '研究里同口径对比（2008 起，扣成本）：D 含退市股 +15.9% / 回撤 −42%，不含 +18.0% / −36%；D1 含 +18.3% / −36%，不含 +19.6% / −35%。；D2（D1 + 近高点过滤）含退市股 +21.3% / 回撤 −36%（样本内）；D3（D2 + C 层优先）含退市股 +23.4% / 回撤 −37%（样本内）。'
+DELISTED_DETAIL = '研究里同口径对比（2008 起，扣成本）：D 含退市股 +15.9% / 回撤 −42%，不含 +18.0% / −36%；D1 含 +18.3% / −36%，不含 +19.6% / −35%。；D2（D1 + 近高点过滤）含退市股 +21.3% / 回撤 −36%（样本内）；D3（D2 + C 层优先）含退市股 +23.4% / 回撤 −37%（样本内）；D4（D3 + B 层黑名单房地产、国防军工）含退市股 +25.2% / 回撤 −37%（样本内）。'
 
 CAVEATS = (
     '历史回测：参数（权重、阈值、持有天数）是在同一份数据上试过很多组后定的，没有做多重检验修正，更像局部最优，不是样本外验证过的结论。',
@@ -57,6 +58,7 @@ CAVEATS = (
     'D1 的“60 日回撤”排序是看过全样本后挑的，属于样本内线索：逐年看，它在 2008、2012、2015、2022 比 D 好很多，在 2024、2025 反而少赚 15 到 20 个点，建议当可选增强，不是替代 D。',
     'D2 = D1 + 近高点过滤：过滤的窗口和距离是看过 129 个组合的网格后选的（样本内，没做多重检验修正）；安慰剂检验里挑出来的最好一格不比运气好多少，增益几乎全来自 2013、2021–2023 年，2008–2019 年多数年份没有差别。回测里 D2 比 D1 多约 3 个点年化是样本内数字，真实预期只有每年多 1.5 到 3 个点；最大回撤不变。',
     'D3 = D2 + 层优先级改成 C > A > B（等同去掉 A 层）：回测里比 D2 多约 2 个点年化（+23.4% 对 +21.3%），但这是在同一段历史上看出来的，研究 §88 早测过同一方向，当时的自助法区间下沿贴近 0、结论是噪声边缘；§120–§122 在保守基线上重复出同样方向，但用的是同一份历史，不算独立证据。D3 有自己的前向记录，攒够样本之前不要当成比 D2 更好。',
+    'D4 = D3 + B 层黑名单（房地产、国防军工）：回测里比 D3 多约 1.8 个点年化（+25.2% 对 +23.4%），前后两半段（以 2018 年为界）都为正；但这是看过两半段结果后从 31 个行业里挑出的两个，增益大小与“从噪声里挑最好的两个”的期望基本一致（研究 §124），单个行业的增益在前后半段之间几乎没有延续性（相关 −0.02），真实预期按 0 到 +1 个点估计。行业分类用的是今天的分类（轻微前视）。D4 有自己的前向记录，用来和 D3 对照。',
 )
 
 
@@ -82,8 +84,12 @@ class FusionConfig:
     near_high_window: int = 120
     near_high_pct: float = 0.05
     priority: str = 'ACB'              # 钱不够时三层的先后：'ACB' = D / D1 / D2；'CAB' = D3（C 先 A 后，研究 §120–§122）
+    industry_blacklist: tuple = ()     # B 层不买的申万一级行业（名称）；空 = 不限制。D4 默认房地产、国防军工（研究 §124）
 
     def __post_init__(self):
+        raw = self.industry_blacklist
+        names = tuple(sorted({str(n).strip() for n in ((raw,) if isinstance(raw, str) else raw or ()) if str(n).strip()}))
+        object.__setattr__(self, 'industry_blacklist', names)          # 台账里读回来是列表：统一成排好序的元组
         checks = (
             (-4.0 <= self.z_threshold <= 0.0, 'z 阈值应在 -4 到 0 之间'),
             (1 <= self.positions <= 100, '每层持仓只数应在 1 到 100 之间'),
@@ -99,6 +105,7 @@ class FusionConfig:
             (20 <= self.near_high_window <= 1000, '近高点过滤的窗口应在 20 到 1000 日之间'),
             (0.01 <= self.near_high_pct <= 0.20, '近高点过滤的距离应在 1% 到 20% 之间'),
             (self.priority in PRIORITIES, '层优先级只支持 ACB 或 CAB'),
+            (len(self.industry_blacklist) <= 40, '行业黑名单最多 40 个'),
         )
         for ok, message in checks:
             if not ok:
@@ -124,7 +131,9 @@ class FusionConfig:
     def variant(self) -> str:
         if self.rank_mode == 'dd60':
             if self.near_high_on:
-                return 'D3' if self.priority == 'CAB' else 'D2'
+                if self.priority == 'CAB':
+                    return 'D4' if self.industry_blacklist else 'D3'
+                return 'D2'
             return 'D1'
         return 'D'
 
@@ -137,6 +146,10 @@ class FusionConfig:
                 payload.pop(k)
         if self.priority == 'ACB':           # 默认优先级时哈希与加这个选项之前完全一样（D / D1 / D2 的前向记录和缓存不受影响）
             payload.pop('priority')
+        if not self.industry_blacklist:      # 黑名单为空时哈希与加这个选项之前完全一样
+            payload.pop('industry_blacklist')
+        else:
+            payload['industry_blacklist'] = list(self.industry_blacklist)
         blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256((FUSION_VERSION + blob).encode()).hexdigest()[:12]
 
@@ -165,8 +178,16 @@ def d3_config() -> FusionConfig:
     return FusionConfig(rank_mode='dd60', near_high_on=True, priority='CAB')
 
 
+D4_BLACKLIST = ('国防军工', '房地产')
+
+
+def d4_config() -> FusionConfig:
+    """D4 = D3 + B 层黑名单（房地产、国防军工；研究 §124，样本内，前后半段都为正但增益与挑选噪声同量级）。"""
+    return replace(d3_config(), industry_blacklist=D4_BLACKLIST)
+
+
 def config_for(variant: str) -> FusionConfig:
-    return (d3_config() if variant == 'D3' else d2_config() if variant == 'D2' else d1_config() if variant == 'D1'
+    return (d4_config() if variant == 'D4' else d3_config() if variant == 'D3' else d2_config() if variant == 'D2' else d1_config() if variant == 'D1'
             else default_config())
 
 
@@ -306,8 +327,18 @@ def with_near_high_filter(inp: FusionInputs, cfg: FusionConfig) -> FusionInputs:
     return replace(inp, gates=gates, any_gate=gates['A'] | gates['C'] | gates['B'], raw_any_gate=inp.any_gate)
 
 
+def with_industry_blacklist(inp: FusionInputs, cfg: FusionConfig, cls) -> FusionInputs:
+    """黑名单为空原样返回；否则只把黑名单行业的股票从 B 层候选池里去掉（A、C 层和三层闸门都不动）。"""
+    if not cfg.industry_blacklist or cls is None:
+        return inp
+    banned = set(cfg.industry_blacklist)
+    keep = np.array([cls.name_of(j) not in banned for j in range(inp.pools['B'].shape[1])], dtype=bool)
+    return replace(inp, pools={**inp.pools, 'B': inp.pools['B'] & keep[None, :]})
+
+
 def build_inputs(panel: Panel, cfg: FusionConfig, cls, *, progress=None, stop=None) -> FusionInputs:
-    return with_near_high_filter(_build_inputs(panel, cfg, cls, progress=progress, stop=stop), cfg)
+    inp = with_near_high_filter(_build_inputs(panel, cfg, cls, progress=progress, stop=stop), cfg)
+    return with_industry_blacklist(inp, cfg, cls)
 
 
 def _build_inputs(panel: Panel, cfg: FusionConfig, cls, *, progress=None, stop=None) -> FusionInputs:
@@ -486,7 +517,8 @@ def latest_fusion_signal(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, 
         'C': dict(name=SLEEVE_NAMES['C'], gate=bool(inp.gates['C'][t]), z=weakest_q and weakest_q['z'],
                   detail=weakest_q['name'] if weakest_q else '—', n_pool=int(inp.pools['C'][t].sum())),
         'B': dict(name=SLEEVE_NAMES['B'], gate=bool(inp.gates['B'][t]), z=weakest_i and weakest_i['z'],
-                  detail=weakest_i['name'] if weakest_i else '—', n_pool=int(inp.pools['B'][t].sum())),
+                  detail=weakest_i['name'] if weakest_i else '—', n_pool=int(inp.pools['B'][t].sum()),
+                  blacklisted=bool(weakest_i and weakest_i['name'] in cfg.industry_blacklist)),
     }
     limit = top if top is not None else cfg.positions * 2
     invested, taken, picks = 0.0, set(), []
@@ -534,7 +566,7 @@ def latest_fusion_signal(panel: Panel, inp: FusionInputs, cfg: FusionConfig, *, 
                 gate_open=bool(inp.any_gate[t]), fired=[s for s in ORDER if sleeves[s]['gate']], z=z_a,
                 mk20=_num(inp.market.mk20[t]), n_e6=int(sum(sl['n_pool'] for s, sl in sleeves.items() if sl['gate'])),
                 z_threshold=thr, sleeves=sleeves, quintiles=quint, industries=inds, picks=picks, plan_size=plan_size,
-                recent=recent, config_hash=cfg.hash(), variant=cfg.variant, rank_mode=cfg.rank_mode, nearest=min(z_all) if z_all else None, fusion=True, market_position=market_position,
+                recent=recent, config_hash=cfg.hash(), variant=cfg.variant, rank_mode=cfg.rank_mode, blacklist=list(cfg.industry_blacklist), nearest=min(z_all) if z_all else None, fusion=True, market_position=market_position,
                 classification=dict(as_of=cls.as_of, n_mapped=cls.n_mapped))
 
 

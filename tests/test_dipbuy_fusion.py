@@ -1,4 +1,5 @@
 """策略 D（三层恐慌共用一笔钱）：参数、成交额分档、分档恐慌分、共享资金回测（优先级/权重/仓位上限/不重复）、当日信号、前向记录。全部用合成数据。"""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -517,6 +518,49 @@ class PriorityTests(unittest.TestCase):
         by = {s: sorted(t['code'][-1] for t in raw['trades'] if t['sleeve'] == s) for s in 'AC'}
         self.assertEqual(by, {'A': ['0'], 'C': ['1', '2', '3']})                         # 重叠的 1、2 归 C，A 只剩 0
         self.assertEqual(len({t['code'] for t in raw['trades']}), len(raw['trades']))
+
+
+class BlacklistTests(unittest.TestCase):
+    """D4 = D3 + B 层行业黑名单：只把黑名单行业的股票从 B 层候选池拿掉。"""
+    cfg = dict(hold_days=20, start='2024-01-02')
+
+    def test_d4_identity_and_older_hashes_untouched(self):
+        d3, d4 = fusion.d3_config(), fusion.d4_config()
+        self.assertEqual((d4.variant, d4.priority, d4.industry_blacklist), ('D4', 'CAB', ('国防军工', '房地产')))
+        self.assertEqual(d3.industry_blacklist, ())
+        self.assertEqual(d3.hash(), '32196b2970a9')                                         # D3 的哈希不因加黑名单字段而变
+        self.assertEqual(fusion.default_config().hash(), '50af776c23a6')
+        self.assertEqual(FusionConfig(industry_blacklist=()).hash(), FusionConfig().hash())
+        self.assertNotEqual(d4.hash(), d3.hash())
+        self.assertEqual(replace(d3, industry_blacklist=['房地产', '国防军工']).hash(), d4.hash())     # 顺序、列表 / 元组不影响
+        self.assertEqual(FusionConfig.from_dict(d4.to_dict()), d4)
+        self.assertEqual(FusionConfig.from_dict(json.loads(json.dumps(d4.to_dict()))), d4)          # 台账 json 往返
+        self.assertEqual(FusionConfig.from_dict({k: v for k, v in d3.to_dict().items() if k != 'industry_blacklist'}), d3)
+        self.assertEqual(fusion.config_for('D4'), d4)
+        self.assertEqual(fusion.VARIANT_NAMES['D4'], '策略 D4')
+        self.assertEqual(FusionConfig(industry_blacklist=('房地产',)).variant, 'D')            # 不满足 D3 条件的黑名单不改变变体身份
+        with self.assertRaises(ValueError):
+            FusionConfig(industry_blacklist=tuple(str(i) for i in range(41)))
+
+    def test_blacklist_only_removes_b_pool_names_of_those_industries(self):
+        panel, inp = scripted(gates={s: [300] for s in 'ACB'}, pools={'A': ([300], [0, 1]), 'C': ([300], [2, 3]), 'B': ([300], [0, 2, 4, 5, 6, 7])})
+        names = ['房地产', '银行', '房地产', '国防军工', '银行', '房地产', '医药生物', '银行'] + ['银行'] * 22
+        cls = SimpleNamespace(name_of=lambda j: names[j])
+        cfg = fusion.d4_config()
+        out = fusion.with_industry_blacklist(inp, cfg, cls)
+        self.assertEqual(sorted(np.nonzero(out.pools['B'][300])[0]), [4, 6, 7])                  # 0、2、5 是房地产被拿掉
+        self.assertTrue((out.pools['A'] == inp.pools['A']).all() and (out.pools['C'] == inp.pools['C']).all())
+        self.assertTrue(all((out.gates[s] == inp.gates[s]).all() for s in 'ACB'))            # 闸门不动
+        self.assertTrue(inp.pools['B'][300, 0])                                                 # 原对象不被改动
+        self.assertIs(fusion.with_industry_blacklist(inp, fusion.d3_config(), cls), inp)         # 黑名单为空：原样返回
+
+    def test_simulation_skips_blacklisted_b_names(self):
+        panel, inp = scripted(gates={'B': [300]}, pools={'B': ([300], [0, 1, 2, 3])})
+        names = ['房地产', '银行', '国防军工', '医药生物'] + ['银行'] * 26
+        cls = SimpleNamespace(name_of=lambda j: names[j])
+        cfg = fusion.d4_config()
+        raw = fusion.simulate_fused(panel, fusion.with_industry_blacklist(inp, cfg, cls), replace(cfg, start='2024-01-02'))
+        self.assertEqual(sorted(t['code'][-1] for t in raw['trades']), ['1', '3'])
 
 
 if __name__ == '__main__':

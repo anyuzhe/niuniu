@@ -71,3 +71,15 @@ elif mode == 'pair':
     a = np.array(got)
     print(f"随机剔除 2 个行业 {len(a)} 次：全段增益 均值 {a[:,0].mean():+.2f} 标准差 {a[:,0].std():.2f} 95分位 {np.percentile(a[:,0],95):+.2f} 最大 {a[:,0].max():+.2f}；"
           f"其中前后半段都为正的占 {((a[:,1]>0)&(a[:,2]>0)).mean()*100:.0f}%，真实组合全段 {g['cagr']:+.2f} 在随机里的名次 {(a[:,0]>=g['cagr']).sum()+1}/{len(a)+1}")
+elif mode == 'add':
+    PAIR = ['房地产', '国防军工']; b2 = run(PAIR)
+    print('已剔除 房地产+国防军工 的基线', {k: round(v * 100, 1) for k, v in b2.items()}, flush=True)
+    eff = [k for k in ALL if not k.isdigit() and k not in PAIR]; rows = []
+    for k in eff:
+        if time.time() - t0 > 105: print('time budget hit; rerun'); break
+        o = run(PAIR + [k]); rows.append((k, {x: (o[x] - b2[x]) * 100 for x in ('cagr', 'pre', 'post', 'mdd')}))
+    rows.sort(key=lambda r: -r[1]['cagr'])
+    for k, g in rows: print(f"+{k:8s} 全段 {g['cagr']:+5.2f}  前 {g['pre']:+5.2f}  后 {g['post']:+5.2f}  回撤 {g['mdd']:+5.2f}")
+    pre = np.array([g['pre'] for _, g in rows]); post = np.array([g['post'] for _, g in rows])
+    print('在已剔除两个的基础上，再加一个行业：前后半段增益相关 %.2f' % np.corrcoef(pre, post)[0, 1])
+    json.dump(dict(base=b2, rows=rows), open(os.path.join(HERE, f'grp85_add_{V}.json'), 'w'), ensure_ascii=False, indent=1)

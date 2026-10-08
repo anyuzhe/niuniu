@@ -21,7 +21,7 @@ from quantlab.dipbuy.panel import Panel
 
 FORMAT = 'niuniu-dip-forward-v1'
 LEDGER_FILES = {'market': 'dip_forward.json', 'industry': 'dip_industry_forward.json', 'fusion': 'dip_fusion_forward.json',
-                'fusion1': 'dip_fusion1_forward.json', 'fusion2': 'dip_fusion2_forward.json', 'fusion3': 'dip_fusion3_forward.json'}   # 大盘恐慌 / 行业恐慌 / 策略 D / D1（D 换候选排序）/ D2（D1 + 近高点过滤）/ D3（D2 + C 层优先），各记各的
+                'fusion1': 'dip_fusion1_forward.json', 'fusion2': 'dip_fusion2_forward.json', 'fusion3': 'dip_fusion3_forward.json', 'fusion4': 'dip_fusion4_forward.json'}   # 大盘恐慌 / 行业恐慌 / 策略 D / D1（D 换候选排序）/ D2（D1 + 近高点过滤）/ D3（D2 + C 层优先）/ D4（D3 + B 层黑名单），各记各的
 MAX_RECORDS = 500
 MIN_STATS = 5     # 少于这么多条已结算信号，只给数字，不下结论
 
@@ -68,7 +68,7 @@ def record_signal(output, signal: dict, cfg: DipConfig, *, now: datetime | None 
     if not signal.get('is_last_day'):
         raise ValueError('只能记录数据里最后一个交易日的信号，不能事后补记')
     industry = kind == 'industry'
-    fusion = kind in ('fusion', 'fusion1', 'fusion2', 'fusion3')
+    fusion = kind in ('fusion', 'fusion1', 'fusion2', 'fusion3', 'fusion4')
     if not signal.get('gate_open'):
         raise ValueError('今天三层闸门都没开，没有可记录的开仓信号' if fusion else
                          '今天没有行业触发恐慌线，没有可记录的开仓信号' if industry else '今天闸门没开（z 没低于阈值），没有可记录的开仓信号')

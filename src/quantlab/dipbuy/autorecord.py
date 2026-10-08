@@ -1,6 +1,6 @@
 """每个交易日自动记录前向信号：牛牛开着、数据多了新的一天，就把当天的信号记进前向跟踪（纸面记录，不下单）。
 
-  * 记六本：策略 D、D1、D2、D3、A（大盘恐慌）、B（行业恐慌），各记各的台账；闸门没开或没有候选就不记；
+  * 记七本：策略 D、D1、D2、D3、D4、A（大盘恐慌）、B（行业恐慌），各记各的台账；闸门没开或没有候选就不记；
   * 规则和手动记录完全一样：只记面板最后一个交易日、参数冻结、同一天不重复；
   * 再加一条：数据必须还“新鲜”——过了下一个交易日 9:30，就不再自动记（那时已经知道开盘价，补记等于带着结果挑日子）；
     下一个交易日按“周一至周五，扣掉已知的休市日（见 KNOWN_CLOSURES）和每年 1 月 1 日”估算；
@@ -17,8 +17,8 @@ from pathlib import Path
 from quantlab.dipbuy import engine, fusion, industry, panel as dpanel, tracker
 
 STATE_FORMAT = 'niuniu-dip-autorecord-v1'
-KINDS = ('fusion', 'fusion1', 'fusion2', 'fusion3', 'market', 'industry')
-LABELS = {'fusion': '策略 D', 'fusion1': '策略 D1', 'fusion2': '策略 D2', 'fusion3': '策略 D3', 'market': '策略 A（大盘恐慌）', 'industry': '策略 B（行业恐慌）'}
+KINDS = ('fusion', 'fusion1', 'fusion2', 'fusion3', 'fusion4', 'market', 'industry')
+LABELS = {'fusion': '策略 D', 'fusion1': '策略 D1', 'fusion2': '策略 D2', 'fusion3': '策略 D3', 'fusion4': '策略 D4', 'market': '策略 A（大盘恐慌）', 'industry': '策略 B（行业恐慌）'}
 SHANGHAI = timezone(timedelta(hours=8))
 OPEN_TIME = time(9, 30)
 # 已公告的休市日（只列周一至周五）。数据湖里的交易日历只到已采集的最后一天，没有未来的日期，所以未来的休市日要在这里补；
@@ -79,11 +79,11 @@ def is_fresh(last_date: str, now: datetime) -> bool:
 
 def build_signal(kind: str, panel, cls, names):
     """返回 (信号, 配置)；和页面里手动记录用的是同一套配置与函数。"""
-    if kind in ('fusion', 'fusion1', 'fusion2', 'fusion3'):
+    if kind in ('fusion', 'fusion1', 'fusion2', 'fusion3', 'fusion4'):
         if cls is None:
-            raise ValueError('没有行业分类，算不了策略 D / D1 / D2 / D3')
+            raise ValueError('没有行业分类，算不了策略 D / D1 / D2 / D3 / D4')
         cfg = {'fusion': fusion.default_config, 'fusion1': fusion.d1_config, 'fusion2': fusion.d2_config,
-               'fusion3': fusion.d3_config}[kind]()
+               'fusion3': fusion.d3_config, 'fusion4': fusion.d4_config}[kind]()
         inp = fusion.build_inputs(panel, cfg, cls)
         return fusion.latest_fusion_signal(panel, inp, cfg, names=names), cfg
     if kind == 'market':
