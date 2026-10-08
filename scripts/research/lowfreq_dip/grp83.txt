@@ -1,0 +1,12 @@
+D2 原优先级 A>C>B|不剔除 cagr 21.3 pre 16.0 post 27.7 sh 0.97 mdd -36.2 final 36.2x nB 1631 meanB +2.8%
+D2 原优先级 A>C>B|S1 国防军工 cagr 22.5 pre 17.1 post 29.0 sh 1.01 mdd -36.2 final 43.7x nB 1628 meanB +3.3%
+D2 原优先级 A>C>B|S2 +环保煤炭基础化工 cagr 23.4 pre 18.9 post 28.9 sh 1.04 mdd -35.8 final 50.2x nB 1547 meanB +3.8%
+D2 原优先级 A>C>B|S3 +家电美容护理 cagr 23.8 pre 18.9 post 29.8 sh 1.06 mdd -35.8 final 53.3x nB 1565 meanB +4.1%
+D2 原优先级 A>C>B|S4 +房地产 cagr 24.9 pre 19.3 post 31.7 sh 1.10 mdd -35.8 final 62.6x nB 1543 meanB +4.5%
+D2 C 优先 (D3)|不剔除 cagr 23.4 pre 18.2 post 29.6 sh 1.01 mdd -36.9 final 49.6x nB 1631 meanB +2.8%
+D2 C 优先 (D3)|S1 国防军工 cagr 24.2 pre 19.3 post 30.1 sh 1.04 mdd -36.9 final 56.5x nB 1628 meanB +3.3%
+D2 C 优先 (D3)|S2 +环保煤炭基础化工 cagr 25.1 pre 21.1 post 29.9 sh 1.07 mdd -36.4 final 64.6x nB 1547 meanB +3.9%
+D2 C 优先 (D3)|S3 +家电美容护理 cagr 25.2 pre 21.1 post 30.0 sh 1.08 mdd -36.4 final 65.0x nB 1565 meanB +4.1%
+D2 C 优先 (D3)|S4 +房地产 cagr 26.3 pre 21.7 post 31.7 sh 1.12 mdd -36.4 final 76.7x nB 1543 meanB +4.5%
+OOS (2018 前最差4: 煤炭 国防军工 房地产 非银金融): D2 原优先级 全期 21.3->22.8 2018后 27.7->27.3 (-0.3); D3 全期 23.4->24.2 2018后 29.6->27.9 (-1.7)
+placebo K=7 (D3 随机剔除 7 个行业 80 次): 年化 5/50/95/max 0.211/0.226/0.244/0.252, 真实 S4 0.263, 真实高于随机 1.00
