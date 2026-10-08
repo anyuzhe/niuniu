@@ -1,0 +1,28 @@
+D 全开 A+C+B cagr 15.9 pre 9.9 post 23.2 sh 0.77 mdd -41.9 final 15.6x expo 36% n 2260
+D 去掉 B cagr 14.7 pre 11.4 post 18.6 sh 0.74 mdd -38.4 final 12.9x expo 24% n 702
+D 去掉 C cagr 11.4 pre 7.7 post 15.9 sh 0.67 mdd -43.4 final 7.5x expo 32% n 2303
+D 去掉 A cagr 17.6 pre 11.1 post 25.5 sh 0.81 mdd -41.9 final 20.4x expo 36% n 2261
+D 只有 A cagr 10.7 pre 9.6 post 12.1 sh 0.71 mdd -27.7 final 6.7x expo 15% n 453
+D 只有 C cagr 16.8 pre 13.0 post 21.3 sh 0.80 mdd -39.9 final 18.0x expo 24% n 702
+D 只有 B cagr 9.7 pre 6.7 post 13.4 sh 0.78 mdd -29.2 final 5.6x expo 23% n 2113
+D 优先级 A>C>B 基线 cagr 15.9 pre 9.9 post 23.2 sh 0.77 mdd -41.9 final 15.6x
+D 优先级 C>A>B cagr 17.6 pre 11.1 post 25.5 sh 0.81 mdd -41.9 final 20.4x
+D 优先级 C>B>A cagr 17.6 pre 11.1 post 25.5 sh 0.81 mdd -41.9 final 20.4x
+D 优先级 B>C>A cagr 16.7 pre 10.6 post 24.1 sh 0.79 mdd -44.8 final 17.7x
+D 优先级 A>C>B, A 权重 4% cagr 16.6 pre 10.7 post 23.8 sh 0.79 mdd -42.1 final 17.5x
+D 优先级 C>A>B, A 权重 4% cagr 17.6 pre 11.1 post 25.5 sh 0.81 mdd -41.9 final 20.4x
+D 优先级 C>A>B, A 权重 2.5% cagr 17.6 pre 11.1 post 25.5 sh 0.81 mdd -41.9 final 20.4x
+D2 全开 A+C+B cagr 21.3 pre 16.0 post 27.7 sh 0.97 mdd -36.2 final 36.2x expo 35% n 2148
+D2 去掉 B cagr 18.3 pre 15.6 post 21.5 sh 0.89 mdd -35.2 final 22.9x expo 23% n 689
+D2 去掉 C cagr 12.1 pre 9.2 post 15.5 sh 0.70 mdd -44.1 final 8.4x expo 30% n 2177
+D2 去掉 A cagr 23.4 pre 18.2 post 29.6 sh 1.01 mdd -36.9 final 49.6x expo 35% n 2146
+D2 只有 A cagr 10.0 pre 9.8 post 10.3 sh 0.67 mdd -29.5 final 5.9x expo 15% n 453
+D2 只有 C cagr 20.8 pre 17.8 post 24.3 sh 0.96 mdd -35.2 final 33.5x expo 23% n 689
+D2 只有 B cagr 11.6 pre 8.0 post 15.8 sh 0.90 mdd -26.6 final 7.7x expo 22% n 1987
+D2 优先级 A>C>B 基线 cagr 21.3 pre 16.0 post 27.7 sh 0.97 mdd -36.2 final 36.2x
+D2 优先级 C>A>B cagr 23.4 pre 18.2 post 29.6 sh 1.01 mdd -36.9 final 49.6x
+D2 优先级 C>B>A cagr 23.4 pre 18.2 post 29.6 sh 1.01 mdd -36.9 final 49.6x
+D2 优先级 B>C>A cagr 21.8 pre 16.6 post 28.0 sh 0.98 mdd -39.1 final 39.1x
+D2 优先级 A>C>B, A 权重 4% cagr 22.0 pre 16.5 post 28.5 sh 0.99 mdd -36.3 final 40.2x
+D2 优先级 C>A>B, A 权重 4% cagr 23.4 pre 18.2 post 29.6 sh 1.01 mdd -36.9 final 49.6x
+D2 优先级 C>A>B, A 权重 2.5% cagr 23.4 pre 18.2 post 29.6 sh 1.01 mdd -36.9 final 49.6x
