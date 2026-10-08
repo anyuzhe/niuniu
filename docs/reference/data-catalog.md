@@ -48,7 +48,7 @@ DATA 负责接口地址与参数、字段映射、密钥或登录方式、限频
 
 | 数据 ID | 交付方式 | 数据内容 | 地址 / 路径 | 格式 / 粒度 | 覆盖 / 用途 | DATA 状态 | CODE 使用 |
 |---|---|---|---|---|---|---|---|
-| `bars_daily_baostock_raw` | FILE | Baostock 日K，不复权 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/stock_kline_daily` | 每只证券一个 `<sh_600000>.parquet`；列 `date, code, open, high, low, close, volume, amount, adjustflag(=3), fetch_ts`；主键 `(code, date)` | 5,224 只在市 A 股（2026-09-30 参考快照 `type=1, status=1`），1990-12-19 至 **2026-09-30**（其中 11 只 9-30 停牌或无K线，当天 5,213 行），约 1,716 万行，单一 schema、0 重复。research_only | `READY` | 直接读取。是否可交易必须连接 `security_status_baostock_v2`，不能把“有K线行”当作可交易 |
+| `bars_daily_baostock_raw` | FILE | Baostock 日K，不复权 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/stock_kline_daily` | 每只证券一个 `<sh_600000>.parquet`；列 `date, code, open, high, low, close, volume, amount, adjustflag(=3), fetch_ts`；主键 `(code, date)` | 5,224 只在市 A 股（2026-09-30 参考快照 `type=1, status=1`），1990-12-19 至 **2026-09-30**（其中 11 只 9-30 停牌或无K线，当天 5,213 行），约 1,716 万行，单一 schema、0 重复。research_only | `READY` | 直接读取。是否可交易必须连接 `security_status_baostock_v2`，不能把“有K线行”当作可交易。**来源变化**：2026-10-08 之后新增的日K行优先由通达信 1 分钟线合成（`scripts/collect/daily_from_min1.py`），合成不了的（新股、复牌首日、1 分钟线缺根）才取 Baostock；历史行不变。合成记录在 `lake/bronze/provider=tdx/bars_daily_from_min1/date=YYYY-MM-DD.parquet`。对账（2026-09-24/28/29/30，每天约 5,200 只）：开高低收与 Baostock 一致（个别开盘价差一个报价单位），成交量因通达信按 100 股取整最大误差 0.02%，成交额最大 0.3% |
 | `bars_min5_baostock_raw` | FILE | Baostock 5分钟，不复权 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/stock_kline_min5` | 每只证券一个 parquet；列同日K另加 `time`（`YYYYMMDDHHMMSSmmm`）；主键 `(code, date, time)`；交易日每只 48 根 | 5,224 只，**2020-01-02**（供应商下限）至 **2026-09-30**，约 3.65 亿行。research_only | `READY` | 直接读取；2020 年前没有 5 分钟数据，不要从日K推算 |
 | `security_status_baostock_v2` | FILE | 日状态：交易/停牌、ST | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/daily_status_v2` | 每只证券一个 parquet；列 `date, code, tradestatus, isST`；`tradestatus=0` 为停牌（保留，不删行）；主键 `(code, date)` | 5,224 只，1990-12-19 至 **2026-09-30**，约 1,716 万行。供应商回顾性状态，**不是 Strict PIT** | `READY` | 用于停牌/ST 判断与研究过滤；需要 Strict PIT 时用 `strict_pit_security_status_f26`（未就绪） |
 | `reference_snapshot_baostock_20260923` | FILE | 2026-09-23 参考快照：交易日历、证券基础信息、行业、全市场列表、上证50/沪深300/中证500成分 | `/Volumes/Lexar/niuniu-data/lake/bronze/provider=baostock/reference_snapshots/snapshot=2026-09-23` | 7 个 parquet（`trade_calendar, stock_basic, industry, all_stock, sz50, hs300, zz500`）+ `manifest.json`（逐文件 SHA256） | 首份观察日 2026-09-23，此后每个收盘日各一份，最新是 `snapshot=2026-09-30`（在市 A 股 5,224 只，交易日历至 2026-09-30）。行业与成分是**观察日当时的快照，不能回填历史**。retrospective_reference | `READY` | 按本表写明的这一个快照日期读取；DATA 发布新快照时会在这里改日期，CODE 不自行找“最新快照” |
@@ -285,6 +285,8 @@ result.to_dict()   # 可直接 JSON 序列化
 对应 CODE 需求 [20260925-日内大盘与更多股票数据需求](data-requests/20260925-日内大盘与更多股票数据需求.md)。本节数据全部 `research_only`：通达信行情服务器没有公开授权条款，只供个人研究，不得用于商业服务或行情转发。
 
 **分钟线来源与保留期**：通达信服务器每只证券只保留最近约 21,840 根：1 分钟约 91 个交易日，5 分钟约 455 个交易日。每过一个交易日，最早的一天就被挤掉。DATA 已在 2026-09-25 夜里做过一次全量回补（`scripts/collect/tdx_minute.py`，计划 SHA `0d3b69c9…`，5,585 个标的无失败），之后按日追加，历史从此只增不减。每日追加任务还没接入 `daily_close_update`，接入前 DATA 手动补。
+
+**已知问题**：2026-09-28 有 4,154 只、09-30 有 11 只股票多出一根 13:00 标签的 1 分钟线（09-28 的是 11:30 那根的复制品，会让当天成交量合计偏大），这些行还留在文件里，**读 1 分钟线时请丢弃时间标签为 09:30、13:00 的行**；采集脚本已改为不再写入这类行。
 
 **核对**：沪深 481,141 个“股票×交易日”的 1 分钟成交量合计、收盘价与 Baostock 日线逐一比对，全部一致；有交易的日子每天正好 240 根，停牌日没有行。北交所 Baostock 没有数据，只有通达信一个来源。2026-05-20 是窗口第一天，有 370 只缺数据，不要使用。
 
