@@ -29,3 +29,28 @@ D2 cum -0.03 cagr 23.1 pre 18.9 post 28.0 sh 1.04 mdd -38.5 | D2 cum -0.05 23.4 
 --- trend (行业综合指数大趋势过滤) 与对调对照见 grp74_trend_D.json / grp74_trend_D2.json；对调对照输出：
 D r250>=0 real 18.4 / post 28.4 keep 0.52 | 对调100次 年化 5/50/95/max 13.8/15.5/17.7/19.1 | 真实高于对调的比例 0.98
 D2 r250>=0 real 22.5 / post 30.9 keep 0.52 | 对调100次 年化 5/50/95/max 18.2/20.3/22.5/24.3 | 真实高于对调的比例 0.94
+--- quality (趋势质量过滤) 详见 grp74_quality_D.json / grp74_quality_D2.json
+D ref r250>=0 cagr 18.4 pre 10.2 post 28.4 sh 0.88 mdd -38.4 nB 1134 keep 0.52
+D ER<-0.05 cagr 16.7 pre 10.6 post 24.1 sh 0.81 mdd -38.9 nB 1388 keep 0.75
+D ER<-0.10 cagr 16.0 pre 8.8 post 24.9 sh 0.77 mdd -38.9 nB 1641 keep 0.88
+D ER<-0.15 cagr 16.1 pre 10.0 post 23.4 sh 0.77 mdd -39.3 nB 1718 keep 0.97
+D down日>51%且r250<0 cagr 17.5 pre 11.9 post 24.3 sh 0.84 mdd -39.3 nB 1583 keep 0.86
+D r250<0且未深跌(dd>-30%) cagr 17.0 pre 10.0 post 25.6 sh 0.82 mdd -41.9 nB 1445 keep 0.66
+D r250<0且未深跌(dd>-35%) cagr 17.9 pre 10.2 post 27.5 sh 0.86 mdd -41.9 nB 1311 keep 0.59
+D r250<0且未深跌(dd>-40%) cagr 18.1 pre 9.9 post 28.3 sh 0.87 mdd -41.6 nB 1213 keep 0.55
+D ER<-0.05且未深跌(dd>-35%) cagr 16.5 pre 10.6 post 23.8 sh 0.80 mdd -41.9 nB 1544 keep 0.81
+D ER<-0.10且未深跌(dd>-35%) cagr 16.2 pre 9.7 post 24.1 sh 0.78 mdd -41.9 nB 1744 keep 0.92
+D r250<0且近60日新低多(>30%) cagr 16.0 pre 10.0 post 23.2 sh 0.77 mdd -39.3 nB 1720 keep 1.00
+D ER<-0.05且近60日新低多 cagr 16.0 pre 10.0 post 23.2 sh 0.77 mdd -39.3 nB 1720 keep 1.00
+D2 ref r250>=0 cagr 22.5 pre 15.7 post 30.9 sh 1.03 mdd -32.7 nB 1028 keep 0.52
+D2 ER<-0.05 cagr 21.0 pre 16.1 post 26.8 sh 0.97 mdd -33.6 nB 1263 keep 0.75
+D2 ER<-0.10 cagr 21.1 pre 14.5 post 29.2 sh 0.96 mdd -33.6 nB 1536 keep 0.88
+D2 ER<-0.15 cagr 21.6 pre 15.9 post 28.4 sh 0.98 mdd -33.1 nB 1613 keep 0.97
+D2 down日>51%且r250<0 cagr 22.3 pre 17.3 post 28.3 sh 1.01 mdd -33.1 nB 1489 keep 0.86
+D2 r250<0且未深跌(dd>-30%) cagr 22.1 pre 16.6 post 28.9 sh 1.01 mdd -36.2 nB 1339 keep 0.66
+D2 r250<0且未深跌(dd>-35%) cagr 22.5 pre 16.1 post 30.3 sh 1.03 mdd -36.2 nB 1205 keep 0.59
+D2 r250<0且未深跌(dd>-40%) cagr 22.4 pre 15.5 post 30.7 sh 1.03 mdd -36.1 nB 1107 keep 0.55
+D2 ER<-0.05且未深跌(dd>-35%) cagr 21.5 pre 16.9 post 27.1 sh 0.99 mdd -36.2 nB 1419 keep 0.81
+D2 ER<-0.10且未深跌(dd>-35%) cagr 21.5 pre 16.1 post 28.0 sh 0.98 mdd -36.2 nB 1638 keep 0.92
+D2 r250<0且近60日新低多(>30%) cagr 21.2 pre 15.9 post 27.7 sh 0.97 mdd -33.1 nB 1615 keep 1.00
+D2 ER<-0.05且近60日新低多 cagr 21.2 pre 15.9 post 27.7 sh 0.97 mdd -33.1 nB 1615 keep 1.00

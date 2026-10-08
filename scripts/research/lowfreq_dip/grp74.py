@@ -182,3 +182,44 @@ if mode == 'trendperm':
         r = run([], extra=np.where(lab_ok[None, :], fp[:, np.clip(labels, 0, ngrp - 1)], True)); res.append(r)
         print(V, 'perm', round(r['cagr'] * 100, 1), round(r['cagr_post'] * 100, 1), round(r['keep_frac'], 2), flush=True)
         if time.time() - t0 > 80: break
+
+def _quality_features():
+    lidx = np.log(idx); dr = np.full_like(idx, np.nan); dr[1:] = lidx[1:] - lidx[:-1]
+    def rsum(a, w):
+        cs = np.cumsum(np.nan_to_num(a), axis=0); out = np.full_like(a, np.nan); out[w:] = cs[w:] - cs[:-w]; return out
+    net250 = np.full_like(idx, np.nan); net250[250:] = lidx[250:] - lidx[:-250]
+    path250 = rsum(np.abs(dr), 250); er250 = net250 / path250
+    down250 = rsum((dr < 0).astype(float), 250) / 250
+    hi250 = np.full_like(idx, np.nan)
+    for t in range(249, nd): hi250[t] = idx[t - 249:t + 1].max(axis=0)
+    dd250 = idx / hi250 - 1
+    lo60 = np.full_like(idx, np.nan)
+    # 近 60 日里创 120 日新低的天数占比
+    lo120 = np.full_like(idx, np.nan)
+    for t in range(119, nd): lo120[t] = idx[t - 119:t + 1].min(axis=0)
+    newlow = (idx <= lo120 * 1.0000001).astype(float); nl60 = rsum(newlow, 60) / 60
+    return dict(net250=net250, er250=er250, down250=down250, dd250=dd250, nl60=nl60)
+if mode == 'quality':
+    Q = _quality_features(); r250i = Q['net250']
+    def blk(name):
+        n, e, d, dd, nl = Q['net250'], Q['er250'], Q['down250'], Q['dd250'], Q['nl60']
+        if name == 'ref r250>=0': return n < 0
+        if name == 'ER<-0.05': return e < -0.05
+        if name == 'ER<-0.10': return e < -0.10
+        if name == 'ER<-0.15': return e < -0.15
+        if name == 'down日>51%且r250<0': return (d > 0.51) & (n < 0)
+        if name == 'r250<0且未深跌(dd>-35%)': return (n < 0) & (dd > -0.35)
+        if name == 'r250<0且未深跌(dd>-30%)': return (n < 0) & (dd > -0.30)
+        if name == 'r250<0且未深跌(dd>-40%)': return (n < 0) & (dd > -0.40)
+        if name == 'ER<-0.10且未深跌(dd>-35%)': return (e < -0.10) & (dd > -0.35)
+        if name == 'ER<-0.05且未深跌(dd>-35%)': return (e < -0.05) & (dd > -0.35)
+        if name == 'r250<0且近60日新低多(>30%)': return (n < 0) & (nl > 0.30)
+        if name == 'ER<-0.05且近60日新低多': return (e < -0.05) & (nl > 0.30)
+    NAMES = ['ref r250>=0', 'ER<-0.05', 'ER<-0.10', 'ER<-0.15', 'down日>51%且r250<0', 'r250<0且未深跌(dd>-30%)', 'r250<0且未深跌(dd>-35%)', 'r250<0且未深跌(dd>-40%)',
+             'ER<-0.05且未深跌(dd>-35%)', 'ER<-0.10且未深跌(dd>-35%)', 'r250<0且近60日新低多(>30%)', 'ER<-0.05且近60日新低多']
+    res = {}
+    for name in NAMES:
+        b = blk(name); f = ~(b & np.isfinite(Q['net250']))
+        extra = np.where(lab_ok[None, :], f[:, np.clip(labels, 0, ngrp - 1)], True); o = run([], extra=extra); res[name] = dict(o, F=None)
+        print(V, f"{name:26s} cagr {o['cagr']*100:.1f} pre {o['cagr_pre']*100:.1f} post {o['cagr_post']*100:.1f} sh {o['sharpe']:.2f} mdd {o['mdd']*100:.1f} nB {o['nB']} meanB {o['meanB']*100:.1f} keep {o['keep_frac']:.2f}", flush=True)
+    json.dump({k: {kk: vv for kk, vv in v.items() if kk != 'F'} for k, v in res.items()}, open(f'grp74_quality_{V}.json', 'w'), ensure_ascii=False)
