@@ -218,6 +218,12 @@ class Runner:
             self.log(f"日K由 1 分钟线合成：{made.get('derived', 0)} 只；未合成 {made.get('status', {})}")
         except RuntimeError as exc:
             self.log(f"1 分钟线合成日K失败（{exc}），改由 Baostock 全部补取")
+        # 5 分钟线同样由 1 分钟线合成（精度略低于日K，见 daily_from_min1.py 的说明），Baostock 只补合成不了的
+        try:
+            made = self.last_json(self.sh(["scripts/collect/daily_from_min1.py", "apply", "--kind", "min5", "--day", day]))
+            self.log(f"5 分钟线由 1 分钟线合成：{made.get('derived', 0)} 只；未合成 {made.get('status', {})}")
+        except RuntimeError as exc:
+            self.log(f"1 分钟线合成 5 分钟线失败（{exc}），改由 Baostock 全部补取")
         for index, (dataset, dataset_id) in enumerate((("baostock-daily", "bars_daily_baostock_raw"),
                                                        ("baostock-min5", "bars_min5_baostock_raw")), start=1):
             path = plans / f"{dataset}.json"

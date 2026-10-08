@@ -30,7 +30,7 @@ def daily(rows):
                          "adjustflag": ["3"] * len(rows), "fetch_ts": ["old"] * len(rows)})
 
 
-class DailyFromMin1Tests(unittest.TestCase):
+class _Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
@@ -47,6 +47,8 @@ class DailyFromMin1Tests(unittest.TestCase):
                              capture_output=True, text=True, check=True)
         return json.loads(out.stdout.strip().splitlines()[-1])
 
+
+class DailyFromMin1Tests(_Base):
     def test_derive_and_filter_phantom_bar(self):
         daily(["2026-09-29"]).write_parquet(self.daily / "sh_600000.parquet")
         min1("2026-09-30", extra=("1300",)).write_parquet(self.min1 / "sh_600000.parquet")   # 假的 13:00 线要被过滤
@@ -74,6 +76,63 @@ class DailyFromMin1Tests(unittest.TestCase):
         self.assertEqual(info["derived"], 0)
         self.assertEqual(info["status"], {"bad_row_count": 1, "no_volume": 1, "behind": 1, "no_min1_file": 1})
         self.assertEqual(pl.read_parquet(self.daily / "sh_600000.parquet").height, 1)
+
+
+def min5(day, count=48):
+    stamp = day.replace("-", "")
+    ends = [m for m in list(range(9 * 60 + 35, 11 * 60 + 31, 5)) + list(range(13 * 60 + 5, 15 * 60 + 1, 5))][:count]
+    n = len(ends)
+    return pl.DataFrame({
+        "date": [date.fromisoformat(day)] * n, "time": [f"{stamp}{m // 60:02d}{m % 60:02d}00000" for m in ends],
+        "code": ["sh.600000"] * n, "open": [1.0] * n, "high": [2.0] * n, "low": [0.5] * n, "close": [1.5] * n,
+        "volume": [10] * n, "amount": [15.0] * n, "adjustflag": ["3"] * n, "fetch_ts": ["old"] * n})
+
+
+class Min5FromMin1Tests(_Base):
+    def run_min5(self):
+        out = subprocess.run([sys.executable, str(REPO / "scripts/collect/daily_from_min1.py"), "apply", "--kind", "min5",
+                              "--day", "2026-09-30", "--daily-dir", str(self.daily), "--min1-dir", str(self.min1),
+                              "--log-dir", str(self.log)], capture_output=True, text=True, check=True)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    def test_buckets_labels_and_idempotency(self):
+        min5("2026-09-29").write_parquet(self.daily / "sh_600000.parquet")
+        min1("2026-09-30", extra=("1300",)).write_parquet(self.min1 / "sh_600000.parquet")
+        info = self.run_min5()
+        self.assertEqual(info["derived"], 1)
+        frame = pl.read_parquet(self.daily / "sh_600000.parquet")
+        day = frame.filter(pl.col("date") == date(2026, 9, 30))
+        self.assertEqual(day.height, 48)
+        self.assertEqual(day["time"][0], "20260930093500000")     # 09:31–09:35 → 09:35
+        self.assertEqual(day["time"][23], "20260930113000000")    # 11:26–11:30 → 11:30
+        self.assertEqual(day["time"][24], "20260930130500000")    # 13:01–13:05 → 13:05（假的 13:00 被过滤）
+        self.assertEqual(day["time"][47], "20260930150000000")
+        first = day.row(0, named=True)
+        self.assertEqual(first["open"], 10.0)
+        self.assertAlmostEqual(first["high"], 10.504)
+        self.assertEqual(first["low"], 9.5)
+        self.assertAlmostEqual(first["close"], 10.0 + 4 * 0.002)
+        self.assertEqual(first["volume"], 500)
+        self.assertEqual(first["amount"], 5000.0)
+        self.assertEqual(day["volume"].sum(), 240 * 100)
+        self.assertEqual(frame.schema, min5("2026-09-29").schema)
+        self.assertEqual(frame.height, 96)
+        self.assertEqual(pl.read_parquet(self.log / "date=2026-09-30.parquet").height, 1)
+        self.assertEqual(self.run_min5()["status"].get("already_present"), 1)
+
+    def test_partial_day_is_rewritten_and_skips(self):
+        partial = pl.concat([min5("2026-09-29"), min5("2026-09-30", count=20)])
+        partial.write_parquet(self.daily / "sh_600000.parquet")          # 当日只取到 20 根
+        min1("2026-09-30").write_parquet(self.min1 / "sh_600000.parquet")
+        min5("2026-09-28").write_parquet(self.daily / "sh_600001.parquet")   # 前一交易日缺
+        min1("2026-09-30").write_parquet(self.min1 / "sh_600001.parquet")
+        min5("2026-09-29").write_parquet(self.daily / "sh_600002.parquet")
+        min1("2026-09-30", drop=1).write_parquet(self.min1 / "sh_600002.parquet")   # 239 根
+        info = self.run_min5()
+        self.assertEqual(info["status"], {"derived": 1, "behind": 1, "bad_row_count": 1})
+        fixed = pl.read_parquet(self.daily / "sh_600000.parquet").filter(pl.col("date") == date(2026, 9, 30))
+        self.assertEqual(fixed.height, 48)
+        self.assertEqual(fixed.select(["date", "time"]).n_unique(), 48)
 
 
 if __name__ == "__main__":
