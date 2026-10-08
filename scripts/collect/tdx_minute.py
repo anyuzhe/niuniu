@@ -136,6 +136,10 @@ def _to_rows(bars: list, target: dict, fetch_ts: str) -> list[dict]:
     rows = []
     for b in bars:
         dt = b["datetime"]                                   # 'YYYY-MM-DD HH:MM', bar end
+        if dt[11:16] in ("09:30", "13:00"):
+            # 开盘和午后开盘那一刻不是任何周期的合法"结束时刻"。2026-09-28 通达信曾返回 4,154 根 13:00 的假线
+            # （11:30 那根的复制品），日K合成会因此多算成交量，所以一律丢弃
+            continue
         row = {"date": dt[:10], "time": dt[:4] + dt[5:7] + dt[8:10] + dt[11:13] + dt[14:16] + "00000",
                "code": target["symbol"], "open": float(b["open"]), "high": float(b["high"]),
                "low": float(b["low"]), "close": float(b["close"]), "volume": int(round(float(b["vol"]))),

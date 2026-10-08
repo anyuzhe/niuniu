@@ -913,14 +913,14 @@ class DataUpdateJobs:
             cons = self.data_root / f"lake/bronze/provider=fuyao/sector_board_constituents/date={day}.parquet"
             steps.append(self._step("板块成分快照", "skip_existing" if cons.is_file() else "fetch",
                                     ["sector_board_constituents"], [day], "constituents", weight=2))
-        steps.append(self._step("日状态、日K、5 分钟", "fetch",
-                                ["security_status_baostock_v2", "bars_daily_baostock_raw", "bars_min5_baostock_raw"],
-                                [day], "bars", weight=60, note="只补缺的证券和尾部交易日，已有的日期不重写"))
-        steps.append(self._step("前复权重建", "fetch", ["qfq_published_f24"], [day], "qfq", overwrites=True, weight=15,
-                                note="按两源一致的公司行动整体重算，qfq 文件会被新版本替换"))
         steps.append(self._step("通达信 1 分钟线", "fetch", ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"],
                                 [day], "tdx_minute", weight=15,
-                                note="约 5,600 只股票、约 90 只 ETF（1 分钟、5 分钟、日线）和 6 个指数，每只取最新一页并合并，约 35 分钟；通达信只保留最近约 91 个交易日，不能漏跑太久"))
+                                note="约 5,600 只股票、约 90 只 ETF（1 分钟、5 分钟、日线）和 6 个指数，每只取最新一页并合并，约 35 分钟；排在日K之前，因为日K由它合成；通达信只保留最近约 91 个交易日，不能漏跑太久"))
+        steps.append(self._step("日状态、日K、5 分钟", "fetch",
+                                ["security_status_baostock_v2", "bars_daily_baostock_raw", "bars_min5_baostock_raw"],
+                                [day], "bars", weight=40, note="日K由通达信 1 分钟线合成，合成不了的才向 Baostock 取；5 分钟线和日状态仍向 Baostock 逐只补缺，已有的日期不重写"))
+        steps.append(self._step("前复权重建", "fetch", ["qfq_published_f24"], [day], "qfq", overwrites=True, weight=15,
+                                note="按两源一致的公司行动整体重算，qfq 文件会被新版本替换"))
         steps.append(self._step("全市场情绪序列", "fetch", ["market_intraday_breadth", "market_intraday_breadth_5m"],
                                 [day], "breadth", overwrites=True, weight=3, note="重算当月的 1 分钟和 5 分钟文件"))
         steps.append(self._step("ETF 净值与事件日历", "fetch", ["etf_nav_daily", "etf_info", "event_calendar"], [day],

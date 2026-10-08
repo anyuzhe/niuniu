@@ -12,11 +12,13 @@ from collect import tdx_minute as t  # noqa: E402
 TZ = ZoneInfo("Asia/Shanghai")
 
 
+SESSION = [f"{m // 60:02d}:{m % 60:02d}" for m in list(range(9 * 60 + 31, 11 * 60 + 31)) + list(range(13 * 60 + 1, 15 * 60 + 1))]
+
+
 def bars(day, n, start_minute=0):
     out = []
     for i in range(n):
-        m = 31 + start_minute + i
-        out.append({"datetime": f"{day} {9 + m // 60:02d}:{m % 60:02d}", "open": 1, "high": 1, "low": 1, "close": 1,
+        out.append({"datetime": f"{day} {SESSION[start_minute + i]}", "open": 1, "high": 1, "low": 1, "close": 1,
                     "vol": 100.0, "amount": 100.0, "up_count": 5, "down_count": 3})
     return out
 
@@ -66,6 +68,13 @@ class TdxMinuteTests(unittest.TestCase):
         path.write_bytes(data)
         import hashlib
         return path, hashlib.sha256(data).hexdigest()
+
+    def test_phantom_open_labels_are_dropped(self):
+        rows = t._to_rows([{"datetime": "2026-09-28 13:00", "open": 1, "high": 1, "low": 1, "close": 1, "vol": 1, "amount": 1},
+                           {"datetime": "2026-09-28 09:30", "open": 1, "high": 1, "low": 1, "close": 1, "vol": 1, "amount": 1},
+                           {"datetime": "2026-09-28 13:01", "open": 1, "high": 1, "low": 1, "close": 1, "vol": 1, "amount": 1}],
+                          {"symbol": "sh.600000", "kind": "stock"}, "x")
+        self.assertEqual([r["time"][8:12] for r in rows], ["1301"])
 
     def test_backfill_then_resume_and_daily(self):
         import pandas as pd

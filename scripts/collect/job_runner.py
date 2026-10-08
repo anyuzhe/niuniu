@@ -211,6 +211,13 @@ class Runner:
                 self.log(f"日状态第 {attempt + 1} 次失败（{exc}），120 秒后重新规划并续跑")
                 time.sleep(120)
         self.result_dataset("security_status_baostock_v2", through=day, files_written=info.get("actions", 0))
+        # 日K优先由通达信 1 分钟线合成（全市场不到 1 分钟，对账与 Baostock 一致）；合成不了的（新股、停牌后复牌、
+        # 1 分钟线缺根）留给下面的 Baostock 补缺，只取这些
+        try:
+            made = self.last_json(self.sh(["scripts/collect/daily_from_min1.py", "apply", "--day", day]))
+            self.log(f"日K由 1 分钟线合成：{made.get('derived', 0)} 只；未合成 {made.get('status', {})}")
+        except RuntimeError as exc:
+            self.log(f"1 分钟线合成日K失败（{exc}），改由 Baostock 全部补取")
         for index, (dataset, dataset_id) in enumerate((("baostock-daily", "bars_daily_baostock_raw"),
                                                        ("baostock-min5", "bars_min5_baostock_raw")), start=1):
             path = plans / f"{dataset}.json"
@@ -249,10 +256,18 @@ class Runner:
         self.result_dataset("qfq_published_f24", through=step["dates"][0], files_written=info.get("codes", 0))
 
     def step_tdx_minute(self, step, share):
-        plan = self.last_json(self.sh(["scripts/collect/tdx_minute.py", "plan", "--mode", "daily"]))
-        output = self.sh(["scripts/collect/tdx_minute.py", "apply", "--plan", plan["plan"], "--approve", plan["sha256"],
-                          "--max-seconds", "7200"], step_share=share, keep_awake=True)
-        info = self.last_json(output)
+        # 这一步排在日K之前（日K由它合成）：失败只记下来，日K改走 Baostock，后面的步骤照常
+        try:
+            plan = self.last_json(self.sh(["scripts/collect/tdx_minute.py", "plan", "--mode", "daily"]))
+            output = self.sh(["scripts/collect/tdx_minute.py", "apply", "--plan", plan["plan"], "--approve", plan["sha256"],
+                              "--max-seconds", "7200"], step_share=share, keep_awake=True)
+            info = self.last_json(output)
+        except RuntimeError as exc:
+            message = f"通达信 1 分钟线更新失败：{exc}"
+            self.log(message)
+            self.result_dataset("tdx_kline_min1", failures=[message])
+            self.deferred_errors.append(message)
+            return
         for dataset_id in ("tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"):
             self.result_dataset(dataset_id, through=step["dates"][0], files_written=info.get("done", 0) if dataset_id == "tdx_kline_min1" else 6)
 
