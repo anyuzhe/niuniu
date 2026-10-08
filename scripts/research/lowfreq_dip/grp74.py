@@ -134,3 +134,51 @@ if mode == 'hist':
             kg = build(thr, mode_); extra = np.where(lab_ok[None, :], kg[:, np.clip(labels, 0, ngrp - 1)], True)
             o = run([], extra=extra)
             print(V, mode_, thr, f"cagr {o['cagr']*100:.1f} pre {o['cagr_pre']*100:.1f} post {o['cagr_post']*100:.1f} sh {o['sharpe']:.2f} mdd {o['mdd']*100:.1f} nB {o['nB']} meanB {o['meanB']*100:.1f} keep {o['keep_frac']:.2f}", flush=True)
+
+if mode == 'trend':
+    # 行业综合指数（成分股等权）的大趋势过滤
+    def ma(a, w):
+        cs = np.cumsum(a, axis=0); out = np.full_like(a, np.nan); out[w - 1:] = (cs[w - 1:] - np.vstack([np.zeros((1, a.shape[1])), cs[:-w]])) / w; return out
+    m60, m120, m250 = ma(idx, 60), ma(idx, 120), ma(idx, 250)
+    def lag(a, k): o = np.full_like(a, np.nan); o[k:] = a[:-k]; return o
+    r120i = idx / lag(idx, 120) - 1; r250i = idx / lag(idx, 250) - 1
+    hi500 = np.full_like(idx, np.nan)
+    for t in range(499, nd): hi500[t] = idx[t - 499:t + 1].max(axis=0)
+    F2 = {'idx>MA120': idx > m120, 'idx>MA250': idx > m250,
+          'MA250上行': m250 > lag(m250, 20), 'MA120上行': m120 > lag(m120, 20),
+          'idx>MA250*0.9': idx > 0.9 * m250, 'idx>MA250*0.8': idx > 0.8 * m250,
+          'r120>=-10%': r120i >= -0.10, 'r250>=0': r250i >= 0, 'r250>=-10%': r250i >= -0.10,
+          '离500日高点>-30%': idx / hi500 - 1 > -0.30, '离500日高点>-40%': idx / hi500 - 1 > -0.40,
+          'MA60>MA250': m60 > m250}
+    def runf(name, nan_pass=True):
+        f = F2[name]; ok = np.isfinite(f.astype(float)) 
+        # NaN 比较得到 False，需要让数据不足的日子通过
+        base = {'idx>MA120': m120, 'idx>MA250': m250, 'MA250上行': lag(m250, 20), 'MA120上行': lag(m120, 20), 'idx>MA250*0.9': m250, 'idx>MA250*0.8': m250,
+                'r120>=-10%': r120i, 'r250>=0': r250i, 'r250>=-10%': r250i, '离500日高点>-30%': hi500, '离500日高点>-40%': hi500, 'MA60>MA250': m250}[name]
+        f = f | ~np.isfinite(base)
+        extra = np.where(lab_ok[None, :], f[:, np.clip(labels, 0, ngrp - 1)], True)
+        return extra, f
+    res = {}
+    for name in F2:
+        extra, f = runf(name); o = run([], extra=extra); res[name] = o
+        print(V, f"{name:14s} cagr {o['cagr']*100:.1f} pre {o['cagr_pre']*100:.1f} post {o['cagr_post']*100:.1f} sh {o['sharpe']:.2f} mdd {o['mdd']*100:.1f} nB {o['nB']} meanB {o['meanB']*100:.1f} keep {o['keep_frac']:.2f}", flush=True)
+        if name in ('idx>MA250', 'r250>=0', 'MA250上行'):
+            e2 = extra & rule('N_30'); o2 = run([], extra=e2)
+            print(V, f"{name:14s}+N30 cagr {o2['cagr']*100:.1f} pre {o2['cagr_pre']*100:.1f} post {o2['cagr_post']*100:.1f} sh {o2['sharpe']:.2f} mdd {o2['mdd']*100:.1f} nB {o2['nB']} keep {o2['keep_frac']:.2f}", flush=True)
+    json.dump(res, open(f'grp74_trend_{V}.json', 'w'), ensure_ascii=False)
+
+if mode == 'trendperm':
+    name, nperm, seed = sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
+    def ma(a, w):
+        cs = np.cumsum(a, axis=0); out = np.full_like(a, np.nan); out[w - 1:] = (cs[w - 1:] - np.vstack([np.zeros((1, a.shape[1])), cs[:-w]])) / w; return out
+    def lag(a, k): o = np.full_like(a, np.nan); o[k:] = a[:-k]; return o
+    m60, m250 = ma(idx, 60), ma(idx, 250); r250i = idx / lag(idx, 250) - 1
+    f, base = {'r250>=0': (r250i >= 0, r250i), 'MA60>MA250': (m60 > m250, m250)}[name]
+    f = f | ~np.isfinite(base)
+    real = run([], extra=np.where(lab_ok[None, :], f[:, np.clip(labels, 0, ngrp - 1)], True)); rng = np.random.default_rng(seed); res = []
+    print(V, name, 'real', round(real['cagr'] * 100, 1), round(real['cagr_post'] * 100, 1), 'keep', round(real['keep_frac'], 2), flush=True)
+    for _ in range(nperm):
+        perm = rng.permutation(ngrp); fp = f[:, perm]       # 把行业的趋势序列随机对调给别的行业
+        r = run([], extra=np.where(lab_ok[None, :], fp[:, np.clip(labels, 0, ngrp - 1)], True)); res.append(r)
+        print(V, 'perm', round(r['cagr'] * 100, 1), round(r['cagr_post'] * 100, 1), round(r['keep_frac'], 2), flush=True)
+        if time.time() - t0 > 80: break
