@@ -72,6 +72,7 @@ button.btn.primary { background: var(--accent); border-color: var(--accent); col
 .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 4px 0 4px; }
 .tile { background: var(--soft); border-radius: 10px; padding: 8px 10px; }
 .tile span { display: block; font-size: 12px; color: var(--muted); }
+.tile em { font-style: normal; }
 .tile b { display: block; font-size: 18px; font-weight: 650; margin-top: 1px; }
 
 .scroll { overflow-x: auto; margin: 0 -14px; padding: 0 14px; }

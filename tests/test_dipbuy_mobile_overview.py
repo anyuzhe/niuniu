@@ -167,5 +167,50 @@ class OverviewTests(unittest.TestCase):
         self.assertEqual((ov['signal']['n_hold'], ov['signal']['sells_due']), (0, 0))
 
 
+class LimitBoardTests(unittest.TestCase):
+    class Lib:
+        def __init__(self, last='2026-10-09', rows=None, bad=False):
+            import polars as pl
+            from datetime import date, timedelta
+            rng = np.random.default_rng(3)
+            n = 140
+            end = date.fromisoformat(last)
+            dates = [end - timedelta(days=n - 1 - i) for i in range(n)]
+            cols = {'date': dates}
+            for name in ('limit_up_count_non_st', 'max_streak', 'advance_rate_1to2', 'prev_limit_up_avg_return', 'up_ratio',
+                         'limit_down_count_non_st', 'broken_rate', 'big_loss_count', 'consecutive_board_count'):
+                cols[name] = rng.random(n).tolist()
+            self.daily = pl.DataFrame(cols)
+            self.rows = [dict(build_id='b1', first_date=str(dates[0]), last_date=last, rows=n, created_at='2026-10-10T00:00:00+00:00')] if rows is None else rows
+            self.bad = bad
+
+        def list(self):
+            return self.rows
+
+        def read(self, build_id):
+            if self.bad:
+                raise ValueError('boom')
+            return self.daily, {}
+
+    def test_fresh_view_has_phase_metrics_and_trend(self):
+        v = mo.limit_board_view(None, '2026-10-09', library=self.Lib())
+        self.assertFalse(v['stale'])
+        self.assertEqual(v['date'], '2026-10-09')
+        self.assertIn(v['phase'], ('ICE', 'CLIMAX', 'REPAIR', 'FERMENT', 'DIVERGENCE', 'EBB', 'RANGE_WARM', 'RANGE_COOL'))
+        self.assertTrue(0 <= v['temperature'] <= 100)
+        self.assertEqual(len(v['trend']), 10)
+        self.assertIn('limit_up_count_non_st', v['metrics'])
+
+    def test_old_library_is_marked_stale_not_hidden_silently(self):
+        v = mo.limit_board_view(None, '2026-10-12', library=self.Lib(last='2026-09-16'))
+        self.assertTrue(v['stale'])
+        self.assertEqual(v['date'], '2026-09-16')
+
+    def test_missing_or_unreadable_library_gives_none(self):
+        self.assertIsNone(mo.limit_board_view(None, '2026-10-09', library=self.Lib(rows=[])))
+        self.assertIsNone(mo.limit_board_view(None, '2026-10-09', library=self.Lib(bad=True)))
+        self.assertIsNone(mo.limit_board_view('/nonexistent/dir', '2026-10-09'))
+
+
 if __name__ == '__main__':
     unittest.main()

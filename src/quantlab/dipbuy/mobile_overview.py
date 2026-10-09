@@ -133,6 +133,34 @@ def breadth_today(panel, inp) -> dict:
     return dict(n=int(ok.sum()), up_share=up, down_share=dn, r20_below_10_share=weak, r20_negative_share=neg)
 
 
+def limit_board_view(output, as_of: str, *, library=None) -> dict | None:
+    """涨停板情绪（trading/market_sentiment + sentiment_cycle）：温度、阶段和当天的涨跌停/连板/炸板。
+    取最新一份覆盖不到 as_of 也没关系——日期不是 as_of 就标 stale，页面不把旧的当现在。库不存在或读不出来返回 None。"""
+    try:
+        from quantlab.trading import sentiment_cycle
+        from quantlab.trading.market_sentiment import MarketSentimentLibrary
+        lib = library or MarketSentimentLibrary(output)
+        rows = [r for r in lib.list() if 'error' not in r]
+        if not rows:
+            return None
+        best = max(rows, key=lambda r: (r['last_date'], r['created_at']))
+        daily, _ = lib.read(best['build_id'])
+        cyc = sentiment_cycle.compute_cycle(daily)
+        t = cyc.height - 1
+        last = daily.row(t, named=True)
+        c = cyc.row(t, named=True)
+        keys = ('limit_up_count_non_st', 'limit_down_count_non_st', 'max_streak', 'broken_rate', 'up_ratio', 'advance_rate_1to2',
+                'prev_limit_up_avg_return', 'big_loss_count', 'consecutive_board_count')
+        tail = cyc.tail(10)
+        return dict(date=str(last['date']), stale=str(last['date']) != as_of, temperature=_num(c['temperature']),
+                    change3=_num(c['temperature_change_3d']), phase=c['phase'], phase_zh=c['phase_zh'],
+                    metrics={k: _num(last.get(k)) for k in keys},
+                    trend=[dict(date=str(d), temperature=_num(v)) for d, v in zip(tail['date'], tail['temperature'])],
+                    rules=sentiment_cycle.RULES, note='温度 = 几项涨停板指标相对过去 250 个交易日的平均分位（0–100）；阶段是按温度机械划分的，不是预测，也不是交易信号。')
+    except Exception:
+        return None
+
+
 def _pct(x, digits=1, sign=False):
     return None if x is None else format(x * 100, ('+' if sign else '') + f'.{digits}f') + '%'
 

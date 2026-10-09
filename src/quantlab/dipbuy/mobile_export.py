@@ -279,11 +279,11 @@ def build_snapshot(output, panel, cls, names, *, now: datetime | None = None) ->
         snap['holdings'] = _holdings_view(output, panel, cls, names, today)
     except Exception as exc:
         snap['holdings'] = dict(error=f'{type(exc).__name__}: {exc}')
-    snap['overview'] = _overview_view(panel, cls, snap)
+    snap['overview'] = _overview_view(panel, cls, snap, output)
     return snap
 
 
-def _overview_view(panel, cls, snap: dict) -> dict:
+def _overview_view(panel, cls, snap: dict, output=None) -> dict:
     """首页「市场概览」。算不出来就给 error，不拖累别的页。"""
     try:
         cfg = fusion.d4_config()
@@ -294,6 +294,7 @@ def _overview_view(panel, cls, snap: dict) -> dict:
         ov = mobile_overview.build_overview(panel, inp, sig, snap['signals'], snap.get('holdings'), as_of=snap['data_date'],
                                             plan_day=snap['plan_day'], fresh=snap['fresh'], labels=snap['labels'],
                                             threshold=cfg.z_threshold)
+        ov['limit_board'] = mobile_overview.limit_board_view(output, snap['data_date']) if output is not None else None
         return _clean(ov)
     except Exception as exc:
         return dict(error=f'{type(exc).__name__}: {exc}')

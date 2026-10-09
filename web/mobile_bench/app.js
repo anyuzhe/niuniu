@@ -199,8 +199,27 @@
       '<div class="tile"><span>20 日跌超 10% 的占比</span><b>' + pct(br.r20_below_10_share, 0) + '</b></div></div>' +
       '<p class="small muted">“情绪”指策略看的下跌恐慌程度：全市场等权指数近 20 日涨跌 ÷ 它自己的波动。绿 = 恐慌那一头，红 = 过热那一头。不是涨停板情绪。</p></section>';
 
+    // 1b. 涨停板情绪（另一把尺子：打板资金的冷热；库没更新到今天就只提示，不当现在）
+    var lb = o.limit_board;
+    if (lb && !lb.stale) {
+      var m = lb.metrics || {};
+      html += '<section class="card"><h2>涨停板情绪<small>' + md(lb.date) + ' 收盘</small></h2>' +
+        '<div class="mood"><b class="mood-calm">' + esc(lb.phase_zh || '—') + '</b><span class="muted small">温度 ' + num(lb.temperature, 0) + ' / 100 · 近 3 日 ' +
+        (isNum(lb.change3) ? (lb.change3 > 0 ? '+' : '') + num(lb.change3, 0) : '—') + '</span></div>' +
+        '<div class="tiles">' +
+        '<div class="tile"><span>涨停 / 跌停（非 ST）</span><b><em class="up">' + num(m.limit_up_count_non_st, 0) + '</em> / <em class="down">' + num(m.limit_down_count_non_st, 0) + '</em></b></div>' +
+        '<div class="tile"><span>最高连板</span><b>' + num(m.max_streak, 0) + ' 板</b></div>' +
+        '<div class="tile"><span>炸板率</span><b>' + pct(m.broken_rate, 0) + '</b></div>' +
+        '<div class="tile"><span>昨日涨停今天均涨</span><b>' + pctc(m.prev_limit_up_avg_return, 1) + '</b></div></div>';
+      var lt = (lb.trend || []).filter(function (r) { return isNum(r.temperature); });
+      if (lt.length > 1) html += '<h3 class="sub">最近 ' + lt.length + ' 个交易日的温度</h3>' + chart(lt.map(function (r) { return r.temperature; }), lt.map(function (r) { return md(r.date); }), { base: 50, label: '涨停板情绪温度', h: 100, fmt: function (v) { return v.toFixed(0); } });
+      html += '<p class="small muted">' + esc(lb.note || '') + ' 它和上面的下跌恐慌是两回事：这里看的是打板资金的冷热，抄底策略不用它做买卖决定。</p></section>';
+    } else if (lb && lb.stale) {
+      html += '<div class="banner warn">涨停板情绪库只更新到 <b>' + md(lb.date) + '</b>，不是最新，这里先不显示。电脑上的每日自动更新恢复后会自动出现。</div>';
+    }
+
     // 2. 有没有信号
-    var open = (sg.books || []).filter(function (b) { return b.gate_open; });
+    var open =(sg.books || []).filter(function (b) { return b.gate_open; });
     html += '<section class="card"><h2>有没有信号</h2>';
     if (open.length) {
       html += '<p><span class="tag open">有信号</span> ' + open.map(function (b) { return esc(b.label); }).join('、') + '</p>' +
