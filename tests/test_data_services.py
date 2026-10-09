@@ -240,6 +240,16 @@ class PublicStepsTests(unittest.TestCase):
         self.assertEqual(self.fetched(tuesday, "announcements_cninfo"), ["2026-09-21"])
         self.assertEqual(self.fetched(tuesday, "institution_survey_em"), ["2026-09-22"])
 
+    def test_early_close_update_plan(self):
+        early = self.plan(datetime(2026, 9, 22, 15, 30), "daily_close_early", {"date": "2026-09-22"})
+        self.assertIsNone(early["blocked_reason"])
+        self.assertEqual([s["kind"] for s in early["steps"]], ["tdx_minute", "bars_early", "qfq", "breadth", "status_index"])
+        self.assertNotIn("seal", [s["kind"] for s in early["steps"]])    # sealing waits for the full update
+        self.assertIn("15:11", self.plan(datetime(2026, 9, 22, 15, 10), "daily_close_early", {})["blocked_reason"])
+        self.assertIsNone(self.plan(datetime(2026, 9, 22, 15, 11), "daily_close_early", {})["blocked_reason"])
+        self.assertIn("只用于当天", self.plan(datetime(2026, 9, 22, 15, 30), "daily_close_early",
+                                              {"date": "2026-09-21"})["blocked_reason"])
+
 
 class JobProcessTests(unittest.TestCase):
     RUN = "20260924-090000-abcdef"

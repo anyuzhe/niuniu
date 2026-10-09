@@ -618,6 +618,13 @@ JOBS_SPEC = [
                 "etf_shares_sse", "etf_shares_szse", "cn_yield_curve", "cn_repo_fixing", "cn_lpr_history",
                 "cn_macro_monthly", "cn_social_financing", "index_valuation_csindex",
                 *sorted(set(PUBLIC_IDS.values()) - {"sw_industry_history", "lockup_expiry_em"})]},
+    {"job_id": "daily_close_early", "name": "收盘后快速更新（通达信部分）",
+     "description": "15:11 起：通达信 1 分钟线，合成日K和 5 分钟线，前复权，全市场情绪序列，约 50 分钟，不封存。"
+                    "Baostock 当天数据出来后，由「收盘后日常更新」补日状态、估值、基本面等并封存。",
+     "params": [{"name": "date", "type": "date", "required": False, "default": "today", "description": "交易日（只能是今天）"}],
+     "estimated_seconds": 50 * 60, "needs_data_disk": True, "uses_network": True,
+     "writes": ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5", "bars_daily_baostock_raw",
+                "bars_min5_baostock_raw", "qfq_published_f24", "market_intraday_breadth", "market_intraday_breadth_5m"]},
     {"job_id": "sector_recorder_start", "name": "启动盘中记录器",
      "description": "先刷新板块成分，然后交易时间每分钟记录全部板块，并在 09:25/10:00/11:30/14:00/14:57/15:00 记录全市场个股快照，15:25 自动结束。",
      "params": [], "estimated_seconds": 7 * 3600, "needs_data_disk": True, "uses_network": True,
@@ -940,6 +947,39 @@ class DataUpdateJobs:
         steps.append(self._step("封存", "seal", ["*"], [prev, day], "seal", trading_day=True,
                                 note=f"封存 {day}；同时把 {prev} 待封存的次日数据补封"))
         steps.append(self._step("刷新状态", "verify", ["*"], [day], "status_index", weight=2))
+        return steps, warnings, None, params
+
+    def _plan_daily_close_early(self, params, today, calendar, warnings):
+        """The part of the close update that needs only TDX data, so it can start right after the 15:10 window
+        (the 1-minute collector refuses to run before then).  Baostock publishes the day's data later; status,
+        valuation, fundamentals and the seal stay with ``daily_close_update``."""
+        day = _date_param(params, "date", required=False, default_today=True, today=today)
+        params = {"date": day}
+        trading, inferred = calendar.is_trading(day)
+        if inferred:
+            warnings.append(f"交易日历只到 {calendar.end}，{day} 按工作日推断为{'交易日' if trading else '非交易日'}")
+        if not trading:
+            return [], warnings, f"{day} 不是交易日", params
+        if day != today:
+            return [], warnings, "快速更新只用于当天；补以前的日子请用「收盘后日常更新」", params
+        now = self.now_fn()
+        if (now.hour, now.minute) < (15, 11):
+            return [], warnings, "15:11 之后再执行（通达信 1 分钟线在 15:10 前不允许采集）", params
+        if day_seals.load_manifest(self.data_root, day):
+            return [], warnings, "这一天已封存，采集只读", params
+        steps = [
+            self._step("通达信 1 分钟线", "fetch", ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"],
+                       [day], "tdx_minute", weight=15,
+                       note="约 5,600 只股票、约 90 只 ETF 和 6 个指数，每只取最新一页并合并，约 15 分钟"),
+            self._step("合成日K与 5 分钟线", "fetch", ["bars_daily_baostock_raw", "bars_min5_baostock_raw"], [day],
+                       "bars_early", weight=3,
+                       note="只用通达信 1 分钟线合成，不向 Baostock 取数；合成不了的留给「收盘后日常更新」"),
+            self._step("前复权重建", "fetch", ["qfq_published_f24"], [day], "qfq", overwrites=True, weight=15,
+                       note="按两源一致的公司行动整体重算，qfq 文件会被新版本替换"),
+            self._step("全市场情绪序列", "fetch", ["market_intraday_breadth", "market_intraday_breadth_5m"],
+                       [day], "breadth", overwrites=True, weight=3, note="重算当月的 1 分钟和 5 分钟文件"),
+            self._step("刷新状态", "verify", ["*"], [day], "status_index", weight=2),
+        ]
         return steps, warnings, None, params
 
     def _plan_sector_recorder_start(self, params, today, calendar, warnings):

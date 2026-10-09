@@ -277,6 +277,18 @@ class Runner:
         for dataset_id in ("tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"):
             self.result_dataset(dataset_id, through=step["dates"][0], files_written=info.get("done", 0) if dataset_id == "tdx_kline_min1" else 6)
 
+    def step_bars_early(self, step, share):
+        # 快速更新：只用通达信 1 分钟线合成，失败就让这次运行记为失败（不回退到 Baostock，那是完整更新的事）
+        day = step["dates"][0]
+        for kind, label, dataset_id in (("daily", "日K", "bars_daily_baostock_raw"),
+                                        ("min5", "5 分钟线", "bars_min5_baostock_raw")):
+            args = ["scripts/collect/daily_from_min1.py", "apply", "--day", day]
+            if kind == "min5":
+                args += ["--kind", "min5"]
+            made = self.last_json(self.sh(args))
+            self.log(f"{label}由 1 分钟线合成：{made.get('derived', 0)} 只；未合成 {made.get('status', {})}")
+            self.result_dataset(dataset_id, through=day, files_written=made.get("derived", 0))
+
     def step_breadth(self, step, share):
         from datetime import date, timedelta
         start = (date.fromisoformat(step["dates"][0]) - timedelta(days=3)).isoformat()

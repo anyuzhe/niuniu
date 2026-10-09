@@ -209,7 +209,7 @@ result.to_dict()   # 可直接 JSON 序列化
 - `query_schema` / `query` 开放这些查询接口：`research_search, stock_research_reports, stock_news, stock_announcements, financial_statements, investor_qa, realtime_quote, sector_board_snapshot, sector_board_members`。`market_snapshot`、`fuyao_context`、`stock_fund_flow_daily` 不提供页面试查。同一实例串行，至少间隔 1 秒。
 
 **接口 C `DataUpdateJobs`：**
-- 任务：`daily_close_update`、`sector_recorder_start`、`sector_recorder_stop`、`backfill_day`、`seal_day`、`verify_seal`、`revoke_seal`（撤销封存，必须填 `reason`）。
+- 任务：`daily_close_update`、`daily_close_early`（只用于当天，15:11 后）、`sector_recorder_start`、`sector_recorder_stop`、`backfill_day`、`seal_day`、`verify_seal`、`revoke_seal`（撤销封存，必须填 `reason`）。
 - `plan` 只读、秒级返回；计划 30 分钟后过期。`steps[]` 按需求字段，另有 `kind`、`weight`（进度权重）。已封存、数据盘未连接、同一任务在跑、非交易日、未收盘等情况给 `blocked_reason`。
 - `run` 用牛牛当前的 Python 在后台起独立进程（`scripts/collect/job_runner.py`），关掉牛牛不中断；运行记录在数据根 `catalog/jobs/runs/<run_id>/`（`plan.json`、`state.json`、`log.txt`）。后台进程不在了而状态还是运行中时，`status` 返回 `interrupted`。`cancel` 会停止当前子任务，已写完的分区保留、有回执，下次计划会跳过它们。
 - 同一任务“是否在运行”的判断和启动在 `catalog/jobs/.lock` 下串行，两个启动脚本同时打开也只起一个记录器。运行中的后台进程一直持有运行目录里的 `runner.lock`，判断进程还在不再只看 pid（重启后 pid 被别的进程占用时不会误判、也不会误发停止信号）；进程没能启动时运行直接记 `failed`。`cancel` 返回这次运行实际的结束状态。
@@ -217,7 +217,7 @@ result.to_dict()   # 可直接 JSON 序列化
 - 前复权重建在 200 轮内没有完成时，封存和状态刷新照常执行，运行最后记 `failed` 并写明进度；板块成分快照失败只记失败项，不中断收盘后日常更新。
 - 用户确认的任务计划就是批准：任务内部各采集脚本的计划 SHA 由任务自己生成并写进日志。
 - **自动启动（用户 2026-09-25 授权，仅限盘中记录器）**：两个启动脚本在打开牛牛时调用 `scripts/collect/autostart.py` → `DataUpdateJobs.autostart()`。今天是交易日、还没到 15:25、记录器没在跑、今天也没被手动停止过或已正常结束时，才在后台启动 `sector_recorder_start`，运行记录的 `trigger` 为 `autostart`；否则什么都不做，结果写到 `artifacts/autostart.log`。开盘前打开也可以，记录器会等到 09:15 才开始。记录器和 5 分钟更新运行时会阻止 Mac 睡眠。其他任务仍然必须先显示计划、由用户确认。
-- **值班程序（用户 2026-09-29 授权）**：两个启动脚本同时在后台拉起 `scripts/collect/scheduler.py`（`--parent-pid` 为牛牛进程，牛牛关闭即退出；`catalog/jobs/scheduler.lock` 保证只有一个）。牛牛开着时：每个交易日 09:10–15:25 调用 `autostart()` 启动盘中记录器（每天最多一次，手动停止后不再启动）；每天 16:30 起，对最新封存日之后、最近 7 天内还没封存的交易日，按日期从早到晚逐个运行 `daily_close_update`（`trigger=scheduler`），一次只跑一个。是否为交易日以通达信有没有上证指数当天的日线为准，不依赖本地日历，节假日不会误跑。同一天失败、中断或取消过的日期不再自动重试，留给用户在数据中心处理。每个动作一行 JSON，写在 `artifacts/scheduler.log`。前提：Mac 醒着、数据盘已连接。
+- **值班程序（用户 2026-09-29 授权）**：两个启动脚本同时在后台拉起 `scripts/collect/scheduler.py`（`--parent-pid` 为牛牛进程，牛牛关闭即退出；`catalog/jobs/scheduler.lock` 保证只有一个）。牛牛开着时：每个交易日 09:10–15:25 调用 `autostart()` 启动盘中记录器（每天最多一次，手动停止后不再启动）；**两段式收盘更新（用户 2026-10-09 要求提前）**：①每个交易日 15:11–16:30 之间运行一次 `daily_close_early`（快速更新，约 50 分钟，不封存）：通达信 1 分钟线→由它合成当天日K和 5 分钟线→前复权→全市场情绪序列→刷新状态；起点是 15:11，因为通达信 1 分钟线在 15:10 整之前不允许采集。②16:30 起，对最新封存日之后、最近 7 天内还没封存的交易日，按日期从早到晚逐个运行 `daily_close_update`（`trigger=scheduler`），一次只跑一个；当天这一次还要等 Baostock 发布当天数据（每 10 分钟探测一次）才开始，因为日状态、估值、基本面来自 Baostock，而这一步会封存；快速更新没跑完时也会等。所以**当天的日K、5 分钟线、前复权、情绪序列大约 16:00 就可用，日状态、估值、基本面、封存要等 Baostock 出数之后**；两者之间当天日K已有而日状态还没有，使用时仍需连接 `security_status_baostock_v2`。是否为交易日以通达信有没有上证指数当天的日线为准，不依赖本地日历，节假日不会误跑。同一天失败、中断或取消过的日期不再自动重试，留给用户在数据中心处理。每个动作一行 JSON，写在 `artifacts/scheduler.log`。前提：Mac 醒着、数据盘已连接。
 - 已实测：`seal_day`（2026-09-24，24 个文件，核对无误）、`verify_seal`、各任务的 `plan`。`daily_close_update` 和盘中记录器还没有完整跑过一次（前者约 6 小时，后者要等交易日），第一次运行时 DATA 会跟进。
 - `daily_close_update` 里的“指数权重”需要 Python 包 `openpyxl` 和 `xlrd`，牛牛当前环境没装时计划里会提示，装法：`/Volumes/Lexar/niuniu/.venv/bin/pip install openpyxl xlrd`。
 
