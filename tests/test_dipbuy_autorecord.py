@@ -183,5 +183,51 @@ class RunIfNewTests(unittest.TestCase):
                 self.assertIsNone(autorecord.run_if_new(out, None, force=True, now=self.now))
 
 
+class MobileHookTests(unittest.TestCase):
+    """记完台账后推手机版：没配置不动、推成功写进状态、推失败不算做完（下次再试）也不影响台账。"""
+    def setUp(self):
+        self.panel = crash_panel()
+        self.now = evening(self.panel)
+        self.sig = ['sig-1']
+        self.patches = [mock.patch.object(dpanel, 'current_sources', lambda catalog=None: (None, None, None, self.sig[0])),
+                        mock.patch.object(dpanel, 'load_panel', lambda *a, **k: self.panel),
+                        mock.patch.object(dpanel, 'load_names', lambda *a, **k: {}),
+                        mock.patch.object(autorecord.industry, 'load_classification_for', side_effect=RuntimeError('no cls'))]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+
+    def test_unconfigured_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as out:
+            last = autorecord.run_if_new(out, None, now=self.now, kinds=('market',))
+            self.assertNotIn('mobile', last)
+            self.assertNotIn('手机版', autorecord.describe_last(last))
+
+    def test_pushed_is_reported_and_failure_is_retried(self):
+        from quantlab.dipbuy import mobile_export
+        with tempfile.TemporaryDirectory() as out:
+            with mock.patch.object(mobile_export, 'publish', return_value=dict(status='error', message='RuntimeError: network down')):
+                last = autorecord.run_if_new(out, None, now=self.now, kinds=('market',))
+            self.assertEqual(last['results']['market']['status'], 'recorded')              # 台账照记
+            self.assertEqual(last['mobile']['status'], 'error')
+            self.assertIn('没推上去', autorecord.describe_last(last))
+            self.assertIsNone(autorecord.load_state(out)['last_signature'])                # 没推上去：不算做完
+            with mock.patch.object(mobile_export, 'publish', return_value=dict(status='pushed', message='已推送 60 KB')):
+                last = autorecord.run_if_new(out, None, now=self.now, kinds=('market',))
+            self.assertEqual(last['results']['market']['status'], 'exists')
+            self.assertIn('手机版：已更新', autorecord.describe_last(last))
+            self.assertEqual(autorecord.load_state(out)['last_signature'], 'sig-1')
+
+    def test_publish_crash_is_swallowed(self):
+        from quantlab.dipbuy import mobile_export
+        with tempfile.TemporaryDirectory() as out:
+            with mock.patch.object(mobile_export, 'publish', side_effect=OSError('disk')):
+                last = autorecord.run_if_new(out, None, now=self.now, kinds=('market',))
+            self.assertEqual(last['mobile']['status'], 'error')
+
+
 if __name__ == '__main__':
     unittest.main()

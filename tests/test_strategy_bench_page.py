@@ -340,6 +340,28 @@ class BenchPageTests(unittest.TestCase):
         saved = json.loads((self.out / '_home' / 'dip_holdings.json').read_text(encoding='utf-8'))
         self.assertEqual(saved['equity_wan'], 88.0)
 
+    def test_holdings_changes_push_the_phone_snapshot_only_when_configured(self):
+        from quantlab.dipbuy import mobile_export
+        self.cache_panel()
+        self.go()
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        box = next(b for b in tabs.widget(6).findChildren(QDoubleSpinBox) if b.accessibleName() == '账户总资产')
+        calls = []
+        with mock.patch.object(mobile_export, 'load_config', return_value=None), \
+                mock.patch.object(mobile_export, 'publish', side_effect=lambda *a, **k: calls.append(1) or dict(status='pushed', message='x')):
+            box.setValue(66.0)
+            box.editingFinished.emit()
+            QTest.qWait(200)
+        self.assertEqual(calls, [])                                           # 没配置手机版：什么也不做
+        config = dict(host='root@h', remote_dir='/srv/x', url='', enabled=True)
+        with mock.patch.object(mobile_export, 'load_config', return_value=config), \
+                mock.patch.object(mobile_export, 'publish', side_effect=lambda *a, **k: calls.append(1) or dict(status='pushed', message='x')):
+            box.setValue(77.0)
+            box.editingFinished.emit()
+            wait(self.window, until=lambda: calls)
+        self.assertGreaterEqual(len(calls), 1)
+        self.assertEqual(json.loads((self.out / '_home' / 'dip_holdings.json').read_text(encoding='utf-8'))['equity_wan'], 77.0)
+
     def test_industry_tab_shows_signal_backtest_and_keeps_its_own_ledger(self):
         self.cache_panel()
         self.go()

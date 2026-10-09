@@ -5,6 +5,7 @@
   * 再加一条：数据必须还“新鲜”——过了下一个交易日 9:30，就不再自动记（那时已经知道开盘价，补记等于带着结果挑日子）；
     下一个交易日按“周一至周五，扣掉已知的休市日（见 KNOWN_CLOSURES）和每年 1 月 1 日”估算；
     不在清单里的节假日会被当成交易日——结果是把窗口算短，宁可少记也不补记；
+  * 台账记完后，如果配置了手机版（见 mobile_export），把今天的信号 / 前向 / 持仓加密推到自己的服务器；推失败不影响记录，下次检查会再试；
   * 只在源数据指纹变化时才做一次（读指纹只 stat 文件），所以每天最多算一次；开关和上次结果存在 <output>/_home/dip_autorecord.json。
 """
 from __future__ import annotations
@@ -147,11 +148,24 @@ def run_if_new(output, catalog_path=None, *, force=False, now: datetime | None =
     now = now or datetime.now(SHANGHAI)
     results = record_latest(output, panel, cls, names, kinds=kinds, now=now)
     last = dict(checked_at=now.isoformat(timespec='seconds'), data_date=panel.last_date, results=results)
+    mobile = _publish_mobile(output, panel, cls, names, now)
+    if mobile:
+        last['mobile'] = mobile
     state['last'] = last
-    if not any(r['status'] == 'error' for r in results.values()):      # 有算不出来的，下次还会再试
+    if not any(r['status'] == 'error' for r in results.values()) and not (mobile and mobile['status'] == 'error'):      # 有算不出来的 / 没推上去的，下次还会再试
         state['last_signature'] = signature
     save_state(output, state)
     return last
+
+
+def _publish_mobile(output, panel, cls, names, now):
+    """手机版没配置就什么都不做（返回 None）；配置了就推送，返回 {status, message}。任何异常都吞掉变成 error，不能拖累记录。"""
+    try:
+        from quantlab.dipbuy import mobile_export
+        result = mobile_export.publish(output, panel, cls, names, now=now)
+    except Exception as exc:
+        return dict(status='error', message=f'{type(exc).__name__}: {exc}')
+    return None if result['status'] == 'skipped' else dict(status=result['status'], message=result['message'])
 
 
 def describe_last(last: dict | None) -> str:
@@ -166,4 +180,7 @@ def describe_last(last: dict | None) -> str:
         word = {'recorded': f"已记录 {r.get('n_picks', 0)} 只", 'closed': '闸门没开', 'no_picks': '没有候选', 'exists': '已记过',
                 'skipped': '没记（' + str(r.get('message', '')) + '）', 'stale': '数据过期没记', 'error': '出错'}.get(r['status'], r['status'])
         parts.append(f'{LABELS[kind]}：{word}')
+    mobile = last.get('mobile')
+    if mobile:
+        parts.append('手机版：' + ('已更新' if mobile.get('status') == 'pushed' else '没推上去（' + str(mobile.get('message', '')) + '）'))
     return f"上次检查 {str(last.get('checked_at', ''))[:16].replace('T', ' ')}，数据截至 {last.get('data_date')}。" + '；'.join(parts)

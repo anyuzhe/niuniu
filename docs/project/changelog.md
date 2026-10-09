@@ -2789,3 +2789,13 @@
 ## 第一百零三次：账户回撤熔断（研究，未改产品代码）
 - 内容：按 §132（先登记并推送）测 D、D2 的账户级回撤熔断：5 个方案（减半 ×2、暂停 ×3）全部不满足采用标准。减半型回撤只改善 0.6~1.8 点、年化却丢约 1 点；登记的三个暂停方案因“回撤回不到解除线就永远不解除”被锁死在场外 40%~80% 的时间，是规则设计缺陷，已在 §133 明说。事后补充 P4（暂停 20 日、期满以当时净值重置高点）：D 回撤 −41.9% → −32.8%、年化 −2.9 点，D2 回撤 −36.2% → −32.6%、年化 −2.2 点，夏普下降，且 D 的回撤改善全部来自 2008 年一个事件。结论：不加熔断，回撤作为策略成本；想降回撤更稳妥的办法是控制总仓位上限（风险偏好，未测）。
 - 文件：低频抄底档案 §132（预先登记）、§133（结果）；`scripts/research/lowfreq_dip/grp89.py`、`grp89.txt`、`grp89_cache.json`。
+
+## 第一百零四次：手机版（只读网页 PWA，数据加密后推到自己的服务器）
+- 内容：策略工作台的“今日信号 / 前向跟踪 / 我的持仓 / 说明”做成手机网页（可添加到 iPhone 主屏幕，全屏像 App）。电脑上的牛牛每次数据变新、台账记完后，把七本信号、前向台账（含净值曲线）和持仓清单（D～D4 各一份计划）算成一份快照，**在本机用 AES-256-GCM 加密**（口令经 PBKDF2-SHA256 30 万次迭代派生密钥）后推到服务器；网页下载密文，在手机上用口令解密显示。服务器上只有静态页面和密文，看不到信号和持仓。
+- 只读：手机页没有任何写入；持仓仍然只在电脑上录入。电脑上改了持仓（录入、删除、清到期、记入买单、改总资产）会在后台立即重推一次。
+- 推送失败（断网等）不影响台账记录，也不算“做完”，30 分钟后的下一次检查会再试；没配置手机版时所有代码路径都什么也不做。
+- 文件：`src/quantlab/dipbuy/mobile_export.py`（快照、加密、推送、命令行 setup/push/build/status）；`autorecord.run_if_new` 记完台账后调用；`strategy_bench_page.push_mobile`；`web/mobile_bench/`（index.html、app.js、style.css、sw.js 离线外壳、manifest、图标）；`scripts/mobile/deploy_mobile.py`（传页面、建 nginx 站点、certbot 申请证书，失败自动撤回）；测试 `test_dipbuy_mobile_export.py`（20）、`test_mobile_deploy.py`（4）、`test_dipbuy_autorecord.py` +3、`test_strategy_bench_page.py` +1。
+- 验证：真实数据 7 秒出 69 KB 密文；Mac 上 Python 加密的真实快照在浏览器里解密成功，错误口令被拒；iPhone 尺寸浅色/深色逐页检查、无横向溢出；线上 HTTPS 无 CSP 违规、manifest 与 Service Worker 正常；断开服务器后仍可显示上次的密文快照。
+- 安全边界：口令存在 `<output>/_home/mobile_passphrase`（权限 600）和手机浏览器本地存储，不进 git、不上传；推送配置在 `<output>/_home/mobile_publish.json`；服务器站点是新增的独立 nginx 配置，不改任何现有站点；页面带严格 CSP、HSTS、noindex。
+- 未做：手机上写入（录持仓）、推送到手机的消息提醒、原生 iOS App。
+

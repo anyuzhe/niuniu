@@ -15,7 +15,7 @@ from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QLineEdit, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 from quantlab.data.dataset_catalog import is_data_ready
-from quantlab.dipbuy import autorecord, backtest, engine, fusion, industry, panel as dpanel, portfolio, tracker
+from quantlab.dipbuy import autorecord, backtest, engine, fusion, industry, mobile_export, panel as dpanel, portfolio, tracker
 from . import strategy_guide
 from .strategy_calendar import CalendarCard
 from .widgets import Card, button, kpis, label, row, table
@@ -1094,6 +1094,32 @@ class BenchPage:
     def hold_data(self):
         return portfolio.load(self.window.output)
 
+    def push_mobile(self):
+        """持仓改了：后台把手机版更新一下，手机上马上能看到。没配置手机版、数据还没准备好都什么也不做；
+        正在推的时候又改了，等这一次推完再推一次（总是推最新的）。推不上去不打扰这里，下次数据更新时自动再推。"""
+        top, panel = self.state.get('fusion'), self.state.get('panel')
+        out = self.window.output
+        if panel is None or not top or top.get('error') or not mobile_export.load_config(out):
+            return
+        if getattr(self, '_mobile_busy', False):
+            self._mobile_again = True
+            return
+        self._mobile_busy = True
+        cls, names = top['cls'], dict(self.state.get('names') or {})
+
+        def work():
+            try:
+                while True:
+                    self._mobile_again = False
+                    mobile_export.publish(out, panel, cls, names)
+                    if not self._mobile_again:
+                        break
+            except Exception:
+                pass
+            finally:
+                self._mobile_busy = False
+        threading.Thread(target=work, daemon=True).start()
+
     def save_hold_equity(self):
         try:
             portfolio.set_equity(self.window.output, self.hold_equity.value())
@@ -1101,6 +1127,7 @@ class BenchPage:
             self.hold_message.setText(str(exc))
             return
         self.fill_holdings_plan()
+        self.push_mobile()
 
     def fill_holdings_plan(self):
         if getattr(self, 'hold_host', None) is None or not _alive(self.hold_host):
@@ -1165,6 +1192,7 @@ class BenchPage:
             return
         self.hold_message.setText('已添加。')
         self.build_holdings()
+        self.push_mobile()
 
     def remove_holding_clicked(self):
         hid = self.hold_pick.currentData()
@@ -1173,11 +1201,13 @@ class BenchPage:
             return
         portfolio.remove_holding(self.window.output, hid)
         self.build_holdings()
+        self.push_mobile()
 
     def clear_expired_clicked(self):
         cfg, _ = self.hold_ctx
         n = portfolio.clear_expired(self.window.output, self.state['panel'], cfg.hold_days)
         self.build_holdings()
+        self.push_mobile()
         self.hold_message.setText(f'已清掉 {n} 只已到期的持仓。' if n else '没有已到期的持仓。')
 
     def record_plan_buys(self):
@@ -1190,6 +1220,7 @@ class BenchPage:
             except ValueError as exc:
                 skipped.append(f"{b['code']}（{exc}）")
         self.build_holdings()
+        self.push_mobile()
         self.hold_message.setText(f'已记入 {added} 只。' + (' 跳过：' + '；'.join(skipped) if skipped else ''))
 
     def build_fusion_forward(self, v, fus):
