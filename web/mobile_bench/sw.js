@@ -1,6 +1,6 @@
 /* 离线外壳：页面文件和数据都是“先联网、失败再用上次的”，所以改了页面或推了新数据，下次打开就是新的。
    缓存里存的 data.json 仍是密文，和服务器上的一样。 */
-const CACHE = 'niuniu-bench-v1';
+const CACHE = 'niuniu-bench-v2';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png'];
 
 self.addEventListener('install', (e) => {

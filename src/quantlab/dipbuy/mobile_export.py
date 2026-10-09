@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from quantlab.dipbuy import autorecord, engine, fusion, industry, portfolio, tracker
+from quantlab.dipbuy import autorecord, engine, fusion, industry, mobile_overview, portfolio, tracker
 
 SNAPSHOT_FORMAT = 'niuniu-mobile-snapshot-v1'
 ENVELOPE_FORMAT = 'niuniu-mobile-envelope-v1'
@@ -279,7 +279,24 @@ def build_snapshot(output, panel, cls, names, *, now: datetime | None = None) ->
         snap['holdings'] = _holdings_view(output, panel, cls, names, today)
     except Exception as exc:
         snap['holdings'] = dict(error=f'{type(exc).__name__}: {exc}')
+    snap['overview'] = _overview_view(panel, cls, snap)
     return snap
+
+
+def _overview_view(panel, cls, snap: dict) -> dict:
+    """首页「市场概览」。算不出来就给 error，不拖累别的页。"""
+    try:
+        cfg = fusion.d4_config()
+        inp = fusion.build_inputs(panel, cfg, cls)
+        sig = snap['signals'].get('fusion4') or {}
+        if sig.get('error'):
+            raise ValueError(sig['error'])
+        ov = mobile_overview.build_overview(panel, inp, sig, snap['signals'], snap.get('holdings'), as_of=snap['data_date'],
+                                            plan_day=snap['plan_day'], fresh=snap['fresh'], labels=snap['labels'],
+                                            threshold=cfg.z_threshold)
+        return _clean(ov)
+    except Exception as exc:
+        return dict(error=f'{type(exc).__name__}: {exc}')
 
 
 # ---------------------------------------------------------------- 推送

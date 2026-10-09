@@ -9,7 +9,7 @@
   var LS_PREF = 'niuniu_mobile_pref';
   var app = document.getElementById('app');
 
-  var state = { phase: 'loading', snap: null, env: null, error: '', tab: 'signal', loadedAt: 0,
+  var state = { phase: 'loading', snap: null, env: null, error: '', tab: 'overview', loadedAt: 0,
                 pick: { signal: 'fusion', forward: 'fusion', holdings: 'D' } };
 
   // ------------------------------------------------------------------ 小工具
@@ -141,6 +141,119 @@
   function shortLabel(snap, kind) {
     var l = (snap.labels && snap.labels[kind]) || kind;
     return l.replace('策略 ', '').replace('（大盘恐慌）', ' 大盘').replace('（行业恐慌）', ' 行业');
+  }
+
+  // ------------------------------------------------------------------ 市场概览（首页）
+  var BANDS = [['panic', '恐慌'], ['tense', '紧张'], ['weak', '偏弱'], ['calm', '平稳'], ['strong', '偏强'], ['hot', '过热']];
+
+  // 情绪条：z 从 -3 到 +3，六档；绿 = 下跌恐慌，红 = 上涨过热（A 股习惯）。只用 SVG 属性，不用内联样式（页面的安全策略不允许）。
+  function gauge(level) {
+    var W = 320, L = 6, R = 6, Y = 14, H = 14, lo = -3, hi = 3;
+    var edges = [lo].concat(level.edges || [-1.5, -1, -0.4, 0.6, 1.5], [hi]);
+    function X(z) { z = Math.max(lo, Math.min(hi, z)); return L + (W - L - R) * (z - lo) / (hi - lo); }
+    var svg = '<svg class="gauge" viewBox="0 0 ' + W + ' 56" role="img" aria-label="情绪档位：' + esc(level.label) + '">';
+    for (var i = 0; i < BANDS.length; i++) {
+      svg += '<rect class="band b-' + BANDS[i][0] + (BANDS[i][0] === level.key ? ' on' : '') + '" x="' + X(edges[i]).toFixed(1) + '" y="' + Y + '" width="' +
+        (X(edges[i + 1]) - X(edges[i])).toFixed(1) + '" height="' + H + '"/>';
+      svg += '<text x="' + ((X(edges[i]) + X(edges[i + 1])) / 2).toFixed(1) + '" y="' + (Y + H + 13) + '" text-anchor="middle">' + BANDS[i][1] + '</text>';
+    }
+    if (isNum(level.z)) {
+      var x = X(level.z).toFixed(1);
+      svg += '<path class="mark" d="M' + x + ' ' + (Y - 2) + 'l-5 -9h10z"/><line class="mark" x1="' + x + '" x2="' + x + '" y1="' + (Y - 2) + '" y2="' + (Y + H) + '"/>';
+    }
+    return svg + '</svg>';
+  }
+
+  function proxBar(z, thr) {
+    var W = 300, prox = isNum(z) && isNum(thr) && thr < 0 ? Math.max(0, Math.min(1, z / thr)) : 0;
+    return '<svg class="prox" viewBox="0 0 ' + W + ' 12" role="img" aria-label="离触发线 ' + Math.round(prox * 100) + '%">' +
+      '<rect class="track" x="0" y="3" width="' + W + '" height="6" rx="3"/><rect class="fill' + (prox >= 1 ? ' full' : '') + '" x="0" y="3" width="' + (W * prox).toFixed(1) + '" height="6" rx="3"/>' +
+      '<line class="tick" x1="' + (W - 1) + '" x2="' + (W - 1) + '" y1="0" y2="12"/></svg>';
+  }
+
+  function trendWord(ch) {
+    if (!isNum(ch)) return '';
+    if (ch <= -0.3) return '<span class="tag sell">走近</span>';
+    if (ch >= 0.3) return '<span class="tag">走远</span>';
+    return '<span class="tag off">持平</span>';
+  }
+
+  function viewOverview(s) {
+    var o = s.overview;
+    if (!o || o.error) {
+      return '<section class="card"><h2>市场概览</h2><p class="empty">概览还没有数据' + (o && o.error ? '：' + esc(o.error) : '') +
+        '。电脑上的牛牛更新到最新版并推送一次后，这里就有了；其他页面不受影响。</p></section>';
+    }
+    var lv = o.level || {}, mk = o.market || {}, br = mk.breadth || {}, hist = o.history || {}, sg = o.signal || {};
+    var html = '';
+
+    // 1. 现在情绪
+    html += '<section class="card"><h2>现在市场情绪<small>' + md(o.as_of) + ' 收盘</small></h2>' +
+      '<div class="mood"><b class="mood-' + esc(lv.tone) + '">' + esc(lv.label || '—') + '</b><span class="muted small">大盘恐慌 z = ' + num(lv.z, 2) +
+      (isNum(lv.pct) ? ' · 历史上 ' + pct(lv.pct, 0) + ' 的交易日比现在更悲观' : '') + '</span></div>' +
+      gauge(lv) + '<p>' + esc(lv.text || '') + '</p>' +
+      '<div class="tiles">' +
+      '<div class="tile"><span>今天大盘（等权）</span><b>' + pctc(mk.today, 2) + '</b></div>' +
+      '<div class="tile"><span>近 20 日</span><b>' + pctc(mk.mk20, 1) + '</b></div>' +
+      '<div class="tile"><span>上涨家数占比</span><b>' + pct(br.up_share, 0) + '</b></div>' +
+      '<div class="tile"><span>20 日跌超 10% 的占比</span><b>' + pct(br.r20_below_10_share, 0) + '</b></div></div>' +
+      '<p class="small muted">“情绪”指策略看的下跌恐慌程度：全市场等权指数近 20 日涨跌 ÷ 它自己的波动。绿 = 恐慌那一头，红 = 过热那一头。不是涨停板情绪。</p></section>';
+
+    // 2. 有没有信号
+    var open = (sg.books || []).filter(function (b) { return b.gate_open; });
+    html += '<section class="card"><h2>有没有信号</h2>';
+    if (open.length) {
+      html += '<p><span class="tag open">有信号</span> ' + open.map(function (b) { return esc(b.label); }).join('、') + '</p>' +
+        '<p class="small">按规则：下一个开盘日（' + md(o.plan_day) + '）开盘买、持有 20 个交易日。候选和计划金额在「信号」页。</p>';
+    } else {
+      html += '<p><span class="tag off">没有</span> ' + sg.n_books + ' 本账都没触发开仓。空仓等待是正常状态，不用做任何事。</p>';
+    }
+    if (sg.n_hold) html += '<p class="small">你录入的持仓 ' + sg.n_hold + ' 只' + (sg.sells_due ? '，其中 <b>' + sg.sells_due + ' 只</b>按规则到了卖出的日子（「持仓」页）' : '，暂时没有到期要卖的') + '。</p>';
+    html += '<details><summary>' + sg.n_books + ' 本账逐个看</summary><div class="scroll"><table class="tbl"><thead><tr><th>账</th><th>状态</th><th class="n">候选</th></tr></thead><tbody>' +
+      (sg.books || []).map(function (b) {
+        return '<tr><td>' + esc(b.label) + '</td><td>' + (b.gate_open ? '<span class="tag open">触发</span>' : '<span class="tag off">未触发</span>') + '</td><td class="n num">' + (b.gate_open ? b.n_picks : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div></details></section>';
+
+    // 3. 离触发还差多少
+    html += '<section class="card"><h2>离触发还差多少<small>z ≤ ' + num(o.threshold, 1) + ' 才触发</small></h2>';
+    (o.layers || []).forEach(function (l) {
+      html += '<div class="layer"><div class="lh"><b>' + esc(l.key) + ' ' + esc(l.name) + '</b><span class="muted small">' + esc(l.detail || '') + '</span>' +
+        (l.state === 'open' ? '<span class="tag open">已触发</span>' : trendWord(l.change3)) + '</div>' + proxBar(l.z, l.threshold) +
+        '<div class="small muted">z = <span class="num">' + num(l.z, 2) + '</span> · 还差 <span class="num">' + num(l.gap, 2) + '</span>（近 3 个交易日 ' +
+        (isNum(l.change3) ? (l.change3 > 0 ? '+' : '') + num(l.change3, 2) : '—') + '）</div></div>';
+    });
+    var tr = (o.trend || []).filter(function (r) { return isNum(r.a); });
+    if (tr.length > 1) {
+      html += '<h3 class="sub">最近 ' + tr.length + ' 个交易日的大盘 z</h3>' + chart(tr.map(function (r) { return r.a; }), tr.map(function (r) { return md(r.date); }), { base: o.threshold, label: '大盘 z', h: 100 });
+    }
+    html += '</section>';
+
+    // 4. 后面会怎样
+    var scn = o.scenarios || [];
+    html += '<section class="card"><h2>后面可能怎样<small>规则推演，不是预测</small></h2>' +
+      '<p class="small">要让「大盘恐慌」层触发，大盘（全市场等权）接下来得<b>连续每天这样跌</b>：</p>' +
+      '<div class="scroll"><table class="tbl"><thead><tr><th>连跌</th><th class="n">每天约</th><th class="n">累计约</th></tr></thead><tbody>' +
+      scn.map(function (c) {
+        return '<tr><td>' + c.days + ' 天</td><td class="n">' + (c.daily == null ? '<span class="muted">一天跌不到</span>' : '<span class="num down">' + pct(c.daily, 2) + '</span>') + '</td><td class="n">' + (c.cum == null ? '—' : '<span class="num down">' + pct(c.cum, 1) + '</span>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="small muted">用的是和策略同一套公式（滚动 20 日涨跌 ÷ 波动），已把老的一天滚出窗口、波动变大算进去。</p>';
+    if (hist.days != null) {
+      html += '<h3 class="sub">这一层过去的表现（历史类比）</h3><ul class="plain small">' +
+        '<li>2007 年以来，大盘恐慌层触发过 <b>' + hist.days + '</b> 天（占 ' + pct(hist.share, 1) + '），连成 <b>' + hist.episodes + '</b> 段，平均每年约 ' + num(hist.per_year, 1) + ' 段。</li>' +
+        (hist.last_date ? '<li>最近一次在 ' + esc(hist.last_date) + '，到现在 ' + hist.since_last + ' 个交易日。</li>' : '') +
+        (hist.fwd_median != null ? '<li>每一段触发的第一天之后 ' + hist.horizon + ' 个交易日，大盘（等权）涨跌：中位数 ' + pctc(hist.fwd_median, 1) + '，上涨的占 ' + pct(hist.fwd_win, 0) + '，最差 ' + pctc(hist.fwd_worst, 0) +
+          '；任选一天同样往后看：中位数 ' + pctc(hist.base_median, 1) + '，上涨占 ' + pct(hist.base_win, 0) + '。</li>' : '') + '</ul>' +
+        '<p class="small muted">历史上触发后大盘平均更容易反弹一些，但也有接着大跌的（最差那一段）。样本是 ' + hist.fwd_n + ' 段，且互相重叠，只当参考。</p>';
+    }
+    html += '</section>';
+
+    // 5. 需要关注
+    html += '<section class="card"><h2>需要关注什么</h2>';
+    (o.watch || []).forEach(function (w) {
+      html += '<div class="watch w-' + esc(w.tone) + '"><b>' + esc(w.title) + '</b><p>' + esc(w.text) + '</p></div>';
+    });
+    html += '<p class="small muted">' + esc(o.caveat || '') + '</p></section>';
+    return html;
   }
 
   // ------------------------------------------------------------------ 今日信号
@@ -312,6 +425,7 @@
   // ------------------------------------------------------------------ 说明
   function viewGuide(s) {
     var html = '<section class="card"><h2>怎么看这个页面</h2><ul class="plain">' +
+      '<li><b>概览</b>是首页：现在的下跌恐慌程度、有没有信号、离触发还差多少、规则推演和历史类比、该盯什么。它只用策略自己的数据，不是涨停板情绪，也不是预测。</li>' +
       '<li><b>只读、纸面</b>：不下单、不连券商；信号只是按规则算出来的“明天可以考虑什么”。</li>' +
       '<li><b>数据每天收盘后更新一次</b>：电脑上的牛牛算完推上来，数据日期在顶部。过了下一个开盘就是旧数据。</li>' +
       '<li><b>红涨绿跌</b>：红色是上涨 / 盈利，绿色是下跌 / 亏损。</li>' +
@@ -337,9 +451,10 @@
 
   // ------------------------------------------------------------------ 外壳
   var TABS = [
-    ['signal', '今日信号', '<path d="M13 3 5 13h6l-1 8 8-10h-6z"/>'],
-    ['forward', '前向跟踪', '<path d="M3 17l5-5 4 4 8-9"/><path d="M3 21h18"/>'],
-    ['holdings', '我的持仓', '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>'],
+    ['overview', '概览', '<path d="M3 12a9 9 0 0 1 18 0"/><path d="M12 12l4-4"/><circle cx="12" cy="12" r="1.2"/><path d="M5 19h14"/>'],
+    ['signal', '信号','<path d="M13 3 5 13h6l-1 8 8-10h-6z"/>'],
+    ['forward', '前向','<path d="M3 17l5-5 4 4 8-9"/><path d="M3 21h18"/>'],
+    ['holdings', '持仓','<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>'],
     ['guide', '说明', '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r=".6"/>']
   ];
 
@@ -357,7 +472,7 @@
       return bind();
     }
     var s = state.snap;
-    var body = state.tab === 'signal' ? viewSignal(s) : state.tab === 'forward' ? viewForward(s) : state.tab === 'holdings' ? viewHoldings(s) : viewGuide(s);
+    var body = state.tab === 'overview' ? viewOverview(s) : state.tab === 'signal' ? viewSignal(s) : state.tab === 'forward' ? viewForward(s) : state.tab === 'holdings' ? viewHoldings(s) : viewGuide(s);
     var fr = freshness(s).map(function (b) { return '<div class="banner ' + b.k + '">' + b.t + '</div>'; }).join('');
     app.innerHTML = '<header class="top"><div><h1>牛牛策略</h1><div class="sub">快照 ' + esc(dt(s.generated_at)) + ' · 纸面记录</div></div><button class="btn" id="refresh">刷新</button></header>' +
       '<main>' + (state.tab === 'guide' ? '' : fr) + body + '</main>' +
@@ -396,7 +511,7 @@
   try {
     var pref = JSON.parse(ls(true, LS_PREF) || 'null');
     if (pref && typeof pref === 'object') {
-      if (['signal', 'forward', 'holdings', 'guide'].indexOf(pref.tab) >= 0) state.tab = pref.tab;
+      // 每次打开都从「概览」开始，不恢复上次停在哪一页；只记住各页里选的是哪个策略
       if (pref.pick && typeof pref.pick === 'object') ['signal', 'forward', 'holdings'].forEach(function (k) { if (typeof pref.pick[k] === 'string') state.pick[k] = pref.pick[k]; });
     }
   } catch (e) { /* 偏好坏了就用默认 */ }
