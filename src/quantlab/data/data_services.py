@@ -619,7 +619,7 @@ JOBS_SPEC = [
                 "cn_macro_monthly", "cn_social_financing", "index_valuation_csindex",
                 *sorted(set(PUBLIC_IDS.values()) - {"sw_industry_history", "lockup_expiry_em"})]},
     {"job_id": "daily_close_early", "name": "收盘后快速更新（通达信部分）",
-     "description": "15:11 起：通达信 1 分钟线，合成日K和 5 分钟线，前复权，全市场情绪序列，约 50 分钟，不封存。"
+     "description": "15:45 起：通达信 1 分钟线，合成日K和 5 分钟线，前复权，全市场情绪序列，约 50 分钟，不封存。"
                     "Baostock 当天数据出来后，由「收盘后日常更新」补日状态、估值、基本面等并封存。",
      "params": [{"name": "date", "type": "date", "required": False, "default": "today", "description": "交易日（只能是今天）"}],
      "estimated_seconds": 50 * 60, "needs_data_disk": True, "uses_network": True,
@@ -963,8 +963,9 @@ class DataUpdateJobs:
         if day != today:
             return [], warnings, "快速更新只用于当天；补以前的日子请用「收盘后日常更新」", params
         now = self.now_fn()
-        if (now.hour, now.minute) < (15, 11):
-            return [], warnings, "15:11 之后再执行（通达信 1 分钟线在 15:10 前不允许采集）", params
+        if (now.hour, now.minute) < (15, 45):
+            return [], warnings, ("15:45 之后再执行（通达信 1 分钟线 15:10 前不允许采集，"
+                                  "15:40 前取到的少 11:30 那一根）"), params
         if day_seals.load_manifest(self.data_root, day):
             return [], warnings, "这一天已封存，采集只读", params
         steps = [

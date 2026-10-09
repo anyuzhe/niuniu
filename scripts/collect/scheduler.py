@@ -6,9 +6,11 @@ exits when niuniu exits.  Authorised by the user on 2026-09-29 for exactly two j
 * ``sector_recorder_start`` every trading day from 09:10 until 15:25 (same checks as
   ``autostart``: not twice, not after a manual stop; the recorder itself exits on a
   non-trading day);
-* ``daily_close_early`` (user request 2026-10-09) from 15:11 until 16:30, once per trading day: the part of the
+* ``daily_close_early`` (user request 2026-10-09) from 15:45 until 16:30, once per trading day: the part of the
   close update that needs only TDX data (1-minute bars → daily and 5-minute bars synthesised from them →
-  qfq → breadth).  It does not seal.  The TDX 1-minute collector refuses to run until 15:10 has passed.
+  qfq → breadth).  It does not seal.  The TDX 1-minute collector refuses to run until 15:10 has passed, and
+  TDX only finishes its after-close processing around 15:40: on 2026-10-09 the bars fetched before then lacked the
+  11:30 bar for ~half of the stocks (the same stocks fetched after 15:40 were complete), hence 15:45.
 * ``daily_close_update`` from 16:30 for every trading day after the latest sealed day (at
   most 7 days back) that is not sealed yet, oldest first, one at a time.  For today it also waits until
   Baostock has published today's daily bars (probed every 10 minutes), because day status, valuation and
@@ -40,7 +42,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 TZ = ZoneInfo("Asia/Shanghai")
 RECORDER_FROM, RECORDER_UNTIL = "09:10", "15:25"
-EARLY_UPDATE_AT = "15:11"      # the TDX 1-minute collector refuses to run through 15:10
+EARLY_UPDATE_AT = "15:45"      # TDX refuses through 15:10 and still serves 1-minute bars without the 11:30 bar until ~15:40
 CLOSE_UPDATE_AT = "16:30"
 BAOSTOCK_PROBE_EVERY = 600     # seconds between looks at whether Baostock has published today
 LOOKBACK_DAYS = 7

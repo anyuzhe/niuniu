@@ -288,6 +288,14 @@ class Runner:
             made = self.last_json(self.sh(args))
             self.log(f"{label}由 1 分钟线合成：{made.get('derived', 0)} 只；未合成 {made.get('status', {})}")
             self.result_dataset(dataset_id, through=day, files_written=made.get("derived", 0))
+            if kind == "daily":
+                short = made.get("status", {}).get("bad_row_count", 0)
+                if made.get("symbols") and short / made["symbols"] > 0.02:
+                    message = (f"1 分钟线不完整：{short} / {made['symbols']} 只不足 240 根，没有合成（通达信收盘后约 15:40 才整理完，"
+                               "太早取会少 11:30 那一根）；重跑快速更新，或等完整更新用 Baostock 补")
+                    self.log(message)
+                    self.result_dataset(dataset_id, failures=[message])
+                    self.deferred_errors.append(message)
 
     def step_breadth(self, step, share):
         from datetime import date, timedelta

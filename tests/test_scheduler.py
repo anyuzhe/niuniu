@@ -80,16 +80,16 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(len(self.jobs.started), 2)
         self.assertEqual(s.pending_days(self.jobs, self.root, now, self.trading), [])
 
-    def test_early_update_once_between_1511_and_1630(self):
+    def test_early_update_once_between_1545_and_1630(self):
         memo = {}
         at = lambda h, m: datetime(2026, 9, 29, h, m, tzinfo=TZ)
-        s.tick(self.jobs, self.root, at(15, 10), self.trading, memo)
-        self.assertEqual(self.jobs.early_started, [])             # the TDX 1-minute collector refuses until 15:11
-        s.tick(self.jobs, self.root, at(15, 11), self.trading, memo)
+        s.tick(self.jobs, self.root, at(15, 44), self.trading, memo)
+        self.assertEqual(self.jobs.early_started, [])             # TDX serves incomplete 1-minute bars until ~15:40
+        s.tick(self.jobs, self.root, at(15, 45), self.trading, memo)
         self.assertEqual(self.jobs.early_started, ["2026-09-29"])
         self.jobs.runs[-1]["state"] = "succeeded"
         memo.clear()
-        s.tick(self.jobs, self.root, at(15, 40), self.trading, memo)
+        s.tick(self.jobs, self.root, at(16, 0), self.trading, memo)
         self.assertEqual(self.jobs.early_started, ["2026-09-29"])  # once a day, even after a scheduler restart
         self.assertEqual(self.jobs.started, [])
 
