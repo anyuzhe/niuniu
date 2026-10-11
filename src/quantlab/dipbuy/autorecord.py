@@ -6,11 +6,14 @@
     下一个交易日按“周一至周五，扣掉已知的休市日（见 KNOWN_CLOSURES）和每年 1 月 1 日”估算；
     不在清单里的节假日会被当成交易日——结果是把窗口算短，宁可少记也不补记；
   * 台账记完后，如果配置了手机版（见 mobile_export），把今天的信号 / 前向 / 持仓加密推到自己的服务器；推失败不影响记录，下次检查会再试；
-  * 只在源数据指纹变化时才做一次（读指纹只 stat 文件），所以每天最多算一次；开关和上次结果存在 <output>/_home/dip_autorecord.json。
+  * 只在源数据指纹变化时才做一次（读指纹只 stat 文件），所以每天最多算一次；开关和上次结果存在 <output>/_home/dip_autorecord.json；
+  * 牛牛客户端和后台任务（dip_daily_cli）可能同时在检查，所以做的时候拿一把文件锁（<output>/_home/dip_autorecord.lock），拿不到就当这次没事做。
 """
 from __future__ import annotations
 
+import fcntl
 import json
+from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
@@ -128,8 +131,32 @@ def record_latest(output, panel, cls, names, *, kinds=KINDS, now: datetime | Non
     return out
 
 
+@contextmanager
+def _exclusive(output):
+    """非阻塞文件锁：别的进程正在做就产出 False。进程退出锁自动释放，不会留下死锁。"""
+    path = _path(output).with_suffix('.lock')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'a') as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def run_if_new(output, catalog_path=None, *, force=False, now: datetime | None = None, progress=None, stop=None, kinds=KINDS):
-    """开着且数据指纹变了才做：读面板（有缓存就读缓存）→ 记录 → 存状态。数据没开放、没变、开关关着都返回 None。"""
+    """开着且数据指纹变了才做：读面板（有缓存就读缓存）→ 记录 → 存状态。数据没开放、没变、开关关着、别的进程正在做都返回 None。"""
+    with _exclusive(output) as got:
+        if not got:
+            return None
+        return _run_if_new(output, catalog_path, force=force, now=now, progress=progress, stop=stop, kinds=kinds)
+
+
+def _run_if_new(output, catalog_path, *, force, now, progress, stop, kinds):
     state = load_state(output)
     if not state['enabled'] and not force:
         return None
