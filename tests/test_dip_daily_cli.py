@@ -1,5 +1,6 @@
 """不开牛牛也自动跑的每日流水线：数据任务在跑时等、做完才记、情绪库更新后补推、文件锁、.env、LaunchAgent 配置。"""
 import fcntl
+import json
 import os
 import sys
 import tempfile
@@ -54,6 +55,22 @@ class TickTests(unittest.TestCase):
             self.assertEqual(busy is not None, blocks, step)
         early = dict(job_id='daily_close_early', run_id='r', step='全市场情绪序列')
         self.assertIsNotNone(cli.data_busy(FakeJobs(early)))          # 快速更新要整个跑完
+
+    def test_qfq_step_stops_blocking_once_daily_qfq_is_complete(self):
+        base, root = Path(self.out) / 'jobs', Path(self.out) / 'data'
+        plan_dir = base / 'runs' / 'r9' / 'plans'
+        plan_dir.mkdir(parents=True)
+        (plan_dir / 'qfq-plan.json').write_text(json.dumps(dict(data_root=str(root), plan_sha256='ab' * 32)), encoding='utf-8')
+        rec_dir = root / 'lake/silver/adjustment_factors_v2/_receipts'
+        rec_dir.mkdir(parents=True)
+        jobs = FakeJobs(dict(job_id='daily_close_update', run_id='r9', step='前复权重建'))
+        jobs.base = base
+        self.assertIsNotNone(cli.data_busy(jobs))                     # 还没有日线回执
+        receipt = rec_dir / ('daily-' + 'ab' * 8 + '.json')
+        receipt.write_text(json.dumps(dict(complete=False)), encoding='utf-8')
+        self.assertIsNotNone(cli.data_busy(jobs))                     # 日线没做完
+        receipt.write_text(json.dumps(dict(complete=True)), encoding='utf-8')
+        self.assertIsNone(cli.data_busy(jobs))                        # 日线做完，5 分钟线不拦
 
     def test_other_jobs_do_not_block(self):
         rec = Rec(OK)

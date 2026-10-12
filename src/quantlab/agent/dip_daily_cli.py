@@ -61,9 +61,26 @@ def data_busy(jobs=None):
         from quantlab.data.data_services import DataUpdateJobs
         jobs = DataUpdateJobs()
     run = jobs._running(LIVE_JOBS)
-    if run and run.get('job_id') == 'daily_close_update' and run.get('step') in PANEL_READY_STEPS:
-        return None
+    if run and run.get('job_id') == 'daily_close_update':
+        if run.get('step') in PANEL_READY_STEPS or (run.get('step') == QFQ_STEP and qfq_daily_done(jobs, run)):
+            return None
     return run
+
+
+QFQ_STEP = '前复权重建'
+
+
+def qfq_daily_done(jobs, run) -> bool:
+    """“前复权重建”里先做日线、再做 5 分钟线（每只股票 5 年历史重写，约 70 分钟）；面板只读日线前复权，
+    日线回执标了 complete 就不必再等 5 分钟线。读不到回执一律当没做完。"""
+    try:
+        base = Path(jobs.base)
+        plan = json.loads((base / 'runs' / str(run['run_id']) / 'plans' / 'qfq-plan.json').read_text(encoding='utf-8'))
+        receipt = (Path(plan['data_root']) / 'lake/silver/adjustment_factors_v2/_receipts'
+                   / f"daily-{plan['plan_sha256'][:16]}.json")
+        return bool(json.loads(receipt.read_text(encoding='utf-8')).get('complete'))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
 
 
 def sentiment_token(output):
