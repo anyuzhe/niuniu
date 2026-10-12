@@ -47,6 +47,14 @@ class TickTests(unittest.TestCase):
             self.assertEqual(r['status'], 'waiting')
         self.assertEqual(rec.calls, [])
 
+    def test_update_stops_blocking_once_the_panel_inputs_are_done(self):
+        for step, blocks in (('日状态、日K、5 分钟', True), ('前复权重建', True), ('全市场情绪序列', False), ('基本面与估值历史', False),
+                             ('封存', False), (None, True)):
+            busy = cli.data_busy(FakeJobs(dict(job_id='daily_close_update', run_id='r', step=step)))
+            self.assertEqual(busy is not None, blocks, step)
+        early = dict(job_id='daily_close_early', run_id='r', step='全市场情绪序列')
+        self.assertIsNotNone(cli.data_busy(FakeJobs(early)))          # 快速更新要整个跑完
+
     def test_other_jobs_do_not_block(self):
         rec = Rec(OK)
         r = cli.tick(self.out, jobs=FakeJobs(dict(job_id='sector_recorder_start', run_id='r1')), record=rec, token='t1')

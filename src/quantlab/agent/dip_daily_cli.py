@@ -26,6 +26,9 @@ DUTY_LABEL = 'com.niuniu.duty-scheduler'
 DAILY_LABEL = 'com.niuniu.dip-daily'
 INTERVAL = 300
 LIVE_JOBS = {'daily_close_early', 'daily_close_update'}
+# 收盘后日常更新里，面板要用的日状态 / 日K / 前复权在“前复权重建”这一步做完；后面的基本面、估值、ETF、宏观、封存不影响信号，
+# 估值一项就要 1.5 小时，等整个任务结束会让信号晚两个小时以上。步骤名见 data_services 的 daily_close_update。
+PANEL_READY_STEPS = ('全市场情绪序列', 'ETF 净值与事件日历', '基本面与估值历史', 'ETF 份额、利率与宏观', '封存', '刷新状态')
 STATE_FORMAT = 'niuniu-dip-daily-v1'
 REPO = Path(__file__).resolve().parents[3]
 
@@ -52,11 +55,15 @@ def save_mine(output, **fields) -> None:
 
 
 def data_busy(jobs=None):
-    """正在跑的收盘后数据任务（没有就是 None）。数据盘没接上时 DataUpdateJobs 读不到任务，也返回 None。"""
+    """还会改动面板数据的收盘后任务（没有就是 None）。快速更新整个跑完才算；收盘后日常更新做完“前复权重建”就不再改面板数据，
+    之后的基本面 / 估值 / 封存等不拦。数据盘没接上时 DataUpdateJobs 读不到任务，也返回 None。"""
     if jobs is None:
         from quantlab.data.data_services import DataUpdateJobs
         jobs = DataUpdateJobs()
-    return jobs._running(LIVE_JOBS)
+    run = jobs._running(LIVE_JOBS)
+    if run and run.get('job_id') == 'daily_close_update' and run.get('step') in PANEL_READY_STEPS:
+        return None
+    return run
 
 
 def sentiment_token(output):
