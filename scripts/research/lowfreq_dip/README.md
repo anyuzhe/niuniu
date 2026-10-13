@@ -100,3 +100,4 @@
 - `yr83.py` / `parity83.py`：含退市股口径下 D 与 D1 的逐年收益；产品引擎 `quantlab.dipbuy.fusion` 与研究引擎在含退市股面板上的对账（§93）。
 - `build_c55_del.py` / `grp56.py` / `diag94.py`：含退市股口径下重跑“14:55 判断、收盘集合竞价买入”（§79 → §94）；`build_c55_del.py` 把 14:55 价并到含退市股面板，`grp56.py` 用 `C55FILE` / `SIG` / `DROPDEL` / `BAN` 等环境变量切口径，`diag94.py` 导出逐笔明细用于对账；结果 `grp56_del_c55.json` / `grp56_nodel_c55.json` / `grp56_del_true.json`。
 - `ord94.py`：提前平仓顺序（最老 / 最新 / 浮亏最多 / 浮盈最多）对比（§95）；`grp56.py` 新增 `EVORD` 环境变量。
+- `grp68a.py` / `grp68b.py`：D / D2 闲置资金放宽基 ETF（§106）。`grp68a.py D|D2` 用产品引擎在含退市股面板上跑出日收益与仓位，存 `grp68_D.npz` / `grp68_D2.npz`（各约 260KB，已提交——重建要读完整面板，且 `grp68b.py` 直接读它们）；`grp68b.py` 叠加沪深300 / 中证500 / 中证1000 的 ETF 净值，输出逐年与落后段对比。
