@@ -2852,3 +2852,9 @@
 - 审查意见：`plan_operations` 的 `invested` 只统计 active 持仓，明天到期要卖的回款没算成可用资金，会少买。
 - 核对结果：不成立。`simulate_fused` 在信号日 t 先把 `x == t` 的持仓卖掉（现金回来）、再按 t+1 开盘买入；`x == t+1`（明天收盘才卖）的持仓买入时仍占仓位。`portfolio.py` 与此一致：已到期（overdue，明天开盘卖）不在 active、不占总仓位上限，等于已回款；明天收盘才卖的（due）仍占着。`invested` 不含 overdue 正是“卖完再买”。
 - 改动：只补回归测试 `test_expiring_positions_free_cash_exactly_as_the_backtest_does`（`tests.test_dipbuy_portfolio` 16 个通过），锁住这个口径；未改产品代码。
+
+## 第一百一十三次：收盘更新不再重复采集 1 分钟线、前复权只重算有变化的股票
+- 起因：2026-10-13 快速更新（15:45）已把 1 分钟线、日K、5 分钟线、前复权、情绪序列全做完（19:46 结束，用时 4 小时），16:30 起的收盘更新又把 5,846 只 1 分钟线取一遍（约 1～1.5 小时），随后因为 Baostock 只补了十几只股票的日K，`build_qfq.py plan` 里这几个文件的 SHA 一变，整份计划作废，前复权日线 + 5 分钟（约 2 小时）重做 5,224 只。信号因此拖到午夜。
+- 改动：①`data_services._plan_daily_close_update`：当天已有成功的 `daily_close_early`（成功即 1 分钟线全部取完且无失败）时，“通达信 1 分钟线”一步改为 `skip_existing`；②新增 `scripts/derive/qfq_carry.py`，`job_runner.step_qfq` 在 `build_qfq.py plan` 之后、`apply` 之前调用：旧、新计划的 builder / registry / S1 证据 / 通达信除权快照 / 策略完全一致、旧计划自校验通过、该股票 5 类输入文件 SHA 都相同、磁盘上因子与前复权文件的 SHA 仍等于旧回执时，把旧回执条目复制进新回执（5 分钟条目还要原始 5 分钟文件 SHA 与前复权 5 分钟文件 SHA 都对得上），`apply` 只重算其余的股票。沿用失败只记日志，照旧整份重算。`build_qfq.py` 本身一字未改（它的 SHA 写在计划里）。
+- 测试：`test_build_qfq` 新增 2 个（沿用 + 只重算变化的；基础不一致或文件被改过时不沿用）、`test_data_services` 新增 1 个（失败的、别的日子的、别的任务的快速更新不算）。
+- 今晚实际：旧代码的收盘更新（20261013-194635-cefd55）在 1 分钟线重复采集到 4250/5846 时被取消，20:57 用新代码重新启动（20261013-205731-f655b4）。
