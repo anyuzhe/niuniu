@@ -145,6 +145,18 @@ class PlanTests(unittest.TestCase):
         self.assertAlmostEqual(sum(b['amount'] for b in p['buys']), 5000, places=6)
         self.assertEqual(len(p['buys']), 1)
 
+    def test_expiring_positions_free_cash_exactly_as_the_backtest_does(self):
+        # 回测在信号日 t：x == t 的持仓已在 t 收盘卖掉、现金回来；x == t+1 的持仓明天收盘才卖，明天开盘买入时仍占着仓位。
+        # 所以已到期（明天开盘卖）的市值不占总仓位上限，明天收盘才卖的（due）要占。
+        h_ = self.cfg.hold_days
+        over = self.plan([self.hold(9, back=h_ - 1, shares=9500, sleeve='C')], equity=100_000)
+        due = self.plan([self.hold(9, back=h_ - 2, shares=9500, sleeve='C')], equity=100_000)
+        self.assertEqual(over['holdings'][0]['status'], 'overdue')
+        self.assertEqual(due['holdings'][0]['status'], 'due')
+        self.assertGreater(sum(b['amount'] for b in over['buys']), 5000)            # 已到期的 9.5 万当作已回款，额度放开
+        self.assertAlmostEqual(sum(b['amount'] for b in due['buys']), 5000, places=6)   # 明天收盘才卖的还占着，只剩 5000 元
+        self.assertAlmostEqual(over['proceeds'], over['holdings'][0]['value'])
+
     def test_d3_priority_gives_the_cap_to_c_before_a(self):
         last = ND - 1
         panel, inp = scripted(nd=ND, nc=NC, gates={'A': [last], 'C': [last]}, pools={'A': ([last], [0, 1, 2]), 'C': ([last], [3, 4, 5])})

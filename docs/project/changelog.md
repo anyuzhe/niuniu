@@ -2847,3 +2847,8 @@
 - 起因：2026-10-12 的收盘更新里“前复权重建”先做日线（约 8 分钟）再给 5 分钟线做前复权（5,224 只各重写 5 年历史，约 9 GB、70 分钟），自动记录一直卡到 5 分钟线做完。面板只读日线前复权和日状态，不读 5 分钟线（新一天的 5 分钟线本身由通达信 1 分钟线合成，早已完成）。
 - 改动：`dip_daily_cli.data_busy` 在“前复权重建”这一步里读该次运行的前复权计划和日线回执，回执 `complete` 为真就不再拦；读不到回执仍按没做完处理。新增 1 个测试，`tests.test_dip_daily_cli` 15 个通过。
 - 未改：`build_qfq.py apply-min5` 仍每天全量重写（可改成只重写有除权的股票，需数据侧另行批准）。
+
+## 第一百一十二次：审查明日买入计划的资金口径（portfolio.py），结论无需改代码
+- 审查意见：`plan_operations` 的 `invested` 只统计 active 持仓，明天到期要卖的回款没算成可用资金，会少买。
+- 核对结果：不成立。`simulate_fused` 在信号日 t 先把 `x == t` 的持仓卖掉（现金回来）、再按 t+1 开盘买入；`x == t+1`（明天收盘才卖）的持仓买入时仍占仓位。`portfolio.py` 与此一致：已到期（overdue，明天开盘卖）不在 active、不占总仓位上限，等于已回款；明天收盘才卖的（due）仍占着。`invested` 不含 overdue 正是“卖完再买”。
+- 改动：只补回归测试 `test_expiring_positions_free_cash_exactly_as_the_backtest_does`（`tests.test_dipbuy_portfolio` 16 个通过），锁住这个口径；未改产品代码。
