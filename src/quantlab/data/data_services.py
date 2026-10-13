@@ -894,6 +894,15 @@ class DataUpdateJobs:
                                     list(dict.fromkeys(d[1] for d in skip)), sorted({d[2] for d in skip}), "public"))
         return steps, warnings
 
+    def _early_succeeded(self, day: str) -> str | None:
+        """``day`` 的快速更新（只用通达信数据的那一半）已成功结束就返回它的运行号，否则 None。
+        成功意味着 1 分钟线 5,8xx 只全部取完且没有失败（有失败整次记为失败），完整更新不必再取一遍。"""
+        for run in self._runs():
+            if (run.get("job_id") == "daily_close_early" and run.get("state") == "succeeded"
+                    and (run.get("params") or {}).get("date") == day):
+                return run["run_id"]
+        return None
+
     def _plan_daily_close_update(self, params, today, calendar, warnings):
         day = _date_param(params, "date", required=False, default_today=True, today=today)
         params = {"date": day}
@@ -920,9 +929,14 @@ class DataUpdateJobs:
             cons = self.data_root / f"lake/bronze/provider=fuyao/sector_board_constituents/date={day}.parquet"
             steps.append(self._step("板块成分快照", "skip_existing" if cons.is_file() else "fetch",
                                     ["sector_board_constituents"], [day], "constituents", weight=2))
-        steps.append(self._step("通达信 1 分钟线", "fetch", ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"],
-                                [day], "tdx_minute", weight=15,
-                                note="约 5,600 只股票、约 90 只 ETF（1 分钟、5 分钟、日线）和 6 个指数，每只取最新一页并合并，约 35 分钟；排在日K之前，因为日K由它合成；通达信只保留最近约 91 个交易日，不能漏跑太久"))
+        early = self._early_succeeded(day)
+        tdx_ids = ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5"]
+        if early:
+            steps.append(self._step("通达信 1 分钟线", "skip_existing", tdx_ids, [day], "tdx_minute", weight=15,
+                                    note=f"当天的快速更新（{early}）已经取完且没有失败，不重复采集"))
+        else:
+            steps.append(self._step("通达信 1 分钟线", "fetch", tdx_ids, [day], "tdx_minute", weight=15,
+                                    note="约 5,600 只股票、约 90 只 ETF（1 分钟、5 分钟、日线）和 6 个指数，每只取最新一页并合并，约 35 分钟；排在日K之前，因为日K由它合成；通达信只保留最近约 91 个交易日，不能漏跑太久"))
         steps.append(self._step("日状态、日K、5 分钟", "fetch",
                                 ["security_status_baostock_v2", "bars_daily_baostock_raw", "bars_min5_baostock_raw"],
                                 [day], "bars", weight=40, note="日K由通达信 1 分钟线合成，合成不了的才向 Baostock 取；5 分钟线和日状态仍向 Baostock 逐只补缺，已有的日期不重写"))

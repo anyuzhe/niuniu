@@ -244,6 +244,7 @@ class Runner:
                                        "--tdx-snapshot", str(plans / "qfq-tdx-snapshot.parquet"),
                                        "--out", str(plans / "qfq-plan.json")]))
         sha = info["plan_sha256"]
+        self.carry_qfq(plans / "qfq-plan.json", sha)
         for mode, label in (("apply", "日线"), ("apply-min5", "5 分钟")):
             result = {}
             for _ in range(200):
@@ -260,6 +261,25 @@ class Runner:
                 return
         self.sh(["scripts/derive/build_qfq.py", "coverage", "--plan", str(plans / "qfq-plan.json")])
         self.result_dataset("qfq_published_f24", through=step["dates"][0], files_written=info.get("codes", 0))
+
+    def carry_qfq(self, new_plan: Path, sha: str) -> None:
+        """沿用最近一次已做完的前复权计划里输入没变的股票（见 scripts/derive/qfq_carry.py）：快速更新刚做完整份，
+        完整更新只补十几只股票的日K，不必把 5,224 只再做一遍。找不到旧计划、前提不一致或脚本出错都只记一行日志，
+        照旧整份重算。"""
+        try:
+            runs = sorted((p for p in self.run_dir.parent.iterdir() if p.is_dir() and p != self.run_dir),
+                          key=lambda p: p.name, reverse=True)[:8]
+            for folder in runs:
+                old_plan = folder / "plans" / "qfq-plan.json"
+                if not old_plan.is_file():
+                    continue
+                info = self.last_json(self.sh(["scripts/derive/qfq_carry.py", "--plan", str(new_plan), "--from", str(old_plan),
+                                               "--approve-sha256", sha]))
+                self.log(f"前复权沿用自 {folder.name}：{json.dumps(info, ensure_ascii=False)[:300]}")
+                if info.get("carried_daily"):
+                    return
+        except Exception as error:  # 沿用只是提速；失败时整份重算，结果相同
+            self.log(f"前复权沿用失败，整份重算：{type(error).__name__}: {error}")
 
     def step_tdx_minute(self, step, share):
         # 这一步排在日K之前（日K由它合成）：失败只记下来，日K改走 Baostock，后面的步骤照常

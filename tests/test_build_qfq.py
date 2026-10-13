@@ -206,6 +206,71 @@ class BuildQfqTest(unittest.TestCase):
         ev = pd.read_parquet(self.root / bq.OUT["factors"] / f)
         self.assertIn("s1_unresolved_rights_event", ev["blockers"].iloc[0])
 
+    def add_code(self, code):
+        """第二只股票：复制第一只的全部输入，只换代码。"""
+        src, dst = bq.symbol_file(CODE), bq.symbol_file(code)
+        for key, d in self.dirs.items():
+            if not (d / src).is_file():
+                continue
+            frame = pd.read_parquet(d / src)
+            frame["code"] = code
+            frame.to_parquet(d / dst)
+
+    def test_carry_reuses_unchanged_symbols_and_rebuilds_the_changed_one(self):
+        from derive import qfq_carry
+        other = "sh.600004"
+        self.add_code(other)
+        old = self.run_all()
+        # 第二只股票多出一天日K（相当于 Baostock 补进来）
+        raw = pd.read_parquet(self.dirs["raw_daily"] / bq.symbol_file(other))
+        extra = raw.iloc[[-1]].copy()
+        extra["date"] = "2024-01-08"
+        pd.concat([raw, extra]).to_parquet(self.dirs["raw_daily"] / bq.symbol_file(other))
+        new = bq.build_plan(self.root, self.s1, Path(self.tmp.name) / "tdx2.parquet")
+        self.assertNotEqual(old["plan_sha256"], new["plan_sha256"])
+        before = {c: (self.root / bq.OUT["daily"] / bq.symbol_file(c)).stat().st_mtime_ns for c in (CODE, other)}
+        with self.assertRaises(PermissionError):
+            qfq_carry.carry(new, old, "0" * 64)
+        info = qfq_carry.carry(new, old, new["plan_sha256"])
+        self.assertEqual((info["carried_daily"], info["carried_min5"], info["to_rebuild"]), (1, 1, 1))
+        self.assertEqual(info["changed_sample"], [other])
+        # 只有变了的那只被重算
+        done = bq.apply_daily(new, new["plan_sha256"])
+        self.assertEqual((done["done_now"], done["complete"]), (1, True))
+        done = bq.apply_min5(new, new["plan_sha256"])
+        self.assertEqual((done["done_now"], done["complete"]), (1, True))
+        after = {c: (self.root / bq.OUT["daily"] / bq.symbol_file(c)).stat().st_mtime_ns for c in (CODE, other)}
+        self.assertEqual(after[CODE], before[CODE])                       # 沿用的文件没被重写
+        self.assertNotEqual(after[other], before[other])
+        rebuilt = pd.read_parquet(self.root / bq.OUT["daily"] / bq.symbol_file(other))
+        self.assertEqual(len(rebuilt), 5)
+        # 再沿用一次是幂等的，已有进度不动
+        self.assertEqual(qfq_carry.carry(new, old, new["plan_sha256"])["carried_daily"], 0)
+
+    def test_carry_refuses_when_the_basis_differs_or_files_were_touched(self):
+        from derive import qfq_carry
+        old = self.run_all()
+        # 沿用的文件被别人改过：不沿用
+        path = self.root / bq.OUT["daily"] / bq.symbol_file(CODE)
+        frame = pd.read_parquet(path)
+        frame["close"] = frame["close"] + 1.0
+        frame.to_parquet(path)
+        raw = pd.read_parquet(self.dirs["raw_daily"] / bq.symbol_file(CODE))
+        extra = raw.iloc[[-1]].copy()
+        extra["date"] = "2024-01-08"
+        pd.concat([raw, extra]).to_parquet(self.dirs["raw_daily"] / bq.symbol_file(CODE))
+        new = bq.build_plan(self.root, self.s1, Path(self.tmp.name) / "tdx2.parquet")
+        self.assertEqual(qfq_carry.carry(new, old, new["plan_sha256"])["carried_daily"], 0)
+        # 前提不同（除权快照变了）：整份拒绝
+        old2 = json.loads(json.dumps(old))
+        old2["tdx_snapshot"]["sha256"] = "f" * 64
+        body = {k: v for k, v in old2.items() if k != "plan_sha256"}
+        import hashlib
+        old2["plan_sha256"] = hashlib.sha256(bq.canonical(body)).hexdigest()
+        info = qfq_carry.carry(new, old2, new["plan_sha256"])
+        self.assertEqual(info["carried_daily"], 0)
+        self.assertIn("通达信除权快照", info["reason"])
+
     def test_input_change_after_plan_is_refused(self):
         self.write_tdx()
         plan = bq.build_plan(self.root, self.s1, self.snapshot)

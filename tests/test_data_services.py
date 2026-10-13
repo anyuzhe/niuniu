@@ -119,6 +119,26 @@ class JobsTests(unittest.TestCase):
     def tearDown(self):
         self.lake.tmp.cleanup()
 
+    def test_update_does_not_refetch_tdx_after_a_successful_early_run(self):
+        def tdx(plan):
+            return next(s for s in plan["steps"] if s["kind"] == "tdx_minute")
+        self.assertEqual(tdx(self.jobs.plan("daily_close_update", {"date": "2026-09-24"}))["action"], "fetch")
+        runs = self.root / "catalog/jobs/runs"
+        for run_id, job, state, day in (("20260924-154540-aaaaaa", "daily_close_early", "failed", "2026-09-24"),
+                                        ("20260923-154540-bbbbbb", "daily_close_early", "succeeded", "2026-09-23"),
+                                        ("20260924-154540-cccccc", "sector_recorder_start", "succeeded", "2026-09-24")):
+            (runs / run_id).mkdir(parents=True)
+            (runs / run_id / "state.json").write_text(json.dumps(
+                dict(run_id=run_id, job_id=job, state=state, params={"date": day}, created_at="2026-09-24T15:45:40+08:00")))
+        self.assertEqual(tdx(self.jobs.plan("daily_close_update", {"date": "2026-09-24"}))["action"], "fetch")   # 失败的、别的日子的、别的任务的都不算
+        (runs / "20260924-154541-dddddd").mkdir()
+        (runs / "20260924-154541-dddddd" / "state.json").write_text(json.dumps(
+            dict(run_id="20260924-154541-dddddd", job_id="daily_close_early", state="succeeded", params={"date": "2026-09-24"},
+                 created_at="2026-09-24T15:45:41+08:00")))
+        step = tdx(self.jobs.plan("daily_close_update", {"date": "2026-09-24"}))
+        self.assertEqual(step["action"], "skip_existing")
+        self.assertIn("20260924-154541-dddddd", step["note"])
+
     def test_list_and_plans(self):
         ids = {j["job_id"] for j in self.jobs.list_jobs()["jobs"]}
         self.assertTrue({"daily_close_update", "sector_recorder_start", "sector_recorder_stop", "backfill_day",
