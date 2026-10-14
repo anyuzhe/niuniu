@@ -2870,3 +2870,9 @@
 - 改动：`src/quantlab/causal.py` 新增 `audit_prefix_invariance` / `audit_registry`（截断 + 篡改未来两种检查，PASS/FAIL/SKIP/ERROR 报告，全空输出不算通过）；`FactorRegistry.factors()`；入口脚本 `scripts/research/factor_causality_audit.py`；`tests/test_causal_audit.py`（6 个）。既有 `assert_prefix_invariant` 一字未改。
 - 结果：393 个因子（Alpha101/158 共 240 + 其余 153）在 6 只股票的真实日线上无一泄露，6 个因缺输入列/周期不支持跳过；Chan 系列与 `COMB.*` 未覆盖。详见 `docs/reference/factor-causality-audit-2026-10-14.md`。
 
+### 第一百一十六次：多重检验校正模块（DSR / BH-FDR / CSCV-PBO）
+- 起因：Vibe-Trading 对照后的第 1 项。牛牛的 `trial_registry` 只对登记好的 p 值族做 Holm，没有“从很多策略里挑最好那个”的夏普校正；四因子复算正好是 4000+ 配置里挑出来的。
+- 改动：新增 `src/quantlab/statistics/multiple_testing.py`——`probabilistic_sharpe_ratio`、`expected_max_sharpe`、`deflated_sharpe_ratio`、`benjamini_hochberg`（缺失 p 值保留名额，与 `holm` 一致）、`probability_of_backtest_overfitting`（CSCV，默认 16 段 12870 个组合）。按公开公式自己写，没有拷贝 Vibe-Trading 代码。`tests/test_multiple_testing.py`（11 个）：含零技能 i.i.d. 收益下 PSR 的校准、期望最大值对模拟的吻合、500 个噪声策略里最好的一个未校正显著而 DSR 不显著、BH 已知例子与不比 Holm 严、噪声 PBO 在多个种子上均值接近 0.5 / 真有 edge 时 PBO 低。
+- 应用：四因子复算追加“多重检验校正”一节（`quad-factor-composite-v1-native-verification.md`）：未校正 PSR 0.977，N≥10 即不过 0.95；等效独立数无法估计，只给敏感性表。
+- 没做：还没有跨研究累计的试验账本，也没接到 `trial_registry`/UI——先让公式可信，再决定账本放哪、记什么。单个数据集上的 PBO 离散很大（40 变体 12 段时跨种子标准差约 0.15），不能当精确值读。
+
