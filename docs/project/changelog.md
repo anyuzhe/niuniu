@@ -2876,3 +2876,8 @@
 - 应用：四因子复算追加“多重检验校正”一节（`quad-factor-composite-v1-native-verification.md`）：未校正 PSR 0.977，N≥10 即不过 0.95；等效独立数无法估计，只给敏感性表。
 - 没做：还没有跨研究累计的试验账本，也没接到 `trial_registry`/UI——先让公式可信，再决定账本放哪、记什么。单个数据集上的 PBO 离散很大（40 变体 12 段时跨种子标准差约 0.15），不能当精确值读。
 
+### 第一百一十七次：净值抽样不确定性（循环块自助法）
+- 改动：新增 `src/quantlab/statistics/equity_inference.py`——`daily_returns`（与引擎 `performance_metrics` 同口径）、`bootstrap_performance`（年化 Sharpe / 年化收益 / 最大回撤的百分位区间 + “Sharpe 不高于 0”的去均值自助 p 值 + 同序列的 iid PSR 对照）、`block_sensitivity`（块长敏感性）。`tests/test_equity_inference.py`（7 个）：与引擎 Sharpe 逐位一致、固定种子可复现、数据越多区间越窄、120 次模拟的 95% 区间覆盖真值 >86%、零技能下 p 值校准（均值≈0.5）、自相关下块自助区间更宽、已知回撤路径。
+- 应用：四因子原生净值 Sharpe 0.70，95% 区间 0.01~1.39（块长 1–60 日几乎不变）；分段各自不显著。已写入 `quad-factor-composite-v1-native-verification.md` 末节。
+- 没做：**没有接进 `ExecutionStudy` 输出**。该类（及 `tests/test_execution_reproduction.py` 等 8 个测试文件）在本沙箱的 Python 3.10 里导入不了（Chan 供应商代码要 `typing.Self`），改了也无法在这里跑回归，所以只交付可独立调用且已测试的模块；接线应在你的 Mac 环境里改完后跑上述测试。
+
