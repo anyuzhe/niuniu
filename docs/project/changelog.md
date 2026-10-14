@@ -2881,3 +2881,9 @@
 - 应用：四因子原生净值 Sharpe 0.70，95% 区间 0.01~1.39（块长 1–60 日几乎不变）；分段各自不显著。已写入 `quad-factor-composite-v1-native-verification.md` 末节。
 - 没做：**没有接进 `ExecutionStudy` 输出**。该类（及 `tests/test_execution_reproduction.py` 等 8 个测试文件）在本沙箱的 Python 3.10 里导入不了（Chan 供应商代码要 `typing.Self`），改了也无法在这里跑回归，所以只交付可独立调用且已测试的模块；接线应在你的 Mac 环境里改完后跑上述测试。
 
+
+### 第一百一十八次：实验运行卡（run card）
+- 起因：Vibe-Trading 对照后的第 4 项。牛牛每次实验都会存 `experiment.json`，但“这次结果可不可信、缺什么”要人去翻字段，也没有统一口径的摘要。
+- 改动：新增 `src/quantlab/experiments/run_card.py`——`build_run_card` 从已保存的 `experiment.json` 派生一张只读摘要（指标原样抄录并附来源路径、数据与时间窗、按已有字段推出的风险标记），`verify_run_card` 回到原记录逐项核对（篡改任一数字即报错），`render_markdown`，`write_run_card`（拒绝写进实验自己的产物目录，写前自校验）；入口 `scripts/research/run_card.py <实验目录...> --out <目录>`。标记只在字段存在时才推：NOT_COMPLETED / NO_RUNTIME_FINGERPRINT / NON_PIT_UNIVERSE / SMALL_UNIVERSE（<30 只）/ NO_SIGNIFICANCE_TEST / NO_FILLS / RAW_PRICES。`tests/test_run_card.py`（6 个）。
+- 实测：对本机现有 623 条实验记录全量生成，0 报错、0 校验问题；其中 621 条带 SMALL_UNIVERSE、全部 15 条执行类记录带 RAW_PRICES（未复权价）；`correlation` 类记录本身没有绩效指标，卡片只有数据与标记。
+- 没做：没接进界面、`ExecutionStudy` 或 agent；卡片只是离线派生物，不改任何实验产物。下一步第 5 项（GTJA191 等学术因子）应排在试验账本之后，否则新增的几百个因子只会放大多重检验问题。
