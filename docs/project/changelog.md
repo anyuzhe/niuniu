@@ -2858,3 +2858,9 @@
 - 改动：①`data_services._plan_daily_close_update`：当天已有成功的 `daily_close_early`（成功即 1 分钟线全部取完且无失败）时，“通达信 1 分钟线”一步改为 `skip_existing`；②新增 `scripts/derive/qfq_carry.py`，`job_runner.step_qfq` 在 `build_qfq.py plan` 之后、`apply` 之前调用：旧、新计划的 builder / registry / S1 证据 / 通达信除权快照 / 策略完全一致、旧计划自校验通过、该股票 5 类输入文件 SHA 都相同、磁盘上因子与前复权文件的 SHA 仍等于旧回执时，把旧回执条目复制进新回执（5 分钟条目还要原始 5 分钟文件 SHA 与前复权 5 分钟文件 SHA 都对得上），`apply` 只重算其余的股票。沿用失败只记日志，照旧整份重算。`build_qfq.py` 本身一字未改（它的 SHA 写在计划里）。
 - 测试：`test_build_qfq` 新增 2 个（沿用 + 只重算变化的；基础不一致或文件被改过时不沿用）、`test_data_services` 新增 1 个（失败的、别的日子的、别的任务的快速更新不算）。
 - 今晚实际：旧代码的收盘更新（20261013-194635-cefd55）在 1 分钟线重复采集到 4250/5846 时被取消，20:57 用新代码重新启动（20261013-205731-f655b4）。
+
+### 第一百一十四次：四因子低优合成分 v1 原生复算（未通过）
+- 起因：`docs/reference/quad-factor-composite-v1.json`（host 侧扫描 Sharpe 1.08，冻结待原生验证）。
+- 做法：官方因子库 `COMB.SCORE` 四因子等权合成分 → 每日一批、持有 40 天的滚动目标权重 → 官方 `OpenExecutionBacktester`（1bp 佣金/5 元最低/1bp 滑点/法定税费/T+1/整手），不调参。脚本在 `scripts/research/quad_factor/`。
+- 结果：全窗口 Sharpe 0.70（本金 1 亿主口径；1000 万 0.69、100 万 0.58）、年化 14.0%、最大回撤 -32.9%；2023 起验证段 Sharpe 0.72、年化 15.0%；通过线 Sharpe ≥ 1.0 **未达到**。host 声明的验证段（22.3%/0.96/-1.6%）本身自相矛盾（23% 波动不可能只回撤 1.6%），也未复现。
+- 与规范不完全一致处：100 只名单只有规则没有名单（按规则重建，换 3 种相位 Sharpe 0.65–0.71）；官方引擎只支持次日开盘成交，退出用次日开盘代替第 40 日收盘。详见 `docs/reference/quad-factor-composite-v1-native-verification.md`。
