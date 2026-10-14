@@ -1,0 +1,103 @@
+{
+  "format": "niuniu-quad-factor-composite-v1",
+  "created_at": "2026-10-13T00:00:00+00:00",
+  "status": "frozen_before_native_verification",
+  "topic": "四因子等权低优合成分（低波动 + 超卖反转），固定持有期扣费回测",
+  "source": "host-side exhaustive scan of the registered factor library (1614 single-factor configs + 2112 pairs + 3/4-factor composites); this file freezes the winner for native Niuniu re-computation. Host did NOT run the native verification.",
+  "host_scan_scope": {
+    "factors_tested": 277,
+    "scalar_configs": 1614,
+    "pair_combos": 2112,
+    "triple_quad_combos": "all 3/4-factor combinations containing ALPHA101.ALPHA28 from the top-60 field",
+    "selection_basis": "full-sample Sharpe on 100 symbols, 2018-01-01 to 2026-09-04",
+    "multiple_testing_correction": "none - top 6 candidates all landed at Sharpe 1.04-1.08, indicating a stable region rather than a single lucky point, but this is not a corrected claim"
+  },
+  "candidate": {
+    "name": "quad-low-composite",
+    "kind": "equal_weight_composite",
+    "direction": "buy_lowest",
+    "rationale": "all four members had negative full-sample IC (lower factor value -> higher forward return). ATR and RETURN_VOLATILITY carry the low-volatility premium; ALPHA28 (volume-turnover correlation vs price) and SUMD_30 (up-day share of total movement) carry the oversold-reversal / weak-momentum premium. Equal-weight raw sum, no cross-sectional standardisation (the research pipeline has no standardisation entry point - a known product gap).",
+    "factors": [
+      {
+        "factor_id": "ALPHA101.ALPHA28",
+        "version": "1.0.0",
+        "parameters": {},
+        "weight": 1.0,
+        "formula": "cs_scale(ts_corr(ts_mean(volume,20), low, 5) + (high+low)/2 - close)"
+      },
+      {
+        "factor_id": "ALPHA158.QTLD_5",
+        "version": "1.0.0",
+        "parameters": {},
+        "weight": 1.0,
+        "formula": "ts_quantile(close,5,0.2)/close"
+      },
+      {
+        "factor_id": "ALPHA158.SUMD_30",
+        "version": "1.0.0",
+        "parameters": {},
+        "weight": 1.0,
+        "formula": "(up-day sum - down-day sum over 30d) / (total abs movement over 30d)"
+      },
+      {
+        "factor_id": "BASE.ATR",
+        "version": "1.0.0",
+        "parameters": {"lookback": 60},
+        "weight": 1.0,
+        "formula": "SMA(max(high-low, abs(high-prev_close), abs(low-prev_close)), 60)"
+      }
+    ]
+  },
+  "execution": {
+    "universe_mode": "explicit",
+    "symbols_count": 100,
+    "symbols_rule": "2026-09-23 reference snapshot; stratified equal-spaced draw of 34 SH-main / 33 SZ-main / 33 ChiNext from the pool that is (a) qfq v2 history_truncated=false with valid_from<=2018-01-01 and (b) free of null OHLCV/adj_factor across the whole window. STAR board excluded (no eligible listing before 2018).",
+    "known_sample_bias": "excludes ~30% of symbols that had any suspended day in the window; STAR board absent; not the full investable market",
+    "timeframe": "1d",
+    "adjustment": "qfq",
+    "start": "2018-01-01",
+    "end": "2026-09-04",
+    "top_n": 20,
+    "hold_days": 40,
+    "entry": "next open after signal-day close",
+    "exit": "close of the 40th trading day after entry",
+    "weighting": "equal",
+    "max_position": 0.1,
+    "max_exposure": 1.0,
+    "lot_size": 100,
+    "t_plus_one": true,
+    "price_mode": "research",
+    "costs": {
+      "commission_bps": 1.0,
+      "minimum_commission": 5.0,
+      "slippage_bps": 1.0,
+      "statutory_fees": true,
+      "note": "stamp duty and transfer fee raised to the statutory rate of each trade date via execution.fees; 1 minimum price step per side"
+    },
+    "impact_cost_modelled": false
+  },
+  "evaluation": {
+    "primary_metric": "sharpe",
+    "pass_condition": "native re-computation reproduces Sharpe >= 1.0 on the same window with the same cost model",
+    "secondary": ["calmar", "max_drawdown", "per_trade_mean_bp", "win_rate", "yearly_returns"],
+    "holdout_split": {
+      "selection_period": "2018-01-01 to 2022-12-31",
+      "verification_period": "2023-01-01 to 2026-09-04",
+      "note": "host-side slice check gave 22.3% annualised / Sharpe 0.96 / max drawdown -1.6% on the verification period; native run must reproduce this"
+    },
+    "baseline": "equal-weight market index over the same window (8.0% annualised / Sharpe 0.44 / max drawdown -35.8%)",
+    "required_disclosures": [
+      "not a bull-market strategy: full-year 2025 lagged the benchmark by 19 points",
+      "regime profile: large outperformance in bear/choppy years (2018 +19pp, 2022 +16pp, 2023 +17pp, 2024 +10pp), small underperformance in bull years",
+      "no multiple-testing correction across the 4000+ configurations searched",
+      "no impact cost; capacity untested on the full market",
+      "research_only qualification: not strict PIT, not official-rule covered"
+    ]
+  },
+  "boundaries": [
+    "host-side scan result; native Niuniu must re-compute through the official entry before this counts as verified",
+    "no execution grant, no broker connection, no order placement",
+    "negative results must be recorded as-is; no parameter re-search after seeing the native numbers",
+    "if the native run fails to reproduce, record implementation_failure and stop - do not re-tune"
+  ]
+}
