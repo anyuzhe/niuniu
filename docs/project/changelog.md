@@ -2891,5 +2891,11 @@
 ### 第一百一十九次：试验账本（trial ledger）
 - 起因：DSR 需要 N（挑出最优前试过多少个），PBO 需要全部试验的收益序列，事后都补不回来。四因子复算就是这样——4000+ 配置里挑出来，每个配置的日收益没留下，N 只能做敏感性表。
 - 改动：新增 `src/quantlab/statistics/trial_ledger.py`——只追加的 `ledger.jsonl`（每行带上一行的 SHA-256，删行/改行/改收益文件都能被 `verify_ledger` 查出）+ `returns/<config_id>.json`；`record_trial` 同一配置重复登记不增加 N（收益不同则报错）；`summarize` 给出 N、最优试验、按“已登记 N / 你假定的 N / 相关性有效 N”分别算的 DSR（用已登记试验的夏普离散度）、CSCV-PBO；日期不一致的序列不静默截断，直接跳过 PBO 并说明。入口 `scripts/research/trial_ledger.py add|summary|verify`（收益来源：date,return 的 CSV，或净值 parquet + 初始资金，或只计数）。`tests/test_trial_ledger.py`（9 个）：重复不涨 N、配置键序无关、篡改检测、60 个噪声试验最优者去膨胀后不显著、真实 edge 能被找出、强相关变体有效 N 很小、日期不齐跳过 PBO、只计数、非法输入。
-- 发现：现有执行类实验产物（`experiment.json`）**不保存净值曲线**，所以账本不能从历史产物回填，也不能事后补出四因子那 4000+ 配置的 N；只能从现在起，在每次回测时把收益序列交给 `record_trial`。
-- 没做：没接进 `ExecutionStudy`/研究扫描脚本（应在跑回测时自动登记，而不是靠人手动）；没接界面；`trial_registry`（IC 置换检验固定检验族）保持不变——两者问题不同：它管“预先登记的 p 值族”，账本管“事后挑最优的夏普”。
+- 更正：本条最初写的“执行类实验产物不保存净值曲线、无法回填”是错的——净值曲线一直存在产物的 `observations.parquet`（datetime/cash/position_value/equity）。真正的缺口是：四因子复算那 4000+ 配置是脚本里的扫描，并没有各自存成实验产物，所以它们的 N 与收益序列仍补不回来。
+- 接线见第一百二十次；研究扫描脚本（如 `scripts/research/quad_factor/`）仍需自行调用 `record_trial`；没接界面；`trial_registry`（IC 置换检验固定检验族）保持不变——两者问题不同：它管“预先登记的 p 值族”，账本管“事后挑最优的夏普”。
+
+### 第一百二十次：ExecutionStudy 接入净值抽样区间与试验账本
+- 起因：前两项（净值自助法、试验账本）此前只是独立模块。之前说“沙箱 Python 3.10 导入不了 Chan 供应商代码所以不接”——这次在沙箱临时装了 Python 3.13（不在你的文件夹里），能跑 `ExecutionStudy` 的回归测试，于是接线并实测。
+- 改动（`src/quantlab/experiments/execution.py`）：①每次成功的执行回测，记录里多一块 `sampling_uncertainty`：日收益 ≥30 个时给出 Sharpe/年化/最大回撤的 95% 循环块自助区间、去均值零假设 p 值、块长敏感性；不足 30 个或净值异常时写 `status: unavailable` 和原因，**不会抛错、不影响回测**。②`ExecutionStudy.run(..., trial_ledger={'root':..., 'family':..., 'note':...})` 可选参数：运行后把这次配置（以 `experiment_id` 标识）和日收益登记进试验账本；默认不传即不登记。登记失败时实验产物已保存，错误写在 `ExecutionResult.ledger` 里，不吞也不丢结果。`ExecutionResult` 多一个带默认值的 `ledger` 字段，旧调用不受影响。`experiment_id` 由 manifest 算出，新增字段不改变它；固定种子，复算结果一致。
+- 测试：`tests/test_execution_inference.py` 4 个（记录带区间且复算 numerically_matched、短净值不抛错、账本默认关闭、登记幂等且失败不丢产物）。在 Python 3.13 下回归：test_execution_reproduction(6，1 跳过)、test_cost_model_warnings(3)、test_derived_reproduction(3)、test_event_study(8)、test_strategy_package(9)、test_wyckoff_classic(7)、test_archived_research_check(16)、test_research_reproduction 中 4/5（余下 `test_parent_studies_rebuild_all_descendants_and_training_pipeline` 在沙箱里 3 分钟内跑不完，该测试不涉及执行回测）全部通过。
+- 提醒：旧产物没有 `sampling_uncertainty`，运行卡等读取方按“字段缺失”处理即可；要不要给旧的 15 条执行记录回填，取决于是否需要，默认不回填。

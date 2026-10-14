@@ -10,6 +10,7 @@ from quantlab.storage.codec import digest
 from quantlab.storage.experiments import load_record
 from quantlab.experiments.runner import runtime_fingerprint
 from quantlab.experiments.computation import computation_fingerprint
+from quantlab.statistics.equity_inference import daily_returns, bootstrap_performance, block_sensitivity
 
 
 @dataclass(frozen=True)
@@ -18,13 +19,39 @@ class ExecutionResult:
     run_id: str
     artifact_path: Path
     summary: dict
+    ledger: dict | None = None
+
+
+def _sampling_uncertainty(curve,initial_cash):
+    """Bootstrap intervals for the saved net-value curve. Never raises: a short or odd curve is recorded as unavailable."""
+    try:
+        returns=daily_returns(curve,initial_cash)
+        if len(returns)<30:return {'status':'unavailable','reason':f'only {len(returns)} daily returns (need at least 30)'}
+        blocks=[b for b in (1,5,10,20,40,60) if b<=len(returns)//2]
+        return {'status':'computed',**bootstrap_performance(returns),'block_sensitivity':block_sensitivity(returns,blocks)}
+    except Exception as error:
+        return {'status':'unavailable','reason':f'{type(error).__name__}: {error}'}
+
+
+def _record_trial(spec,record,curve):
+    """Append this run to a trial ledger. The artifact is already saved, so a failure is reported, not raised."""
+    try:
+        import polars as pl
+        from quantlab.statistics import trial_ledger
+        daily=(curve.sort('datetime').with_columns(pl.col('datetime').dt.date().alias('date'))
+               .group_by('date',maintain_order=True).agg(pl.col('equity').last()))
+        returns=daily_returns(curve,record['manifest']['execution']['initial_cash'])
+        return trial_ledger.record_trial(spec['root'],spec['family'],{'experiment_id':record['experiment_id']},returns,
+            dates=[str(d) for d in daily['date']],note=spec.get('note',''),metrics={'run_id':record['run_id']})
+    except Exception as error:
+        return {'status':'failed','error':f'{type(error).__name__}: {error}'}
 
 
 class ExecutionStudy:
     def __init__(self,runner,execution_data=None):
         self.runner=runner
         self.execution_data=execution_data
-    def run(self,config,execution_config,portfolio_config=None,backend="open",market_rules=None,*,strategy_package=None):
+    def run(self,config,execution_config,portfolio_config=None,backend="open",market_rules=None,*,strategy_package=None,trial_ledger=None):
         execution_config.validate_price_inputs(market_rules)
         if backend not in ("open","vnpy_open","vnpy_rules"):raise ValueError("Unknown execution backend")
         if execution_config.price_mode=='virtual_qfq' and backend!='open':raise ValueError('virtual_qfq requires the internal open research simulator')
@@ -114,9 +141,11 @@ class ExecutionStudy:
                 record['simulation_contract']=dict(DISCLOSURE)
                 record['limitations']=[*DISCLOSURE['limitations'],*record['limitations']]
                 record['limitations']=[v for v in record['limitations'] if '精细账户模式' not in v and '逐时点规则只有' not in v]
+            record['sampling_uncertainty']=_sampling_uncertainty(curve,execution_config.initial_cash)
         except Exception as error:
             record.update(status='failed',experiment_id=digest(manifest),error=f'{type(error).__name__}: {error}')
             self.runner.store.save(run_id,record,None)
             raise
         path=self.runner.store.save(run_id,record,curve,bars=bars,targets=targets)
-        return ExecutionResult(record['experiment_id'],run_id,path,summary)
+        ledger=_record_trial(trial_ledger,record,curve) if trial_ledger is not None else None
+        return ExecutionResult(record['experiment_id'],run_id,path,summary,ledger)
