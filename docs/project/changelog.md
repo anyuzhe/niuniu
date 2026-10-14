@@ -2899,3 +2899,10 @@
 - 改动（`src/quantlab/experiments/execution.py`）：①每次成功的执行回测，记录里多一块 `sampling_uncertainty`：日收益 ≥30 个时给出 Sharpe/年化/最大回撤的 95% 循环块自助区间、去均值零假设 p 值、块长敏感性；不足 30 个或净值异常时写 `status: unavailable` 和原因，**不会抛错、不影响回测**。②`ExecutionStudy.run(..., trial_ledger={'root':..., 'family':..., 'note':...})` 可选参数：运行后把这次配置（以 `experiment_id` 标识）和日收益登记进试验账本；默认不传即不登记。登记失败时实验产物已保存，错误写在 `ExecutionResult.ledger` 里，不吞也不丢结果。`ExecutionResult` 多一个带默认值的 `ledger` 字段，旧调用不受影响。`experiment_id` 由 manifest 算出，新增字段不改变它；固定种子，复算结果一致。
 - 测试：`tests/test_execution_inference.py` 4 个（记录带区间且复算 numerically_matched、短净值不抛错、账本默认关闭、登记幂等且失败不丢产物）。在 Python 3.13 下回归：test_execution_reproduction(6，1 跳过)、test_cost_model_warnings(3)、test_derived_reproduction(3)、test_event_study(8)、test_strategy_package(9)、test_wyckoff_classic(7)、test_archived_research_check(16)、test_research_reproduction 中 4/5（余下 `test_parent_studies_rebuild_all_descendants_and_training_pipeline` 在沙箱里 3 分钟内跑不完，该测试不涉及执行回测）全部通过。
 - 提醒：旧产物没有 `sampling_uncertainty`，运行卡等读取方按“字段缺失”处理即可；要不要给旧的 15 条执行记录回填，取决于是否需要，默认不回填。
+
+### 第一百二十一次：GTJA191（国泰君安 191）因子包
+- 起因：Vibe-Trading 对照的第 5 项。Vibe-Trading 仓库的页面抓取被拒绝，没有绕过；经你同意，改从许可明确的 `yupoet/aurumq-rl`（MIT，commit 5cf7e83）移植。
+- 改动：`src/quantlab/factors/gtja191/`（上游 polars 实现，仅改 import；含 `LICENSE_AURUMQ`、`PROVENANCE.md`）+ 适配层 `src/quantlab/factors/gtja.py` + `app.py` 注册 `GTJA191Pack`。提供 183 个，不提供 8 个（030 桩、033/062 要市值、075/149/181/182 要真实基准指数、143 递归依赖历史长度），原因写在 `UNSUPPORTED` 和来源说明里。
+- 验证：未来函数审计 183/183 PASS（真实日线 12 只 × 700 日，每因子至少比较 795 个值）；`tests/test_gtja191.py` 8 个；用到注册表的既有测试在 3.13 下回归通过（缺 PyQt6/baostock 的环境问题除外；`test_archived_suspension_contract` 2 项失败为基线既有问题）。
+- 重要限制：**按上游实现，没有与论文逐条核对**；17 个上游标注“公式有已知勘误”的因子已在描述中注明。详见 `docs/reference/gtja191-integration-2026-10-15.md`。
+- 影响：因子库注册数 444 → 627 个。之后从新旧因子里“挑最好”的任何结论，N 都要把它们算进去（试验账本 + DSR/PBO，IC 走 trial_registry 的 Holm）。
