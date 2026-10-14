@@ -3,7 +3,7 @@
 ## 做了什么
 - 从 `yupoet/aurumq-rl`（MIT，commit `5cf7e83637b85e4f855daec16099148b358b89b3`）移植 GTJA191 的 polars 实现到 `src/quantlab/factors/gtja191/`，只改了 import 路径；MIT 许可全文与来源说明在同目录 `LICENSE_AURUMQ`、`PROVENANCE.md`。
 - 适配层 `src/quantlab/factors/gtja.py`：把牛牛的日线行情转成上游要求的面板（VWAP = 成交额/成交量×复权因子，`amount` = 成交额，`returns` = 逐股票收盘价收益），输出非有限值置空；仅日线；`quantlab.app.default_registry()` 注册为 `GTJA191Pack`。
-- 因子库注册数由此从 444 增至 627（含本包 166 个；此前审计覆盖的 393 个之外还有 Chan 系列、COMB.*、BAO.* 等）。因子 id 形如 `GTJA191.GTJA_001`。
+- 因子库注册数由此从 444 增至 610（含本包 166 个；首版曾为 627，含已下线的 17 个；此前审计覆盖的 393 个之外还有 Chan 系列、COMB.*、BAO.* 等）。因子 id 形如 `GTJA191.GTJA_001`。
 
 ## 可信度（先读这个）
 - **这是上游的实现，不是对论文的独立复现。** 上游自述公式转写自 Daic115/alpha191（无许可证，只借公式）与国泰君安 2017 年《191 Alphas》研报；约一半函数的文档里没有论文公式字符串，代码本身就是规格。我没有拿到研报逐条核对。
