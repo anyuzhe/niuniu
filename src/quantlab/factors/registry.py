@@ -35,6 +35,9 @@ class FactorRegistry:
         except KeyError as error:
             raise ValueError(f"Unknown factor: {factor_id}@{version}") from error
 
+    def factors(self) -> list[tuple[str, str, Factor]]:
+        return [(key[0], key[1], factor) for key, factor in self._factors.items()]
+
     def describe(self) -> list[dict]:
         return [{"definition": f.definition, "defaults": f.parameters({}), "code_hash": self.code_hash(f)} for f in self._factors.values()]
 

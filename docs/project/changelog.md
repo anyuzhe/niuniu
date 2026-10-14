@@ -2864,3 +2864,9 @@
 - 做法：官方因子库 `COMB.SCORE` 四因子等权合成分 → 每日一批、持有 40 天的滚动目标权重 → 官方 `OpenExecutionBacktester`（1bp 佣金/5 元最低/1bp 滑点/法定税费/T+1/整手），不调参。脚本在 `scripts/research/quad_factor/`。
 - 结果：全窗口 Sharpe 0.70（本金 1 亿主口径；1000 万 0.69、100 万 0.58）、年化 14.0%、最大回撤 -32.9%；2023 起验证段 Sharpe 0.72、年化 15.0%；通过线 Sharpe ≥ 1.0 **未达到**。host 声明的验证段（22.3%/0.96/-1.6%）本身自相矛盾（23% 波动不可能只回撤 1.6%），也未复现。
 - 与规范不完全一致处：100 只名单只有规则没有名单（按规则重建，换 3 种相位 Sharpe 0.65–0.71）；官方引擎只支持次日开盘成交，退出用次日开盘代替第 40 日收盘。详见 `docs/reference/quad-factor-composite-v1-native-verification.md`。
+
+### 第一百一十五次：因子库未来函数全库扫描
+- 起因：要借鉴 Vibe-Trading 的 Alpha 验证做法，先核对牛牛自己缺什么。结论：各因子测试里已有 `assert_prefix_invariant`（手造小样本），缺的是“全库 + 真实数据 + 出报告”的一遍扫描，以及“篡改未来数据”这一种检查。
+- 改动：`src/quantlab/causal.py` 新增 `audit_prefix_invariance` / `audit_registry`（截断 + 篡改未来两种检查，PASS/FAIL/SKIP/ERROR 报告，全空输出不算通过）；`FactorRegistry.factors()`；入口脚本 `scripts/research/factor_causality_audit.py`；`tests/test_causal_audit.py`（6 个）。既有 `assert_prefix_invariant` 一字未改。
+- 结果：393 个因子（Alpha101/158 共 240 + 其余 153）在 6 只股票的真实日线上无一泄露，6 个因缺输入列/周期不支持跳过；Chan 系列与 `COMB.*` 未覆盖。详见 `docs/reference/factor-causality-audit-2026-10-14.md`。
+
