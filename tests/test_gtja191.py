@@ -38,9 +38,9 @@ class Gtja191Tests(unittest.TestCase):
     def test_pack_offers_exactly_the_supported_factors(self):
         pack = gtja.gtja_pack()
         ids = [f.definition.factor_id for f in pack.factors]
-        self.assertEqual(len(ids), 183)
-        self.assertEqual(len(set(ids)), 183)
-        self.assertEqual(len(gtja.UNSUPPORTED), 8)
+        self.assertEqual(len(ids), 166)
+        self.assertEqual(len(set(ids)), 166)
+        self.assertEqual(len(gtja.UNSUPPORTED), 25)
         for key in gtja.UNSUPPORTED:
             self.assertNotIn(f"GTJA191.{key.upper()}", ids)
         self.assertTrue(all(f.definition.timeframes and len(f.definition.timeframes) == 1 for f in pack.factors))
@@ -56,13 +56,10 @@ class Gtja191Tests(unittest.TestCase):
         out = factor("gtja_015").compute(data, {}).sort("symbol", "datetime")
         expected = data.sort("symbol", "datetime").with_columns((pl.col("open") / pl.col("close").shift(1).over("symbol") - 1).alias("e"))
         np.testing.assert_allclose(out["value"].to_numpy()[1:40], expected["e"].to_numpy()[1:40])
-        out = factor("gtja_100").compute(data, {}).sort("symbol", "datetime")
-        expected = data.sort("symbol", "datetime").with_columns(pl.col("volume").rolling_std(20).over("symbol").alias("e"))
-        np.testing.assert_allclose(out["value"].to_numpy()[19:60], expected["e"].to_numpy()[19:60])
 
     def test_values_are_independent_of_row_order_and_extra_columns(self):
         data = bars(days=90)
-        for key in ("gtja_001", "gtja_020", "gtja_081"):
+        for key in ("gtja_001", "gtja_020", "gtja_018"):
             a = factor(key).compute(data, {}).sort("symbol", "datetime")
             b = factor(key).compute(data.sample(fraction=1.0, shuffle=True, seed=3).with_columns(pl.lit(1).alias("extra")), {}).sort("symbol", "datetime")
             np.testing.assert_allclose(a["value"].fill_null(-9e9).to_numpy(), b["value"].fill_null(-9e9).to_numpy())
@@ -93,10 +90,24 @@ class Gtja191Tests(unittest.TestCase):
     def test_no_lookahead_on_a_representative_subset(self):
         registry = FactorRegistry()
         registry.register_pack(gtja.gtja_pack())
-        keys = ["gtja_001", "gtja_014", "gtja_017", "gtja_020", "gtja_081", "gtja_100", "gtja_191"]
+        keys = ["gtja_001", "gtja_014", "gtja_017", "gtja_018", "gtja_020", "gtja_191"]
         report = audit_registry(registry, bars(days=200), factor_ids=[f"GTJA191.{k.upper()}" for k in keys])
         statuses = {row["factor_id"]: row["status"] for row in report}
         self.assertEqual(set(statuses.values()), {"PASS"}, statuses)
+
+    def test_offered_factors_do_not_saturate_the_output_clip_on_realistic_units(self):
+        data = bars(days=130, symbols=8, seed=11)
+        rng = np.random.default_rng(5)
+        volume = pl.Series(rng.integers(2_000_000, 60_000_000, data.height).astype(float))  # shares per day, A-share scale
+        data = data.with_columns(volume.alias("volume")).with_columns((pl.col("volume") * (pl.col("high") + pl.col("low")) / 2).alias("turnover"))
+        for f in gtja.gtja_pack().factors:
+            values = f.compute(data, {})["value"].drop_nulls()
+            if len(values):
+                share = float((values.abs() >= 1e6 - 1).mean())
+                self.assertLess(share, 0.02, f"{f.definition.factor_id} sits at the output clip for {share:.0%} of values")
+        # and the rule that removed them really bites: a removed factor is saturated on the same data
+        removed = gtja._registry()["gtja_100"].impl(data.select(pl.col("symbol").alias("stock_code"), pl.col("datetime").alias("trade_date"), "open", "high", "low", "close", "volume"))
+        self.assertGreater(float((removed.drop_nulls().abs() >= 1e6 - 1).mean()), 0.5)
 
     def test_provenance_documents_licence_commit_and_every_omission(self):
         text = (SOURCE / "PROVENANCE.md").read_text()

@@ -22,6 +22,31 @@ UNSUPPORTED = {
     'gtja_075': _BENCHMARK, 'gtja_149': _BENCHMARK, 'gtja_181': _BENCHMARK, 'gtja_182': _BENCHMARK,
     'gtja_143': 'recursive SELF definition: the value depends on how much history is loaded',
 }
+# Factors whose output sits at the upstream +-1e6 clip for a large share of values on this repo's units (volume in shares,
+# turnover in yuan): the cross-section is then largely constant, so rank/IC based use is meaningless. Share measured on a
+# 40-symbol sample of the local daily bars (2023-2026); they are level-type volume/amount factors written for other units.
+SATURATED = {
+    'gtja_011': 0.857,
+    'gtja_043': 0.917,
+    'gtja_060': 0.923,
+    'gtja_070': 0.997,
+    'gtja_081': 0.938,
+    'gtja_084': 0.953,
+    'gtja_094': 0.964,
+    'gtja_095': 1.0,
+    'gtja_097': 0.743,
+    'gtja_100': 0.796,
+    'gtja_111': 0.494,
+    'gtja_132': 1.0,
+    'gtja_134': 0.242,
+    'gtja_155': 0.219,
+    'gtja_171': 0.028,
+    'gtja_178': 0.091,
+    'gtja_180': 0.557,
+}
+for _key, _share in SATURATED.items():
+    UNSUPPORTED[_key] = f"upstream +-1e6 output clip saturates on this data's units ({_share:.0%} of values clipped on a 40-symbol sample)"
+
 _CORE = ('open', 'high', 'low', 'close', 'volume')
 
 
