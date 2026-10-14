@@ -2887,3 +2887,9 @@
 - 改动：新增 `src/quantlab/experiments/run_card.py`——`build_run_card` 从已保存的 `experiment.json` 派生一张只读摘要（指标原样抄录并附来源路径、数据与时间窗、按已有字段推出的风险标记），`verify_run_card` 回到原记录逐项核对（篡改任一数字即报错），`render_markdown`，`write_run_card`（拒绝写进实验自己的产物目录，写前自校验）；入口 `scripts/research/run_card.py <实验目录...> --out <目录>`。标记只在字段存在时才推：NOT_COMPLETED / NO_RUNTIME_FINGERPRINT / NON_PIT_UNIVERSE / SMALL_UNIVERSE（<30 只）/ NO_SIGNIFICANCE_TEST / NO_FILLS / RAW_PRICES。`tests/test_run_card.py`（6 个）。
 - 实测：对本机现有 623 条实验记录全量生成，0 报错、0 校验问题；其中 621 条带 SMALL_UNIVERSE、全部 15 条执行类记录带 RAW_PRICES（未复权价）；`correlation` 类记录本身没有绩效指标，卡片只有数据与标记。
 - 没做：没接进界面、`ExecutionStudy` 或 agent；卡片只是离线派生物，不改任何实验产物。下一步第 5 项（GTJA191 等学术因子）应排在试验账本之后，否则新增的几百个因子只会放大多重检验问题。
+
+### 第一百一十九次：试验账本（trial ledger）
+- 起因：DSR 需要 N（挑出最优前试过多少个），PBO 需要全部试验的收益序列，事后都补不回来。四因子复算就是这样——4000+ 配置里挑出来，每个配置的日收益没留下，N 只能做敏感性表。
+- 改动：新增 `src/quantlab/statistics/trial_ledger.py`——只追加的 `ledger.jsonl`（每行带上一行的 SHA-256，删行/改行/改收益文件都能被 `verify_ledger` 查出）+ `returns/<config_id>.json`；`record_trial` 同一配置重复登记不增加 N（收益不同则报错）；`summarize` 给出 N、最优试验、按“已登记 N / 你假定的 N / 相关性有效 N”分别算的 DSR（用已登记试验的夏普离散度）、CSCV-PBO；日期不一致的序列不静默截断，直接跳过 PBO 并说明。入口 `scripts/research/trial_ledger.py add|summary|verify`（收益来源：date,return 的 CSV，或净值 parquet + 初始资金，或只计数）。`tests/test_trial_ledger.py`（9 个）：重复不涨 N、配置键序无关、篡改检测、60 个噪声试验最优者去膨胀后不显著、真实 edge 能被找出、强相关变体有效 N 很小、日期不齐跳过 PBO、只计数、非法输入。
+- 发现：现有执行类实验产物（`experiment.json`）**不保存净值曲线**，所以账本不能从历史产物回填，也不能事后补出四因子那 4000+ 配置的 N；只能从现在起，在每次回测时把收益序列交给 `record_trial`。
+- 没做：没接进 `ExecutionStudy`/研究扫描脚本（应在跑回测时自动登记，而不是靠人手动）；没接界面；`trial_registry`（IC 置换检验固定检验族）保持不变——两者问题不同：它管“预先登记的 p 值族”，账本管“事后挑最优的夏普”。
