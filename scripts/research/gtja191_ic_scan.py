@@ -209,11 +209,13 @@ def main() -> int:
         done_now += 1
     bound = sum((family / "results" / f"{tid}.json").exists() for tid in ids)
     print(f"bound {bound}/{len(ids)}, failed {len(failed)}, this call {done_now}, {time.time() - started:.0f}s", flush=True)
-    if bound + len(failed) == len(ids) and not (out / "report_compact").exists():
-        report = compact_report(family, out / "report_compact")
-        print(f"REPORT: planned {report['planned_tests']}, available {report['available_tests']}, Holm rejections {report['holm_rejections']}, BH {report['bh_fdr_rejections']}", flush=True)
-        if args.official_report and not (out / "report").exists():
+    if bound + len(failed) == len(ids):
+        if not (out / "report_compact").exists():
+            report = compact_report(family, out / "report_compact")
+            print(f"REPORT: planned {report['planned_tests']}, available {report['available_tests']}, Holm rejections {report['holm_rejections']}, BH {report['bh_fdr_rejections']}", flush=True)
+        if args.official_report and not (out / "report").exists():  # independent of the compact report, so it can be added on a bigger machine later
             report_registry(family, out / "report")
+            print(f"official report written to {out / 'report'}", flush=True)
     return 0
 
 

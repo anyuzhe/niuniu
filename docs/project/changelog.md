@@ -2935,3 +2935,6 @@
 - 修 bug：`trial_ledger.summarize` 判断能否做 PBO 的门槛是 `分段数×2`，实际要 `分段数×5`，期数在 32~79 之间会抛错；已修并加测试（`tests/test_trial_ledger.py` 10 个，`test_multiple_testing` 11 个、`test_execution_inference` 4 个回归通过）。
 - 没接：四因子复算（扫描在数据侧，仓库里只有单个冻结方案复算，记 1 条会误导 N）；旧 `lowfreq_dip` 脚本未回填。
 
+### 第一百二十七次：官方报告补跑与脚本修正
+- 修 `gtja191_ic_scan.py`：`--official-report` 现在独立于精简报告判断，已绑定完的族可以事后单独生成官方报告。确认窗官方报告已补跑，48 项检验与精简报告逐项 p 值一致。主扫描官方报告（族目录 6.5GB）沙箱内存放不下，命令见 `docs/reference/gtja191-ic-scan-2026-10-15.md`，需在你的 Mac 上执行。
+
