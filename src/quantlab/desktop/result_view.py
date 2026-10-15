@@ -83,6 +83,7 @@ class ResultDialog(QDialog):
         self.reproduce_button.setEnabled(self.can_reproduce)
         from .app import MainWindow
         self.tabs=MainWindow.record_widget(self,record);box.addWidget(self.tabs,1)
+        self.tabs.addTab(self._run_card_view(record),'可信度')
         box.addWidget(row(self.export_button,self.reproduce_button,self.status))
         if 'reproduction.json' in data['files']:
             view=BusinessDetails({});view.setPlainText('正在读取复算核对记录…');self.tabs.addTab(view,'复算核对')
@@ -108,6 +109,15 @@ class ResultDialog(QDialog):
             children=data['children']
             self.tabs.addTab(table(['子实验','ID'],[[v['label'],v['run_id']] for v in children],
                 lambda i:self.open_run(children[i]['run_id'])),'子实验')
+    @staticmethod
+    def _run_card_view(record):
+        """Read-only run card of the saved record; a failure here must never stop the result from opening."""
+        view=QTextBrowser();view.setOpenExternalLinks(False);view.setOpenLinks(False)
+        try:
+            from quantlab.experiments.run_card import build_run_card,render_markdown
+            view.setMarkdown(render_markdown(build_run_card(record)))
+        except Exception as error:view.setPlainText('运行卡生成失败：'+str(error))
+        return view
     def _text(self,name):
         path=self.catalog.file(self.binding.run_id,name)
         with path.open(encoding='utf-8') as stream:return stream.read(200001)

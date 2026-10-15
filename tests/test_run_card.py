@@ -31,7 +31,33 @@ def execution(fills=12, adjustment="qfq"):
                           "ending_positions": {"a": 1}}}
 
 
+def with_interval(low, high, status="computed"):
+    record = execution()
+    record["sampling_uncertainty"] = ({"status": status, "reason": "x"} if status != "computed" else
+                                      {"status": "computed", "n_days": 500, "block_days": 10, "observed": {"sharpe": 0.7}, "intervals": {"sharpe": [low, high]},
+                                       "p_sharpe_not_above_zero": 0.03, "iid_psr_vs_zero": 0.97})
+    return record
+
+
 class RunCardTests(unittest.TestCase):
+    def test_sampling_interval_is_copied_verified_and_flagged_when_it_spans_zero(self):
+        record = with_interval(-0.2, 1.4)
+        card = build_run_card(record)
+        names = {h["name"]: h["value"] for h in card["headline"]}
+        self.assertEqual((names["sampling_uncertainty.intervals.sharpe.0"], names["sampling_uncertainty.intervals.sharpe.1"]), (-0.2, 1.4))
+        self.assertIn("SHARPE_INTERVAL_INCLUDES_ZERO", [f["code"] for f in card["flags"]])
+        self.assertEqual(verify_run_card(card, record), [])
+        record["sampling_uncertainty"]["intervals"]["sharpe"][0] = 0.1
+        self.assertTrue(verify_run_card(card, record))
+        self.assertNotIn("SHARPE_INTERVAL_INCLUDES_ZERO", [f["code"] for f in build_run_card(with_interval(0.1, 1.4))["flags"]])
+
+    def test_old_or_unavailable_interval_does_not_invent_numbers(self):
+        old = [f["code"] for f in build_run_card(execution())["flags"]]
+        self.assertIn("NO_SAMPLING_INTERVAL", old)
+        short = build_run_card(with_interval(0, 0, status="unavailable"))
+        self.assertFalse([h for h in short["headline"] if h["name"].startswith("sampling_uncertainty")])
+        self.assertNotIn("SHARPE_INTERVAL_INCLUDES_ZERO", [f["code"] for f in short["flags"]])
+
     def test_headline_numbers_are_copied_with_their_paths_and_verify(self):
         record = research()
         card = build_run_card(record)

@@ -23,7 +23,12 @@ SMALL_UNIVERSE = 30
 def _lookup(record, path: str):
     node = record
     for part in path.split("."):
-        node = node.get(part) if isinstance(node, dict) else None
+        if isinstance(node, dict):
+            node = node.get(part)
+        elif isinstance(node, list) and part.isdigit() and int(part) < len(node):
+            node = node[int(part)]
+        else:
+            return None
         if node is None:
             return None
     return node
@@ -53,6 +58,11 @@ def _headline(record) -> list[dict]:
     elif kind == "execution":
         for name in EXECUTION_METRICS:
             take(f"execution.{name}")
+        if _lookup(record, "sampling_uncertainty.status") == "computed":
+            for path in ("sampling_uncertainty.n_days", "sampling_uncertainty.block_days", "sampling_uncertainty.observed.sharpe",
+                         "sampling_uncertainty.intervals.sharpe.0", "sampling_uncertainty.intervals.sharpe.1",
+                         "sampling_uncertainty.p_sharpe_not_above_zero", "sampling_uncertainty.iid_psr_vs_zero"):
+                take(path)
     for name in ("children", "periods", "folds", "evaluations", "comparisons"):
         if isinstance(record.get(name), list):
             rows.append({"name": f"{name}.count", "value": len(record[name]), "source": f"{name}(length)"})
@@ -92,6 +102,13 @@ def _flags(record, data) -> list[dict]:
     if kind == "execution" and record.get("status") == "completed":
         if _lookup(record, "execution.fills") == 0:
             flag("NO_FILLS", "high", "the simulation produced no fills; returns are not informative", "execution.fills")
+        interval = _lookup(record, "sampling_uncertainty.intervals.sharpe")
+        if _lookup(record, "sampling_uncertainty.status") == "computed" and isinstance(interval, list) and len(interval) == 2 \
+                and _scalar(interval[0]) and _scalar(interval[1]) and interval[0] <= 0 <= interval[1]:
+            flag("SHARPE_INTERVAL_INCLUDES_ZERO", "medium", "the bootstrap interval of the Sharpe ratio contains 0: this one return series cannot rule out no edge",
+                 "sampling_uncertainty.intervals.sharpe")
+        elif "sampling_uncertainty" not in record:
+            flag("NO_SAMPLING_INTERVAL", "info", "record predates the bootstrap interval; no sampling uncertainty was stored", "sampling_uncertainty")
         if data["adjustment"] == "raw":
             flag("RAW_PRICES", "info", "raw prices: dividends/splits are not handled", "manifest.data_snapshot.adjustment")
     return flags

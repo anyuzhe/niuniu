@@ -66,6 +66,16 @@ class ResultViewLifecycleTests(unittest.TestCase):
         target=self.root.with_name('different-workspace');shutil.copytree(self.root,target)
         (target/self.run.run_id/'report.md').write_text('OTHER_REPORT_B')
         return target
+    def test_result_view_shows_a_run_card_tab_with_flags_and_numbers(self):
+        dialog=self.opened();tabs=dialog.tabs
+        names=[tabs.tabText(i) for i in range(tabs.count())]
+        self.assertIn('可信度',names)
+        text=tabs.widget(names.index('可信度')).toPlainText()
+        self.assertIn('Run card',text);self.assertIn('标记',text);self.assertNotIn('运行卡生成失败',text)
+    def test_run_card_failure_does_not_block_the_result_view(self):
+        from quantlab.desktop.result_view import ResultDialog
+        view=ResultDialog._run_card_view({'manifest':'not a dict'})
+        self.assertTrue(view.toPlainText())  # either a card or the failure note, never an exception
     def test_initial_read_does_not_follow_replaced_host_catalog(self):
         self.host.open_run(self.run.run_id);self.host.switch(self.other());self.host.drain()
         self.assertEqual(self.host.dialogs,[])
