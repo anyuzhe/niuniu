@@ -2930,3 +2930,8 @@
 - 结果：Chan 42 个中 39 个通过、3 个多周期因子 SKIP（只支持分钟周期）；BAO 5、COMB 2、DSL 1、STRUCT 1 全部通过；GTJA191 的 166 个全部通过（每个至少比较 9002 个值）；0 个 FAIL。
 - 限制：`BAO.TURN_PCT` 用占位序列；篡改检查不改估值列；样本 12 只。详见 `docs/reference/factor-causality-audit-2026-10-14.md` 的补充一节。
 
+### 第一百二十六次：GTJA191 跟进脚本接试验账本，并修账本 PBO 门槛
+- `gtja191_followup.py`、`gtja191_filter.py` 新增可选 `--ledger`：登记 78 个试验（每个因子×窗口的多头超额、过滤器方案），带与不带该选项输出逐字节一致。账本在 `artifacts/_gtja191_ledger_2026-10-15/`，说明见 `docs/reference/gtja191-ic-scan-2026-10-15.md`。确认窗 24 因子里最好者经选择偏差校正 DSR=0.38，过滤器最好单因子 0.58，均未过 0.95。
+- 修 bug：`trial_ledger.summarize` 判断能否做 PBO 的门槛是 `分段数×2`，实际要 `分段数×5`，期数在 32~79 之间会抛错；已修并加测试（`tests/test_trial_ledger.py` 10 个，`test_multiple_testing` 11 个、`test_execution_inference` 4 个回归通过）。
+- 没接：四因子复算（扫描在数据侧，仓库里只有单个冻结方案复算，记 1 条会误导 N）；旧 `lowfreq_dip` 脚本未回填。
+

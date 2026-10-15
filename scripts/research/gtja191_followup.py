@@ -73,6 +73,7 @@ def main() -> int:
     ap.add_argument("--scan", required=True, type=Path)
     ap.add_argument("--universe", required=True, type=Path)
     ap.add_argument("--output", required=True, type=Path)
+    ap.add_argument("--ledger", type=Path, help="optional trial-ledger folder: record each (factor, window) top-fifth excess series as a trial (does not change any result)")
     args = ap.parse_args()
     symbols = json.loads(args.universe.read_text())["symbols"]
     report = json.loads((args.scan / "report_compact/report_compact.json").read_text())
@@ -149,7 +150,7 @@ def main() -> int:
     for f in chosen:
         for w, ii in idx.items():
             rebal = ii[::HOLD]
-            rets, bench, turn, prev, low = [], [], [], None, []
+            rets, bench, turn, prev, low, stamps = [], [], [], None, [], []
             for i in rebal:
                 if i + 1 + HOLD >= len(dates):
                     break
@@ -163,10 +164,15 @@ def main() -> int:
                 turn.append(float(np.abs(weight - prev).sum() / 2) if prev is not None else 1.0)
                 prev = weight
                 rets.append(float(fwd[i][names].mean()))
+                stamps.append(str(dates[i]))
                 low.append(float(fwd[i][np.where(ok)[0][np.argsort(score[ok])[:k]]].mean()))
                 bench.append(float(np.nanmean(fwd[i][np.isfinite(fwd[i])])))
             rets, bench, turn, low = map(np.array, (rets, bench, turn, low))
             excess = rets - bench
+            if args.ledger:
+                from quantlab.statistics import trial_ledger
+                trial_ledger.record_trial(args.ledger, f"gtja191-followup-{w}", {"factor": f, "sign": sign[f], "portfolio": "top fifth, equal weight, 5-session hold"}, excess, dates=stamps,
+                                          note="per-rebalance gross excess vs equal-weight universe (not daily); one of the 24 Holm survivors of the pre-registered scan")
             periods = 252 / HOLD
             row = {"n_rebalances": int(len(rets)), "gross_return_per_period": float(rets.mean()), "benchmark_per_period": float(bench.mean()),
                    "excess_per_period": float(excess.mean()), "excess_annualised": float(excess.mean() * periods),

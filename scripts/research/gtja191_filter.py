@@ -41,6 +41,7 @@ def main() -> int:
     ap.add_argument("--followup", required=True, type=Path)
     ap.add_argument("--universe", required=True, type=Path)
     ap.add_argument("--output", required=True, type=Path)
+    ap.add_argument("--ledger", type=Path, help="optional trial-ledger folder: record the composite filter and each single-factor filter as trials (does not change any result)")
     args = ap.parse_args()
     follow = json.loads(args.followup.read_text())
     clusters: dict[int, list[str]] = {}
@@ -92,7 +93,7 @@ def main() -> int:
             rows.append((names_all, kept, k_drop, i))
         return rows
 
-    def summarise(rows, label_costs=True):
+    def summarise(rows, family=None, config=None):
         n = len(symbols)
         prev_f = prev_b = None
         fr, br, tf, tb = [], [], [], []
@@ -107,6 +108,10 @@ def main() -> int:
             br.append(float(fwd[i][names_all].mean()))
         fr, br, tf, tb = map(np.array, (fr, br, tf, tb))
         gross = fr - br
+        if args.ledger and family:
+            from quantlab.statistics import trial_ledger
+            trial_ledger.record_trial(args.ledger, family, config, gross, dates=[str(dates[r[3]]) for r in rows[:len(gross)]],
+                                      note="per-rebalance gross excess of the filtered book over the equal-weight universe (not daily)")
         periods = 252 / hold
         out = {"n_rebalances": int(len(fr)), "benchmark_annualised": float(br.mean() * periods),
                "gross_excess_annualised": float(gross.mean() * periods),
@@ -130,9 +135,9 @@ def main() -> int:
 
     for window, (lo, hi) in base.WINDOWS.items():
         idx = [i for i, d in enumerate(dates) if lo <= str(d) <= hi]
-        res = {"A_composite": summarise(run(composite, idx)), "B_single": {}}
+        res = {"A_composite": summarise(run(composite, idx), f"gtja191-filter-{window}", {"variant": "A_composite"}), "B_single": {}}
         for f in reps.values():
-            res["B_single"][f] = summarise(run(scores[f], idx))
+            res["B_single"][f] = summarise(run(scores[f], idx), f"gtja191-filter-{window}", {"variant": "B_single", "factor": f})
         result["windows"][window] = res
 
     c, m = result["windows"]["confirm"]["A_composite"], result["windows"]["main"]["A_composite"]

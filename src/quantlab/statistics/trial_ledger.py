@@ -209,7 +209,7 @@ def summarize(root, family: str, *, assumed_trials=None, pbo_splits: int = 16) -
         result["alignment"] = "series have different dates or lengths; PBO and effective N skipped"
     result["dsr"] = {name: deflated_sharpe_ratio(returns, n, sharpe_std=std if std and std > 0 else None)
                      for name, n in candidates.items() if n >= 2}
-    if aligned is not None and aligned.shape[1] >= 2 and aligned.shape[0] >= pbo_splits * 2:
+    if aligned is not None and aligned.shape[1] >= 2 and aligned.shape[0] >= pbo_splits * 5:  # PBO needs >= 5 periods per block
         result["pbo"] = probability_of_backtest_overfitting(aligned, n_splits=pbo_splits)
     elif aligned is not None:
         result["pbo_skipped"] = "too few aligned observations for the requested splits"

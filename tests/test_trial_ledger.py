@@ -106,6 +106,15 @@ class TrialLedgerTest(unittest.TestCase):
         self.assertEqual(summary["dsr"]["assumed"]["n_trials"], 500)
         self.assertGreater(summary["dsr"]["assumed"]["luck_hurdle"], summary["dsr"]["recorded"]["luck_hurdle"])
 
+    def test_short_aligned_series_skip_pbo_instead_of_crashing(self):
+        dates = DATES[:40]  # fewer than 5 periods per block for 16 splits
+        for i in range(3):
+            tl.record_trial(self.root, "short", {"i": i}, noise(i, n=40), dates=dates)
+        summary = tl.summarize(self.root, "short")
+        self.assertNotIn("pbo", summary)
+        self.assertIn("pbo_skipped", summary)
+        self.assertIn("dsr", summary)
+
     def test_bad_input_is_rejected(self):
         with self.assertRaises(ValueError):
             tl.record_trial(self.root, "bad family!", {})
