@@ -2944,3 +2944,7 @@
 - 测试：`tests/test_run_card.py` 8 个（新增 2）；`tests/test_result_view_lifecycle.py` 23 个（新增 2：标签存在且有内容；运行卡失败不阻塞窗口），`tests/test_result_navigation_desktop.py` 19 个——在沙箱用 PyQt6 6.7.1（pip 装在临时 Python 3.13 虚拟环境）+ offscreen 全部通过。**没有在你的真实界面里目视检查**，排版（Markdown 渲染的字体、长路径换行）请你打开一条结果看一下。
 - 没做：试验账本没有进界面（账本是文件夹 + 命令行，界面里没有对应的入口；需要先定它该出现在哪个页面）。
 
+## 第一百二十九次（2026-10-15）：Mac 收尾核对
+- `test_research_reproduction` 在 Mac 上 5/5 通过。
+- 主扫描官方 `report_registry` 在 16GB Mac 上写 `bindings.json` 时内存耗尽；改为流式复算，366 项逐项 Holm p 与精简报告 0 处差异（Holm 24 / BH 116 / 原始 148）。残缺的 `report/` 已改名为 `report_partial_oom/`。
+- 待办（没做）：让 `report_registry` 流式写出 `bindings.json`，否则大族无法生成完整官方报告。
