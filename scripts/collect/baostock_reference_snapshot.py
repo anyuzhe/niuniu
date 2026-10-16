@@ -135,7 +135,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dest", required=True)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--approve-sha256")
-    parser.add_argument("--request-timeout", type=float, default=90.0)
+    # 全量交易日历（约 1.3 万行、分两页）正常也要 80 多秒，网络慢时更久；90 秒会在边缘上反复超时，所以放宽到 300
+    parser.add_argument("--request-timeout", type=float, default=300.0)
     args = parser.parse_args(argv)
 
     destination = Path(args.dest)
