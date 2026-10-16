@@ -1,5 +1,3 @@
-/* 牛牛策略（手机只读版）：下载加密快照 data.json → 用口令在本机解密 → 显示。没有任何写入，也不向任何地方发送数据。
-   加密格式见 src/quantlab/dipbuy/mobile_export.py：AES-256-GCM，密钥 = PBKDF2-SHA256(口令, 盐, 迭代次数)，附加认证数据 = 格式串。 */
 (function () {
   'use strict';
 
@@ -9,8 +7,17 @@
   var LS_PREF = 'niuniu_mobile_pref';
   var app = document.getElementById('app');
 
-  var state = { phase: 'loading', snap: null, env: null, error: '', tab: 'overview', loadedAt: 0,
-                pick: { signal: 'fusion', forward: 'fusion', holdings: 'D' } };
+  var state = {
+    phase: 'loading', snap: null, env: null, error: '', tab: 'overview', loadedAt: 0,
+    loading: false,                    // 下载/解密进行中
+    offline: false,                    // 是否来自 Service Worker 离线缓存
+    passVisible: false,                // 口令明文显示开关
+    search: { signal: '', forward: '', holdings: '' }, // 各页搜索关键词
+    forwardFilter: 'all',              // 前向记录状态筛选：all/waiting/open/closed
+    chartTip: null                     // 图表提示 {x, y, text}
+  };
+
+  var pick = { signal: 'fusion', forward: 'fusion', holdings: 'D' };
 
   // ------------------------------------------------------------------ 小工具
   function esc(v) {
@@ -36,7 +43,61 @@
   var WEEK = ['日', '一', '二', '三', '四', '五', '六'];
   function wd(d) { var t = new Date(String(d) + 'T00:00:00+08:00'); return isNaN(t) ? '' : '周' + WEEK[new Date(t.getTime() + 8 * 3600000).getUTCDay()]; }
   function dt(iso) { return iso ? String(iso).slice(5, 16).replace('T', ' ') : '—'; }
-  function b64(s) { var bin = atob(s), out = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
+
+  // base64 解码：比 atob 更健壮，兼容非 ASCII 字节
+  function b64(s) {
+    var bin = atob(s.replace(/-/g, '+').replace(/_/g, '/').replace(/,/g, ''));
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  // 简单 toast 提示
+  var toastTimer;
+  function toast(msg, ms) {
+    clearTimeout(toastTimer);
+    var el = document.getElementById('nn-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'nn-toast';
+      el.style.cssText = 'position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;z-index:50;pointer-events:none;white-space:nowrap;';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = 1;
+    toastTimer = setTimeout(function () { el.style.opacity = 0; }, ms == null ? 2000 : ms);
+  }
+
+  // ------------------------------------------------------------------ 加载中遮罩
+  function setLoading(on) {
+    state.loading = !!on;
+    var el = document.getElementById('nn-loading');
+    if (on) {
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'nn-loading';
+        el.style.cssText = 'position:fixed;inset:0;background:rgba(14,20,27,.6);z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:14px;';
+        el.innerHTML = '<div style="width:34px;height:34px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:nnSpin .8s linear infinite;margin-bottom:10px;"></div><div>正在下载并解密…</div>';
+        var style = document.createElement('style');
+        style.textContent = '@keyframes nnSpin{to{transform:rotate(360deg)}}';
+        document.head.appendChild(style);
+      }
+      document.body.appendChild(el);
+    } else if (el) {
+      el.remove();
+    }
+  }
+
+  // ------------------------------------------------------------------ 可取消的 fetch（15s 超时）
+  function abortableFetch(url, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var ctrl = new AbortController();
+      var timer = setTimeout(function () { ctrl.abort(); reject(new Error('timeout')); }, timeoutMs == null ? 15000 : timeoutMs);
+      fetch(url, { signal: ctrl.signal, cache: 'no-store' })
+        .then(function (r) { clearTimeout(timer); resolve(r); })
+        .catch(function (e) { clearTimeout(timer); if (e.name === 'AbortError') reject(new Error('timeout')); else reject(e); });
+    });
+  }
 
   // ------------------------------------------------------------------ 解密
   function decrypt(env, pass) {
@@ -58,23 +119,43 @@
       });
   }
 
+  function classifyError(e) {
+    var msg = String(e && e.message || e || '');
+    if (msg === 'timeout') return { kind: 'timeout', text: '下载超时，请检查网络后重试' };
+    if (/failed to fetch|net::|NetworkError|Failed to execute 'fetch'/.test(msg)) return { kind: 'network', text: '网络不可用，请检查网络后重试' };
+    if (/OperationError|口令不对/.test(msg)) return { kind: 'pass', text: '口令不对' };
+    if (/数据格式不认识|快照版本不认识/.test(msg)) return { kind: 'format', text: msg };
+    return { kind: 'other', text: msg || String(e) };
+  }
+
   function load(passFromUser) {
-    state.phase = 'loading'; render();
-    return fetch('data.json?ts=' + Date.now(), { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error('下载失败（' + r.status + '）'); return r.json(); })
+    if (state.loading) return Promise.resolve();
+    setLoading(true);
+    state.phase = 'loading';
+    render();
+    return abortableFetch('data.json?ts=' + Date.now(), 15000)
+      .then(function (r) {
+        if (!r.ok) throw new Error('下载失败（' + r.status + '）');
+        if (r.headers.get('x-sw-cache') === 'true') state.offline = true;
+        return r.json();
+      })
       .then(function (env) {
         state.env = env;
         var pass = passFromUser || ls(true, LS_PASS);
-        if (!pass) { state.phase = 'locked'; state.error = ''; render(); return null; }
+        if (!pass) { state.phase = 'locked'; state.error = ''; setLoading(false); render(); return null; }
         return decrypt(env, pass).then(function (snap) {
           if (passFromUser) ls(false, LS_PASS, passFromUser);
-          state.snap = snap; state.phase = 'ready'; state.loadedAt = Date.now(); render();
+          state.snap = snap; state.phase = 'ready'; state.loadedAt = Date.now(); setLoading(false); render();
         }, function (e) {
-          if (e && e.name === 'OperationError') { ls(false, LS_PASS, null); state.error = '口令不对'; } else { state.error = e.message || String(e); }
-          state.phase = 'locked'; render();
+          var c = classifyError(e);
+          if (c.kind === 'pass') { ls(false, LS_PASS, null); state.error = c.text; } else { state.error = c.text; }
+          state.phase = 'locked'; setLoading(false); render();
         });
       })
-      .catch(function (e) { state.phase = 'error'; state.error = (e && e.message) || String(e); render(); });
+      .catch(function (e) {
+        var c = classifyError(e);
+        state.phase = 'error'; state.error = c.text; setLoading(false); render();
+      });
   }
 
   // ------------------------------------------------------------------ 状态提示
@@ -93,14 +174,15 @@
     return out;
   }
 
-  // ------------------------------------------------------------------ 图
+  // ------------------------------------------------------------------ 图（支持点击查看数值）
   function chart(vals, labels, opt) {
     opt = opt || {};
     var pts = [];
     for (var i = 0; i < vals.length; i++) if (isNum(vals[i])) pts.push([i, vals[i]]);
     if (pts.length < 2) return '<p class="empty">曲线要至少两个点。</p>';
     var W = 320, H = opt.h || 120, L = 4, R = 38, T = 8, B = 16;
-    var min = Math.min.apply(null, pts.map(function (p) { return p[1]; })), max = Math.max.apply(null, pts.map(function (p) { return p[1]; }));
+    var min = pts[0][1], max = pts[0][1];
+    for (var k = 1; k < pts.length; k++) { var v = pts[k][1]; if (v < min) min = v; if (v > max) max = v; }
     if (opt.base != null) { min = Math.min(min, opt.base); max = Math.max(max, opt.base); }
     var span = max - min || 1; min -= span * 0.06; max += span * 0.06; span = max - min;
     var n = vals.length - 1 || 1;
@@ -112,10 +194,15 @@
       d += (gap ? 'M' : 'L') + X(j).toFixed(1) + ' ' + Y(vals[j]).toFixed(1); gap = false;
     }
     var fmt = opt.fmt || function (v) { return v.toFixed(2); };
-    var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(opt.label || '曲线') + '">';
+    var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(opt.label || '曲线') + '" style="cursor:crosshair">';
     if (opt.base != null) svg += '<line class="base" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(opt.base).toFixed(1) + '" y2="' + Y(opt.base).toFixed(1) + '"/>';
     svg += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '"/>';
     svg += '<path class="ln" d="' + d + '"/>';
+    // 交互点：点击后在页面上方显示数值
+    for (var m = 0; m < pts.length; m++) {
+      var p = pts[m];
+      svg += '<circle class="pt" data-i="' + p[0] + '" data-v="' + p[1] + '" cx="' + X(p[0]).toFixed(1) + '" cy="' + Y(p[1]).toFixed(1) + '" r="3" fill="' + (opt.color || '#f6b72f') + '" opacity="0"/>';
+    }
     svg += '<text x="' + (W - R + 4) + '" y="' + (T + 8) + '">' + esc(fmt(max - span * 0.06 / 1.12)) + '</text>';
     svg += '<text x="' + (W - R + 4) + '" y="' + (H - B) + '">' + esc(fmt(min + span * 0.06 / 1.12)) + '</text>';
     if (labels && labels.length) {
@@ -124,6 +211,12 @@
     }
     return svg + '</svg>';
   }
+
+  function chartTipShow(x, y, text) {
+    state.chartTip = { x: x, y: y, text: text };
+    render();
+  }
+  function chartTipHide() { state.chartTip = null; render(); }
 
   function maxDrawdown(eq) {
     var peak = -Infinity, dd = 0;
@@ -143,10 +236,18 @@
     return l.replace('策略 ', '').replace('（大盘恐慌）', ' 大盘').replace('（行业恐慌）', ' 行业');
   }
 
+  // 搜索过滤数组
+  function filterRows(rows, keyword, keys) {
+    if (!keyword) return rows;
+    var kw = String(keyword).toLowerCase();
+    return rows.filter(function (r) {
+      return keys.some(function (k) { return String(r[k] || '').toLowerCase().indexOf(kw) >= 0; });
+    });
+  }
+
   // ------------------------------------------------------------------ 市场概览（首页）
   var BANDS = [['panic', '恐慌'], ['tense', '紧张'], ['weak', '偏弱'], ['calm', '平稳'], ['strong', '偏强'], ['hot', '过热']];
 
-  // 情绪条：z 从 -3 到 +3，六档；绿 = 下跌恐慌，红 = 上涨过热（A 股习惯）。只用 SVG 属性，不用内联样式（页面的安全策略不允许）。
   function gauge(level) {
     var W = 320, L = 6, R = 6, Y = 14, H = 14, lo = -3, hi = 3;
     var edges = [lo].concat(level.edges || [-1.5, -1, -0.4, 0.6, 1.5], [hi]);
@@ -166,9 +267,11 @@
 
   function proxBar(z, thr) {
     var W = 300, prox = isNum(z) && isNum(thr) && thr < 0 ? Math.max(0, Math.min(1, z / thr)) : 0;
+    var gap = isNum(z) && isNum(thr) ? (z - thr).toFixed(2) : '—';
     return '<svg class="prox" viewBox="0 0 ' + W + ' 12" role="img" aria-label="离触发线 ' + Math.round(prox * 100) + '%">' +
       '<rect class="track" x="0" y="3" width="' + W + '" height="6" rx="3"/><rect class="fill' + (prox >= 1 ? ' full' : '') + '" x="0" y="3" width="' + (W * prox).toFixed(1) + '" height="6" rx="3"/>' +
-      '<line class="tick" x1="' + (W - 1) + '" x2="' + (W - 1) + '" y1="0" y2="12"/></svg>';
+      '<line class="tick" x1="' + (W - 1) + '" x2="' + (W - 1) + '" y1="0" y2="12"/></svg>' +
+      '<div class="prox-tip">离触发线还差 <span class="num">' + esc(gap) + '</span></div>';
   }
 
   function trendWord(ch) {
@@ -186,6 +289,9 @@
     }
     var lv = o.level || {}, mk = o.market || {}, br = mk.breadth || {}, hist = o.history || {}, sg = o.signal || {};
     var html = '';
+    if (state.offline) {
+      html += '<div class="banner warn">当前显示的是上次缓存的快照（网络不可用，已使用离线缓存），数据可能不是最新，恢复网络后请点刷新重新下载。</div>';
+    }
 
     // 1. 现在情绪
     html += '<section class="card"><h2>现在市场情绪<small>' + md(o.as_of) + ' 收盘</small></h2>' +
@@ -219,7 +325,7 @@
     }
 
     // 2. 有没有信号
-    var open =(sg.books || []).filter(function (b) { return b.gate_open; });
+    var open = (sg.books || []).filter(function (b) { return b.gate_open; });
     html += '<section class="card"><h2>有没有信号</h2>';
     if (open.length) {
       html += '<p><span class="tag open">有信号</span> ' + open.map(function (b) { return esc(b.label); }).join('、') + '</p>' +
@@ -297,7 +403,7 @@
       html += '<div class="scroll"><table class="tbl"><thead><tr><th>层</th><th>最弱的一组</th><th class="n">z</th><th class="n">候选</th><th>状态</th></tr></thead><tbody>';
       ['A', 'C', 'B'].forEach(function (k) {
         var sl = sig.sleeves[k]; if (!sl) return;
-        html += '<tr><td>' + k + ' ' + esc(sl.name) + '</td><td>' + esc(sl.detail || '—') + (sl.blacklisted ? ' <span class="tag">黑名单</span>' : '') + '</td><td class="n num">' + num(sl.z, 2) +
+        html += '<tr><td>' + k + ' ' + esc(sl.name) + '</td><td>' + esc(sl.detail || '—') + (sl.blacklisted ? ' <span class="tag blacklist" title="该行业在 D4 黑名单里，不进入买入池">黑名单</span>' : '') + '</td><td class="n num">' + num(sl.z, 2) +
           '</td><td class="n num">' + (sl.n_pool || 0) + '</td><td>' + (sl.gate ? '<span class="tag open">触发</span>' : '<span class="tag off">未触发</span>') + '</td></tr>';
       });
       html += '</tbody></table></div>';
@@ -312,15 +418,25 @@
     }
     html += '</section>';
 
+    // 候选股：带搜索框
     var picks = sig.picks || [];
-    var plan = picks.filter(function (p) { return p.in_plan !== false; });
-    html += '<section class="card"><h2>候选股<small>' + (picks.length ? '计划买 ' + plan.length + ' 只，其余备选' : '') + '</small></h2>';
-    if (!picks.length) {
-      html += '<p class="empty">' + (sig.gate_open ? '闸门开了，但今天没有可买的股票。' : '闸门没开，没有候选。') + '</p>';
+    var allPicks = picks;
+    var kw = state.search.signal || '';
+    var disp = kw ? filterRows(allPicks, kw, ['code', 'name', 'group', 'sleeve']) : allPicks;
+    var plan = disp.filter(function (p) { return p.in_plan !== false; });
+
+    var searchBar = '';
+    if (allPicks.length) {
+      searchBar = '<div style="margin:8px 0 4px;"><input type="search" id="sig-search" placeholder="搜索代码/名称/行业/层…" value="' + esc(kw) + '" style="width:100%;font:inherit;font-size:14px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);"></div>';
+    }
+
+    html += '<section class="card"><h2>候选股<small>' + (picks.length ? '计划买 ' + plan.length + ' 只，其余备选' : '') + '</small></h2>' + searchBar;
+    if (!disp.length) {
+      html += '<p class="empty">' + (kw ? '没有匹配的候选股。' : (sig.gate_open ? '闸门开了，但今天没有可买的股票。' : '闸门没开，没有候选。')) + '</p>';
     } else {
       html += '<div class="scroll"><table class="tbl"><thead><tr><th>#</th><th>股票</th>' + (isFusion ? '<th>层</th>' : '') + '<th class="n">收盘</th><th class="n">20 日</th>' +
         (isFusion && picks.some(function (p) { return p.plan_shares != null; }) ? '<th class="n">股数</th>' : '') + '</tr></thead><tbody>';
-      picks.forEach(function (p) {
+      disp.forEach(function (p) {
         html += '<tr' + (p.in_plan === false ? ' class="muted"' : '') + '><td class="num">' + esc(p.rank) + '</td><td>' + esc(short(p.code)) + '<span class="nm">' + esc(p.name || '') + (p.group ? ' · ' + esc(p.group) : '') + '</span></td>' +
           (isFusion ? '<td>' + esc(p.sleeve) + '</td>' : '') + '<td class="n num">' + num(p.close, 2) + '</td><td class="n">' + pctc(p.ret20, 1) + '</td>' +
           (isFusion && picks.some(function (q) { return q.plan_shares != null; }) ? '<td class="n num">' + (p.plan_shares != null ? money(p.plan_shares) : '—') + '</td>' : '') + '</tr>';
@@ -334,7 +450,7 @@
     if (rec.length > 1) {
       var key = rec[0].a != null ? 'a' : 'z';
       html += '<section class="card"><h2>最近 ' + rec.length + ' 个交易日的大盘 z<small>低于 ' + num(sig.z_threshold, 1) + ' 才触发</small></h2>' +
-        chart(rec.map(function (r) { return r[key]; }), rec.map(function (r) { return md(r.date); }), { base: sig.z_threshold, label: '大盘 z', h: 100 }) + '</section>';
+        chart(rec.map(function (r) { return r[key]; }), rec.map(function (r) { return md(r.date); }), { base: sig.z_threshold, label: '大盘 z', h: 100, color: '#f6b72f' }) + '</section>';
     }
     var inds = (sig.industries || []).filter(function (r) { return isNum(r.z); }).slice(0, 5);
     if (inds.length) {
@@ -352,7 +468,7 @@
     var kind = state.pick.forward;
     if (s.kinds.indexOf(kind) < 0) kind = state.pick.forward = s.kinds[0];
     var f = s.forward[kind] || {};
-    var html = '<div class="banner ok">前向跟踪 = 参数冻结后，每天把当天的信号记下来，之后用真实行情结算。只有这个数字才能说明策略在样本外是否有效；样本内回测不算。</div>';
+    var html = '<div class="banner ok">前向跟踪 = 参数冻结后，每天把当天的信号记下来，之后用真实后续行情结算。只有这个数字才能说明策略在样本外是否有效；样本内回测不算。</div>';
     html += chips('forward', s.kinds, function (k) { return shortLabel(s, k); }, kind);
     if (f.error) return html + '<section class="card"><h2>' + esc(s.labels[kind]) + '</h2><p class="empty">这一本没算出来：' + esc(f.error) + '</p></section>';
     var sm = f.summary || {};
@@ -369,12 +485,19 @@
     if (sm.note) html += '<p class="small muted">' + esc(sm.note) + '</p>';
     html += '</section>';
 
+    // 状态筛选
+    var filterHtml = '<div style="margin:8px 0 6px;display:flex;gap:6px;flex-wrap:wrap;">' +
+      ['all', 'waiting', 'open', 'closed'].map(function (k) {
+        var labelMap = { all: '全部', waiting: '等待买入', open: '持有中', closed: '已结算' };
+        return '<button class="chip" data-ff="' + k + '" aria-pressed="' + (state.forwardFilter === k) + '">' + labelMap[k] + '</button>';
+      }).join('') + '</div>';
+
     if (f.portfolio && f.portfolio.curve) {
       var c = f.portfolio.curve, eq = c.equity, last = eq.filter(isNum).slice(-1)[0];
       html += '<section class="card"><h2>前向净值<small>本金 = 1，含成本</small></h2><div class="tiles">' +
         '<div class="tile"><span>累计</span><b>' + pctc(isNum(last) ? last - 1 : null, 1) + '</b></div>' +
         '<div class="tile"><span>最大回撤</span><b>' + pctc(maxDrawdown(eq), 1) + '</b></div></div>' +
-        chart(eq, c.dates.map(md), { base: 1, label: '前向净值' }) +
+        chart(eq, c.dates.map(md), { base: 1, label: '前向净值', color: '#f6b72f' }) +
         ((f.portfolio.mismatched || []).length ? '<p class="small muted">有 ' + f.portfolio.mismatched.length + ' 天的记录和现在重算的候选不完全一致（数据修订等），以记录为准。</p>' : '') + '</section>';
       var op = f.portfolio.open_positions || [];
       if (op.length) {
@@ -383,8 +506,11 @@
           '</tbody></table></div></section>';
       }
     }
-    var recs = f.records || [];
-    html += '<section class="card"><h2>信号记录<small>最近 ' + recs.length + ' 条</small></h2>';
+    var recs = (f.records || []).filter(function (r) {
+      if (state.forwardFilter === 'all') return true;
+      return r.status === state.forwardFilter;
+    });
+    html += '<section class="card"><h2>信号记录<small>最近 ' + recs.length + ' 条（筛选：' + { all: '全部', waiting: '等待买入', open: '持有中', closed: '已结算' }[state.forwardFilter] + '）</small></h2>' + filterHtml;
     recs.forEach(function (r) {
       var ret = r.status === 'closed' ? r.mean_ret : r.mean_mtm;
       html += '<details><summary><b class="num">' + md(r.signal_date) + '</b> <span class="tag">' + esc(STATUS[r.status] || r.status) + '</span> ' +
@@ -409,10 +535,20 @@
     html += chips('holdings', variants, function (k) { return k; }, v);
     if (p.error) return html + '<section class="card"><p class="empty">' + esc(p.error) + '</p></section>';
 
-    html += '<section class="card"><h2>' + esc(p.plan_day ? md(p.plan_day) + '（' + wd(p.plan_day) + '）' : '明天') + '要做什么<small>策略 ' + esc(v) + '</small></h2>';
-    html += '<div class="kv"><span>账户总资产</span><span class="num">' + num(h.equity_wan, 1) + ' 万</span><span>持仓</span><span class="num">' + (h.n_holdings || 0) + ' 只</span></div>';
+    // 持仓总汇总
+    var rows = h.holdings || [];
+    var totalValue = 0, totalPnlAmt = 0;
+    rows.forEach(function (r) { totalValue += isNum(r.value) ? r.value : 0; totalPnlAmt += isNum(r.value) && isNum(r.pnl) ? r.value * r.pnl / 100 : 0; });
+
+    html += '<section class="card"><h2>' + esc(p.plan_day ? md(p.plan_day) + '（' + wd(p.plan_day) + '）' : '明天') + '要做什么<small>策略 ' + esc(v) + '</small></h2>' +
+      '<div class="kv"><span>账户总资产</span><span class="num">' + num(h.equity_wan, 1) + ' 万</span><span>持仓</span><span class="num">' + (h.n_holdings || 0) + ' 只</span>' +
+      '<span>持仓市值</span><span class="num">' + money(totalValue) + ' 元</span><span>总浮盈</span><span class="num ' + (totalPnlAmt >= 0 ? 'up' : 'down') + '">' + (totalPnlAmt >= 0 ? '+' : '') + money(totalPnlAmt) + ' 元</span></div>';
     (p.notes || []).forEach(function (t) { html += '<p class="small muted">· ' + esc(t) + '</p>'; });
     html += '</section>';
+
+    // 搜索框
+    var hk = state.search.holdings || '';
+    var dispHoldings = hk ? filterRows(rows, ['code', 'name', 'sleeve'], ['code', 'name', 'sleeve']) : rows;
 
     html += '<section class="card"><h2>卖出<small>' + (p.sells || []).length + ' 只</small></h2>';
     if (!(p.sells || []).length) html += '<p class="empty">没有要卖的。</p>';
@@ -430,14 +566,21 @@
     if ((p.spares || []).length) html += '<details><summary>备选 ' + p.spares.length + ' 只（买不进时顺延）</summary><p class="small">' + p.spares.map(function (r) { return esc(r.sleeve + short(r.code) + ' ' + (r.name || '')); }).join('、') + '</p></details>';
     html += '</section>';
 
-    var rows = h.holdings || [];
-    html += '<section class="card"><h2>全部持仓<small>' + rows.length + ' 只</small></h2>';
-    if (!rows.length) html += '<p class="empty">还没有录入持仓。在电脑的“我的持仓”里录入，推送后这里会显示。</p>';
-    else html += '<div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th class="n">股数</th><th class="n">市值</th><th class="n">盈亏</th><th>状态</th></tr></thead><tbody>' + rows.map(function (r) {
-      var st = HSTAT[r.status] || [r.status, ''];
-      return '<tr><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + (r.sleeve ? ' · ' + esc(r.sleeve) + '层' : '') + '</span></td><td class="n num">' + money(r.shares) + '</td><td class="n num">' + money(r.value) + '</td><td class="n">' + pctc(r.pnl, 1) + '</td><td><span class="tag ' + st[1] + '">' + st[0] + '</span>' +
-        (r.days_held != null ? '<span class="nm">第 ' + r.days_held + ' 天</span>' : '') + '</td></tr>';
-    }).join('') + '</tbody></table></div>';
+    html += '<section class="card"><h2>全部持仓<small>' + dispHoldings.length + ' 只（共 ' + rows.length + ' 只）</small></h2>';
+    var searchBar = '';
+    if (rows.length) {
+      searchBar = '<div style="margin:8px 0 4px;"><input type="search" id="hold-search" placeholder="搜索代码/名称/层…" value="' + esc(hk) + '" style="width:100%;font:inherit;font-size:14px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);"></div>';
+    }
+    html += searchBar;
+    if (!dispHoldings.length) {
+      html += '<p class="empty">' + (hk ? '没有匹配的持仓。' : '还没有录入持仓。在电脑的“我的持仓”里录入，推送后这里会显示。') + '</p>';
+    } else {
+      html += '<div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th class="n">股数</th><th class="n">市值</th><th class="n">盈亏</th><th>状态</th></tr></thead><tbody>' + dispHoldings.map(function (r) {
+        var st = HSTAT[r.status] || [r.status, ''];
+        return '<tr><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + (r.sleeve ? ' · ' + esc(r.sleeve) + '层' : '') + '</span></td><td class="n num">' + money(r.shares) + '</td><td class="n num">' + money(r.value) + '</td><td class="n">' + pctc(r.pnl, 1) + '</td><td><span class="tag ' + st[1] + '">' + st[0] + '</span>' +
+          (r.days_held != null ? '<span class="nm">第 ' + r.days_held + ' 天</span>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    }
     return html + '</section>';
   }
 
@@ -485,23 +628,32 @@
     }
     if (state.phase === 'locked') {
       var d = state.env && state.env.data_date ? '<p class="small muted">数据截至 ' + esc(state.env.data_date) + '（密文）</p>' : '';
+      var passInput = '<input id="pass" type="' + (state.passVisible ? 'text' : 'password') + '" placeholder="口令" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="口令" style="width:100%;font:inherit;font-size:17px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);">';
+      var toggle = '<button type="button" id="pass-toggle" style="font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;margin-top:8px;">' + (state.passVisible ? '隐藏' : '显示') + '口令</button>';
       app.innerHTML = '<div class="gate"><h1>牛牛策略</h1><p class="muted">输入口令查看。口令在电脑上：<code>artifacts/_home/mobile_passphrase</code></p>' + d +
-        '<form id="unlock" autocomplete="off"><input id="pass" type="password" placeholder="口令" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="口令">' +
-        '<div class="err" id="err" role="alert">' + esc(state.error) + '</div><button class="btn primary" type="submit">解锁</button></form></div>';
+        '<form id="unlock" autocomplete="off">' + passInput +
+        '<div class="err" id="err" role="alert">' + esc(state.error) + '</div>' +
+        toggle +
+        '<button class="btn primary" type="submit">解锁</button></form></div>';
       return bind();
     }
     var s = state.snap;
     var body = state.tab === 'overview' ? viewOverview(s) : state.tab === 'signal' ? viewSignal(s) : state.tab === 'forward' ? viewForward(s) : state.tab === 'holdings' ? viewHoldings(s) : viewGuide(s);
     var fr = freshness(s).map(function (b) { return '<div class="banner ' + b.k + '">' + b.t + '</div>'; }).join('');
+    // 图表 tip 覆盖层
+    var tipHtml = '';
+    if (state.chartTip) {
+      tipHtml = '<div id="nn-tip" style="position:fixed;left:' + state.chartTip.x + 'px;top:' + state.chartTip.y + 'px;background:rgba(0,0,0,.8);color:#fff;padding:6px 10px;border-radius:8px;font-size:13px;z-index:100;pointer-events:none;white-space:nowrap;max-width:80%;">'+esc(state.chartTip.text)+'</div>';
+    }
     app.innerHTML = '<header class="top"><div><h1>牛牛策略</h1><div class="sub">快照 ' + esc(dt(s.generated_at)) + ' · 纸面记录</div></div><button class="btn" id="refresh">刷新</button></header>' +
-      '<main>' + (state.tab === 'guide' ? '' : fr) + body + '</main>' +
+      '<main>' + (state.tab === 'guide' ? '' : fr) + body + tipHtml + '</main>' +
       '<nav class="tabs" aria-label="页面">' + TABS.map(function (t) {
         return '<button data-tab="' + t[0] + '"' + (t[0] === state.tab ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
       }).join('') + '</nav>';
     bind();
   }
 
-  function savePref() { ls(false, LS_PREF, JSON.stringify({ tab: state.tab, pick: state.pick })); }
+  function savePref() { ls(false, LS_PREF, JSON.stringify({ tab: state.tab, pick: state.pick, search: state.search, forwardFilter: state.forwardFilter })); }
 
   function bind() {
     var q = function (sel) { return app.querySelector(sel); };
@@ -513,27 +665,98 @@
         q('#err').textContent = '解密中…';
         load(pass);
       });
+      var tp = q('#pass-toggle'); if (tp) tp.addEventListener('click', function () { state.passVisible = !state.passVisible; render(); });
       var inp = q('#pass'); if (inp) inp.focus();
     }
     var retry = q('#retry'); if (retry) retry.addEventListener('click', function () { load(); });
-    var rf = q('#refresh'); if (rf) rf.addEventListener('click', function () { var y = window.scrollY; load().then(function () { window.scrollTo(0, y); }); });
+    var rf = q('#refresh'); if (rf) {
+      rf.addEventListener('click', function () { var y = window.scrollY; load().then(function () { window.scrollTo(0, y); }); });
+    }
     var fg = q('#forget'); if (fg) fg.addEventListener('click', function () { ls(false, LS_PASS, null); state.snap = null; state.phase = 'locked'; state.error = ''; render(); });
-    Array.prototype.forEach.call(app.querySelectorAll('[data-tab]'), function (b) {
-      b.addEventListener('click', function () { state.tab = b.getAttribute('data-tab'); savePref(); render(); window.scrollTo(0, 0); });
-    });
+
+    // 各页策略切换
     Array.prototype.forEach.call(app.querySelectorAll('[data-pick]'), function (b) {
       b.addEventListener('click', function () { state.pick[b.getAttribute('data-group')] = b.getAttribute('data-pick'); savePref(); var y = window.scrollY; render(); window.scrollTo(0, y); });
     });
+
+    // 前向状态筛选
+    Array.prototype.forEach.call(app.querySelectorAll('[data-ff]'), function (b) {
+      b.addEventListener('click', function () { state.forwardFilter = b.getAttribute('data-ff'); savePref(); render(); });
+    });
+
+    // 页签切换
+    Array.prototype.forEach.call(app.querySelectorAll('[data-tab]'), function (b) {
+      b.addEventListener('click', function () { state.tab = b.getAttribute('data-tab'); savePref(); render(); window.scrollTo(0, 0); });
+    });
+
+    // 搜索输入
+    var sigSearch = q('#sig-search'); if (sigSearch) {
+      sigSearch.addEventListener('input', function () { state.search.signal = this.value; savePref(); render(); });
+    }
+    var holdSearch = q('#hold-search'); if (holdSearch) {
+      holdSearch.addEventListener('input', function () { state.search.holdings = this.value; savePref(); render(); });
+    }
+
+    // 图表点击提示
+    app.addEventListener('click', function (e) {
+      var pt = e.target.closest ? e.target.closest('.pt') : null;
+      if (!pt) { chartTipHide(); return; }
+      var i = pt.getAttribute('data-i'), v = pt.getAttribute('data-v');
+      var rect = pt.getBoundingClientRect();
+      chartTipShow(rect.left + window.scrollX, rect.top + window.scrollY - 30, '第 ' + i + ' 点：' + v);
+    });
+    app.addEventListener('scroll', chartTipHide);
+    window.addEventListener('scroll', chartTipHide, true);
+
+    // 下拉刷新
+    var startY = 0;
+    function onStart(e) { startY = e.touches ? e.touches[0].clientY : e.clientY; }
+    function onMove(e) {
+      if (state.loading) return;
+      var y = e.touches ? e.touches[0].clientY : e.clientY;
+      var d = y - startY;
+      if (d > 0 && document.documentElement.scrollTop === 0 && document.body.scrollTop === 0) {
+        e.preventDefault();
+        var el = document.getElementById('nn-pull');
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'nn-pull';
+          el.style.cssText = 'text-align:center;padding:8px;color:var(--muted);font-size:13px;';
+          document.body.insertBefore(el, document.body.firstChild);
+        }
+        el.textContent = '下拉刷新';
+        if (d > 70) el.textContent = '释放刷新';
+      }
+    }
+    function onEnd(e) {
+      var el = document.getElementById('nn-pull');
+      if (el) el.remove();
+      if (state.loading) return;
+      var y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+      if (y - startY > 70) {
+        state.loading = true;
+        load().then(function () { state.loading = false; }).catch(function () { state.loading = false; });
+      }
+    }
+    document.removeEventListener('touchstart', onStart);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+    document.addEventListener('touchstart', onStart, { passive: false });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
   }
 
   // ------------------------------------------------------------------ 启动
   try {
     var pref = JSON.parse(ls(true, LS_PREF) || 'null');
     if (pref && typeof pref === 'object') {
-      // 每次打开都从「概览」开始，不恢复上次停在哪一页；只记住各页里选的是哪个策略
-      if (pref.pick && typeof pref.pick === 'object') ['signal', 'forward', 'holdings'].forEach(function (k) { if (typeof pref.pick[k] === 'string') state.pick[k] = pref.pick[k]; });
+      if (pref.pick && typeof pref.pick === 'object') ['signal', 'forward', 'holdings'].forEach(function (k) { if (typeof pref.pick[k] === 'string') pick[k] = pref.pick[k]; });
+      if (pref.tab) state.tab = pref.tab;
+      if (pref.search && typeof pref.search === 'object') state.search = pref.search;
+      if (pref.forwardFilter) state.forwardFilter = pref.forwardFilter;
     }
   } catch (e) { /* 偏好坏了就用默认 */ }
+  state.pick = pick;
 
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden && state.phase === 'ready' && Date.now() - state.loadedAt > 10 * 60 * 1000) load();
