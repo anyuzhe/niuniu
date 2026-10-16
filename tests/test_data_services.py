@@ -15,7 +15,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from quantlab.data import day_seals
-from quantlab.data.data_services import DataPreviewService, DataStatusService, DataUpdateJobs, runner_alive
+from quantlab.data.data_services import (PUBLIC_IDS, SAME_DAY_PUBLIC, DataPreviewService, DataStatusService,
+                                         DataUpdateJobs, runner_alive)
 from quantlab.data.research_provider import DataProviderError, InvalidRequest
 
 TZ = ZoneInfo("Asia/Shanghai")
@@ -259,6 +260,50 @@ class PublicStepsTests(unittest.TestCase):
         tuesday = self.plan(datetime(2026, 9, 22, 20), "daily_close_update", {"date": "2026-09-22"})
         self.assertEqual(self.fetched(tuesday, "announcements_cninfo"), ["2026-09-21"])
         self.assertEqual(self.fetched(tuesday, "institution_survey_em"), ["2026-09-22"])
+
+    def test_same_day_public_plan_is_its_own_small_job(self):
+        plan = self.plan(datetime(2026, 9, 22, 18, 30), "same_day_public", {})
+        self.assertIsNone(plan["blocked_reason"])
+        self.assertEqual([s["kind"] for s in plan["steps"]], ["public", "status_index"])
+        step = plan["steps"][0]
+        self.assertEqual(step["action"], "fetch")
+        self.assertEqual(step["calendar"], "2026-09-24")      # the latest snapshot's calendar reaches the day
+        self.assertEqual(sorted(p[1] for p in step["public"]), sorted(PUBLIC_IDS[n] for n in SAME_DAY_PUBLIC))
+        self.assertTrue(all(p[2] is None and p[3] is None for p in step["public"]))   # no date range: "today"
+        self.assertIn("16:00", self.plan(datetime(2026, 9, 22, 15, 59), "same_day_public", {})["blocked_reason"])
+        self.assertIn("过后采不到", self.plan(datetime(2026, 9, 22, 18, 30), "same_day_public",
+                                           {"date": "2026-09-21"})["blocked_reason"])
+        self.assertIn("不是交易日", self.plan(datetime(2026, 9, 19, 18, 30), "same_day_public", {})["blocked_reason"])
+        monday = self.plan(datetime(2026, 9, 28, 18, 30), "same_day_public", {})   # beyond the snapshot's calendar
+        self.assertIsNone(monday["blocked_reason"])                               # the collectors never read it for these
+        self.assertEqual(monday["steps"][0]["calendar"], "2026-09-24")
+        # whatever is there already is skipped; with everything there the job has nothing to do
+        first = SAME_DAY_PUBLIC[0]
+        base = self.root / day_seals.SEALABLE[PUBLIC_IDS[first]][0]
+        base.mkdir(parents=True, exist_ok=True)
+        (base / "2026-09-22.parquet").write_bytes(b"x")
+        partial = self.plan(datetime(2026, 9, 22, 18, 30), "same_day_public", {})
+        self.assertNotIn(PUBLIC_IDS[first], partial["steps"][0]["datasets"])
+        self.assertIn("skip_existing", [s["action"] for s in partial["steps"]])
+        for name in SAME_DAY_PUBLIC:
+            base = self.root / day_seals.SEALABLE[PUBLIC_IDS[name]][0]
+            base.mkdir(parents=True, exist_ok=True)
+            (base / "2026-09-22.parquet").write_bytes(b"x")
+        self.assertIn("都已采", self.plan(datetime(2026, 9, 22, 18, 30), "same_day_public", {})["blocked_reason"])
+
+    def test_close_update_on_the_day_takes_what_the_small_job_left(self):
+        update = self.plan(datetime(2026, 9, 22, 20), "daily_close_update", {"date": "2026-09-22"})
+        names = {d for s in update["steps"] if s["action"] == "fetch" for d in s["datasets"]}
+        self.assertIn("hot_rank_em", names)
+        for name in SAME_DAY_PUBLIC:
+            base = self.root / day_seals.SEALABLE[PUBLIC_IDS[name]][0]
+            base.mkdir(parents=True, exist_ok=True)
+            (base / "2026-09-22.parquet").write_bytes(b"x")
+        done = self.plan(datetime(2026, 9, 22, 20), "daily_close_update", {"date": "2026-09-22"})
+        fetched = {d for s in done["steps"] if s["action"] == "fetch" for d in s["datasets"]}
+        self.assertFalse(fetched & {PUBLIC_IDS[n] for n in SAME_DAY_PUBLIC})
+        late = self.plan(datetime(2026, 9, 23, 1), "daily_close_update", {"date": "2026-09-22"})
+        self.assertTrue(any("不是当天执行" in w for w in late["warnings"]))     # after midnight nothing can be collected
 
     def test_early_close_update_plan(self):
         early = self.plan(datetime(2026, 9, 22, 15, 50), "daily_close_early", {"date": "2026-09-22"})

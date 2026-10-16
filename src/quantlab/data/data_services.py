@@ -609,7 +609,7 @@ PUBLIC_IDS = {"sw_industry_history": "sw_industry_history", "cninfo_announcement
 JOBS_SPEC = [
     {"job_id": "daily_close_update", "name": "收盘后日常更新",
      "description": "参考快照、公开数据（含热度榜）、板块成分、日状态、日K、5 分钟、前复权、通达信分钟线、基本面与估值、ETF 份额与利率宏观，最后封存当天并刷新状态。"
-                    "只能当天观察的数据只在当天执行时采集。",
+                    "只能当天观察的数据只在当天执行时采集（通常已由「收盘后当天观察的公开数据」先采好，已有的跳过）。",
      "params": [{"name": "date", "type": "date", "required": False, "default": "today", "description": "交易日"}],
      "estimated_seconds": 6 * 3600, "needs_data_disk": True, "uses_network": True,
      "writes": ["reference_snapshot_baostock", "bars_daily_baostock_raw", "bars_min5_baostock_raw",
@@ -626,6 +626,13 @@ JOBS_SPEC = [
      "estimated_seconds": 50 * 60, "needs_data_disk": True, "uses_network": True,
      "writes": ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5", "bars_daily_baostock_raw",
                 "bars_min5_baostock_raw", "qfq_published_f24", "market_intraday_breadth", "market_intraday_breadth_5m"]},
+    {"job_id": "same_day_public", "name": "收盘后当天观察的公开数据",
+     "description": "18:30 起：只能当天看到的公开数据（异动监控、热度榜、北向分钟、业绩预告、回购、质押、新股日历、"
+                    "股东户数、指数权重），单独跑几分钟，不等快速更新和日常更新——那两个任务有时会拖过午夜，"
+                    "当天观察的数据就永远采不到了。已有的跳过；日常更新当天执行时也会补采缺的。",
+     "params": [{"name": "date", "type": "date", "required": False, "default": "today", "description": "交易日（只能是今天）"}],
+     "estimated_seconds": 10 * 60, "needs_data_disk": True, "uses_network": True,
+     "writes": [PUBLIC_IDS[n] for n in SAME_DAY_PUBLIC]},
     {"job_id": "sector_recorder_start", "name": "启动盘中记录器",
      "description": "先刷新板块成分，然后交易时间每分钟记录全部板块，并在 09:25/10:00/11:30/14:00/14:57/15:00 记录全市场个股快照；同时每 3 秒记录触板股（涨幅接近涨跌停或碰过涨跌停）的五档盘口，15:25 自动结束。",
      "params": [], "estimated_seconds": 7 * 3600, "needs_data_disk": True, "uses_network": True,
@@ -844,6 +851,26 @@ class DataUpdateJobs:
         return {"name": name, "action": action, "datasets": datasets, "dates": dates, "overwrites": overwrites,
                 "note": note, "kind": kind, "weight": weight, **extra}
 
+    def _same_day_steps(self, day, *, calendar_snapshot):
+        """(steps, warnings) for the sources that can only be looked at on the day itself (hot ranks, monitor pool,
+        anomalies, ...).  Partitions that already exist are skipped, so whoever runs first collects and the other
+        finds them there."""
+        steps, warnings = [], []
+        import importlib.util
+        fetch = [n for n in SAME_DAY_PUBLIC if not self._partition_present(PUBLIC_IDS[n], day)]
+        if "index_weights" in fetch and not (importlib.util.find_spec("openpyxl") and importlib.util.find_spec("xlrd")):
+            warnings.append("指数权重需要 openpyxl 和 xlrd，当前 Python 没装，这一项会失败；"
+                            "安装：/Volumes/Lexar/niuniu/.venv/bin/pip install openpyxl xlrd")
+        skip = [n for n in SAME_DAY_PUBLIC if n not in fetch]
+        if fetch:
+            steps.append(self._step("当天观察的公开数据", "fetch", [PUBLIC_IDS[n] for n in fetch], [day], "public",
+                                    public=[[n, PUBLIC_IDS[n], None, None] for n in fetch],
+                                    calendar=calendar_snapshot, weight=3, note="只能当天采集"))
+        if skip:
+            steps.append(self._step("当天观察的公开数据（已有）", "skip_existing", [PUBLIC_IDS[n] for n in skip],
+                                    [day], "public", note="今天已采"))
+        return steps, warnings
+
     def _public_steps(self, day, today, calendar, *, calendar_snapshot):
         """(steps, warnings) for public-source partitions of ``day``.
 
@@ -853,19 +880,9 @@ class DataUpdateJobs:
         """
         steps, warnings = [], []
         if day == today:
-            import importlib.util
-            fetch = [n for n in SAME_DAY_PUBLIC if not self._partition_present(PUBLIC_IDS[n], day)]
-            if "index_weights" in fetch and not (importlib.util.find_spec("openpyxl") and importlib.util.find_spec("xlrd")):
-                warnings.append("指数权重需要 openpyxl 和 xlrd，当前 Python 没装，这一项会失败；"
-                                "安装：/Volumes/Lexar/niuniu/.venv/bin/pip install openpyxl xlrd")
-            skip = [n for n in SAME_DAY_PUBLIC if n not in fetch]
-            if fetch:
-                steps.append(self._step("当天观察的公开数据", "fetch", [PUBLIC_IDS[n] for n in fetch], [day], "public",
-                                        public=[[n, PUBLIC_IDS[n], None, None] for n in fetch],
-                                        calendar=calendar_snapshot, weight=3, note="只能当天采集"))
-            if skip:
-                steps.append(self._step("当天观察的公开数据（已有）", "skip_existing", [PUBLIC_IDS[n] for n in skip],
-                                        [day], "public", note="今天已采"))
+            same_day, notes = self._same_day_steps(day, calendar_snapshot=calendar_snapshot)
+            steps += same_day
+            warnings += notes
         else:
             warnings.append("异动监控、回购、质押等只能当天观察的数据，不是当天执行就采不到，本次不采。")
         trading = calendar.is_trading(day)[0]
@@ -962,6 +979,36 @@ class DataUpdateJobs:
         steps.append(self._step("封存", "seal", ["*"], [prev, day], "seal", trading_day=True,
                                 note=f"封存 {day}；同时把 {prev} 待封存的次日数据补封"))
         steps.append(self._step("刷新状态", "verify", ["*"], [day], "status_index", weight=2))
+        return steps, warnings, None, params
+
+    def _plan_same_day_public(self, params, today, calendar, warnings):
+        """Only the sources that can be seen on the day itself, as a small job of its own: when the 15:45 early run
+        and the close update behind it ran past midnight (2026-10-15 and 10-16, qfq alone took hours) these were
+        never collected and cannot be recovered.  The close update still collects whatever is missing when it runs
+        on the day itself."""
+        day = _date_param(params, "date", required=False, default_today=True, today=today)
+        params = {"date": day}
+        trading, inferred = calendar.is_trading(day)
+        if inferred:
+            warnings.append(f"交易日历只到 {calendar.end}，{day} 按工作日推断为{'交易日' if trading else '非交易日'}")
+        if not trading:
+            return [], warnings, f"{day} 不是交易日", params
+        if day != today:
+            return [], warnings, "只能当天观察的数据过后采不到；补以前的日子请用「补某一天」或「收盘后日常更新」", params
+        if self.now_fn().hour < 16:
+            return [], warnings, "还没收盘结算，16:00 后再执行", params
+        if day_seals.load_manifest(self.data_root, day):
+            return [], warnings, "这一天已封存，采集只读", params
+        # these sources are single snapshots of "today": the collectors never read the calendar for them, so the
+        # latest reference snapshot will do (today's own is only taken by the close update, much later)
+        snapshot = calendar.snapshot
+        if snapshot is None:
+            return [], warnings, "数据根里没有参考快照，先执行「收盘后日常更新」", params
+        steps, notes = self._same_day_steps(day, calendar_snapshot=snapshot)
+        warnings += notes
+        if not any(step["action"] == "fetch" for step in steps):
+            return steps, warnings, "今天只能当天观察的数据都已采", params
+        steps.append(self._step("刷新状态", "verify", ["*"], [day], "status_index", weight=1))
         return steps, warnings, None, params
 
     def _plan_daily_close_early(self, params, today, calendar, warnings):

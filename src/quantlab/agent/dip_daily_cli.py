@@ -3,7 +3,8 @@
 每个交易日的顺序（上游不完成，下游不开始）：
 
   ① 值班程序 scripts/collect/scheduler.py：09:10 盘中记录器 → 15:45 通达信部分（daily_close_early）→
-     16:30 起等 Baostock 发布后做收盘后日常更新并封存（daily_close_update）。逻辑、授权范围和自带的单实例锁都不改，
+     18:30 起只能当天采的公开数据（same_day_public，几分钟，与前一项同时进行）→
+     16:30 起等 Baostock 发布、且前两项都结束后做收盘后日常更新并封存（daily_close_update）。逻辑、授权范围和自带的单实例锁都不改，
      这里只是让它不依赖客户端：后台任务每 5 分钟拉一次，已有值班程序（客户端开着时它在跑）就立刻退出，客户端关了就由后台这一份接手；
   ② 证据归档 com.niuniu.evidence-archive（evidence_scheduler）：18:00 起的涨停池、公告、前向参考、涨停板情绪库等，已经是独立后台任务；
   ③ 本模块 --tick：数据任务（early / update）都不在跑时，调 autorecord.run_if_new——面板指纹变了才记 7 本台账并推手机；

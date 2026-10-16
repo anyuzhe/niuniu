@@ -13,6 +13,11 @@ Authorised by the user on 2026-09-29 for exactly these jobs:
   qfq → breadth).  It does not seal.  The TDX 1-minute collector refuses to run until 15:10 has passed, and
   TDX only finishes its after-close processing around 15:40: on 2026-10-09 the bars fetched before then lacked the
   11:30 bar for ~half of the stocks (the same stocks fetched after 15:40 were complete), hence 15:45.
+* ``same_day_public`` (user request 2026-10-17) from 18:30, once per trading day: the public sources that exist
+  only on the day itself (hot ranks, monitor pool, anomalies, northbound minutes, ...), as a small job of its own.
+  The early run and the close update behind it can run past midnight (they did on 2026-10-15 and 10-16, qfq
+  alone took hours on a loaded machine), and then these are lost for good.  It runs next to the early run; the
+  close update waits for it and skips what it has already collected.
 * ``daily_close_update`` from 16:30 for every trading day after the latest sealed day (at
   most 7 days back) that is not sealed yet, oldest first, one at a time.  For today it also waits until
   Baostock has published today's daily bars (probed every 10 minutes), because day status, valuation and
@@ -46,6 +51,7 @@ TZ = ZoneInfo("Asia/Shanghai")
 RECORDER_FROM, RECORDER_UNTIL = "09:10", "15:25"
 EARLY_UPDATE_AT = "15:45"      # TDX refuses through 15:10 and still serves 1-minute bars without the 11:30 bar until ~15:40
 CLOSE_UPDATE_AT = "16:30"
+SAME_DAY_AT = "18:30"          # the sources are fuller after 18:00; the close update used to get to them at ~19:30
 BAOSTOCK_PROBE_EVERY = 600     # seconds between looks at whether Baostock has published today
 LOOKBACK_DAYS = 7
 
@@ -186,6 +192,37 @@ def early_update(jobs, data_root: Path, now: datetime, trading: TradingDays, mem
     memo["early"] = today
 
 
+def same_day_public(jobs, data_root: Path, now: datetime, trading: TradingDays, memo: dict) -> None:
+    """Start ``same_day_public`` once for today, from SAME_DAY_AT.  Whatever happened to it today (even a failure)
+    counts as handled: a failed run stays for the user, as with the other jobs."""
+    today = now.date().isoformat()
+    if memo.get("same_day") == today or today not in trading.recent(now):
+        return
+    if (data_root / "catalog/seals" / f"{today}.json").is_file():
+        memo["same_day"] = today
+        return
+    for run in jobs._runs():
+        if str(run.get("created_at", ""))[:10] != today:
+            continue
+        if run["job_id"] == "same_day_public":
+            memo["same_day"] = today
+            return
+        if run["job_id"] == "daily_close_update" and (run.get("params") or {}).get("date") == today:
+            if run["state"] in ("queued", "running"):
+                return           # it collects them itself when it runs on the day; look again when it ends
+            if run["state"] == "succeeded":
+                memo["same_day"] = today
+                return
+    plan = jobs.plan("same_day_public", {"date": today})
+    if plan["blocked_reason"]:
+        log(job="same_day_public", date=today, started=False, reason=plan["blocked_reason"])
+        memo["same_day"] = today
+        return
+    run = jobs.run(plan["plan_id"], trigger="scheduler")
+    log(job="same_day_public", date=today, started=True, run_id=run["run_id"])
+    memo["same_day"] = today
+
+
 def tick(jobs, data_root: Path, now: datetime, trading: TradingDays, memo: dict, probe=None) -> None:
     hm = now.strftime("%H:%M")
     today = now.date().isoformat()
@@ -197,8 +234,10 @@ def tick(jobs, data_root: Path, now: datetime, trading: TradingDays, memo: dict,
         reason = str(result.get("reason") or "")
         if result.get("started") or any(w in reason for w in ("今天", "正在运行", "不是交易日")):
             memo["recorder"] = today
+    if now.weekday() < 5 and hm >= SAME_DAY_AT:
+        same_day_public(jobs, data_root, now, trading, memo)
     if hm >= CLOSE_UPDATE_AT or hm < "08:00":
-        if jobs._running({"daily_close_update", "daily_close_early"}):
+        if jobs._running({"daily_close_update", "daily_close_early", "same_day_public"}):
             return
         hour = now.strftime("%Y-%m-%d %H")
         if memo.get("close_idle") == hour:
