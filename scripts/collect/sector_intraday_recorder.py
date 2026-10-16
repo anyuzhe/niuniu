@@ -15,6 +15,9 @@ boards and appends the rows to one Parquet file per minute:
     <data-root>/lake/bronze/provider=fuyao/sector_board_intraday/date=YYYY-MM-DD/HHMMSS.parquet
 
 plus ``_receipts/<date>.json`` (one entry per sample: ok / failed, row count, SHA-256).
+A second thread records the limit-board tape (``quantlab.data.limit_board_tape``: five-level books of the
+stocks near or at the limit, every 3 s, fed by the minute pass of the whole-market breadth); a failure
+there never stops the sector recorder.
 Failures are recorded and never written as empty data.  Exits on a non-trading day
 and after the close.  No approval SHA: the recorder only reads a live source the
 user asked to record (2026-09-24) and writes new files, never rewrites old ones.
@@ -30,6 +33,7 @@ import io
 import json
 import os
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -245,6 +249,25 @@ def main(argv=None) -> int:
             quotes = LiveQuotes(data_root, live)
         except Exception as error:
             print(f"ETF/指数实时报价初始化失败，本日不记录：{error}", flush=True)
+    tape_stop, tape_thread = threading.Event(), None
+    if live is not None:      # limit-board tape: its own thread and TDX connection, fed by the minute pass
+        try:
+            from quantlab.data.limit_board_tape import DATASET_ID as TAPE_ID, LimitBoardTape
+            if is_sealed(data_root, TAPE_ID, today):
+                print(f"{today} 的触板股盘口已封存，只读，本日不再记录。", flush=True)
+            else:
+                tape = LimitBoardTape(data_root, live)
+                live.on_quotes = tape.update_from_quotes
+                tape_thread = threading.Thread(target=tape.run, args=(tape_stop,), name="limit-board-tape", daemon=True)
+                tape_thread.start()
+        except Exception as error:
+            print(f"触板股盘口录制初始化失败，本日不记录：{error}", flush=True)
+
+    def stop_tape():
+        tape_stop.set()
+        if tape_thread is not None:
+            tape_thread.join(timeout=20)
+
     live_receipt = data_root / "lake/silver/market_intraday_breadth/freq=live/_receipts" / f"{today}.json"
     live_log = {"date": today, "ok": 0, "failed": 0, "last_error": None}
     if live_receipt.is_file():          # a restart during the day keeps the counts
@@ -292,9 +315,11 @@ def main(argv=None) -> int:
                 done_slots.add(slot)
         if hm >= END and all(slot in done_slots or slot in missed_slots for slot in SNAPSHOT_TIMES):
             print("已收盘，记录结束。", flush=True)
+            stop_tape()
             return 0
         if hm >= "15:25":
             print("已收盘，记录结束（部分时点快照未成功，见回执）。", flush=True)
+            stop_tape()
             return 0
         if hm < START or "11:31" <= hm < "12:59" or hm >= END:
             if hm < END:  # use the wait for the constituents snapshot, ending a minute before sampling resumes

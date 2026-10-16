@@ -96,6 +96,7 @@ LAYOUT = {
     "reference_snapshot_baostock": ("lake/bronze/provider=baostock/reference_snapshots", "snapshot", "close"),
     "sector_board_intraday": ("lake/bronze/provider=fuyao/sector_board_intraday", "day_dir", "intraday"),
     "stock_intraday_snapshot": ("lake/bronze/provider=fuyao/stock_intraday_snapshot", "day_dir", "intraday"),
+    "limit_board_tape": ("lake/bronze/provider=tdx/limit_board_tape", "day_dir", "intraday"),
     "sector_board_constituents": ("lake/bronze/provider=fuyao/sector_board_constituents", "day_file", "close"),
 }
 for _dataset_id, (_dir, _layout, _kind, _src) in day_seals.PUBLIC.items():
@@ -626,9 +627,9 @@ JOBS_SPEC = [
      "writes": ["tdx_kline_min1", "tdx_index_kline_min1", "tdx_index_kline_min5", "bars_daily_baostock_raw",
                 "bars_min5_baostock_raw", "qfq_published_f24", "market_intraday_breadth", "market_intraday_breadth_5m"]},
     {"job_id": "sector_recorder_start", "name": "启动盘中记录器",
-     "description": "先刷新板块成分，然后交易时间每分钟记录全部板块，并在 09:25/10:00/11:30/14:00/14:57/15:00 记录全市场个股快照，15:25 自动结束。",
+     "description": "先刷新板块成分，然后交易时间每分钟记录全部板块，并在 09:25/10:00/11:30/14:00/14:57/15:00 记录全市场个股快照；同时每 3 秒记录触板股（涨幅接近涨跌停或碰过涨跌停）的五档盘口，15:25 自动结束。",
      "params": [], "estimated_seconds": 7 * 3600, "needs_data_disk": True, "uses_network": True,
-     "writes": ["sector_board_constituents", "sector_board_intraday", "stock_intraday_snapshot"]},
+     "writes": ["sector_board_constituents", "sector_board_intraday", "stock_intraday_snapshot", "limit_board_tape"]},
     {"job_id": "sector_recorder_stop", "name": "停止盘中记录器", "description": "停止正在运行的盘中记录器。",
      "params": [], "estimated_seconds": 30, "needs_data_disk": True, "uses_network": False, "writes": []},
     {"job_id": "backfill_day", "name": "补某一天",
@@ -1008,7 +1009,8 @@ class DataUpdateJobs:
         if day_seals.is_sealed(self.data_root, "sector_board_intraday", today):
             return [], warnings, "今天的盘中记录已封存，只读", {}
         return [self._step("盘中记录器", "start", ["sector_board_constituents", "sector_board_intraday",
-                                                  "stock_intraday_snapshot"], [today], "recorder", weight=1,
+                                                  "stock_intraday_snapshot", "limit_board_tape"], [today],
+                           "recorder", weight=1,
                            note="09:15–15:01 每分钟记录板块，固定时点记录全市场个股")], warnings, None, {}
 
     def _plan_sector_recorder_stop(self, params, today, calendar, warnings):

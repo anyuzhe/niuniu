@@ -93,6 +93,7 @@ class LiveBreadth:
         self.API, self.hosts = API, list(hosts or [])
         self.host_index = 0
         self.api = None
+        self.on_quotes = None       # optional callback(captured_at, quotes) for each whole-market pass
         from quantlab.data.stock_intraday import universe
         self.symbols = universe(self.data_root)
         # ST flags, IPO dates and trading calendar from the latest reference data
@@ -213,7 +214,13 @@ class LiveBreadth:
     def record(self) -> dict:
         import pandas as pd
         started = datetime.now(TZ)
-        row = self.compute(self.quotes(), started)
+        quotes = self.quotes()
+        if self.on_quotes is not None:
+            try:                    # a consumer's failure never costs the breadth row
+                self.on_quotes(started, quotes)
+            except Exception:
+                pass
+        row = self.compute(quotes, started)
         row["capture_s"] = round((datetime.now(TZ) - started).total_seconds(), 1)
         path = self.data_root / OUT / f"date={self.today.isoformat()}.parquet"
         frame = pd.DataFrame([row])

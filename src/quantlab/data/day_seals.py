@@ -69,13 +69,14 @@ PUBLIC = {
 OTHER = {
     "sector_board_intraday": ("lake/bronze/provider=fuyao/sector_board_intraday", "day_dir", "same_day", "扶摇"),
     "stock_intraday_snapshot": ("lake/bronze/provider=fuyao/stock_intraday_snapshot", "day_dir", "same_day", "扶摇"),
+    "limit_board_tape": ("lake/bronze/provider=tdx/limit_board_tape", "day_dir", "same_day", "通达信"),
     "sector_board_constituents": ("lake/bronze/provider=fuyao/sector_board_constituents", "day_file", "same_day", "扶摇"),
     "reference_snapshot_baostock": ("lake/bronze/provider=baostock/reference_snapshots", "snapshot", "same_day", "Baostock"),
 }
 SEALABLE = {**PUBLIC, **OTHER}
 # Datasets that exist only on trading days (a non-trading day has nothing to seal).
 TRADING_ONLY = {"limit_up_pool_ths", "margin_detail_exchange", "block_trades_em", "northbound_minute_ths",
-                "sector_board_intraday", "stock_intraday_snapshot"}
+                "sector_board_intraday", "stock_intraday_snapshot", "limit_board_tape"}
 NOT_IN_SCOPE = ("日K、5分钟、日状态与前复权按证券存放、逐日追加，不是按日期分区的文件，不在封存范围；"
                 "它们可由供应商重取并由 DATA 重建。限售解禁只封存以 D 为解禁日的分区，D 当天看到的未来预告不在内。")
 
