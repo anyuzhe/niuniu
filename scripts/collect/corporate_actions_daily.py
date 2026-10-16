@@ -373,8 +373,16 @@ def main(argv=None) -> int:
     if (args.approve_sha256 != plan.get("plan_sha256") or args.dataset != plan.get("dataset")
             or root.resolve() != Path(plan["root"])):
         raise PermissionError("approved plan scope or SHA mismatch")
-    receipt = apply(plan, timeout=args.request_timeout, throttle=args.throttle,
-                    retries=args.retries, resume_run=args.resume_run)
+    receipt = None
+    if args.resume_run:     # the same plan already ran to the end (nothing changed since): there is nothing to resume
+        path = root / "_receipts" / f"daily-{plan['dataset']}-{plan['plan_sha256'][:16]}.json"
+        if path.exists():
+            earlier = json.loads(path.read_text(encoding="utf-8"))
+            if earlier.get("plan_sha256") == plan["plan_sha256"] and earlier.get("run_status") == "finished":
+                receipt = earlier
+    if receipt is None:
+        receipt = apply(plan, timeout=args.request_timeout, throttle=args.throttle,
+                        retries=args.retries, resume_run=args.resume_run)
     counts = {state: sum(r["status"] == state for r in receipt["results"])
               for state in ("unchanged", "updated", "new", "empty", "failed")}
     print(json.dumps({"run_status": receipt["run_status"], **counts}, ensure_ascii=False))

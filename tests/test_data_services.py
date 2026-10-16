@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from quantlab.data import day_seals
-from quantlab.data.data_services import (PUBLIC_IDS, SAME_DAY_PUBLIC, DataPreviewService, DataStatusService,
+from quantlab.data.data_services import (JOBS_SPEC, PUBLIC_IDS, SAME_DAY_PUBLIC, DataPreviewService, DataStatusService,
                                          DataUpdateJobs, runner_alive)
 from quantlab.data.research_provider import DataProviderError, InvalidRequest
 
@@ -304,6 +304,19 @@ class PublicStepsTests(unittest.TestCase):
         self.assertFalse(fetched & {PUBLIC_IDS[n] for n in SAME_DAY_PUBLIC})
         late = self.plan(datetime(2026, 9, 23, 1), "daily_close_update", {"date": "2026-09-22"})
         self.assertTrue(any("不是当天执行" in w for w in late["warnings"]))     # after midnight nothing can be collected
+
+    def test_close_update_refreshes_pending_dividend_plans_before_the_qfq_rebuild(self):
+        ids = ["corporate_actions_dividend_ths_v2", "corporate_actions_dividend_baostock_v2"]
+        today = self.plan(datetime(2026, 9, 22, 20), "daily_close_update", {"date": "2026-09-22"})
+        kinds = [s["kind"] for s in today["steps"]]
+        self.assertLess(kinds.index("corp_actions"), kinds.index("qfq"))   # new ex-dates must be in before the rebuild
+        self.assertEqual(today["steps"][kinds.index("corp_actions")]["datasets"], ids)
+        late = self.plan(datetime(2026, 9, 23, 1), "daily_close_update", {"date": "2026-09-22"})
+        self.assertNotIn("corp_actions", [s["kind"] for s in late["steps"]])   # catching up an old day does not re-observe
+        spec = next(job for job in JOBS_SPEC if job["job_id"] == "daily_close_update")
+        self.assertTrue(set(ids) <= set(spec["writes"]))
+        early = self.plan(datetime(2026, 9, 22, 15, 50), "daily_close_early", {"date": "2026-09-22"})
+        self.assertNotIn("corp_actions", [s["kind"] for s in early["steps"]])   # the early run uses last night's files
 
     def test_early_close_update_plan(self):
         early = self.plan(datetime(2026, 9, 22, 15, 50), "daily_close_early", {"date": "2026-09-22"})

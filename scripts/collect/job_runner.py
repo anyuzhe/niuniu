@@ -372,6 +372,48 @@ class Runner:
                 self.result_dataset(dataset_id, failures=[message])
                 self.deferred_errors.append(message)
 
+    CORP_ACTIONS = (("ths-dividend", "corporate_actions_dividend_ths_v2"),
+                    ("baostock-dividend", "corporate_actions_dividend_baostock_v2"))
+    PYDEPS = Path(os.environ.get("NIUNIU_PYDEPS", str(Path.home() / ".cache/niuniu-pydeps")))
+
+    def step_corp_actions(self, step, share):
+        """Re-observe the dividend sources (THS, Baostock) for the securities whose plans can still change: an open
+        plan not yet implemented, an ex-date within the last few days, no data yet (``--subset pending``, about 400 of
+        5,200).  Everything else was settled long ago, so its qfq events cannot change.  Run before the qfq rebuild so a
+        newly announced ex-date is picked up the day it is announced, not weeks later.  One source failing is
+        recorded and the next run re-observes it (the plan is rebuilt from the files as they are)."""
+        day = step["dates"][0]
+        plans = self.run_dir / "plans"
+        plans.mkdir(exist_ok=True)
+        saved = self.env
+        if self.PYDEPS.is_dir():       # akshare is installed in a directory of its own, not in the main environment
+            self.env = {**saved, "PYTHONPATH": os.pathsep.join([saved["PYTHONPATH"], str(self.PYDEPS)])}
+        try:
+            for dataset, dataset_id in self.CORP_ACTIONS:
+                self.check()
+                try:
+                    plan_file = plans / f"corp-actions-{dataset}.json"
+                    info = self.last_json(self.sh(["scripts/collect/corporate_actions_daily.py", "--dataset", dataset,
+                                                   "--subset", "pending", "--observed-on", day,
+                                                   "--plan-output", str(plan_file)]))
+                    if not info.get("plan_sha256"):
+                        self.log(f"公司行动 {dataset}：没有需要重新观察的证券")
+                        self.result_dataset(dataset_id, through=day)
+                        continue
+                    output = self.sh(["scripts/collect/corporate_actions_daily.py", "--dataset", dataset, "--apply",
+                                      "--plan", str(plan_file), "--approve-sha256", info["plan_sha256"],
+                                      "--resume-run", "--throttle", "1"], keep_awake=True)
+                    done = self.last_json(output)
+                    self.result_dataset(dataset_id, through=day,
+                                        files_written=done.get("updated", 0) + done.get("new", 0))
+                except RuntimeError as exc:
+                    message = f"公司行动 {dataset_id} 刷新失败：{exc}"
+                    self.log(message)
+                    self.result_dataset(dataset_id, failures=[message])
+                    self.deferred_errors.append(message)
+        finally:
+            self.env = saved
+
     def step_seal(self, step, share):
         from quantlab.data import day_seals
         for position, day in enumerate(step["dates"]):

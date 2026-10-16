@@ -608,12 +608,13 @@ PUBLIC_IDS = {"sw_industry_history": "sw_industry_history", "cninfo_announcement
 
 JOBS_SPEC = [
     {"job_id": "daily_close_update", "name": "收盘后日常更新",
-     "description": "参考快照、公开数据（含热度榜）、板块成分、日状态、日K、5 分钟、前复权、通达信分钟线、基本面与估值、ETF 份额与利率宏观，最后封存当天并刷新状态。"
+     "description": "参考快照、公开数据（含热度榜）、板块成分、日状态、日K、5 分钟、待实施的分红方案、前复权、通达信分钟线、基本面与估值、ETF 份额与利率宏观，最后封存当天并刷新状态。"
                     "只能当天观察的数据只在当天执行时采集（通常已由「收盘后当天观察的公开数据」先采好，已有的跳过）。",
      "params": [{"name": "date", "type": "date", "required": False, "default": "today", "description": "交易日"}],
      "estimated_seconds": 6 * 3600, "needs_data_disk": True, "uses_network": True,
      "writes": ["reference_snapshot_baostock", "bars_daily_baostock_raw", "bars_min5_baostock_raw",
-                "security_status_baostock_v2", "qfq_published_f24", "sector_board_constituents",
+                "security_status_baostock_v2", "corporate_actions_dividend_ths_v2",
+                "corporate_actions_dividend_baostock_v2", "qfq_published_f24", "sector_board_constituents",
                 "equity_pledge_history", "earnings_forecast_history", "financial_cpd", "financial_balance",
                 "financial_cashflow", "share_capital", "valuation_daily_v1",
                 "etf_shares_sse", "etf_shares_szse", "cn_yield_curve", "cn_repo_fixing", "cn_lpr_history",
@@ -958,6 +959,12 @@ class DataUpdateJobs:
         steps.append(self._step("日状态、日K、5 分钟", "fetch",
                                 ["security_status_baostock_v2", "bars_daily_baostock_raw", "bars_min5_baostock_raw"],
                                 [day], "bars", weight=40, note="日K由通达信 1 分钟线合成，合成不了的才向 Baostock 取；5 分钟线和日状态仍向 Baostock 逐只补缺，已有的日期不重写"))
+        if day == today:
+            steps.append(self._step("待实施的分红方案", "fetch",
+                                    ["corporate_actions_dividend_ths_v2", "corporate_actions_dividend_baostock_v2"],
+                                    [day], "corp_actions", overwrites=True, weight=8,
+                                    note="只重新观察还会变的约 400 只（有未实施的分红预案、除权日在近几天内或还没有数据），"
+                                         "同花顺 + Baostock，约 30 分钟；新公布的除权日当天就进前复权，不再等几周"))
         steps.append(self._step("前复权重建", "fetch", ["qfq_published_f24"], [day], "qfq", overwrites=True, weight=15,
                                 note="按两源一致的公司行动整体重算，qfq 文件会被新版本替换"))
         steps.append(self._step("全市场情绪序列", "fetch", ["market_intraday_breadth", "market_intraday_breadth_5m"],

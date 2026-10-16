@@ -314,6 +314,20 @@ class CorporateDailyTests(DailyFixture):
         with self.assertRaises(ValueError):
             corporate.apply(plan, resume_run=True, fetch_factory=factory)
 
+    def test_resume_run_on_a_finished_plan_is_a_no_op_on_the_command_line(self):
+        plan = self.plan()
+        plan_file = self.root / "plan.json"
+        plan_file.write_text(json.dumps(plan))
+        corporate.apply(plan, timeout=1, throttle=0, retries=1,
+                        fetch_factory=lambda _p, _t: (lambda code: pd.DataFrame({"code": [code], "value": [7]}), None))
+        args = ["--dataset", "ths-dividend", "--dest", str(self.dataset), "--apply", "--plan", str(plan_file),
+                "--approve-sha256", plan["plan_sha256"]]
+        with patch.object(corporate, "_fetcher") as fetch:
+            self.assertEqual(corporate.main(args + ["--resume-run"]), 0)     # the scheduler runs this every day
+            fetch.assert_not_called()
+            with self.assertRaises(FileExistsError):
+                corporate.main(args)                                          # without it a second run is still refused
+
     def test_pending_subset_picks_open_plans_near_ex_dates_and_new_listings(self):
         ths = self.root / "ths"
         ths.mkdir()

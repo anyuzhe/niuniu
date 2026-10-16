@@ -153,6 +153,51 @@ class JobRunnerTests(unittest.TestCase):
         qfq = next(d for d in state["result"]["datasets"] if d["dataset_id"] == "qfq_published_f24")
         self.assertTrue(qfq["failures"])
 
+    def test_pending_dividend_refresh_plans_and_applies_each_source_and_records_a_failure(self):
+        runner, run_dir = self.runner([self.step("corp_actions", "待实施的分红方案")])
+        deps = tempfile.TemporaryDirectory()
+        self.addCleanup(deps.cleanup)
+        runner.PYDEPS = Path(deps.name)
+        before = runner.env["PYTHONPATH"]
+        calls, paths = [], []
+
+        def sh(args, **_):
+            calls.append(args)
+            paths.append(runner.env["PYTHONPATH"])
+            dataset = args[args.index("--dataset") + 1]
+            if "--apply" not in args:
+                return '{"dataset": "%s", "symbols": 3, "plan_sha256": "abc"}' % dataset
+            if dataset == "baostock-dividend":
+                raise RuntimeError("子任务退出码 1：scripts/collect/corporate_actions_daily.py")
+            return '{"run_status": "finished", "unchanged": 5, "updated": 2, "new": 1, "empty": 0, "failed": 0}'
+        runner.sh = sh
+        self.assertEqual(runner.run(), 1)
+        self.assertEqual([("--apply" in c, c[c.index("--dataset") + 1]) for c in calls],
+                         [(False, "ths-dividend"), (True, "ths-dividend"),
+                          (False, "baostock-dividend"), (True, "baostock-dividend")])   # the failure does not stop the next source
+        plan_call, apply_call = calls[0], calls[1]
+        self.assertEqual(plan_call[plan_call.index("--subset") + 1], "pending")
+        self.assertEqual(plan_call[plan_call.index("--observed-on") + 1], DAY)
+        self.assertEqual(apply_call[apply_call.index("--approve-sha256") + 1], "abc")
+        self.assertIn("--resume-run", apply_call)
+        self.assertTrue(all(deps.name in p for p in paths))      # akshare is found in its own directory
+        self.assertEqual(runner.env["PYTHONPATH"], before)       # and only for this step
+        state = self.state(run_dir)
+        self.assertEqual(state["state"], "failed")
+        rows = {d["dataset_id"]: d for d in state["result"]["datasets"]}
+        self.assertEqual(rows["corporate_actions_dividend_ths_v2"]["files_written"], 3)
+        self.assertFalse(rows["corporate_actions_dividend_ths_v2"]["failures"])
+        self.assertIn("刷新失败", rows["corporate_actions_dividend_baostock_v2"]["failures"][0])
+
+    def test_pending_dividend_refresh_with_nothing_pending_applies_nothing(self):
+        runner, run_dir = self.runner([self.step("corp_actions", "待实施的分红方案")])
+        calls = []
+        runner.sh = lambda args, **_: calls.append(args) or '{"dataset": "x", "symbols": 0, "plan_sha256": null}'
+        self.assertEqual(runner.run(), 0)
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(any("--apply" in c for c in calls))
+        self.assertEqual(self.state(run_dir)["state"], "succeeded")
+
     def test_a_constituents_failure_is_recorded_and_the_update_goes_on(self):
         runner, run_dir = self.runner([self.step("constituents", "板块成分快照")])
         with mock.patch("collect.sector_constituents.run", side_effect=RuntimeError("board catalog looks incomplete")):
