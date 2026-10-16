@@ -48,7 +48,11 @@ from collect import paths  # noqa: E402
 from quantlab.data import dataset_registry as reg  # noqa: E402
 
 PLAN_FORMAT = "niuniu-qfq-build-plan-v2"
-POLICY = "qfq-events-two-source-v1"
+POLICY = "qfq-events-two-source-v2"
+# v2 (2026-10-17, user): an ex-date within this many days of the latest bar may stand on THS alone (provisional).
+# Baostock lists an ex-date a day or two after THS does; without this a stock whose ex-date was yesterday had its
+# whole history cut to one bar until Baostock caught up.  Older single-source events stay blocked, as in v1.
+PROVISIONAL_DAYS = 7
 SOURCES = {
     "raw_daily": "bars.daily.raw.baostock",
     "ths": "corporate_actions.dividend.ths",
@@ -259,8 +263,12 @@ def _agree(a: dict, b: dict) -> bool:
             and abs((a["bonus"] + a["cap"]) - (b["bonus"] + b["cap"])) <= TOL)
 
 
-def decide_dividend(day, ths, bao, em, tdx=None) -> dict:
-    """Rule for one ex-date: >=2 usable sources and all usable sources agree."""
+def decide_dividend(day, ths, bao, em, tdx=None, *, provisional=False) -> dict:
+    """Rule for one ex-date: >=2 usable sources and all usable sources agree.
+
+    Exception (``provisional``, the ex-date is recent): THS alone is accepted when no other source has seen that day at
+    all.  Another source that has the day but disagrees or is unusable still blocks it.  Once a second source lists the
+    day the normal rule applies, so the provisional event is replaced by (or blocked against) the independent one."""
     named = (("ths", ths), ("baostock", bao), ("eastmoney", em), ("tdx", tdx or {}))
     got = {name: src.get(day) for name, src in named}
     usable = {n: g["value"] for n, g in got.items() if g and g["value"] is not None and not g["blockers"]}
@@ -273,6 +281,9 @@ def decide_dividend(day, ths, bao, em, tdx=None) -> dict:
         # legacy build; recorded so it stays visible.
         return {"status": "ignored", "blockers": ["tdx_only_not_applied"], "sources": seen}
     if len(names) < 2:
+        if provisional and names == ["ths"] and seen == ["ths"]:
+            return {"status": "accepted", "pair": "ths", "value": usable["ths"], "sources": seen,
+                    "note": "provisional_single_source"}
         return {"status": "blocked", "blockers": blockers + ["single_source"], "sources": seen}
     first = usable[names[0]]
     disagree = [n for n in names[1:] if not _agree(first, usable[n])]
@@ -377,7 +388,8 @@ def build_symbol(code: str, dirs: dict[str, Path], s1_blocked, tdx_rows=()) -> t
         blockers, pair, sources, ignored = [], None, [], []
         cash = bonus = cap = Decimal(0)
         if day in ths or day in bao or day in em or day in tdx:
-            decision = decide_dividend(day, ths, bao, em, tdx)
+            decision = decide_dividend(day, ths, bao, em, tdx,
+                                       provisional=last_day is not None and (last_day - day).days <= PROVISIONAL_DAYS)
             sources = decision["sources"]
             if decision["status"] == "accepted":
                 pair = decision["pair"] + (f" ({decision['note']})" if decision.get("note") else "")

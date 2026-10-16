@@ -181,9 +181,23 @@ class BuildQfqTest(unittest.TestCase):
     def test_single_source_is_blocked(self):
         (self.dirs["baostock"] / bq.symbol_file(CODE)).unlink()
         (self.dirs["eastmoney"] / bq.symbol_file(CODE)).unlink()
+        # the latest bar is six weeks after the ex-date: too old for the provisional exception
+        bars(["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-02-15"],
+             [10.0, 10.0, 9.0, 9.0, 9.0]).to_parquet(self.dirs["raw_daily"] / bq.symbol_file(CODE))
         self.run_all()
         ev = pd.read_parquet(self.root / bq.OUT["factors"] / bq.symbol_file(CODE))
         self.assertIn("single_source", ev["blockers"].iloc[0])
+
+    def test_recent_ths_only_event_is_accepted_provisionally_and_keeps_the_history(self):
+        (self.dirs["baostock"] / bq.symbol_file(CODE)).unlink()
+        (self.dirs["eastmoney"] / bq.symbol_file(CODE)).unlink()
+        self.run_all()                      # the ex-date is one day before the latest bar
+        ev = pd.read_parquet(self.root / bq.OUT["factors"] / bq.symbol_file(CODE))
+        self.assertEqual(ev["status"].tolist(), ["accepted"])
+        self.assertEqual(ev["dividend_pair"].tolist(), ["ths (provisional_single_source)"])
+        self.assertEqual(ev["sources"].tolist(), ["ths"])
+        q = pd.read_parquet(self.root / bq.OUT["daily"] / bq.symbol_file(CODE))
+        self.assertEqual(q["factor"].round(10).tolist(), [0.9, 0.9, 1.0, 1.0])   # nothing cut
 
     def test_rights_issue_and_s1_block(self):
         f = bq.symbol_file(CODE)
@@ -286,6 +300,14 @@ class BuildQfqTest(unittest.TestCase):
         w = dict(v, cash=Decimal("1.1"))
         self.assertEqual(bq.decide_dividend(d, slot(v), slot(w), slot(v))["status"], "blocked")
         self.assertEqual(bq.decide_dividend(d, {}, slot(v), slot(v))["pair"], "baostock+eastmoney")
+        # provisional: THS alone, only while recent, and only when no other source has seen the day
+        self.assertEqual(bq.decide_dividend(d, slot(v), {}, {})["blockers"], ["single_source"])
+        got = bq.decide_dividend(d, slot(v), {}, {}, provisional=True)
+        self.assertEqual((got["status"], got["pair"], got["note"]), ("accepted", "ths", "provisional_single_source"))
+        self.assertEqual(bq.decide_dividend(d, {}, slot(v), {}, provisional=True)["status"], "blocked")   # Baostock alone: no
+        unusable = {d: {"value": None, "plans": 1, "blockers": ["bad"]}}
+        self.assertEqual(bq.decide_dividend(d, slot(v), unusable, {}, provisional=True)["status"], "blocked")
+        self.assertEqual(bq.decide_dividend(d, slot(v), slot(w), {}, provisional=True)["status"], "blocked")
         split = {"cash": Decimal(1), "bonus": Decimal(2), "cap": Decimal(0)}
         total = {"cash": Decimal(1), "bonus": Decimal(1), "cap": Decimal(1)}
         self.assertEqual(bq.decide_dividend(d, slot(split), slot(total), {})["status"], "accepted")

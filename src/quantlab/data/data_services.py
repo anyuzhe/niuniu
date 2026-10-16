@@ -966,7 +966,7 @@ class DataUpdateJobs:
                                     note="只重新观察还会变的约 400 只（有未实施的分红预案、除权日在近几天内或还没有数据），"
                                          "同花顺 + Baostock，约 30 分钟；新公布的除权日当天就进前复权，不再等几周"))
         steps.append(self._step("前复权重建", "fetch", ["qfq_published_f24"], [day], "qfq", overwrites=True, weight=15,
-                                note="按两源一致的公司行动整体重算，qfq 文件会被新版本替换"))
+                                note="按两源一致的公司行动整体重算（最近 7 天的除权允许只有同花顺一源，暂记），qfq 文件会被新版本替换"))
         steps.append(self._step("全市场情绪序列", "fetch", ["market_intraday_breadth", "market_intraday_breadth_5m"],
                                 [day], "breadth", overwrites=True, weight=3, note="重算当月的 1 分钟和 5 分钟文件"))
         steps.append(self._step("ETF 净值与事件日历", "fetch", ["etf_nav_daily", "etf_info", "event_calendar"], [day],
@@ -1045,7 +1045,7 @@ class DataUpdateJobs:
                        "bars_early", weight=3,
                        note="只用通达信 1 分钟线合成，不向 Baostock 取数；合成不了的留给「收盘后日常更新」"),
             self._step("前复权重建", "fetch", ["qfq_published_f24"], [day], "qfq", overwrites=True, weight=15,
-                       note="按两源一致的公司行动整体重算，qfq 文件会被新版本替换"),
+                       note="按两源一致的公司行动整体重算（最近 7 天的除权允许只有同花顺一源，暂记），qfq 文件会被新版本替换"),
             self._step("全市场情绪序列", "fetch", ["market_intraday_breadth", "market_intraday_breadth_5m"],
                        [day], "breadth", overwrites=True, weight=3, note="重算当月的 1 分钟和 5 分钟文件"),
             self._step("刷新状态", "verify", ["*"], [day], "status_index", weight=2),
