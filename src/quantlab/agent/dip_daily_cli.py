@@ -167,7 +167,10 @@ def agent_configs(output) -> dict:
     base = {'WorkingDirectory': str(REPO), 'ProcessType': 'Background', 'StartInterval': INTERVAL, 'RunAtLoad': True,
             'EnvironmentVariables': {'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'}}
     return {
-        DUTY_LABEL: dict(base, Label=DUTY_LABEL,
+        # 值班程序拉起的数据任务（前复权、日K合成等）会继承它的进程优先级。2026-10-17 实测：同样的前复权计算，
+        # 后台优先级每只 1.4–3.7 秒，正常优先级 0.057 秒（慢 25–65 倍），收盘更新因此被拖过午夜。所以只有它用 Standard；
+        # 每日流水线的 --tick 只是读状态、发提醒，仍用后台优先级。
+        DUTY_LABEL: dict(base, Label=DUTY_LABEL, ProcessType='Standard',
                          ProgramArguments=[sys.executable, '-m', 'quantlab.agent.dip_daily_cli', '--output', str(output), '--run-duty'],
                          StandardOutPath=str(output / 'scheduler.log'), StandardErrorPath=str(output / 'scheduler.error.log')),
         DAILY_LABEL: dict(base, Label=DAILY_LABEL,

@@ -314,6 +314,47 @@ class CorporateDailyTests(DailyFixture):
         with self.assertRaises(ValueError):
             corporate.apply(plan, resume_run=True, fetch_factory=factory)
 
+    def test_pending_subset_picks_open_plans_near_ex_dates_and_new_listings(self):
+        ths = self.root / "ths"
+        ths.mkdir()
+
+        def put(code, rows):
+            pd.DataFrame(rows).to_parquet(symbol_file(ths, code), index=False)
+
+        row = lambda period, progress, text, ex=None: {"报告期": period, "方案进度": progress,
+                                                      "分红方案说明": text, "A股除权除息日": ex}
+        put("sh.600001", [row("2025年报", "实施方案", "10派1元(含税)", "2026-06-24"),
+                          row("2026中报", "股东大会预案", "10派1.4元(含税)")])           # open distributing plan
+        put("sh.600003", [row("2025年报", "实施方案", "10派1元(含税)", "2026-06-24"),
+                          row("2026中报", "董事会预案", "不分配不转增")])                   # nothing to implement
+        put("sh.600005", [row("2026中报", "实施方案", "10派1元(含税)", "2026-09-22")])      # ex-date within 3 days
+        put("sh.600006", [row("2026中报", "实施方案", "10派1元(含税)", "2026-09-01")])      # long implemented
+        put("sh.600007", [row("2024年报", "董事会预案", "10派1元(含税)")])                  # stale plan, older than last year's annual
+        put("sh.600008", [row("2025年报", "取消分红", "10派1元(含税)")])                    # cancelled
+        universe = {f"sh.60000{n}" for n in range(1, 9)}                                   # 600002 and 600004 have no file: new listings
+        self.assertEqual(corporate.pending_codes(ths, date(2026, 9, 23), universe),
+                         ["sh.600001", "sh.600002", "sh.600004", "sh.600005"])
+
+    def test_subset_plan_covers_part_of_the_universe_and_cannot_widen(self):
+        listed = {"sh.600001": date(2020, 1, 1), "sh.600003": date(2020, 1, 1)}
+        with patch.object(corporate.coverage, "listed_a_shares", return_value=listed):
+            with patch.object(corporate.universe, "resolve", return_value=list(listed)):
+                plan = corporate.build_plan("ths-dividend", self.dataset, observed_on=date(2026, 9, 23),
+                                            codes=["sh.600003"], subset="pending-plans")
+                self.assertEqual((plan["universe_count"], plan["subset"]), (1, "pending-plans"))
+                self.assertEqual([a["code"] for a in corporate.validate_plan(plan)], ["sh.600003"])
+                full = corporate.build_plan("ths-dividend", self.dataset, observed_on=date(2026, 9, 23))
+                self.assertNotIn("subset", full)                                   # old full plans keep their digest
+                self.assertEqual(len(full["actions"]), 2)
+                # a subset plan that lists a code outside the universe is refused
+                widened = dict(plan)
+                widened["actions"] = plan["actions"] + [{"code": "sh.699999", **plan["actions"][0]}]
+                widened["actions"][-1]["code"] = "sh.699999"
+                widened["universe_count"] = 2
+                widened["plan_sha256"] = corporate.canonical_digest({k: v for k, v in widened.items() if k != "plan_sha256"})
+                with self.assertRaises(ValueError):
+                    corporate.validate_plan(widened)
+
     def test_digest_ignores_vendor_row_order_but_preserves_duplicates(self):
         a = pd.DataFrame({"code": ["sh.600001", "sh.600001"], "v": [1, 2]})
         b = a.iloc[::-1].reset_index(drop=True)

@@ -32,8 +32,53 @@ DATASETS = {
 }
 
 
+_PERIOD_RANK = {"一季报": 1, "中报": 2, "三季报": 3, "年报": 4}
+
+
+def _period_key(label):
+    """'2026中报' -> (2026, 2); anything unreadable -> None."""
+    text = str(label or "")
+    if len(text) < 5 or not text[:4].isdigit():
+        return None
+    return int(text[:4]), _PERIOD_RANK.get(text[4:], 0)
+
+
+def pending_codes(ths_root: Path, observed_on: date, universe, *, ex_days: int = 3) -> list[str]:
+    """Securities whose dividend picture can still change (user request 2026-10-17).
+
+    A plan only gets an ex-date late, at the implementation notice, so the daily
+    re-observation needs just: (1) a distributing plan from last year's annual report
+    on that is not implemented yet (board / shareholder-meeting plan, pre-disclosure),
+    (2) an ex-date that is in the future or within ``ex_days`` days, and (3) new
+    listings with no observed history.  Everything else is history that suppliers
+    did not revise (2026-09-23 audit: 0 revisions in 6,451 securities)."""
+    import pandas as pd
+    floor = (observed_on.year - 1, 4)
+    cutoff = pd.Timestamp(date.fromordinal(observed_on.toordinal() - ex_days))
+    picked = []
+    for code in sorted(universe):
+        file = symbol_file(ths_root, code)
+        if not file.is_file():
+            picked.append(code)
+            continue
+        frame = pd.read_parquet(file)
+        if frame.empty:
+            picked.append(code)
+            continue
+        recent = frame["报告期"].map(lambda label: (_period_key(label) or (0, 0)) >= floor)
+        progress = frame["方案进度"].astype(str)
+        plan_text = frame["分红方案说明"].astype(str)
+        distributing = plan_text.str.contains("[派送转]", regex=True) & ~plan_text.str.contains("不分配|不派", regex=True)
+        open_plan = recent & ~progress.isin(["实施方案", "取消分红"]) & distributing
+        near = pd.to_datetime(frame["A股除权除息日"], errors="coerce") >= cutoff
+        if bool(open_plan.any()) or bool(near.any()):
+            picked.append(code)
+    return picked
+
+
 def build_plan(dataset: str, root: Path, *, observed_on: date,
-               lookback_years: int = 3, codes: list[str] | None = None) -> dict:
+               lookback_years: int = 3, codes: list[str] | None = None,
+               subset: str | None = None) -> dict:
     if dataset not in DATASETS:
         raise ValueError(f"unsupported dataset: {dataset}")
     if lookback_years < 1 or lookback_years > 60:
@@ -62,6 +107,8 @@ def build_plan(dataset: str, root: Path, *, observed_on: date,
             "source_window": {"report_year_start": start_year,
                               "report_year_end": observed_on.year} if start_year else "full_supplier_history",
             "actions": actions}
+    if subset:
+        plan["subset"] = subset      # only a plan covering part of the universe carries this key
     plan["plan_sha256"] = canonical_digest(plan)
     return plan
 
@@ -78,13 +125,20 @@ def validate_plan(plan: dict, *, allow_changed: set[str] = frozenset()) -> list[
     listed = coverage.listed_a_shares(stock_path)
     rights = set(universe.resolve("tdx-rights")) if dataset == "cninfo-allotment" else set(listed)
     codes = sorted(rights & set(listed))
+    subset = plan.get("subset")
+    if subset:
+        # a partial plan lists its own codes; they must still sit inside the full universe
+        chosen = sorted(x["code"] for x in plan["actions"])
+        if not chosen or set(chosen) - set(codes):
+            raise ValueError("company-action subset is outside the universe")
+        codes = chosen
     source_window = plan["source_window"]
     lookback = (plan["source_window"]["report_year_end"] -
                 plan["source_window"]["report_year_start"] + 1
                 if isinstance(source_window, dict) else 3)
     rebuilt = build_plan(dataset, Path(plan["root"]),
                          observed_on=date.fromisoformat(plan["observed_on"]),
-                         lookback_years=lookback, codes=codes)
+                         lookback_years=lookback, codes=codes, subset=subset)
     # A resumed batch may have changed its own completed symbols; all other
     # plan and universe inputs must still match exactly.
     for name in ("schema_version", "kind", "dataset", "root", "observed_on",
@@ -281,6 +335,8 @@ def main(argv=None) -> int:
     parser.add_argument("--dest")
     parser.add_argument("--observed-on", type=date.fromisoformat)
     parser.add_argument("--lookback-years", type=int, default=3)
+    parser.add_argument("--subset", choices=("pending",),
+                        help="只观察还可能变化的证券：有未实施的分红预案、除权日在近期/未来、新上市")
     parser.add_argument("--plan-output")
     parser.add_argument("--plan")
     parser.add_argument("--apply", action="store_true")
@@ -293,8 +349,18 @@ def main(argv=None) -> int:
     root = Path(args.dest or DATASETS[args.dataset][0])
     if not args.apply:
         target = args.observed_on or datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        codes = subset = None
+        if args.subset == "pending":
+            stock_path, _ = select_stock_basic(target, lake=coverage.LAKE, fallback=coverage.STOCK_BASIC)
+            listed = coverage.listed_a_shares(stock_path)
+            rights = set(universe.resolve("tdx-rights")) if args.dataset == "cninfo-allotment" else set(listed)
+            codes = pending_codes(DATASETS["ths-dividend"][0], target, rights & set(listed))
+            subset = "pending-plans"
+            if not codes:
+                print(json.dumps({"dataset": args.dataset, "symbols": 0, "plan_sha256": None}, ensure_ascii=False))
+                return 0
         plan = build_plan(args.dataset, root, observed_on=target,
-                          lookback_years=args.lookback_years)
+                          lookback_years=args.lookback_years, codes=codes, subset=subset)
         print(json.dumps({"dataset": args.dataset, "symbols": len(plan["actions"]),
                           "source_window": plan["source_window"],
                           "plan_sha256": plan["plan_sha256"]}, ensure_ascii=False))
