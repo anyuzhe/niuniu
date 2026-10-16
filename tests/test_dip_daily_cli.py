@@ -161,7 +161,7 @@ class HelperTests(unittest.TestCase):
         self.assertIn('--tick', cfg[cli.DAILY_LABEL]['ProgramArguments'])
         # 值班程序拉起的数据任务继承它的优先级：后台优先级下前复权慢 25–65 倍（2026-10-17 实测），所以它用 Standard
         self.assertEqual(cfg[cli.DUTY_LABEL]['ProcessType'], 'Standard')
-        self.assertEqual(cfg[cli.DAILY_LABEL]['ProcessType'], 'Background')
+        self.assertEqual(cfg[cli.DAILY_LABEL]['ProcessType'], 'Standard')   # 检查时会读全市场面板、记台账，不能被后台优先级饿死
 
     def test_sentiment_token_survives_a_missing_library(self):
         with tempfile.TemporaryDirectory() as out:

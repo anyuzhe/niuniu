@@ -168,12 +168,14 @@ def agent_configs(output) -> dict:
             'EnvironmentVariables': {'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'}}
     return {
         # 值班程序拉起的数据任务（前复权、日K合成等）会继承它的进程优先级。2026-10-17 实测：同样的前复权计算，
-        # 后台优先级每只 1.4–3.7 秒，正常优先级 0.057 秒（慢 25–65 倍），收盘更新因此被拖过午夜。所以只有它用 Standard；
-        # 每日流水线的 --tick 只是读状态、发提醒，仍用后台优先级。
+        # 后台优先级每只 1.4–3.7 秒，正常优先级 0.057 秒（慢 25–65 倍），收盘更新因此被拖过午夜。
+        # --tick 当初以为“只是读状态、发提醒”所以用后台优先级，其实数据指纹变了它会读全市场面板、记 7 本台账
+        # （autorecord.run_if_new）：2026-10-17 机器负载很高时有一次检查从 02:55 跑了近 3 小时只拿到 1.5 分钟 CPU，
+        # 还占着自动记录的锁。两个都用 Standard。
         DUTY_LABEL: dict(base, Label=DUTY_LABEL, ProcessType='Standard',
                          ProgramArguments=[sys.executable, '-m', 'quantlab.agent.dip_daily_cli', '--output', str(output), '--run-duty'],
                          StandardOutPath=str(output / 'scheduler.log'), StandardErrorPath=str(output / 'scheduler.error.log')),
-        DAILY_LABEL: dict(base, Label=DAILY_LABEL,
+        DAILY_LABEL: dict(base, Label=DAILY_LABEL, ProcessType='Standard',
                           ProgramArguments=[sys.executable, '-m', 'quantlab.agent.dip_daily_cli', '--output', str(output), '--tick'],
                           StandardOutPath=str(output / 'dip_daily.log'), StandardErrorPath=str(output / 'dip_daily.error.log')),
     }
