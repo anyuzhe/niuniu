@@ -153,6 +153,29 @@ class JobRunnerTests(unittest.TestCase):
         qfq = next(d for d in state["result"]["datasets"] if d["dataset_id"] == "qfq_published_f24")
         self.assertTrue(qfq["failures"])
 
+    def test_an_incomplete_reference_snapshot_is_set_aside_and_fetched_again(self):
+        runner, run_dir = self.runner([self.step("reference", "参考快照")])
+        dest = Path(runner.data_root) / f"lake/bronze/provider=baostock/reference_snapshots/snapshot={DAY}"
+        dest.mkdir(parents=True)
+        (dest / "manifest.json").write_text(json.dumps({"run_status": "completed_with_errors"}))
+        (run_dir / "plans").mkdir()
+        (run_dir / "plans/reference.json").write_text(json.dumps({"plan_sha256": "abc"}))
+        calls = []
+        runner.sh = lambda args, **_: calls.append(args[0]) or ""
+        runner.step_reference(self.step("reference", "参考快照"), (0, 1))
+        self.assertFalse(dest.exists())
+        self.assertTrue((run_dir / f"incomplete-reference-{DAY}/manifest.json").is_file())
+        self.assertTrue(any(c.endswith("baostock_reference_snapshot.py") for c in calls))
+
+    def test_a_complete_reference_snapshot_is_not_fetched_again(self):
+        runner, run_dir = self.runner([self.step("reference", "参考快照")])
+        dest = Path(runner.data_root) / f"lake/bronze/provider=baostock/reference_snapshots/snapshot={DAY}"
+        dest.mkdir(parents=True)
+        (dest / "manifest.json").write_text(json.dumps({"run_status": "completed"}))
+        runner.sh = lambda args, **_: self.fail("complete snapshot must be reused")
+        runner.step_reference(self.step("reference", "参考快照"), (0, 1))
+        self.assertTrue(dest.exists())
+
     def test_pending_dividend_refresh_plans_and_applies_each_source_and_records_a_failure(self):
         runner, run_dir = self.runner([self.step("corp_actions", "待实施的分红方案")])
         deps = tempfile.TemporaryDirectory()

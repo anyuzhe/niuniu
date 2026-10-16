@@ -135,9 +135,20 @@ class Runner:
     def step_reference(self, step, share):
         day = step["dates"][0]
         dest = self.data_root / f"lake/bronze/provider=baostock/reference_snapshots/snapshot={day}"
-        if (dest / "manifest.json").is_file():
-            self.log(f"参考快照 {day} 已存在，跳过")
-            return
+        manifest = dest / "manifest.json"
+        if manifest.is_file():
+            try:
+                done = json.loads(manifest.read_text(encoding="utf-8")).get("run_status") == "completed"
+            except (OSError, ValueError):
+                done = False
+            if done:
+                self.log(f"参考快照 {day} 已存在，跳过")
+                return
+            # 上次没取全（有查询超时，run_status 不是 completed）：后面的日状态会拒用不完整的快照，
+            # 快照脚本也不肯写进已存在的目录，所以把残缺的挪到本次运行目录里留证，再重新取
+            aside = self.run_dir / f"incomplete-reference-{day}"
+            self.log(f"参考快照 {day} 不完整，挪到 {aside} 后重取")
+            dest.rename(aside)
         out = self.run_dir / "plans"
         out.mkdir(exist_ok=True)
         self.sh(["scripts/collect/daily_plan.py", "--date", day, "--out-dir", str(out)])
