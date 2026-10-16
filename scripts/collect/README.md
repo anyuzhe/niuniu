@@ -34,6 +34,7 @@
 | `migrate_empty_parquet.py` | 将旧零行占位Parquet迁为有类型空标记 | 先备份和核SHA，再移除混合schema |
 | `daily_plan.py` | 每日只读计划包，参考快照先行、其余计划随后 | 各计划分别批准，不能一键自动采集 |
 | `status_incremental.py` | Baostock交易/ST状态缺整只和尾部增量 | 状态表单独更新，历史内部洞仅报告 |
+| `status_fast.py` | 日状态快速补当天一行 + 每周对账 | 停牌由当天日K成交量推出、ST沿用前一天，只对约200只向Baostock查；`plan`/`apply`、`reconcile-plan`/`reconcile-apply` 都要完整计划SHA |
 | `corporate_actions_daily.py` | 同花顺/巨潮/Baostock分红每日再观察 | 内容SHA比较，变更备份、逐证券回执 |
 | `inventory.py` | 只读盘点数据根：文件、行数、列签名、日期范围、指纹 | 报告必须写在数据根外；`--deep-hash` 才算内容 SHA |
 | `migrate_captures.py` | 把工作空间 `_market_data` 捕获包复制到数据根并重定向 | plan→apply→redirect→pointer，每步需计划 SHA；源文件不动 |
@@ -117,6 +118,7 @@ python3 scripts/collect/registry.py views --apply --approve-sha256 <计划SHA>  
 先执行只读 `daily_plan.py --date YYYY-MM-DD --out-dir artifacts/<审阅目录>`。如果当日参考快照不存在，它**只输出参考快照计划**；单独审阅并批准 `baostock_reference_snapshot.py --snapshot-date ... --dest ... --apply --approve-sha256 ...` 后重新运行，才输出行情、状态、公司行动各自的JSON和SHA。`index.json` 不是总批准凭证；不能凭一次授权一键启动全部采集。计划输出在可审阅目录，不写数据湖也不联网。
 
 - `scan_gaps.py` → `bars_incremental.py` 按最新已验SHA的参考日历与stock_basic自动发现新上市证券、末尾缺口/5分钟不足48根；计划绑定所选快照，快照在批准后变化则联网前拒绝。若独立状态文件证明尾部每个交易日均`tradestatus=0`，列为`suspended_tail`、绑定状态文件SHA而不进入重试动作；内部无bar日期仍只报告不自动补。
+- `status_fast.py plan --day D` → `apply --plan … --approve-sha256 …`：当天日K（≥4000 只）已在盘上时，把前一日末行的状态文件追加一行 D——`tradestatus` 取日K成交量>0，`isST` 沿用，`前一天是 ST / 当天无日K / 日快照名称含 ST 或“退”与标志不一致` 的单独向 Baostock 查一天（先备份）；没有状态文件或历史落后的不碰，留给 `status_incremental.py`。推出的行记入 `_receipts/status-fast-provenance-<D>.json`；`reconcile-plan` / `reconcile-apply` 逐只重取这些日子并修正差异（备份在 `backups/status-reconcile-*`），成功后把对应日子标 `reconciled`。推出的行不逐文件备份（只追加一行，撤销=删最后一行，provenance 列出全部文件）。日常更新里日K合成排在日状态之前，快速办法失败退回逐只补数；每累计 5 个未对账日自动加一步「日状态对账」。
 - `status_incremental.py` 从原状态文件真实末日之后采集完整交易日状态，逐证券备份、原子合并和回执；内部缺日单列 `interior_gaps`，不自动补。`--apply --plan <状态计划> --approve-sha256 <完整SHA>` 才联网；失败用相同计划和 `--resume-run` 续跑。默认计划在参考日历落后于当天时拒绝，不把旧日历末日当今天。
 - `corporate_actions_daily.py` 对同花顺分红、巨潮配股按全供应商历史重新观察；Baostock分红默认重查最近3个报告年度并保留更早原始行，`--lookback-years` 可扩大至60（需要更多请求）。结果按字段和行内容做顺序无关、保留重复的摘要比较；不变文件不改字节，新增/修订先备份旧文件及空结果标记再替换，供应商把已有历史整段返回空值时拒绝擦除。每证券持久回执、可续跑，需单独 `--dataset ... --apply --plan ... --approve-sha256 ...`。Baostock超出批准回看窗口的旧年修订**不会自动发现**；仅生成bronze观察版本，不自动裁决事件、重算因子。
 - `baostock_reference_snapshot.py` 按日期建立新不可变快照；没有快照时下游使用旧归档源并在计划中绑定其SHA。优先使用最新不晚于目标日期的完成快照，必须验证manifest与实际证券文件SHA；最新快照损坏或不完整会拒绝而非回退旧版。参考快照中的在市口径可能不同于2026-09-22首采所用旧stock_basic，差异应单列审阅，不得暗改旧验收总体。
