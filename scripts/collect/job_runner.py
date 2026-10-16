@@ -204,7 +204,26 @@ class Runner:
         receipts = REPO / "artifacts/collection-receipts"
         receipts.mkdir(parents=True, exist_ok=True)
         third = share[1] / 3
-        # daily status
+        # 日K优先由通达信 1 分钟线合成（全市场不到 1 分钟，对账与 Baostock 一致）；合成不了的（新股、停牌后复牌、
+        # 1 分钟线缺根）留给下面的 Baostock 补缺，只取这些
+        try:
+            made = self.last_json(self.sh(["scripts/collect/daily_from_min1.py", "apply", "--day", day]))
+            self.log(f"日K由 1 分钟线合成：{made.get('derived', 0)} 只；未合成 {made.get('status', {})}")
+        except RuntimeError as exc:
+            self.log(f"1 分钟线合成日K失败（{exc}），改由 Baostock 全部补取")
+        # 日状态先走快速办法（status_fast.py）：停牌由当天日K的成交量推出，ST 沿用前一天，只对少数几只（前一天是 ST、
+        # 当天没有日K、名称和标志对不上）向 Baostock 单独查，约 5 分钟；逐只补全部要 1.5–2 小时。它不处理的（没有状态文件、
+        # 历史落后的）和查询失败的，留给下面逐只补数。所以日K合成排在日状态之前。
+        try:
+            fast = self.last_json(self.sh(["scripts/collect/status_fast.py", "plan", "--day", day,
+                                           "--plan-output", str(plans / "status-fast.json")]))
+            if fast.get("derive", 0) + fast.get("query", 0):
+                self.log(f"日状态快速办法：当天日K推出 {fast['derive']} 只，向 Baostock 单独查 {fast['query']} 只")
+                self.sh(["scripts/collect/status_fast.py", "apply", "--plan", str(plans / "status-fast.json"),
+                         "--approve-sha256", fast["plan_sha256"]], step_share=(share[0], third))
+        except RuntimeError as exc:
+            self.log(f"日状态快速办法没有完成（{exc}），剩下的走逐只补数")
+        # daily status, symbol by symbol, for whatever the fast path left
         # The plan is rebuilt from what is already on disk, so a retry only redoes the
         # symbols still missing. Baostock stalls now and then; retry twice after a pause.
         for attempt in range(3):
@@ -222,13 +241,6 @@ class Runner:
                 self.log(f"日状态第 {attempt + 1} 次失败（{exc}），120 秒后重新规划并续跑")
                 time.sleep(120)
         self.result_dataset("security_status_baostock_v2", through=day, files_written=info.get("actions", 0))
-        # 日K优先由通达信 1 分钟线合成（全市场不到 1 分钟，对账与 Baostock 一致）；合成不了的（新股、停牌后复牌、
-        # 1 分钟线缺根）留给下面的 Baostock 补缺，只取这些
-        try:
-            made = self.last_json(self.sh(["scripts/collect/daily_from_min1.py", "apply", "--day", day]))
-            self.log(f"日K由 1 分钟线合成：{made.get('derived', 0)} 只；未合成 {made.get('status', {})}")
-        except RuntimeError as exc:
-            self.log(f"1 分钟线合成日K失败（{exc}），改由 Baostock 全部补取")
         # 5 分钟线同样由 1 分钟线合成（精度略低于日K，见 daily_from_min1.py 的说明），Baostock 只补合成不了的
         try:
             made = self.last_json(self.sh(["scripts/collect/daily_from_min1.py", "apply", "--kind", "min5", "--day", day]))
@@ -424,6 +436,30 @@ class Runner:
                     self.deferred_errors.append(message)
         finally:
             self.env = saved
+
+    def step_status_reconcile(self, step, share):
+        """Weekly: ask Baostock again for the status rows that status_fast.py derived (one request per symbol, about
+        1.5 h) and fix any that differ.  Last step of the run, after the seal; a failure is recorded, the next run
+        offers it again because the days stay unreconciled."""
+        plans = self.run_dir / "plans"
+        plans.mkdir(exist_ok=True)
+        try:
+            info = self.last_json(self.sh(["scripts/collect/status_fast.py", "reconcile-plan",
+                                           "--plan-output", str(plans / "status-reconcile.json")]))
+            if not info.get("plan_sha256"):
+                self.log("日状态对账：没有待对账的日子")
+                return
+            self.log(f"日状态对账：{info.get('symbols')} 只、{len(info.get('days', []))} 个交易日")
+            done = self.last_json(self.sh(["scripts/collect/status_fast.py", "reconcile-apply", "--plan",
+                                           str(plans / "status-reconcile.json"), "--approve-sha256",
+                                           info["plan_sha256"]], step_share=share, keep_awake=True))
+            self.log(f"日状态对账完成：检查 {done.get('checked')} 只，修正 {done.get('changed')} 只")
+            self.result_dataset("security_status_baostock_v2", files_written=done.get("changed", 0))
+        except RuntimeError as exc:
+            message = f"日状态对账失败：{exc}"
+            self.log(message)
+            self.result_dataset("security_status_baostock_v2", failures=[message])
+            self.deferred_errors.append(message)
 
     def step_seal(self, step, share):
         from quantlab.data import day_seals

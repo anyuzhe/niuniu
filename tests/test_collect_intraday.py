@@ -153,6 +153,64 @@ class JobRunnerTests(unittest.TestCase):
         qfq = next(d for d in state["result"]["datasets"] if d["dataset_id"] == "qfq_published_f24")
         self.assertTrue(qfq["failures"])
 
+    def bars_runner(self, fail=()):
+        runner, run_dir = self.runner([self.step("bars", "日状态、日K、5 分钟")])
+        calls = []
+
+        def sh(args, **_):
+            calls.append(args)
+            script = args[0].rsplit("/", 1)[-1]
+            if script == "status_fast.py" and args[1] in fail:
+                raise RuntimeError("exit 1")
+            if script == "status_fast.py" and args[1] == "plan":
+                return json.dumps({"day": DAY, "derive": 5000, "query": 200, "plan_sha256": "fast"})
+            if script == "status_incremental.py" and "--plan-output" in args:
+                return json.dumps({"actions": 0, "plan_sha256": "inc"})
+            if script == "scan_gaps.py":
+                Path(args[args.index("--json") + 1]).write_text(json.dumps({"actions": []}))
+            return "{}"
+        runner.sh = sh
+        return runner, calls
+
+    def test_daily_status_is_done_by_the_fast_path_after_the_daily_bar_exists(self):
+        runner, calls = self.bars_runner()
+        runner.step_bars(self.step("bars", "x"), (0, 3))
+        names = [(c[0].rsplit("/", 1)[-1], c[1] if len(c) > 1 else "") for c in calls]
+        first_bar = names.index(("daily_from_min1.py", "apply"))
+        fast_plan = names.index(("status_fast.py", "plan"))
+        fast_apply = names.index(("status_fast.py", "apply"))
+        slow_plan = next(i for i, c in enumerate(calls) if c[0].endswith("status_incremental.py"))
+        self.assertTrue(first_bar < fast_plan < fast_apply < slow_plan)   # the bar comes first; the slow path only mops up
+        apply_args = calls[fast_apply]
+        self.assertEqual(apply_args[apply_args.index("--approve-sha256") + 1], "fast")
+
+    def test_daily_status_falls_back_to_the_symbol_by_symbol_path_when_the_fast_path_fails(self):
+        runner, calls = self.bars_runner(fail=("apply",))
+        runner.step_bars(self.step("bars", "x"), (0, 3))
+        self.assertTrue(any(c[0].endswith("status_incremental.py") for c in calls))
+
+    def test_weekly_reconcile_plans_applies_and_records_a_failure_without_stopping_the_run(self):
+        runner, run_dir = self.runner([self.step("status_reconcile", "日状态对账")])
+        seen = []
+
+        def sh(args, **_):
+            seen.append(args[1])
+            if args[1] == "reconcile-plan":
+                return json.dumps({"symbols": 5000, "days": ["a", "b"], "plan_sha256": "rec"})
+            return json.dumps({"checked": 5000, "changed": 2})
+        runner.sh = sh
+        runner.step_status_reconcile(self.step("status_reconcile", "x"), (0, 1))
+        self.assertEqual(seen, ["reconcile-plan", "reconcile-apply"])
+        self.assertEqual(runner.deferred_errors, [])
+
+        def broken(args, **_):
+            if args[1] == "reconcile-apply":
+                raise RuntimeError("exit 1")
+            return json.dumps({"symbols": 1, "days": ["a"], "plan_sha256": "rec"})
+        runner.sh = broken
+        runner.step_status_reconcile(self.step("status_reconcile", "x"), (0, 1))
+        self.assertTrue(runner.deferred_errors and "日状态对账失败" in runner.deferred_errors[0])
+
     def test_an_incomplete_reference_snapshot_is_set_aside_and_fetched_again(self):
         runner, run_dir = self.runner([self.step("reference", "参考快照")])
         dest = Path(runner.data_root) / f"lake/bronze/provider=baostock/reference_snapshots/snapshot={DAY}"

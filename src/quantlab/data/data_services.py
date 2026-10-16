@@ -938,7 +938,11 @@ class DataUpdateJobs:
             return [], warnings, "这一天已封存，采集只读", params
         steps = []
         ref = self.data_root / f"lake/bronze/provider=baostock/reference_snapshots/snapshot={day}/manifest.json"
-        steps.append(self._step("参考快照", "skip_existing" if ref.is_file() else "fetch",
+        try:
+            ref_done = json.loads(ref.read_text(encoding="utf-8")).get("run_status") == "completed"
+        except (OSError, ValueError):
+            ref_done = False   # a snapshot with failed queries (completed_with_errors) is set aside and fetched again
+        steps.append(self._step("参考快照", "skip_existing" if ref_done else "fetch",
                                 ["reference_snapshot_baostock"], [day], "reference"))
         # step 1 takes (or already has) this day's reference snapshot, so the collectors read its calendar
         public, notes = self._public_steps(day, today, calendar, calendar_snapshot=day)
@@ -958,7 +962,7 @@ class DataUpdateJobs:
                                     note="约 5,600 只股票、约 90 只 ETF（1 分钟、5 分钟、日线）和 6 个指数，每只取最新一页并合并，约 35 分钟；排在日K之前，因为日K由它合成；通达信只保留最近约 91 个交易日，不能漏跑太久"))
         steps.append(self._step("日状态、日K、5 分钟", "fetch",
                                 ["security_status_baostock_v2", "bars_daily_baostock_raw", "bars_min5_baostock_raw"],
-                                [day], "bars", weight=40, note="日K由通达信 1 分钟线合成，合成不了的才向 Baostock 取；5 分钟线和日状态仍向 Baostock 逐只补缺，已有的日期不重写"))
+                                [day], "bars", weight=40, note="日K由通达信 1 分钟线合成，合成不了的才向 Baostock 取；日状态由当天日K成交量推出停牌、ST 沿用前一天并只向 Baostock 查约 200 只（约 5 分钟，原来逐只补要 1.5–2 小时），没处理到的再逐只补；5 分钟线仍向 Baostock 逐只补缺，已有的日期不重写"))
         if day == today:
             steps.append(self._step("待实施的分红方案", "fetch",
                                     ["corporate_actions_dividend_ths_v2", "corporate_actions_dividend_baostock_v2"],
@@ -986,7 +990,24 @@ class DataUpdateJobs:
         steps.append(self._step("封存", "seal", ["*"], [prev, day], "seal", trading_day=True,
                                 note=f"封存 {day}；同时把 {prev} 待封存的次日数据补封"))
         steps.append(self._step("刷新状态", "verify", ["*"], [day], "status_index", weight=2))
+        open_days = self._unreconciled_status_days()
+        if open_days >= 5:
+            steps.append(self._step("日状态对账", "fetch", ["security_status_baostock_v2"], [day], "status_reconcile",
+                                    overwrites=True, weight=30,
+                                    note=f"最近 {open_days} 个交易日的日状态是推出来的（停牌来自日K成交量、ST 沿用前一天），"
+                                         "这里向 Baostock 逐只重新取一遍核对，有出入的修正；约 1.5 小时，排在封存之后，失败不影响封存"))
         return steps, warnings, None, params
+
+    def _unreconciled_status_days(self) -> int:
+        """Days whose status rows were derived by status_fast.py and not yet checked against Baostock."""
+        folder = self.data_root / "lake/bronze/provider=baostock/daily_status_v2/_receipts"
+        count = 0
+        for path in folder.glob("status-fast-provenance-*.json"):
+            try:
+                count += not json.loads(path.read_text(encoding="utf-8")).get("reconciled")
+            except (OSError, ValueError):
+                continue
+        return count
 
     def _plan_same_day_public(self, params, today, calendar, warnings):
         """Only the sources that can be seen on the day itself, as a small job of its own: when the 15:45 early run

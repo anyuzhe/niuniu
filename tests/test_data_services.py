@@ -38,7 +38,7 @@ class Lake:
         snap.mkdir(parents=True)
         pd.DataFrame({"calendar_date": ["2026-09-23", "2026-09-24", "2026-09-25"],
                       "is_trading_day": ["1", "1", "0"]}).to_parquet(snap / "trade_calendar.parquet")
-        (snap / "manifest.json").write_text("{}")
+        (snap / "manifest.json").write_text(json.dumps({"run_status": "completed"}))
         base = self.root / "lake/bronze/provider=ths/limit_up_pool"
         write_parquet(base / "2026-09-24.parquet")
         (base / "_receipts").mkdir()
@@ -140,6 +140,27 @@ class JobsTests(unittest.TestCase):
         self.assertEqual(step["action"], "skip_existing")
         self.assertIn("20260924-154541-dddddd", step["note"])
 
+    def test_an_incomplete_reference_snapshot_is_planned_for_a_new_fetch(self):
+        manifest = self.root / "lake/bronze/provider=baostock/reference_snapshots/snapshot=2026-09-24/manifest.json"
+        manifest.write_text(json.dumps({"run_status": "completed_with_errors"}))
+        step = next(s for s in self.jobs.plan("daily_close_update", {"date": "2026-09-24"})["steps"] if s["kind"] == "reference")
+        self.assertEqual(step["action"], "fetch")
+
+    def test_status_reconcile_is_planned_after_five_unreconciled_derived_days(self):
+        folder = self.root / "lake/bronze/provider=baostock/daily_status_v2/_receipts"
+        folder.mkdir(parents=True)
+
+        def kinds():
+            return [s["kind"] for s in self.jobs.plan("daily_close_update", {"date": "2026-09-24"})["steps"]]
+        for n in range(4):
+            (folder / f"status-fast-provenance-2026-09-0{n + 1}.json").write_text(json.dumps({"reconciled": False}))
+        (folder / "status-fast-provenance-2026-09-09.json").write_text(json.dumps({"reconciled": True}))
+        self.assertNotIn("status_reconcile", kinds())
+        (folder / "status-fast-provenance-2026-09-10.json").write_text(json.dumps({"reconciled": False}))
+        found = kinds()
+        self.assertEqual(found[-1], "status_reconcile")   # after the seal and the status refresh
+        self.assertLess(found.index("seal"), found.index("status_reconcile"))
+
     def test_list_and_plans(self):
         ids = {j["job_id"] for j in self.jobs.list_jobs()["jobs"]}
         self.assertTrue({"daily_close_update", "sector_recorder_start", "sector_recorder_stop", "backfill_day",
@@ -211,7 +232,7 @@ class CalendarLake:
         pd.DataFrame({"calendar_date": [d.isoformat() for d in days],
                       "is_trading_day": ["1" if d.weekday() < 5 else "0" for d in days]}).to_parquet(
             snap / "trade_calendar.parquet")
-        (snap / "manifest.json").write_text("{}")
+        (snap / "manifest.json").write_text(json.dumps({"run_status": "completed"}))
 
 
 class PublicStepsTests(unittest.TestCase):
