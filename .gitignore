@@ -20,3 +20,6 @@ research_skills/**/upstream/
 
 # 数据侧接口探测等临时文件
 .tmp/
+
+# 本地 Pi 运行时（非仓库代码）
+.pi/
