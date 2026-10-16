@@ -1,7 +1,9 @@
-"""Duty scheduler: while niuniu is open, run the daily data jobs by themselves.
+"""Duty scheduler: run the daily data jobs by themselves.
 
-Started in the background by the two launchers (``--parent-pid`` = the niuniu process);
-exits when niuniu exits.  Authorised by the user on 2026-09-29 for exactly two jobs:
+Runs for good as the LaunchAgent ``com.niuniu.duty-scheduler`` (``quantlab.agent.dip_daily_cli --run-duty``, no
+``--parent-pid``; user request 2026-10-11), so it does not depend on the niuniu client.  The two launchers also
+start one with ``--parent-pid`` = the niuniu process (exits when niuniu exits); the lock below lets only one run.
+Authorised by the user on 2026-09-29 for exactly these jobs:
 
 * ``sector_recorder_start`` every trading day from 09:10 until 15:25 (same checks as
   ``autostart``: not twice, not after a manual stop; the recorder itself exits on a
