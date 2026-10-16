@@ -34,6 +34,14 @@ EVERYDAY_TOOLS = NAMES | {
     'get_fuyao_short_term_context', 'get_fuyao_fundamental_context',
 }
 
+# Hybrid profile: everyday market tools plus a curated read-only research subset.
+# All added tools are read-only (catalog/forward/spec) and safe for everyday sessions.
+HYBRID_TOOLS = EVERYDAY_TOOLS | {
+    'get_capabilities', 'search_factors', 'describe_factor',
+    'list_forward_records', 'get_forward_record', 'get_forward_summary',
+    'list_research_specs', 'read_research_spec',
+}
+
 EVERYDAY_SYSTEM = '''你是牛牛，用户个人的A股投研助手，用简洁的中文回答。
 用户问市场、方向、个股或自己的股票时，先用工具取数据：get_market_overview（今日市场与主线方向）、get_stock_report（个股）、get_my_stocks（我的股票）、get_judgments（过去判断的核对结果）、get_intraday_sectors（盘中板块，交易时间问“现在什么板块强”时用）；需要公告、研报、新闻、财报时再查对应工具。不要凭记忆编造数字，工具没有的数据就说没有。
 回答结构：先一句话结论，再列依据（带数字和数据日期），然后写需要观察的条件、什么情况说明判断错了；个股可给强/中/弱三种情景，不写概率。
@@ -195,4 +203,4 @@ class ProfileAPI:
         return self.inner.call(name, args)
 
 
-__all__ = ['HomeAPI', 'ProfileAPI', 'TOOLS', 'EVERYDAY_TOOLS', 'EVERYDAY_SYSTEM']
+__all__ = ['HomeAPI', 'ProfileAPI', 'TOOLS', 'EVERYDAY_TOOLS', 'HYBRID_TOOLS', 'EVERYDAY_SYSTEM']

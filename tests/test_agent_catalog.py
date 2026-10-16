@@ -7,14 +7,19 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
+import numpy as np
 from test_context_experiments import ContextProvider, context_config, runner
 from quantlab.agent.catalog import ReadOnlyResearchAPI, compact
+from quantlab.dipbuy import tracker
+from quantlab.dipbuy.engine import DipConfig, latest_signal
 
 
 EXPECTED_TOOLS = {'get_capabilities','search_factors','describe_factor','list_research_templates',
     'get_research_template','get_strategy_package_contract','preview_strategy_package',
     'list_strategy_runs','get_strategy_run','compare_strategy_runs','list_experiments',
-    'get_experiment','get_job','get_proposal_progress','get_run_research_links','compare_factor_candidates'}
+    'get_experiment','get_job','get_proposal_progress','get_run_research_links','compare_factor_candidates',
+    'audit_factor_risk',
+    'list_forward_records','get_forward_record','get_forward_summary','preview_backtest','preview_factor_combination','check_factor_health','get_full_evidence','list_research_specs','read_research_spec'}
 
 
 class AgentCatalogTests(unittest.TestCase):
@@ -84,6 +89,81 @@ class AgentCatalogTests(unittest.TestCase):
             value = subprocess.run(command+['--call','submit_experiment'], capture_output=True, text=True, timeout=30)
             self.assertEqual(value.returncode, 2); self.assertFalse(json.loads(value.stdout)['ok'])
             self.assertEqual(list(Path(tmp).iterdir()), [])
+
+    def test_capabilities_lists_forward_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            api = ReadOnlyResearchAPI(tmp)
+            caps = api.call('get_capabilities', {})
+            self.assertTrue(caps['ok']); self.assertTrue(caps['data']['forward_records_available'])
+            names = caps['data']['tools']
+            for tool in ('list_forward_records','get_forward_record','get_forward_summary'):
+                self.assertIn(tool, names)
+
+    def test_forward_records_unknown_kind_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            api = ReadOnlyResearchAPI(tmp)
+            for name in ('list_forward_records','get_forward_summary'):
+                result = api.call(name, {'kind':'forex','offset':0,'limit':5})
+                self.assertFalse(result['ok']); self.assertEqual(result['error']['code'],'INVALID_ARGUMENT')
+            result = api.call('get_forward_record', {'kind':'forex','record_id':'abc'})
+            self.assertFalse(result['ok']); self.assertEqual(result['error']['code'],'INVALID_ARGUMENT')
+
+    def _seed_forward(self, tmp, kind='market'):
+        from test_dipbuy import make_panel, scripted
+        panel = make_panel(np.full((340, 30), 10.0))
+        market, cand = scripted(340, 30, 339, {339: [0,1,2]}, ret20=np.full((340,30), 0.03, np.float32))
+        signal = latest_signal(panel, market, cand, DipConfig(positions=2, hold_days=5))
+        if not signal.get('gate_open') or not signal.get('picks'):
+            self.skipTest('seeded signal not gate_open')
+        record = tracker.record_signal(tmp, signal, DipConfig(positions=2, hold_days=5), kind=kind)
+        return record['id'], signal['date']
+
+    def test_list_forward_records_read_only_and_paginates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            record_id, date = self._seed_forward(tmp)
+            api = ReadOnlyResearchAPI(tmp)
+            before = {str(p.relative_to(tmp)):p.read_bytes() for p in Path(tmp).rglob('*') if p.is_file()}
+            result = api.call('list_forward_records', {'kind':'market','offset':0,'limit':5})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data']['total'], 1)
+            self.assertEqual(len(result['data']['records']), 1)
+            self.assertEqual(result['data']['records'][0]['signal_date'], date)
+            self.assertEqual(result['data']['records'][0]['status'], 'waiting')
+            self.assertEqual({str(p.relative_to(tmp)):p.read_bytes() for p in Path(tmp).rglob('*') if p.is_file()}, before)
+            page2 = api.call('list_forward_records', {'kind':'market','offset':1,'limit':5})
+            self.assertTrue(page2['ok']); self.assertEqual(page2['data']['records'], [])
+
+    def test_get_forward_record_detail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            record_id, date = self._seed_forward(tmp)
+            api = ReadOnlyResearchAPI(tmp)
+            result = api.call('get_forward_record', {'kind':'market','record_id':record_id})
+            self.assertTrue(result['ok'])
+            record = result['data']['record']
+            self.assertEqual(record['id'], record_id)
+            self.assertEqual(record['signal_date'], date)
+            self.assertEqual(record['status'], 'waiting')
+            self.assertGreater(record['n_picks'], 0)
+            self.assertEqual(result['data']['kind'], 'market')
+            self.assertEqual(result['evidence'][0]['record_id'], record_id)
+
+    def test_get_forward_record_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            api = ReadOnlyResearchAPI(tmp)
+            result = api.call('get_forward_record', {'kind':'market','record_id':'no-such-record'})
+            self.assertFalse(result['ok']); self.assertEqual(result['error']['code'],'INVALID_ARTIFACT')
+
+    def test_get_forward_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._seed_forward(tmp)
+            api = ReadOnlyResearchAPI(tmp)
+            result = api.call('get_forward_summary', {'kind':'market'})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data']['kind'], 'market')
+            self.assertEqual(result['data']['n_records'], 1)
+            self.assertEqual(result['data']['n_closed'], 0)
+            self.assertFalse(result['data']['enough'])
+            self.assertIn('只当记录看', result['data']['note'])
 
     def test_summary_preserves_numbers_and_exposes_omissions(self):
         self.assertEqual(compact({'v':None,'zero':0.,'x':-1.234}), {'v':None,'zero':0.,'x':-1.234})

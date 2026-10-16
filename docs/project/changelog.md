@@ -2948,3 +2948,17 @@
 - `test_research_reproduction` 在 Mac 上 5/5 通过。
 - 主扫描官方 `report_registry` 在 16GB Mac 上写 `bindings.json` 时内存耗尽；改为流式复算，366 项逐项 Holm p 与精简报告 0 处差异（Holm 24 / BH 116 / 原始 148）。残缺的 `report/` 已改名为 `report_partial_oom/`。
 - 待办（没做）：让 `report_registry` 流式写出 `bindings.json`，否则大族无法生成完整官方报告。
+
+## 第一百三十次（2026-10-17）：niuniu Agent 系统提示模块化、混合日常/研究工具可见性、模型切换 claude-sonnet-5.5 high
+
+- 类型：Agent 架构 / 模型配置 / 工具可见性
+- 模块：src/quantlab/agent/system_prompts/、src/quantlab/agent/chat_runtime.py、src/quantlab/agent/home_tools.py、artifacts/_assistant/model.json
+- 改动内容：
+  1. 将 chat_runtime.py 中约 2000 字的单一 SYSTEM 字符串拆分为四个模块：core.py（身份与权限）、research.py（研究工作流与方法论）、market.py（市场数据与主题）、governance.py（治理与合规）。system_prompts/__init__.py 的 compose() 按顺序拼接，chat_runtime.py 改用 SYSTEM=compose()，文本内容与之前完全一致，不改变任何行为约束。
+  2. 新增 hybrid 工具 profile：home_tools.py 定义 HYBRID_TOOLS = EVERYDAY_TOOLS ∪ {get_capabilities, search_factors, describe_factor, list_forward_records, get_forward_record, get_forward_summary, list_research_specs, read_research_spec}；chat_runtime.py 接受 tool_profile='hybrid'，通过 ProfileAPI 限制为 HYBRID_TOOLS，系统提示使用 EVERYDAY_SYSTEM + 核心规则。
+  3. 将 niuniu 模型从 gpt-5.5 / medium 切换为 claude-sonnet-5.5 / high（artifacts/_assistant/model.json）。
+- 改动原因：系统提示过长难以维护，拆分后便于按模块复核和按会话类型组合；hybrid profile 让日常会话可读取只读研究工具（因子、前向记录、研究规格）而不暴露提案/执行类工具；模型切换按用户 2026-10-17 指示。
+- 关键约束：仅读取工具，不写盘、不下单、不批准提案；hybrid profile 下不可调用 propose_experiment/record_hypothesis/record_finding 等写类工具；模型切换不改变 P10 Human Merge Gate 和 AGENTS.md 隔离约束。
+- 测试证据：tests/test_agent_catalog.py 12/12 通过；tests/test_agent_chat.py 13/13 通过；tests/test_research_chat.py 8/8 通过；tests/test_evidence_review.py 8/8 通过；tests/test_research_spec_fidelity.py 15/15 通过；compose() 输出 6789 字符，四段均完整存在。
+- Git 提交：待提交（本次收尾）。
+- 后续事项：在 Mac 环境按用户指令以 claude-sonnet-5.5 high 给牛牛一个复杂任务并观察完成情况；有问题则改正优化。
