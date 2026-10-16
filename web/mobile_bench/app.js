@@ -76,11 +76,7 @@
       if (!el) {
         el = document.createElement('div');
         el.id = 'nn-loading';
-        el.style.cssText = 'position:fixed;inset:0;background:rgba(14,20,27,.6);z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:14px;';
-        el.innerHTML = '<div style="width:34px;height:34px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:nnSpin .8s linear infinite;margin-bottom:10px;"></div><div>正在下载并解密…</div>';
-        var style = document.createElement('style');
-        style.textContent = '@keyframes nnSpin{to{transform:rotate(360deg)}}';
-        document.head.appendChild(style);
+        el.innerHTML = '<div class="spin"></div><div>正在下载并解密…</div>';      // 样式在 style.css（CSP 不放行行内样式）
       }
       document.body.appendChild(el);
     } else if (el) {
@@ -194,7 +190,7 @@
       d += (gap ? 'M' : 'L') + X(j).toFixed(1) + ' ' + Y(vals[j]).toFixed(1); gap = false;
     }
     var fmt = opt.fmt || function (v) { return v.toFixed(2); };
-    var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(opt.label || '曲线') + '" style="cursor:crosshair">';
+    var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(opt.label || '曲线') + '">';
     if (opt.base != null) svg += '<line class="base" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(opt.base).toFixed(1) + '" y2="' + Y(opt.base).toFixed(1) + '"/>';
     svg += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '"/>';
     svg += '<path class="ln" d="' + d + '"/>';
@@ -427,7 +423,7 @@
 
     var searchBar = '';
     if (allPicks.length) {
-      searchBar = '<div style="margin:8px 0 4px;"><input type="search" id="sig-search" placeholder="搜索代码/名称/行业/层…" value="' + esc(kw) + '" style="width:100%;font:inherit;font-size:14px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);"></div>';
+      searchBar = '<div class="search-bar"><input type="search" id="sig-search" placeholder="搜索代码/名称/行业/层…" value="' + esc(kw) + '"></div>';
     }
 
     html += '<section class="card"><h2>候选股<small>' + (picks.length ? '计划买 ' + plan.length + ' 只，其余备选' : '') + '</small></h2>' + searchBar;
@@ -486,7 +482,7 @@
     html += '</section>';
 
     // 状态筛选
-    var filterHtml = '<div style="margin:8px 0 6px;display:flex;gap:6px;flex-wrap:wrap;">' +
+    var filterHtml = '<div class="filter-row">' +
       ['all', 'waiting', 'open', 'closed'].map(function (k) {
         var labelMap = { all: '全部', waiting: '等待买入', open: '持有中', closed: '已结算' };
         return '<button class="chip" data-ff="' + k + '" aria-pressed="' + (state.forwardFilter === k) + '">' + labelMap[k] + '</button>';
@@ -569,7 +565,7 @@
     html += '<section class="card"><h2>全部持仓<small>' + dispHoldings.length + ' 只（共 ' + rows.length + ' 只）</small></h2>';
     var searchBar = '';
     if (rows.length) {
-      searchBar = '<div style="margin:8px 0 4px;"><input type="search" id="hold-search" placeholder="搜索代码/名称/层…" value="' + esc(hk) + '" style="width:100%;font:inherit;font-size:14px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);"></div>';
+      searchBar = '<div class="search-bar"><input type="search" id="hold-search" placeholder="搜索代码/名称/层…" value="' + esc(hk) + '"></div>';
     }
     html += searchBar;
     if (!dispHoldings.length) {
@@ -628,8 +624,8 @@
     }
     if (state.phase === 'locked') {
       var d = state.env && state.env.data_date ? '<p class="small muted">数据截至 ' + esc(state.env.data_date) + '（密文）</p>' : '';
-      var passInput = '<input id="pass" type="' + (state.passVisible ? 'text' : 'password') + '" placeholder="口令" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="口令" style="width:100%;font:inherit;font-size:17px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);">';
-      var toggle = '<button type="button" id="pass-toggle" style="font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;margin-top:8px;">' + (state.passVisible ? '隐藏' : '显示') + '口令</button>';
+      var passInput = '<input id="pass" type="' + (state.passVisible ? 'text' : 'password') + '" placeholder="口令" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="口令">';
+      var toggle = '<button type="button" id="pass-toggle">' + (state.passVisible ? '隐藏' : '显示') + '口令</button>';
       app.innerHTML = '<div class="gate"><h1>牛牛策略</h1><p class="muted">输入口令查看。口令在电脑上：<code>artifacts/_home/mobile_passphrase</code></p>' + d +
         '<form id="unlock" autocomplete="off">' + passInput +
         '<div class="err" id="err" role="alert">' + esc(state.error) + '</div>' +
@@ -643,13 +639,15 @@
     // 图表 tip 覆盖层
     var tipHtml = '';
     if (state.chartTip) {
-      tipHtml = '<div id="nn-tip" style="position:fixed;left:' + state.chartTip.x + 'px;top:' + state.chartTip.y + 'px;background:rgba(0,0,0,.8);color:#fff;padding:6px 10px;border-radius:8px;font-size:13px;z-index:100;pointer-events:none;white-space:nowrap;max-width:80%;">'+esc(state.chartTip.text)+'</div>';
+      tipHtml = '<div id="nn-tip">' + esc(state.chartTip.text) + '</div>';     // 位置在下面用 CSSOM 设，CSP 不放行行内 style
     }
     app.innerHTML = '<header class="top"><div><h1>牛牛策略</h1><div class="sub">快照 ' + esc(dt(s.generated_at)) + ' · 纸面记录</div></div><button class="btn" id="refresh">刷新</button></header>' +
       '<main>' + (state.tab === 'guide' ? '' : fr) + body + tipHtml + '</main>' +
       '<nav class="tabs" aria-label="页面">' + TABS.map(function (t) {
         return '<button data-tab="' + t[0] + '"' + (t[0] === state.tab ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
       }).join('') + '</nav>';
+    var tip = document.getElementById('nn-tip');
+    if (tip && state.chartTip) { tip.style.left = state.chartTip.x + 'px'; tip.style.top = state.chartTip.y + 'px'; }
     bind();
   }
 
@@ -712,6 +710,7 @@
     var startY = 0;
     function onStart(e) { startY = e.touches ? e.touches[0].clientY : e.clientY; }
     function onMove(e) {
+      if (e.touches && e.touches.length > 1) { if (e.cancelable) e.preventDefault(); return; }   // 双指 → 不缩放
       if (state.loading) return;
       var y = e.touches ? e.touches[0].clientY : e.clientY;
       var d = y - startY;
@@ -721,7 +720,6 @@
         if (!el) {
           el = document.createElement('div');
           el.id = 'nn-pull';
-          el.style.cssText = 'text-align:center;padding:8px;color:var(--muted);font-size:13px;';
           document.body.insertBefore(el, document.body.firstChild);
         }
         el.textContent = '下拉刷新';
@@ -744,6 +742,20 @@
     document.addEventListener('touchstart', onStart, { passive: false });
     document.addEventListener('touchmove', onMove, { passive: false });
     document.addEventListener('touchend', onEnd);
+
+    // 禁止缩放：iOS Safari 不理会 user-scalable=no，要拦它自己的手势事件；双击放大靠拦第二次点按。
+    if (!window.__nnNoZoom) {
+      window.__nnNoZoom = true;
+      ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
+        document.addEventListener(name, function (e) { e.preventDefault(); }, { passive: false });
+      });
+      var lastTap = 0;
+      document.addEventListener('touchend', function (e) {
+        var now = Date.now();
+        if (now - lastTap < 300 && e.cancelable) e.preventDefault();      // 300ms 内的第二次点按不再触发放大（第一次点按的点击照常）
+        lastTap = now;
+      }, { passive: false });
+    }
   }
 
   // ------------------------------------------------------------------ 启动

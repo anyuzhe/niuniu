@@ -19,6 +19,8 @@
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); }
+/* 只允许上下左右滑动：不要双指缩放，也不要双击放大（Chrome/Android 看这里；iOS 另外在 app.js 里拦手势事件） */
+html, body { touch-action: pan-x pan-y; }
 body {
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   -webkit-text-size-adjust: 100%;
@@ -155,3 +157,16 @@ svg.prox .tick { stroke: var(--muted); stroke-width: 2; }
 .watch b { font-size: 14px; }
 .watch p { margin: 2px 0 0; font-size: 13.5px; }
 .watch.w-hot { border-color: var(--up); } .watch.w-warn { border-color: var(--warn); } .watch.w-ok { border-color: var(--down); } .watch.w-info { border-color: var(--accent); }
+
+/* 以下样式原来写在 app.js 的行内 style 和动态 <style> 里；站点 CSP 是 style-src 'self'，行内样式不生效，统一放到这里 */
+#nn-loading { position: fixed; inset: 0; background: rgba(14,20,27,.6); z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+#nn-loading .spin { width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: nnSpin .8s linear infinite; margin-bottom: 10px; }
+@keyframes nnSpin { to { transform: rotate(360deg); } }
+#nn-pull { text-align: center; padding: 8px; color: var(--muted); font-size: 13px; }
+svg.chart { cursor: crosshair; }
+.search-bar { margin: 8px 0 4px; }
+.search-bar input { width: 100%; font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.filter-row { margin: 8px 0 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+#pass { width: 100%; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+#pass-toggle { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; margin-top: 8px; }
+#nn-tip { position: fixed; background: rgba(0,0,0,.8); color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 13px; z-index: 100; pointer-events: none; white-space: nowrap; max-width: 80%; }
