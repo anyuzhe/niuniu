@@ -280,7 +280,16 @@ class BenchPage:
             self.auto_label.setText('自动检查出错：' + str(result['error']))
             return
         self.refresh_auto_label()
-        if result and any(r.get('status') == 'recorded' for r in (result.get('results') or {}).values()):
+        if not result:
+            return
+        panel = self.state.get('panel')
+        data_date = result.get('data_date')
+        if data_date and panel is not None and str(data_date) > str(panel.dates[-1]):
+            # 数据有新的一天（面板已在后台重建）：整页按新面板重算，前向记录才能用新一天的开盘价结算；
+            # 只刷新前向跟踪不够——页面内存里那份面板还是旧的，而且其它标签也会和新数据对不上。
+            self.reload()
+            return
+        if any(r.get('status') == 'recorded' for r in (result.get('results') or {}).values()):
             self.refresh_all_forward()
 
     def refresh_all_forward(self):
@@ -465,7 +474,8 @@ class BenchPage:
                  f"{p.get('plan_amount', 0):,.0f}" if p['in_plan'] and open_gate else '—',
                  f"{p.get('plan_shares', 0):,}" if p['in_plan'] and open_gate else '—']
                 for p in sig['picks'][:MAX_ROWS]]
-        self.pick_box.addWidget(table(['排名', '代码', '名称', '收盘价', '20日涨跌', '位置', '计划金额（元）', '估算股数'], rows))
+        self.pick_box.addWidget(_stock_table(self.window, ['排名', '代码', '名称', '收盘价', '20日涨跌', '位置', '计划金额（元）', '估算股数'], rows,
+                                             [p['code'] for p in sig['picks'][:MAX_ROWS]]))
 
     def record(self):
         try:
@@ -674,6 +684,8 @@ class BenchPage:
         card.add(table(['信号日', 'z', '状态', '买入只数', '收益（持有中为浮动）', '记录时间'], rows) if rows
                  else label('还没有记录。哪天闸门打开，在“今日信号”里点“记入前向跟踪”。', 'muted', True))
         v.addWidget(card)
+        for detail in _record_detail_cards(self.window, self.state['panel'], records):
+            v.addWidget(detail)
         port = fwd.get('portfolio')
         if port:
             ptable = Card('按冻结参数从开始日起的组合净值')
@@ -742,7 +754,8 @@ class BenchPage:
         if sig['picks']:
             prow = [[p['rank'], p['code'], p['name'] or '—', p.get('industry') or '—', f"{p['close']:.2f}", _pct(p['ret20']),
                      '前 20（计划内）' if p['in_plan'] else '备选'] for p in sig['picks'][:MAX_ROWS]]
-            pick_card.add(table(['排名', '代码', '名称', '行业', '收盘价', '20日涨跌', '位置'], prow))
+            pick_card.add(_stock_table(self.window, ['排名', '代码', '名称', '行业', '收盘价', '20日涨跌', '位置'], prow,
+                                       [p['code'] for p in sig['picks'][:MAX_ROWS]]))
         else:
             pick_card.add(label('没有行业触发，或触发行业里今天没有可买的股票。', 'muted', True))
         v.addWidget(pick_card)
@@ -797,6 +810,8 @@ class BenchPage:
                          status_names.get(r.get('status'), r.get('status')), res.get('n_filled', 0), _pct(shown)])
         card.add(table(['信号日', '触发行业', '最弱行业分', '状态', '买入只数', '收益（持有中为浮动）'], rows) if rows
                  else label('还没有记录。哪天有行业触发，在上面点“记入行业前向跟踪”。', 'muted', True))
+        for detail in _record_detail_cards(self.window, self.state['panel'], records):
+            card.add(detail)
         port = fwd.get('portfolio')
         if port:
             s = port['summary']['stats']
@@ -968,7 +983,7 @@ class BenchPage:
                    f"{p.get('plan_amount', 0):,.0f}" if p['in_plan'] else '—', f"{p.get('plan_shares', 0):,}" if p['in_plan'] else '—']
                 for p in sig['picks'][:MAX_ROWS]]
         heads = ['层', '排名', '代码', '名称', '分组', '收盘价', '20日涨跌'] + (['60日回撤'] if d1 else []) + ['位置', '计划金额（元）', '估算股数']
-        self.fus_pick_box.addWidget(table(heads, rows))
+        self.fus_pick_box.addWidget(_stock_table(self.window, heads, rows, [p['code'] for p in sig['picks'][:MAX_ROWS]]))
 
     def record_fusion(self):
         try:
@@ -1150,18 +1165,20 @@ class BenchPage:
             self.hold_box.addWidget(label(n, 'note', True))
         sells = Card('明天要卖')
         if plan['sells']:
-            sells.add(table(['代码', '名称', '层', '股数', '买入日', '已持有', '现价', '浮盈', '市值（元）', '怎么卖'],
-                            [[r['code'], r['name'] or '—', r['sleeve'] or '—', f"{r['shares']:,}", r['entry_date'], r['days_held'],
-                              _num(r['close']), _pct(r['pnl']), f"{(r['value'] or 0):,.0f}", r['advice']] for r in plan['sells']]))
+            sells.add(_stock_table(self.window, ['代码', '名称', '层', '股数', '买入日', '已持有', '现价', '浮盈', '市值（元）', '怎么卖'],
+                                   [[r['code'], r['name'] or '—', r['sleeve'] or '—', f"{r['shares']:,}", r['entry_date'], r['days_held'],
+                                     _num(r['close']), _pct(r['pnl']), f"{(r['value'] or 0):,.0f}", r['advice']] for r in plan['sells']],
+                                   [r['code'] for r in plan['sells']]))
             sells.add(label('“已到期”的最好明天开盘就卖；“明天收盘前卖”的按回测是收盘价卖出（可以用收盘集合竞价）。', 'muted', True))
         else:
             sells.add(label('明天没有到期要卖的。', 'muted', True))
         self.hold_box.addWidget(sells)
         buys = Card('明天开盘要买' if plan['buys'] else '明天没有要买的')
         if plan['buys']:
-            buys.add(table(['层', '排名', '代码', '名称', '收盘价（估算）', '权重', '计划金额（元）', '估算股数'],
-                           [[b['sleeve'], b['rank'], b['code'], b['name'] or '—', _num(b['close']), _pct(b['weight'], 1, False),
-                             f"{b['amount']:,.0f}", f"{b['shares']:,}"] for b in plan['buys']]))
+            buys.add(_stock_table(self.window, ['层', '排名', '代码', '名称', '收盘价（估算）', '权重', '计划金额（元）', '估算股数'],
+                                  [[b['sleeve'], b['rank'], b['code'], b['name'] or '—', _num(b['close']), _pct(b['weight'], 1, False),
+                                    f"{b['amount']:,.0f}", f"{b['shares']:,}"] for b in plan['buys']],
+                                  [b['code'] for b in plan['buys']]))
             buys.add(row(button('把这些记为已持有（买完后点）', self.record_plan_buys, True),
                          label('日期记为计划日，成本价留空；实际成交价不同，可以删掉重录。')))
             if plan['spares']:
@@ -1174,10 +1191,11 @@ class BenchPage:
         self.hold_box.addWidget(buys)
         allh = Card(f"全部持仓（{len(plan['holdings'])} 只，市值约 {sum(r['value'] or 0 for r in plan['holdings']):,.0f} 元）")
         if plan['holdings']:
-            allh.add(table(['代码', '名称', '层', '股数', '买入日', '已持有', '现价', '浮盈', '市值（元）', '状态'],
-                           [[r['code'], r['name'] or '—', r['sleeve'] or '—', f"{r['shares']:,}", r['entry_date'],
-                             r['days_held'] if r['days_held'] is not None else '—', _num(r['close']), _pct(r['pnl']),
-                             f"{(r['value'] or 0):,.0f}", r['advice']] for r in plan['holdings']]))
+            allh.add(_stock_table(self.window, ['代码', '名称', '层', '股数', '买入日', '已持有', '现价', '浮盈', '市值（元）', '状态'],
+                                  [[r['code'], r['name'] or '—', r['sleeve'] or '—', f"{r['shares']:,}", r['entry_date'],
+                                    r['days_held'] if r['days_held'] is not None else '—', _num(r['close']), _pct(r['pnl']),
+                                    f"{(r['value'] or 0):,.0f}", r['advice']] for r in plan['holdings']],
+                                  [r['code'] for r in plan['holdings']]))
         else:
             allh.add(label('还没有录入持仓。买了之后在下面录入，或者买完点上面的“记为已持有”。', 'muted', True))
         self.hold_box.addWidget(allh)
@@ -1251,6 +1269,8 @@ class BenchPage:
                          status_names.get(r.get('status'), r.get('status')), res.get('n_filled', 0), _pct(shown)])
         card.add(table(['信号日', '触发的层', '大盘 z', '状态', '买入只数', '收益（持有中为浮动）'], rows) if rows
                  else label(f'还没有记录。哪天有层触发，在上面点“记入{name} 前向跟踪”。', 'muted', True))
+        for detail in _record_detail_cards(self.window, self.state['panel'], records, sleeve=True):
+            card.add(detail)
         port = fwd.get('portfolio')
         if port:
             s = port['summary']['stats']
@@ -1280,6 +1300,64 @@ class BenchPage:
 
 
 # ---------------------------------------------------------------------- pieces shared by tabs
+def _opener(window, codes):
+    """表格双击 → 打开该行股票的个股报告（最近走势、相对强弱、公告）。codes 与表格行一一对应。"""
+    def activate(i):
+        if 0 <= i < len(codes) and codes[i]:
+            window.open_stock_report(codes[i])
+    return activate
+
+
+def _stock_table(window, headers, rows, codes, hint=True):
+    w = table(headers, rows, _opener(window, codes))
+    if hint:
+        w.setToolTip('双击一行，查看这只股票的个股报告（最近走势）')
+    return w
+
+
+ROW_STATUS = {'held': '持有中', 'closed': '已卖出', 'waiting': '等待开盘', 'not_filled': '买不进'}
+
+
+def _record_detail_cards(window, panel, records, limit=3, sleeve=False):
+    """最近几条前向记录的逐只明细：买入日、买入价、现价/卖出价、收益、状态；双击打开个股报告。
+    只列计划内（买得进、在名额内）的股票；现价按面板最后一天的原始价。"""
+    cards = []
+    code_index = {str(c): i for i, c in enumerate(panel.codes)} if panel is not None else {}
+    last = len(panel.dates) - 1 if panel is not None else -1
+    status_names = {'waiting': '等待下一个交易日', 'open': '持有中', 'closed': '已结算'}
+    for r in list(records)[::-1][:limit]:
+        res = r.get('result') or {}
+        rows_all = res.get('rows') or []
+        plan = [x for x in rows_all if x.get('in_plan')]
+        title = f"{r['signal_date']} 的买入明细：{len(plan)} 只 · {status_names.get(r.get('status'), r.get('status'))}"
+        card = Card(title)
+        if not plan:
+            card.add(label('还没有买入：要等下一个交易日的开盘价。' if r.get('status') == 'waiting' else '这条记录里没有买得进的股票。', 'muted', True))
+            cards.append(card)
+            continue
+        rows, codes = [], []
+        for x in plan:
+            j = code_index.get(x['code'])
+            if x.get('status') == 'closed':
+                now_px, ret = x.get('exit_px'), x.get('ret')
+            else:
+                raw = (float(panel.c[last, j]) / float(panel.f[last, j])) if (j is not None and last >= 0) else None
+                now_px = raw if raw is not None and math.isfinite(raw) else None
+                ret = x.get('mtm')
+            rows.append(([x.get('sleeve') or '—'] if sleeve else []) + [x['code'], x.get('name') or '—', x.get('entry_date') or '—',
+                         _num(x.get('entry_px')), _num(now_px), _pct(ret), ROW_STATUS.get(x.get('status'), x.get('status'))])
+            codes.append(x['code'])
+        heads = (['层'] if sleeve else []) + ['代码', '名称', '买入日', '买入价', '现价 / 卖出价', '收益', '状态']
+        card.add(_stock_table(window, heads, rows, codes))
+        skipped = sum(1 for x in rows_all if x.get('not_filled'))
+        note = '持有中的收益是按最新收盘的浮动，不含成本；已卖出的是扣成本后的净收益。双击一行查看该股最近走势。'
+        if skipped:
+            note += f' 另有 {skipped} 只次日开盘涨停或停牌，买不进，由后面的备选顺延。'
+        card.add(label(note, 'muted', True))
+        cards.append(card)
+    return cards
+
+
 def _forward(output, panel):
     try:
         settled = tracker.settle_ledger(output, panel)

@@ -577,11 +577,54 @@ class BenchPageTests(unittest.TestCase):
         self.assertTrue(any('正在检查数据' in t for t in self.labels()))
         stub.finished.emit({'error': '读取失败'})
         self.assertTrue(any('自动检查出错：读取失败' in t for t in self.labels()))
-        # 自动记录写了台账以后，页面应当用真实行情重新结算并刷新
-        with mock.patch.object(page_mod.BenchPage, 'refresh_all_forward') as refresh:
-            stub.finished.emit({'checked_at': '2026-10-07T10:00:00', 'data_date': '2026-10-06',
+        # 自动记录写了台账（数据日期没变）以后，页面应当用真实行情重新结算并刷新
+        last_day = str(self.window.bench_state['panel'].dates[-1])
+        with mock.patch.object(page_mod.BenchPage, 'refresh_all_forward') as refresh, mock.patch.object(page_mod.BenchPage, 'reload') as reload:
+            stub.finished.emit({'checked_at': '2026-10-07T10:00:00', 'data_date': last_day,
                                 'results': {'fusion': {'status': 'recorded', 'n_picks': 3}}})
             refresh.assert_called_once()
+            reload.assert_not_called()
+        # 数据有了新的一天（哪怕闸门没开、什么都没记）：页面要整体重载，前向记录才能用新一天的开盘价结算
+        with mock.patch.object(page_mod.BenchPage, 'refresh_all_forward') as refresh, mock.patch.object(page_mod.BenchPage, 'reload') as reload:
+            stub.finished.emit({'checked_at': '2026-10-08T10:00:00', 'data_date': '2099-01-01',
+                                'results': {'fusion': {'status': 'closed', 'message': '闸门没开，没有开仓信号'}}})
+            reload.assert_called_once()
+            refresh.assert_not_called()
+
+    def test_forward_record_lists_each_stock_and_opens_its_report_on_double_click(self):
+        """前一天记的信号，今天面板多了一天：前向跟踪里能看到逐只的买入价、现价、浮盈；双击一行打开个股报告。"""
+        from quantlab.dipbuy import tracker
+        from quantlab.dipbuy.engine import DipConfig
+        panel = self.cache_panel()
+        cfg = DipConfig()
+        signal_day, codes = str(panel.dates[-2]), ['sh.600000', 'sh.600001', 'sh.600002']
+        ledger = tracker.load_ledger(self.out)
+        ledger.update(config=cfg.to_dict(), config_hash=cfg.hash(), started_at='2025-01-01T00:00:00+00:00', start_date=signal_day,
+                      records=[dict(id='abc1234567', signal_date=signal_day, recorded_at='2025-01-01T00:00:00+00:00', data_last_date=signal_day,
+                                    z=-2.0, mk20=-0.1, n_e6=3, status='waiting', result=None,
+                                    picks=[dict(rank=i + 1, code=c, name=f'股{i}', close=10.0, ret20=-0.2) for i, c in enumerate(codes)])])
+        tracker._save(self.out, ledger)
+        self.go()
+        tabs = self.window.scroll.widget().findChild(QTabWidget)
+        tab = tabs.widget(3)
+        texts = [w.text() for w in tab.findChildren(QLabel)]
+        self.assertTrue(any(f'{signal_day} 的买入明细：3 只' in t for t in texts))
+        grids = tab.findChildren(QTableWidget)
+        detail = next(g for g in grids if g.columnCount() == 7 and g.horizontalHeaderItem(3).text() == '买入价')
+        self.assertEqual(detail.rowCount(), 3)
+        self.assertEqual(detail.item(0, 0).text(), 'sh.600000')
+        self.assertEqual(detail.item(0, 2).text(), str(panel.dates[-1]))          # 次日开盘买入
+        self.assertNotEqual(detail.item(0, 3).text(), '—')                         # 买入价
+        self.assertNotEqual(detail.item(0, 5).text(), '—')                         # 浮动收益
+        self.assertEqual(detail.item(0, 6).text(), '持有中')
+        with mock.patch.object(MainWindow, 'open_stock_report') as opened:
+            detail.cellDoubleClicked.emit(1, 2)
+            opened.assert_called_once_with('sh.600001')
+        # 今日信号的候选表也能双击打开
+        grid = tabs.widget(0).findChildren(QTableWidget)[-1]
+        with mock.patch.object(MainWindow, 'open_stock_report') as opened:
+            grid.cellDoubleClicked.emit(0, 0)
+            opened.assert_called_once_with(grid.item(0, 1).text())
 
     def test_not_ready_shows_note_only(self):
         with mock.patch('quantlab.desktop.strategy_bench_page.is_data_ready', return_value=False):
