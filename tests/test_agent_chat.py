@@ -78,7 +78,7 @@ class ChatTests(unittest.TestCase):
             huge={'ok':True,'tool':'list_playbook_definitions','data':{'blob':'x'*100000},
                 'evidence':[],'warnings':[],'error':None}
             with patch.object(r.api,'call',return_value=huge):
-                result=r.send(cid,'查能力',ModelConfig(),allow_send=True,provider=p)
+                result=r.send(cid,'查能力',ModelConfig(max_context_chars=120000),allow_send=True,provider=p)
             self.assertEqual(result['text'],'研究结果')
             self.assertEqual(p.results[0]['error']['code'],'TOOL_CONTEXT_BUDGET_EXHAUSTED')
     def test_proposals_have_host_ids_and_do_not_execute(self):

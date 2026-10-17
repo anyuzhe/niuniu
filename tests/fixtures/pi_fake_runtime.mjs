@@ -17,6 +17,7 @@ export class ModelRuntime {
     if(mode==='host_context' && this.n===1)return result([call('host')]);
     if(mode==='host_failure' && this.n===1)return result([call('host')]);
     if(mode==='context_overflow' && this.n===1)return result([call('huge')]);
+    if(mode==='length')return result([{type:'text',text:'partial table so far'}],'length');
     if(mode==='ignore' && context.tools.length===0)return result([call('ignored')]);
     if(mode==='empty' && context.tools.length===0)return result([]);
     if(context.tools.length===0)return result([{type:'text',text: mode==='normal'?'completed normally':'summarized existing evidence; incomplete items remain'}]);

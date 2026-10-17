@@ -30,6 +30,7 @@ class ResearchChatDialog(QDialog):
         box=QVBoxLayout(self)
         self.profile=QComboBox();self.profile.setAccessibleName('助手模式')
         self.profile.addItem('日常：问市场、个股、我的股票','everyday');self.profile.addItem('研究：因子、实验、提案与数据治理工具','research')
+        self.profile.addItem('日常+研究查询：日常工具外，可只读查因子、前向记录、研究规格','hybrid')
         self.profile.addItem('解读：只读已有研究证据，不新建或执行','evidence')
         self.profile.setCurrentIndex(self.profile.findData(profile));self.profile.currentIndexChanged.connect(self.change_profile)
         self.profile.setVisible(self.DEFAULT_PROFILE is None)
@@ -51,7 +52,7 @@ class ResearchChatDialog(QDialog):
         self.transcript=QPlainTextEdit();self.transcript.setReadOnly(True)
         self.transcript.setAccessibleName('研究助手对话');left_box.addWidget(self.transcript,1)
         self.input=QPlainTextEdit();self.input.setMaximumHeight(110)
-        self.input.setPlaceholderText('例如：今天市场怎么样？帮我看看 600519。我的股票有什么要注意的？' if profile=='everyday'
+        self.input.setPlaceholderText('例如：今天市场怎么样？帮我看看 600519。我的股票有什么要注意的？' if profile in ('everyday','hybrid')
             else '例如：查询已有动量因子，然后为三只股票拟定一份研究提案。')
         self.input.setAccessibleName('研究问题');left_box.addWidget(self.input)
         self.send_button=button('发送研究问题',self.send,True)
@@ -85,7 +86,7 @@ class ResearchChatDialog(QDialog):
         self.runtime=self.make_runtime(self.profile.currentData())
         self.recovery_mode.setChecked(False);self.consent.setChecked(False)
         self.input.setPlaceholderText('例如：今天市场怎么样？帮我看看 600519。我的股票有什么要注意的？'
-            if self.profile.currentData()=='everyday' else '读取这份Factory报告，解释各候选的证据、失败项和限制。' if self.profile.currentData()=='evidence'
+            if self.profile.currentData() in ('everyday','hybrid') else '读取这份Factory报告，解释各候选的证据、失败项和限制。' if self.profile.currentData()=='evidence'
             else '例如：查询已有动量因子，然后为三只股票拟定一份研究提案。')
         self.update_profile_controls()
 

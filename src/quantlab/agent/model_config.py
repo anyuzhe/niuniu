@@ -45,7 +45,7 @@ class ModelConfig:
     max_tool_calls: int = 12
     max_rounds: int = 8
     max_output_tokens: int = 4096
-    max_context_chars: int = 120000
+    max_context_chars: int = 200000   # 研究模式的系统说明+工具说明已约 11 万字符，12 万会一开场就耗尽
     legacy_agent_compat: bool = True
     pi_path: str = ''
 

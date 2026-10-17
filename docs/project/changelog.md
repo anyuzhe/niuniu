@@ -2960,5 +2960,24 @@
 - 改动原因：系统提示过长难以维护，拆分后便于按模块复核和按会话类型组合；hybrid profile 让日常会话可读取只读研究工具（因子、前向记录、研究规格）而不暴露提案/执行类工具；模型切换按用户 2026-10-17 指示。
 - 关键约束：仅读取工具，不写盘、不下单、不批准提案；hybrid profile 下不可调用 propose_experiment/record_hypothesis/record_finding 等写类工具；模型切换不改变 P10 Human Merge Gate 和 AGENTS.md 隔离约束。
 - 测试证据：tests/test_agent_catalog.py 12/12 通过；tests/test_agent_chat.py 13/13 通过；tests/test_research_chat.py 8/8 通过；tests/test_evidence_review.py 8/8 通过；tests/test_research_spec_fidelity.py 15/15 通过；compose() 输出 6789 字符，四段均完整存在。
-- Git 提交：待提交（本次收尾）。
-- 后续事项：在 Mac 环境按用户指令以 claude-sonnet-5.5 high 给牛牛一个复杂任务并观察完成情况；有问题则改正优化。
+- Git 提交：3082099。
+- 后续事项：在 Mac 环境按用户指令以 claude-sonnet-5.5 high 给牛牛一个复杂任务并观察完成情况；有问题则改正优化（见第一百三十一次）。
+
+## 第一百三十一次（2026-10-17）：牛牛接 Claude Sonnet 5.5（Pi 通道）实测，修预算收尾、前向工具与回测预览
+
+- 类型：Agent 实测 / 模型通道 / 工具修正
+- 模块：src/quantlab/devstudio/pi_bridge.mjs、src/quantlab/agent/catalog.py、src/quantlab/dipbuy/tracker.py、src/quantlab/agent/model_config.py、src/quantlab/desktop/research_chat.py、src/quantlab/desktop/app.py
+- 模型配置（本机 artifacts/_assistant/model.json，不进仓库）：第一百三十次写成"Codex 通道 + claude-sonnet-5.5"，Codex 走 ChatGPT 登录只能调 OpenAI 模型，连不上；Anthropic 的模型 ID 也应为 claude-sonnet-5-5。改为 Pi 通道 `anthropic/claude-sonnet-5-5`、effort high、上下文预算 200000、单次输出上限 16384、超时 600 秒（用户已在 Pi 自带的 Anthropic 通道登录；Pi 扩展 pi-claude-cli 的登录牛牛用不上，桥接按设计不加载扩展）。仓库根目录误建的 `_assistant/` 已移到废纸篓，未提交。
+- 实测任务：研究模式下让牛牛给策略 D4 前向跟踪做体检（找最近信号、持仓与浮盈、回测期望、是否在正常波动内、待核实项）。
+- 发现与改动：
+  1. 研究模式系统说明约 5 万字符、152 个工具说明约 5.7 万字符，旧默认预算 12 万一开场就用掉 10.7 万；第一次实测查 7 次工具后桥接直接输出固定停止文本，已查到的证据全部丢掉。桥接改为：只因附带工具说明而超预算时，去掉工具说明做一轮收尾总结（reason 仍记 context_budget_exhausted、needs_followup）；仍放不下才输出固定停止文本。ModelConfig 默认预算改为 200000。
+  2. 前向工具不认 "D4"：模型先用 D4 被拒，再猜 fusion4，且无法确认对应关系。新增别名 A/B/D/D1–D4（大小写不敏感），结果里带策略名；错误提示写明 D4 = fusion4。
+  3. 未结算记录拿不到买入价和浮盈：get_forward_record 现按已缓存的日K面板只读估算（复用结算逻辑，result_source=read_only_mark，不写台账；没有缓存时只给提示，绝不在工具里重建面板），并返回台账冻结参数与 D 系列样本内回测参考。
+  4. preview_backtest 对 industry / fusion 系列用的是策略 A 的引擎，跑出来的数字不是该策略的回测；现对非 market 种类明确拒绝。另修参数校验把 number 当整数的问题（z_threshold=-1.5、leverage=1.5 之前必然被拒）。
+  5. 第一百三十次加的 hybrid 工具档没有界面入口；助手模式下拉框新增"日常+研究查询"。
+  6. high 强度下推理也计入输出上限，4096 不够：第三次实测查完 9 次工具后最终回答被截断，桥接把 length 当硬错误、整轮失败。配置调到 16384；桥接改为保留已写出的部分文字并标记 budget_stopped / output_token_budget_exhausted，不再整轮丢失。
+  7. 复核第一百三十次：该提交除说明里的三项外，还新增了 9 个工具（前向记录 3 个、preview_backtest、preview_factor_combination、check_factor_health、get_full_evidence、研究规格 2 个），提交说明与本日志都没写；其中 number 类型参数让 MCP 适配器拒绝整张工具表（test_archived_data_integration 在该提交前 6/6 通过、之后 2 项报错，用两个版本的工作副本对照确认）。处理：MCP 适配器支持 number；check_factor_health 下线（数据表缺 timeframe 列，每次调用必然报错；且因子值与股票标签错位、默认全历史约 2600 万行转列表，16GB Mac 扛不住）；preview_backtest 只保留"按台账冻结参数复现策略 A"，不再接受改参数（改参数的检验须走研究提案与试验账本，避免绕过多重检验控制），只读已缓存面板、不在调用中重建；get_full_evidence 单次上限 2 万字符；preview_factor_combination 修正输入非字母序时权重配错因子。以上按用户 2026-10-17 确认执行。
+- 实测结果：第四次实测 10 次工具调用、约 110 秒、37 万 token（多为缓存读），完成全部四步：D4 记录 7ef3e75a62 计划内 20 只、等权浮盈 −0.90%（与工作台一致），列出冻结参数与样本内回测参考，并用扶摇行情交叉核对了单只异常股；结论为样本不足、无法判断，未编造数字。
+- 测试证据：智能体、对话、Pi 桥接、前向台账、工作台相关 237 项通过；新增 Pi 收尾 2 项、前向工具 3 项；全量测试见提交说明。
+- 后续事项：D 系列完整回测没有只读工具（工作台每次现算，需行业分类）；用量统计未计入缓存 token（totalTokens 正确，input 偏小）。
+

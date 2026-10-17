@@ -21,6 +21,7 @@ def _annotation(spec):
     kind=spec.get('type')
     if kind=='string':return Annotated[str,Field(max_length=spec.get('maxLength'))]
     if kind=='integer':return Annotated[int,Field(ge=spec.get('minimum'),le=spec.get('maximum'))]
+    if kind=='number':return Annotated[float,Field(ge=spec.get('minimum'),le=spec.get('maximum'),allow_inf_nan=False)]
     if kind=='boolean':return bool
     raise ValueError('MCP adapter does not support schema type: '+str(kind))
 

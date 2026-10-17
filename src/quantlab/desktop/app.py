@@ -517,7 +517,7 @@ class MainWindow(QMainWindow):
         from PyQt6 import sip
         try:
             if type(profile) is bool:profile=None  # QAction.triggered compatibility
-            if profile not in (None,'everyday','research','evidence'):raise ValueError('未知助手模式')
+            if profile not in (None,'everyday','hybrid','research','evidence'):raise ValueError('未知助手模式')
             if draft is not None and (not isinstance(draft,str) or not 1<=len(draft)<=16000):
                 raise ValueError('研究草稿必须为1–16000字符')
             dialog=getattr(self,'_research_chat_dialog',None)

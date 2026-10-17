@@ -40,10 +40,16 @@ try {
     const finalizationInstruction = '\n\n预算收尾规则：本轮仅可总结上下文中已经存在的证据及未完成项。不得批准、提交、写入 finding 或声称未验证工作已完成。';
     send({type:'identity', model:id, pi_provider:provider, builtin_tools:false, extensions:false,catalog_cache:catalog.receipt});
     for (let round=0; round<cfg.max_rounds; round++) {
-      const finalRound = round === cfg.max_rounds - 1 || calls >= cfg.max_tool_calls || stopReason !== null;
-      const requestContext = {...context,
-        systemPrompt:context.systemPrompt + (finalRound ? finalizationInstruction : ''),
-        tools:finalRound ? [] : cfg.tools};
+      let finalRound = round === cfg.max_rounds - 1 || calls >= cfg.max_tool_calls || stopReason !== null;
+      const build = fin => ({...context,
+        systemPrompt:context.systemPrompt + (fin ? finalizationInstruction : ''),
+        tools:fin ? [] : cfg.tools});
+      let requestContext = build(finalRound);
+      if (!finalRound && JSON.stringify(requestContext).length > cfg.max_context_chars) {
+        // Over budget only because tool definitions ride along: drop them and let the
+        // model summarize the evidence it already has instead of discarding it.
+        stopReason = 'context_budget_exhausted'; finalRound = true; requestContext = build(true);
+      }
       if (JSON.stringify(requestContext).length > cfg.max_context_chars) {
         stopReason = 'context_budget_exhausted';
         complete(budgetText(stopReason),'budget_stopped',stopReason); finished=true; break;
@@ -51,9 +57,16 @@ try {
       const options = {maxTokens:cfg.max_output_tokens};
       if (cfg.effort && cfg.effort !== 'none') options.reasoning = cfg.effort;
       const response = await runtime.completeSimple(model, requestContext, options);
-      if (['error','aborted','length'].includes(response.stopReason)) throw new Error(response.errorMessage || ('Pi incomplete response: '+response.stopReason));
+      if (['error','aborted'].includes(response.stopReason)) throw new Error(response.errorMessage || ('Pi incomplete response: '+response.stopReason));
       if (response.provider !== provider || response.model !== id) throw new Error('Pi returned a different model identity');
       for (const k of Object.keys(usage)) usage[k] += response.usage?.[k] || 0;
+      if (response.stopReason === 'length') {
+        // Output cap reached (reasoning counts against it): keep any text as a partial,
+        // recoverable answer instead of failing the whole turn; never report success.
+        const partial = (response.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+        stopReason = 'output_token_budget_exhausted';
+        complete((partial ? partial + '\n' : '') + budgetText(stopReason), 'budget_stopped', stopReason); finished = true; break;
+      }
       context.messages.push(response);
       const actions = response.content.filter(c => c.type === 'toolCall');
       if (!actions.length) {

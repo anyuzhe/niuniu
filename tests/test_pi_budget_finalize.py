@@ -89,6 +89,31 @@ class PiBudgetFinalizeTests(unittest.TestCase):
         result=self.stopped('context_overflow',rounds=3,context_budget=5000)
         self.assertEqual(result['reason'],'context_budget_exhausted')
         self.assertEqual(len(self.calls),1)
+    def test_tool_definitions_overflow_finalizes_with_model_summary(self):
+        # Only the attached tool schemas push the next request over budget: the bridge must
+        # drop them and let the model summarize existing evidence, not discard it.
+        big=dict(TOOL,description='d'*2800)
+        cfg=ModelConfig(provider='pi_sdk',model='fake/unit',timeout_seconds=10,max_rounds=4,
+                        max_tool_calls=4,max_context_chars=5000)
+        def dispatch(name,args,call_id):
+            self.calls.append(name);return {'ok':True,'data':'y'*2000}
+        with patch.dict('os.environ',{'PI_FAKE_TRACE':str(self.trace_path)}):
+            with self.assertRaises(PiBudgetStopped) as caught:
+                PiProvider(cfg).run('SCENARIO:once',[{'role':'user','content':'review existing work'}],
+                    [big],dispatch,lambda k,v:self.events.append((k,v)),Event())
+        result=caught.exception.result
+        self.assertEqual(result['reason'],'context_budget_exhausted')
+        self.assertEqual(result['termination'],'budget_stopped');self.assertTrue(result['needs_followup'])
+        self.assertIn('summarized existing evidence',result['text'])
+        self.assertNotIn('[Pi budget stop:',result['text'])
+        self.assertEqual(len(self.calls),1)
+        self.assertEqual([row['tools'] for row in self.trace()],[1,0])
+    def test_output_length_stop_keeps_partial_text(self):
+        result=self.stopped('length',rounds=3)
+        self.assertEqual(result['reason'],'output_token_budget_exhausted')
+        self.assertIn('partial table so far',result['text'])
+        self.assertIn('[Pi budget stop:',result['text'])
+        self.assertEqual(result['usage'],{'input':2,'output':3,'totalTokens':5})
     def test_host_stop_blocks_remaining_actions_in_same_batch(self):
         for code in ('TOOL_CONTEXT_BUDGET_EXHAUSTED','TOOL_FAILURE_LIMIT','TOOL_BUDGET_EXHAUSTED'):
             self.calls=[];self.events=[]

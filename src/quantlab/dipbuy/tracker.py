@@ -123,6 +123,11 @@ def _evaluate(panel: Panel, record: dict, cfg: DipConfig) -> dict:
                 win_rate=(sum(1 for x in rets if x > 0) / len(rets)) if rets else None)
 
 
+def evaluate_record(panel: Panel, record: dict, cfg: DipConfig) -> dict:
+    """只读：按面板估算一条记录的成交与浮盈，不改记录、不写台账。"""
+    return _evaluate(panel, record, cfg)
+
+
 def settle_ledger(output, panel: Panel, cfg: DipConfig | None = None, kind: str = 'market') -> dict:
     """按最新面板结算所有记录；完成的记录写回。返回 {ledger, records(含明细), summary}。"""
     ledger = load_ledger(output, kind)
