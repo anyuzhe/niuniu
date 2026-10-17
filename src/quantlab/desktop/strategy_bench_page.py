@@ -1304,7 +1304,10 @@ def _opener(window, codes):
     """表格双击 → 打开该行股票的个股报告（最近走势、相对强弱、公告）。codes 与表格行一一对应。"""
     def activate(i):
         if 0 <= i < len(codes) and codes[i]:
-            window.open_stock_report(codes[i])
+            code = codes[i]
+            # 不能在双击事件里直接换页：换页会立刻拆掉这张表（鼠标还按在它上面），macOS 上界面会卡住。
+            # 等这次鼠标事件处理完，下一轮事件循环再打开个股报告。
+            QTimer.singleShot(0, lambda: window.open_stock_report(code))
     return activate
 
 

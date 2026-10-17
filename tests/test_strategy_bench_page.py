@@ -619,11 +619,14 @@ class BenchPageTests(unittest.TestCase):
         self.assertEqual(detail.item(0, 6).text(), '持有中')
         with mock.patch.object(MainWindow, 'open_stock_report') as opened:
             detail.cellDoubleClicked.emit(1, 2)
+            opened.assert_not_called()                                             # 不在双击事件里换页（会卡住），下一轮事件循环才打开
+            QTest.qWait(50)
             opened.assert_called_once_with('sh.600001')
         # 今日信号的候选表也能双击打开
         grid = tabs.widget(0).findChildren(QTableWidget)[-1]
         with mock.patch.object(MainWindow, 'open_stock_report') as opened:
             grid.cellDoubleClicked.emit(0, 0)
+            QTest.qWait(50)
             opened.assert_called_once_with(grid.item(0, 1).text())
 
     def test_not_ready_shows_note_only(self):
