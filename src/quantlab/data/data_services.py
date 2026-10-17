@@ -979,7 +979,7 @@ class DataUpdateJobs:
                                 ["equity_pledge_history", "earnings_forecast_history", "financial_cpd", "financial_balance",
                                  "financial_cashflow", "share_capital", "valuation_daily_v1"], [day],
                                 "fundamentals", overwrites=True, weight=10,
-                                note="质押按周补、业绩预告和财报只刷新最近两期、股本按披露日增量、PE/PB 每只股票只补缺的交易日；"
+                                note="质押按周补、业绩预告和财报只刷新最近两期、股本按披露日增量、PE/PB 每周补一次（每只股票一次请求，约 75 分钟，不在信号路径上）；"
                                      "单项失败会记录，下次执行时自动补上"))
         steps.append(self._step("ETF 份额、利率与宏观", "fetch",
             ["etf_shares_sse", "etf_shares_szse", "cn_yield_curve", "cn_repo_fixing", "cn_lpr_history",

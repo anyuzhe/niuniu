@@ -20,8 +20,10 @@ partition is never rewritten):
 
 Usage:  plan --dataset D [--from YYYY-MM-DD]        writes a plan, prints its sha256
         apply --plan FILE --approve SHA [--max-seconds N]
-        update --dataset D [--through YYYY-MM-DD] [--shard K/N]
-                                                    daily incremental refresh (used by daily_close_update)
+        update --dataset D [--through YYYY-MM-DD] [--shard K/N] [--min-age-days N]
+                                                    daily incremental refresh (used by daily_close_update);
+                                                    --min-age-days (valuation only): skip when the files already
+                                                    reach within N days of --through
 """
 from __future__ import annotations
 
@@ -480,6 +482,24 @@ def update_shares(c, through: date) -> dict:
     return {"done": done, "rows": int(len(new)), "failed": failed, "errors": errors}
 
 
+VALUATION_SAMPLE = 25
+
+
+def valuation_last_date() -> date | None:
+    """The freshest day the valuation files reach, read from an even sample of them.  A suspended or delisted stock
+    stops early, so the newest date among the sample stands for the last update; None when there is nothing yet."""
+    files = sorted((BRONZE / "provider=baostock" / "valuation_daily_v1").glob("*.parquet"))
+    newest = None
+    for path in files[::max(1, len(files) // VALUATION_SAMPLE)]:
+        try:
+            last = str(pd.read_parquet(path, columns=["date"])["date"].max())[:10]
+            day = date.fromisoformat(last)
+        except (OSError, ValueError, KeyError):
+            continue
+        newest = day if newest is None or day > newest else newest
+    return newest
+
+
 def update_valuation(through: date, shard: str | None) -> dict:
     base = BRONZE / "provider=baostock" / "valuation_daily_v1"
     codes = stock_codes()
@@ -529,7 +549,14 @@ def update_cmd(args):
     through = date.fromisoformat(args.through) if args.through else TODAY
     t0 = time.time()
     if args.dataset == "valuation":
-        result = update_valuation(through, args.shard)
+        min_age = getattr(args, "min_age_days", 0) or 0
+        last = valuation_last_date() if min_age > 0 else None
+        if last is not None and (through - last).days < min_age:
+            # one request per stock makes a pass about 75 minutes however few days are missing, so the daily close
+            # update only asks for it once a week; the weekly pass fetches all the missing days in the same request
+            result = {"done": 0, "failed": 0, "skipped": "fresh", "last_date": last.isoformat(), "min_age_days": min_age}
+        else:
+            result = update_valuation(through, args.shard)
     else:
         c = core()
         if args.dataset == "pledge":
@@ -560,6 +587,8 @@ def main():
     b.add_argument("--shard", help="K/N: process every N-th missing partition starting at K")
     u = sub.add_parser("update"); u.add_argument("--dataset", required=True)
     u.add_argument("--through"); u.add_argument("--shard")
+    u.add_argument("--min-age-days", type=int, default=0,
+                   help="valuation only: do nothing when the files already reach within this many days of --through")
     args = p.parse_args()
     if args.cmd == "update":
         return update_cmd(args)

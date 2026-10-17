@@ -358,6 +358,10 @@ class Runner:
                     ("fin_cashflow", "financial_cashflow"), ("shares", "share_capital"),
                     ("valuation", "valuation_daily_v1"))
 
+    # Daily valuation costs one Baostock request per stock (about 75 minutes) however few days are missing, and
+    # nothing in the signal path reads it, so it is refreshed once a week; the weekly pass catches up every missing day.
+    VALUATION_MIN_AGE_DAYS = 7
+
     def step_fundamentals(self, step, share):
         """Incremental refresh of the fundamentals history (catalog 3.9). One dataset failing does not
         stop the others; the failure is recorded and the next daily run repairs it (updates are idempotent)."""
@@ -365,9 +369,15 @@ class Runner:
         for name, dataset_id in self.FUNDAMENTALS:
             self.check()
             try:
-                output = self.sh(["scripts/collect/fundamentals_history.py", "update", "--dataset", name,
-                                  "--through", day], keep_awake=True)
+                args = ["scripts/collect/fundamentals_history.py", "update", "--dataset", name, "--through", day]
+                if name == "valuation":
+                    args += ["--min-age-days", str(self.VALUATION_MIN_AGE_DAYS)]
+                output = self.sh(args, keep_awake=True)
                 info = self.last_json(output)
+                if info.get("skipped") == "fresh":
+                    self.log(f"估值历史已到 {info['last_date']}，不满 {self.VALUATION_MIN_AGE_DAYS} 天，本次不更新（每周补一次）")
+                    self.result_dataset(dataset_id, through=info["last_date"])
+                    continue
                 self.result_dataset(dataset_id, through=day, files_written=info.get("done", 0))
             except RuntimeError as exc:
                 message = f"基本面 {dataset_id} 更新失败：{exc}"

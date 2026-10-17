@@ -153,6 +153,26 @@ class JobRunnerTests(unittest.TestCase):
         qfq = next(d for d in state["result"]["datasets"] if d["dataset_id"] == "qfq_published_f24")
         self.assertTrue(qfq["failures"])
 
+    def test_valuation_is_only_asked_for_weekly_and_reported_at_the_date_it_reaches(self):
+        runner, run_dir = self.runner([self.step("fundamentals", "基本面与估值历史")])
+        calls = []
+
+        def sh(args, **_):
+            calls.append(args)
+            if "valuation" in args:
+                return '{"done": 0, "failed": 0, "skipped": "fresh", "last_date": "2026-09-25"}'
+            return '{"done": 1}'
+
+        runner.sh = sh
+        self.assertEqual(runner.run(), 0)
+        valuation = next(a for a in calls if "valuation" in a)
+        self.assertEqual(valuation[valuation.index("--min-age-days") + 1], "7")
+        self.assertTrue(all("--min-age-days" not in a for a in calls if "valuation" not in a))
+        datasets = {d["dataset_id"]: d for d in self.state(run_dir)["result"]["datasets"]}
+        self.assertEqual(datasets["valuation_daily_v1"]["through"], "2026-09-25")
+        self.assertEqual(datasets["valuation_daily_v1"]["failures"], [])
+        self.assertEqual(datasets["share_capital"]["through"], DAY)
+
     def bars_runner(self, fail=()):
         runner, run_dir = self.runner([self.step("bars", "日状态、日K、5 分钟")])
         calls = []
