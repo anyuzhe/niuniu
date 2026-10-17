@@ -136,8 +136,10 @@ def build_plan(root: Path, day: date, *, raw_dir: Path = RAW_DIR, names: dict[st
         if not reasons:
             action.update(tradestatus="1" if volume > 0 else "0", isST=prev_st)
         actions.append(action)
-    if bars < MIN_BARS:
-        raise ValueError(f"only {bars} daily bars on {day}; the day's bars are not complete yet")
+    # codes whose status already has the day were derived from that day's bars (by this tool or by the slow path),
+    # so they count as evidence the day is in; otherwise a rerun after a finished day would call it "not complete"
+    if len(present) + bars < MIN_BARS:
+        raise ValueError(f"only {len(present) + bars} daily bars on {day}; the day's bars are not complete yet")
     stems = {code_of(p) for p in raw_dir.glob("*.parquet")}
     plan = {"schema_version": 1, "kind": "baostock_status_fast", "root": str(root.resolve()),
             "raw_dir": str(raw_dir.resolve()), "day": day.isoformat(), "previous_day": previous,

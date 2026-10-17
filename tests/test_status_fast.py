@@ -108,6 +108,14 @@ class StatusFastTests(unittest.TestCase):
         with mock.patch.object(status_fast, "MIN_BARS", 10), self.assertRaisesRegex(ValueError, "not complete"):
             self.plan()
 
+    def test_a_day_that_is_already_filled_is_not_reported_as_incomplete(self):
+        for code, volume in (("sh.600001", 1000), ("sh.600002", 0), ("sh.600003", 500)):
+            self.add(code, [(PREV, "1", "0"), (DAY, "1" if volume else "0", "0")], volume=volume)
+        with mock.patch.object(status_fast, "MIN_BARS", 3):
+            plan = self.plan()
+        self.assertEqual(plan["already_present"], 3)
+        self.assertEqual(plan["bars_on_day"], 0)
+
     def test_apply_writes_derived_rows_and_asks_baostock_only_for_the_rest(self):
         plan = self.plan()
         calls = []
