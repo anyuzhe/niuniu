@@ -3008,5 +3008,7 @@
 - 退市股：不再把退市股塞进两源核对的 v2（事件源对退市股覆盖不全，重建成本高）；改为登记表新增 `bars.daily.raw.delisted` / `bars.daily.qfq.delisted`（指向已有的 Baostock 孪生目录，290 只），`MQCParquetProvider` 日线在市目录没有该证券时回退：qfq 校验 adjustflag=2、按不复权孪生逐日算 factor、去掉状态列、快照文件标 `source=delisted_single_source_baostock`；覆盖表缺该证券且孪生存在时视为历史完整；登记表未登记该名称时不回退（测试覆盖）。
 - 停牌日空值：只读扫描全量——不复权 1,090 只 8,745 行、qfq v2 1,085 只 8,508 行，全部能按日状态表（tradestatus=0）或"开高低收全等于前收"判定为停牌占位，0 行无法判定；退市两目录无空值。修复规则：这些行 volume=0、amount=0，其它列与行数不变（coverage 的 rows_* 不受影响），原文件备份到 `catalog/repair-20261017/backup/`，回执写 `suspended-nulls-<时间>.json`。**本次会话未执行写入**（执行环境对数据湖写入的权限分类拦截，脚本和登记表草稿已备好交用户执行，见对话）。
 - 测试：test_qfq_registry_consumer（+2：回退成功、未登记不回退）、test_local_data_tools 通过；test_virtual_qfq 11 项在未改动代码上同样失败（临时目录符号链接），与本次无关。
-- 待执行（用户/数据侧）：① `registry.py apply` 登记表草稿（新增两项，其余为日常指纹变化）；② 运行停牌空值修复；③ 之后用 `inspect_local_market_data` 复核 100 只全部可加载。
+- 执行（用户 21:41、22:26 要求代为执行）：① 登记表——首次 apply 因盯盘采集目录在草稿后变化被拒（登记表拒绝任何漂移），重新起草后立即 apply，新 SHA 19c72957…，旧版在 registry_history；② 停牌空值修复——扫描发现退市股文件是 volume=0、amount 为空的变体，规则改为"任一为空"；预演与正式运行数字一致：在市不复权 1,090 只 8,745 行、qfq v2 1,085 只 8,508 行、退市两目录各 290 只 7,518 行，0 行无法判定，备份 2,755 个文件，回执 suspended-nulls-20261017T223030.json；修后全量复扫 0 空值。核对：日封存不含这些逐股文件；策略面板与引擎原本就把空成交额当 0，A–D 结果不变（面板因文件时间变化会重建一次）。
+- 行情检查工具同步：`inspect_local_market_data` 在市目录没有该证券时也走登记的退市孪生，与加载器读同一份文件。100 只流动性池（含 3 只后来退市的）全部可加载。
+- 测试：test_qfq_registry_consumer +1（检查工具跟随退市回退）。
 

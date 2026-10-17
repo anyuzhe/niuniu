@@ -145,6 +145,16 @@ class QFQRegistryConsumerTests(TestCase):
         self.assertEqual(raw.bars["close"].to_list(), [10.0, 11.0, 12.0])
         self.assertNotIn("tradestatus", raw.bars.columns)
 
+    def test_local_data_inspection_follows_delisted_fallback(self):
+        from quantlab.agent.local_data_tools import LocalMarketDataTools
+        self.write_delisted()
+        result = LocalMarketDataTools(self.root).call('inspect_local_market_data', {'timeframe': '1d', 'adjustment': 'qfq',
+            'symbols': 'sh.600837', 'start': self.start.isoformat(), 'end': (self.start + timedelta(days=2)).isoformat()})
+        self.assertTrue(result['ok'], result)
+        row = result['data']['records'][0]
+        self.assertTrue(row['loadable'], row)
+        self.assertIn('stock_kline_daily_delisted_qfq_bs', row['source']['relative_file'])
+
     def test_delisted_fallback_requires_registry_entry(self):
         self.write_delisted(register=False)
         with self.assertRaisesRegex(ValueError, "coverage缺少证券"):

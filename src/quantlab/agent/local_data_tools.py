@@ -135,6 +135,12 @@ class LocalMarketDataTools:
         rows, refs, successful, budget, read_rows = [], [], [], [MAX_TOTAL_BYTES], 0
         for symbol in symbols:
             path = directory/(symbol.replace('.', '_')+'.parquet')
+            if args['timeframe'] == '1d' and not path.exists():
+                # 与研究加载器一致：在市目录没有该证券时，检查登记的退市股孪生（同一份文件、同一个哈希）。
+                from quantlab.data.mqc import MQCParquetProvider
+                fallback = MQCParquetProvider(self.root, args['adjustment'])._delisted_path(symbol)
+                if fallback is not None:
+                    path = self._safe(fallback)
             row = {'symbol': symbol, 'loadable': False}
             try:
                 raw, source = self._read(path, budget)
