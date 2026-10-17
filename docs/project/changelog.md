@@ -2991,3 +2991,12 @@
 - 仍未解决（待用户决定，未改代码）：8 只的数据问题——3 只在 v2 没有文件（含已退市的海通证券 sh.600837，v2 疑似不含退市股，研究有幸存者偏差）；5 只停牌日 volume/amount 为空（OHLC=前收），加载器按"缺失数量不补不删"的既有设计整只拒绝。牛牛在此停下、未提交提案，未自行改池。
 - 测试证据：智能体目录、本地行情、qfq 登记、Alpha Factory、增量证据、Pi 桥接、工作台等 31 个相关模块逐个通过；新增 facets/多关键词、空回答追问、v2 目录一致性三项测试。
 
+## 第一百三十三次（2026-10-17）：冻结内置 AI 助手；研究改由外部 agent 按规矩在研究目录进行
+
+- 类型：架构决定 / 文档
+- 决定人：用户（2026-10-17 17:32，"不再需要用niuniu了，你可以直接冻结了"，此处 niuniu 指内置助手）。
+- 冻结范围：src/quantlab/agent、devstudio 模型通道、四种助手模式、Alpha Factory、Session Grant、DSL 候选、同行复审、AI Team、Dev Studio、Scorecard。代码、测试、入口保留不删；不再新增、不再修复、不再以"助手自主研究"作验收。AGENTS.md 对应条款改写，core.md 加规则，status.md 加第 0 节。
+- 依据：第一百三十一、一百三十二次实测——助手跑四轮未提交一个 alpha 提案，暴露的多是受限工具层与模型管道层的问题；同日外部 agent 在 niuniu-research-ext 以预登记+试验账本+Holm 完成三条研究线（均否定）。
+- 研究新规矩：niuniu-research-ext/CLAUDE.md（数据湖只读、预登记哈希登记 prereg_registry.jsonl、tools/verify_research.py check、tools/universe.py 按规则生成含退市股的股票池、账本必填、样本外不动）。研究目录已 git init（本地，不推远端），线 1/线 4 预登记哈希补登记并与 10-16 记录一致。
+- 本次未改任何 Python 源码；第一百三十一/一百三十二次为助手修的工具保留，不再延续。
+

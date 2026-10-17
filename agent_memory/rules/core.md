@@ -14,3 +14,4 @@
 - 工具失败或资料缺失时停止推断，不通过换参数追显著性。
 - 所有高风险结论都应能追到实际 run_id / decision_id / snapshot_id / task_id。
 - 每个完成的开发或数据建设任务必须同步更新对应验收/架构文档与开发总档案，并形成独立 Git commit；不得把已完成任务长期留在未提交工作区。
+- 2026-10-17 起内置 AI 助手整体冻结（见 AGENTS.md）；研究由外部 agent 在 niuniu-research-ext 按其 CLAUDE.md 规矩进行，quantlab 只当库用。
