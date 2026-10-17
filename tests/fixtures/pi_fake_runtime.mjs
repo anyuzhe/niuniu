@@ -20,6 +20,7 @@ export class ModelRuntime {
     if(mode==='length')return result([{type:'text',text:'partial table so far'}],'length');
     if(mode==='ignore' && context.tools.length===0)return result([call('ignored')]);
     if(mode==='empty' && context.tools.length===0)return result([]);
+    if(mode==='empty_once' && context.tools.length===0 && !this.emptied){this.emptied=true;return result([]);}
     if(context.tools.length===0)return result([{type:'text',text: mode==='normal'?'completed normally':'summarized existing evidence; incomplete items remain'}]);
     if(hasToolResult)return result([{type:'text',text:'summarized existing evidence; incomplete items remain'}]);
     return result([{type:'text',text:'completed normally'}]);

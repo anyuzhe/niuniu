@@ -2981,3 +2981,13 @@
 - 测试证据：智能体、对话、Pi 桥接、前向台账、工作台相关 237 项通过；新增 Pi 收尾 2 项、前向工具 3 项；全量测试见提交说明。
 - 后续事项：D 系列完整回测没有只读工具（工作台每次现算，需行业分类）；用量统计未计入缓存 token（totalTokens 正确，input 偏小）。
 
+## 第一百三十二次（2026-10-17）：让牛牛盘点因子、找 alpha 的实测与修正
+
+- 类型：Agent 实测 / 工具修正
+- 模块：src/quantlab/agent/catalog.py、src/quantlab/workbench/server.py、src/quantlab/agent/local_data_tools.py、src/quantlab/agent/alpha_factory.py、src/quantlab/agent/incremental_evidence.py、src/quantlab/devstudio/pi_bridge.mjs
+- 实测一（因子盘点，研究模式）：24 次工具里 19 次花在 search_factors 翻页和逐个前缀计数。search_factors 与 list_experiments 现附全部匹配项的计数（facets：因子按家族/类别，实验按因子/类型/股票数分档）；search_factors 多个关键词按"同时包含"匹配（之前 "ALPHA158 STD" 这类查询一律为空）。盘点结论：610 个因子；623 条实验全部 ≤50 只股票（505 条 1–5 只），研究记忆、结论、议程为空——牛牛自己的研究库里还没有横截面 alpha 证据；用户以往在研究目录里做的大扫描牛牛的工具看不到。
+- 实测二（找 alpha 第一轮）：preview_alpha_factory 只报"计划字段不完整"，模型连猜三次；现报缺少/多余的字段并列出完整字段表，说明样本与股票取自基准归档。增量证据计划同样处理。收尾轮只有推理、没有可见文字时，桥接无工具追问一次书面回答，仍为空才输出固定停止文本。
+- 实测三（找 alpha 第二轮，宿主按规则给定 100 只股票池：2018-12 日均成交额前 100、非 ST、上市满一年）：inspect_local_market_data 写死读旧 qfq 目录，而研究加载器按数据集登记表读 qfq_kline_daily_v2，两边文件哈希对不上，100 只里 92 只误报 SOURCE_CHANGED。检查工具改为与 MQCParquetProvider 解析同一目录（登记表符号链接仍拒绝）。修后 92 只可加载。
+- 仍未解决（待用户决定，未改代码）：8 只的数据问题——3 只在 v2 没有文件（含已退市的海通证券 sh.600837，v2 疑似不含退市股，研究有幸存者偏差）；5 只停牌日 volume/amount 为空（OHLC=前收），加载器按"缺失数量不补不删"的既有设计整只拒绝。牛牛在此停下、未提交提案，未自行改池。
+- 测试证据：智能体目录、本地行情、qfq 登记、Alpha Factory、增量证据、Pi 桥接、工作台等 31 个相关模块逐个通过；新增 facets/多关键词、空回答追问、v2 目录一致性三项测试。
+

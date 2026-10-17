@@ -37,6 +37,8 @@ try {
     const usage = {input:0, output:0, totalTokens:0};
     const complete = (text, termination, reason=null) => send({type:'result',result:{text,provider:'pi_sdk',model:id,pi_provider:provider,
       tool_calls:calls,usage,termination,needs_followup:termination==='budget_stopped',reason}});
+    const emptyRetryText = '宿主：上一条回复没有可见文字。请不要调用工具，直接用中文写出最终回答：已取得的证据、结论或未完成项。';
+    let emptyRetried = false;
     const finalizationInstruction = '\n\n预算收尾规则：本轮仅可总结上下文中已经存在的证据及未完成项。不得批准、提交、写入 finding 或声称未验证工作已完成。';
     send({type:'identity', model:id, pi_provider:provider, builtin_tools:false, extensions:false,catalog_cache:catalog.receipt});
     for (let round=0; round<cfg.max_rounds; round++) {
@@ -70,7 +72,18 @@ try {
       context.messages.push(response);
       const actions = response.content.filter(c => c.type === 'toolCall');
       if (!actions.length) {
-        const text = response.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
+        let text = response.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
+        if (!text.trim() && !emptyRetried) {
+          // A reply with only reasoning and no visible text: ask once, without tools, for the written answer.
+          emptyRetried = true;
+          context.messages.push({role:'user', content:emptyRetryText, timestamp:Date.now()});
+          const retry = await runtime.completeSimple(model, build(true), options);
+          if (!['error','aborted'].includes(retry.stopReason) && retry.provider === provider && retry.model === id) {
+            for (const k of Object.keys(usage)) usage[k] += retry.usage?.[k] || 0;
+            const retryText = (retry.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+            if (retryText.trim()) { context.messages.push(retry); text = retryText; }
+          }
+        }
         if (!text.trim()) {
           complete(budgetText('no_final_answer'),'budget_stopped','no_final_answer'); finished=true; break;
         }

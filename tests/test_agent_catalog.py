@@ -155,6 +155,22 @@ class AgentCatalogTests(unittest.TestCase):
             self.assertIn('rows', record['result'])
             self.assertEqual(ledger.read_bytes(), before)
 
+    def test_search_factors_and_experiments_report_facets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            api = ReadOnlyResearchAPI(tmp)
+            result = api.call('search_factors', {'query':'','offset':0,'limit':5})
+            self.assertTrue(result['ok'])
+            facets = result['data']['facets']
+            self.assertEqual(sum(facets['family'].values()), result['data']['total'])
+            self.assertEqual(sum(facets['category'].values()), result['data']['total'])
+            self.assertIn('BASE', facets['family'])
+            both = api.call('search_factors', {'query':'ALPHA158 STD','offset':0,'limit':20})
+            self.assertTrue(both['ok']); self.assertGreater(both['data']['total'], 0)
+            self.assertTrue(all('ALPHA158' in r['factor_id'] for r in both['data']['factors']))
+            runs = api.call('list_experiments', {'query':'','status':'','kind':'','offset':0,'limit':5})
+            self.assertTrue(runs['ok'])
+            self.assertEqual(runs['data']['facets'], {'factor_id': {}, 'kind': {}, 'symbol_count': {}})
+
     def test_factor_combination_weights_follow_aliases(self):
         spec = {'inputs': {'zeta': {'factor_id':'BASE.MOMENTUM'}, 'alpha': {'factor_id':'BASE.MOMENTUM','parameters':{'lookback':5}}},
                 'weights': {'zeta': 0.3, 'alpha': 0.7}}

@@ -69,9 +69,18 @@ class LocalMarketDataTools:
         for marker in ('baostock-series.json', 'baostock-dataset.json', 'manifest.json', 'archived-daily-dataset.json'):
             if self._safe(self.root/marker).exists():
                 raise ValueError('MANAGED_DISCOVERY_UNSUPPORTED：当前入口是受管理/冻结数据，须使用对应批次/通道工具；禁止回退MQC发现')
-        suffix = 'daily' if timeframe == '1d' else 'min5'
-        directory = (self.root/'lake/silver'/('qfq_kline_'+suffix) if adjustment == 'qfq' else
-                     self.root/'lake/bronze/provider=baostock'/('stock_kline_'+suffix))
+        # 与研究加载器（MQCParquetProvider）解析同一目录：有数据集登记表时按登记的当前版本
+        # （如 qfq_kline_daily_v2），否则用旧默认目录。之前这里写死旧目录，检查的文件与实际
+        # 加载的不是同一份，导致每只股票都报 SOURCE_CHANGED。
+        from quantlab.data.mqc import MQCParquetProvider
+        from quantlab.domain import Timeframe
+        from quantlab.data.dataset_registry import RegistryError
+        try:
+            directory, _ = MQCParquetProvider(self.root, adjustment)._directory(Timeframe(timeframe))
+        except RegistryError as error:
+            if 'symlink' in str(error):
+                raise ValueError('LOCAL_DATA_SYMLINK_REJECTED') from None
+            raise ValueError('LOCAL_DATA_REGISTRY：'+str(error).replace(str(self.root), '<data-root>')[:240]) from None
         return self._safe(directory)
 
     def _read(self, path, budget, columns=None):

@@ -88,6 +88,17 @@ class QFQRegistryConsumerTests(TestCase):
         return DataRequest(
             (self.symbol,), Timeframe.DAILY, start or self.start, self.start + timedelta(days=2))
 
+    def test_local_data_inspection_reads_the_registered_v2_not_legacy(self):
+        # 检查工具必须和研究加载器读同一份文件，否则每只股票都会误报 SOURCE_CHANGED。
+        from quantlab.agent.local_data_tools import LocalMarketDataTools
+        tools = LocalMarketDataTools(self.root)
+        result = tools.call('inspect_local_market_data', {'timeframe': '1d', 'adjustment': 'qfq', 'symbols': self.symbol,
+            'start': self.start.isoformat(), 'end': (self.start + timedelta(days=2)).isoformat()})
+        self.assertTrue(result['ok'], result)
+        row = result['data']['records'][0]
+        self.assertTrue(row['loadable'], row)
+        self.assertIn('qfq_kline_daily_v2', row['source']['relative_file'])
+
     def test_registry_selects_published_v2_not_legacy_qfq(self):
         batch = MQCParquetProvider(self.root, "qfq").load(self.request())
         self.assertEqual(batch.bars["close"][0], 20.5)

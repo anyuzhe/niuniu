@@ -114,6 +114,13 @@ class PiBudgetFinalizeTests(unittest.TestCase):
         self.assertIn('partial table so far',result['text'])
         self.assertIn('[Pi budget stop:',result['text'])
         self.assertEqual(result['usage'],{'input':2,'output':3,'totalTokens':5})
+    def test_empty_final_reply_is_asked_once_for_written_answer(self):
+        result=self.stopped('empty_once',rounds=1)
+        self.assertEqual(result['reason'],'round_budget_finalization')
+        self.assertIn('summarized existing evidence',result['text'])
+        rows=self.trace();self.assertEqual(len(rows),2);self.assertEqual(rows[-1]['tools'],0)
+        self.assertTrue(any(m.get('role')=='user' and '没有可见文字' in str(m.get('content')) for m in rows[-1]['messages']))
+        self.assertEqual(result['usage'],{'input':4,'output':6,'totalTokens':10})
     def test_host_stop_blocks_remaining_actions_in_same_batch(self):
         for code in ('TOOL_CONTEXT_BUDGET_EXHAUSTED','TOOL_FAILURE_LIMIT','TOOL_BUDGET_EXHAUSTED'):
             self.calls=[];self.events=[]

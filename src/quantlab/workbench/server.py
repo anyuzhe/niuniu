@@ -76,7 +76,13 @@ class ArtifactCatalog:
         kinds = sorted({r['kind'] for r in records})
         selected = [r for r in records if (not status or r['status']==status) and (not kind or r['kind']==kind)
             and (not query or query.casefold() in json.dumps(r,ensure_ascii=False).casefold())]
-        return {'runs':selected[offset:offset+limit],'total':len(selected),'counts':counts,'kinds':kinds}
+        from collections import Counter
+        def bucket(n):
+            return '0' if n == 0 else '1-5' if n <= 5 else '6-50' if n <= 50 else '51-500' if n <= 500 else '500+'
+        facets = {'factor_id': dict(Counter(r['factor_id'] for r in selected).most_common(25)),
+                  'kind': dict(Counter(r['kind'] for r in selected).most_common()),
+                  'symbol_count': dict(Counter(bucket(len(r['symbols'] or [])) for r in selected).most_common())}
+        return {'runs':selected[offset:offset+limit],'total':len(selected),'counts':counts,'kinds':kinds,'facets':facets}
 
     def detail(self, run_id, *, lightweight=False):
         record = None

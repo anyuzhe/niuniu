@@ -52,7 +52,7 @@ RECORD_ID = {'type': 'string', 'maxLength': 200}
 FULL_EVIDENCE_MAX_CHARS = 20000   # get_full_evidence 单次返回上限，防止一次塞满上下文
 TOOLS = [
     schema('get_capabilities', '查询当前只读研究接口的能力和限制。', {}),
-    schema('search_factors', '搜索实际注册因子，空关键词列出全部。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
+    schema('search_factors', '搜索实际注册因子，空关键词列出全部。结果附全部匹配项按家族前缀与类别的计数（facets），盘点数量时不必翻页或逐个前缀查询。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('describe_factor', '先用 search_factors 获取真实版本，再读取定义和默认参数；version 不支持 latest 或空字符串，不能猜测。', {'factor_id': TEXT, 'version': TEXT}),
     schema('list_research_templates', '只读检索实际组合研究模板，空query列出全部；模板不是成品交易策略，不创建研究。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_research_template', '读取精确版本模板的规则、组件、来源哈希与theory/theory_version提案字段；不批准、不执行，不替代QM50原始规格。', {'template_id': TEXT, 'version': TEXT}),
@@ -61,7 +61,7 @@ TOOLS = [
     schema('list_strategy_runs', '按名称/版本/标识查找本工作空间策略实验（含失败）；目录仅核验元信息，不代表结果可用。offset是UUID候选扫描位置，续页使用next_offset，须披露errors/incomplete及has_more。', {'query': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_strategy_run', '重新核验明确策略实验的完整归档，读取策略身份、绩效与证据指纹；不执行、不回测，不把内部一致性或完成状态当作Alpha。', {'run_id': TEXT}),
     schema('compare_strategy_runs', '只读比较两个明确策略实验，复用宿主归档核验；不可比时披露blockers并保留空delta，不能按收益挑赢家或扩大研究。', {'left_run_id': TEXT, 'right_run_id': TEXT}),
-    schema('list_experiments', '检索当前目录实际实验，包含失败记录。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
+    schema('list_experiments', '检索当前目录实际实验，包含失败记录。结果附全部匹配项按因子、类型、股票数分档的计数（facets），可据此区分少数股票的验收运行和横截面研究。', {'query': TEXT, 'status': TEXT, 'kind': TEXT, 'offset': OFFSET, 'limit': LIMIT}),
     schema('get_experiment', '读取指定实验的统计摘要及holdout的periods子归档引用。父归档无顶层metrics不表示无研究结果：按periods中run_id分别读取train/valid/test，再用inspect_research_evidence核对具体字段。periods只表示父记录的引用，未代替对子归档的重新核验；研究关联查询不完整也不等于这些指标不可读取。', {'run_id': TEXT}),
     schema('compare_factor_candidates','只读对照两个真实单因子归档（父研究先选择同阶段子run）：同数据/股票池/条件比较Rank IC；若双方为布尔事件，conditional_events在baseline=1内报告候选筛中/未筛中、相同日期等权收益差、已存MAE与最差5%事件损失。空值不填零，无候选日期单列，非嵌套事件不冒充过滤。纯描述、无p值/成本/Alpha认证，不创建任务。',{'candidate_run_id':TEXT,'baseline_run_id':TEXT,'horizon':{'type':'integer','minimum':1,'maximum':1000}}),
     schema('audit_factor_risk','只读风险敏感性：两个同阶段、同数据布尔因子归档。固定baseline触发集内，候选筛中与未筛中为互斥组；要求收益和MAE共同可用且同日期有两组，报告均值与最差5%尾部；同时给全部信号和按最早基准信号、严格晚于原窗口结束的非重叠样本。选择不看未来损益/候选值，空值不补。固定算法无可调阈值，不重算因子、不创建任务、不认证显著性或独立风险控制。',{'candidate_run_id':TEXT,'baseline_run_id':TEXT,'horizon':{'type':'integer','minimum':1,'maximum':1000}}),
@@ -168,12 +168,17 @@ class ReadOnlyResearchAPI:
                         '实验成功状态不代表统计有效、真实可成交或未来盈利。',
                         '只检索指定产物目录的直接实验；未递归聚合其他工作空间。']}, []
         if name == 'search_factors':
+            terms = args['query'].casefold().split()   # 多个关键词按"同时包含"匹配，如 "ALPHA158 STD"
             values = [json.loads(encode(v)) for v in self.registry.describe()
-                      if args['query'].casefold() in encode(v).casefold()]
+                      if all(t in encode(v).casefold() for t in terms)]
             selected = values[args['offset']:args['offset']+args['limit']]
             fields = ('factor_id', 'version', 'name_cn', 'category', 'factor_type')
             rows = [{key: item['definition'][key] for key in fields} for item in selected]
-            return {'factors': rows, 'total': len(values), 'offset': args['offset']}, [
+            from collections import Counter
+            family = Counter(str(v['definition']['factor_id']).split('.', 1)[0] for v in values)
+            category = Counter(str(v['definition'].get('category') or 'UNKNOWN') for v in values)
+            facets = {'family': dict(family.most_common(40)), 'category': dict(category.most_common(40))}
+            return {'factors': rows, 'total': len(values), 'offset': args['offset'], 'facets': facets}, [
                 {'kind': 'factor', 'factor_id': r['factor_id'], 'version': r['version']} for r in rows]
         if name == 'describe_factor':
             from dataclasses import asdict

@@ -26,7 +26,10 @@ def identifier(value):
 def now():return datetime.now(timezone.utc).isoformat()
 
 def normalize_plan(plan):
-    if not isinstance(plan,dict) or set(plan)!=PLAN_KEYS:raise ValueError('增量证据计划字段不完整')
+    if not isinstance(plan,dict) or set(plan)!=PLAN_KEYS:
+        keys=set(plan) if isinstance(plan,dict) else set()
+        raise ValueError('增量证据计划字段不完整：缺少 '+(', '.join(sorted(PLAN_KEYS-keys)) or '无')+'；多余 '+(', '.join(sorted(keys-PLAN_KEYS)) or '无')
+            +'。须恰好包含 '+', '.join(sorted(PLAN_KEYS)))
     candidate=identifier(plan['candidate_run_id']);controls=plan['control_run_ids']
     if not isinstance(controls,list) or not 1<=len(controls)<=5:
         raise ValueError('控制因子须为1–5个已完成研究')

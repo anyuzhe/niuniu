@@ -70,7 +70,12 @@ def plan_candidate_ids(plan):
 
 
 def normalize_plan(plan):
-    if not isinstance(plan,dict) or set(plan) not in (PLAN_KEYS,REF_PLAN_KEYS):raise ValueError('Alpha Factory计划字段不完整')
+    if not isinstance(plan,dict):raise ValueError('Alpha Factory计划字段不完整：计划须为 JSON 对象')
+    if set(plan) not in (PLAN_KEYS,REF_PLAN_KEYS):
+        keys=set(plan);target=REF_PLAN_KEYS if keys&{'format','candidate_refs'} else PLAN_KEYS
+        raise ValueError('Alpha Factory计划字段不完整：缺少 '+(', '.join(sorted(target-keys)) or '无')
+            +'；多余 '+(', '.join(sorted(keys-target)) or '无')+'。v2 计划须恰好包含 '+', '.join(sorted(REF_PLAN_KEYS))
+            +'；baseline_run_id 与 control_run_ids 是已完成实验归档的 run_id，样本与股票取自基准归档。')
     name=plan['name']
     if not isinstance(name,str) or not 1<=len(name.strip())<=120:raise ValueError('工厂名称须为1–120字符')
     if 'candidate_ids' in plan:
