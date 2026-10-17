@@ -447,6 +447,22 @@
    "known_issues": [
     "truncated_to_latest_5000_rows"
    ]
+  },
+  "bars.daily.raw.delisted": {
+   "status": "current",
+   "kind": "per_symbol_parquet",
+   "path": "lake/bronze/provider=baostock/stock_kline_daily_delisted",
+   "qualification": "research_only",
+   "producer": "scripts/collect/bars_delisted.py",
+   "notes": "290 只已退市 A 股的 Baostock 不复权日线（含 preclose/tradestatus/isST）；在市目录没有该证券时研究加载器回退到这里（2026-10-17）"
+  },
+  "bars.daily.qfq.delisted": {
+   "status": "current",
+   "kind": "per_symbol_parquet",
+   "path": "lake/bronze/provider=baostock/stock_kline_daily_delisted_qfq_bs",
+   "qualification": "research_only",
+   "producer": "scripts/collect/bars_delisted.py",
+   "notes": "退市股 Baostock 自带前复权孪生（adjustflag=2），单源、未经两源除权核对；factor 由加载器按 前复权收盘/不复权收盘 得出。在市 qfq v2 没有该证券时回退（2026-10-17）；消除研究股票池的幸存者偏差"
   }
  }
 }

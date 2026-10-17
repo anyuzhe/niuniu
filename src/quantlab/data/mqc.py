@@ -10,7 +10,7 @@ import polars as pl
 import pyarrow.parquet as pq
 
 from quantlab.data.base import DataBatch, DataRequest, DataSnapshot
-from quantlab.data.dataset_registry import resolve
+from quantlab.data.dataset_registry import RegistryError, resolve
 from quantlab.data.validation import validate_bars
 from quantlab.domain import Timeframe
 from quantlab.storage.codec import digest
@@ -43,6 +43,40 @@ class MQCParquetProvider:
         resolved = resolve(self.root, name, legacy_default=legacy)
         return resolved.path, resolved.registry_sha256
 
+    # 已退市股票：Baostock 供应商自己的不复权 / 前复权孪生（单源，未经两源除权核对）。只在数据集登记表登记了
+    # 对应名称时才作为回退；没有登记表的测试根用旧默认目录。在市目录里没有该证券文件时才用。
+    DELISTED = {'raw': ('bars.daily.raw.delisted', 'lake/bronze/provider=baostock/stock_kline_daily_delisted'),
+                'qfq': ('bars.daily.qfq.delisted', 'lake/bronze/provider=baostock/stock_kline_daily_delisted_qfq_bs')}
+
+    def _delisted_path(self, symbol: str, adjustment: str | None = None) -> Path | None:
+        name, legacy = self.DELISTED[adjustment or self.adjustment]
+        try:
+            directory = resolve(self.root, name, legacy_default=legacy).path
+        except RegistryError:
+            return None
+        path = directory / f"{symbol.replace('.', '_')}.parquet"
+        return path if path.is_file() else None
+
+    def _delisted_frame(self, symbol: str, path: Path, frame: pl.DataFrame, files: list) -> pl.DataFrame:
+        """把退市孪生文件整理成在市文件的列：qfq 加 factor（= 前复权收盘 / 不复权收盘），去掉状态列。"""
+        flag = '2' if self.adjustment == 'qfq' else '3'
+        if frame.filter(pl.col('adjustflag').is_null() | (pl.col('adjustflag') != flag)).height:
+            raise ValueError(f"退市股 {symbol} 的 adjustflag 不是 {flag}: {path}")
+        files[-1]['source'] = 'delisted_single_source_baostock'
+        if self.adjustment == 'qfq':
+            raw_path = self._delisted_path(symbol, 'raw')
+            if raw_path is None:
+                raise ValueError(f"退市股 {symbol} 缺少不复权孪生文件，无法得出复权因子")
+            payload = raw_path.read_bytes()
+            raw = pl.from_arrow(pq.read_table(io.BytesIO(payload))).select('date', pl.col('close').alias('_raw_close'))
+            files.append({"path": str(raw_path), "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload),
+                          'source': 'delisted_single_source_baostock_raw_twin'})
+            frame = frame.join(raw, on='date', how='left')
+            if frame.filter(pl.col('_raw_close').is_null() | (pl.col('_raw_close') <= 0)).height:
+                raise ValueError(f"退市股 {symbol} 的不复权孪生与前复权行不一一对应")
+            frame = frame.with_columns((pl.col('close') / pl.col('_raw_close')).alias('factor')).drop('_raw_close')
+        return frame.drop([c for c in ('preclose', 'tradestatus', 'isST', 'fetch_ts') if c in frame.columns])
+
     def _enforce_qfq_coverage(self, request: DataRequest) -> dict[str, bool]:
         """Apply DATA's published qfq boundary; return which symbols have truncated history.
 
@@ -72,6 +106,9 @@ class MQCParquetProvider:
         for symbol in request.symbols:
             value = valid_from.get(symbol)
             if not isinstance(value, str):
+                if self._delisted_path(symbol) is not None:
+                    truncated[symbol] = False   # 退市孪生：历史从上市起完整，不受发布覆盖表约束
+                    continue
                 raise ValueError(f'DATA qfq coverage缺少证券 {symbol}')
             try:
                 first = date.fromisoformat(value)
@@ -107,6 +144,11 @@ class MQCParquetProvider:
                 raise ValueError(f"Invalid MQC symbol: {symbol}")
             path = directory / f"{symbol.replace('.', '_')}.parquet"
             eastmoney_minute = False
+            delisted = False
+            if request.timeframe == Timeframe.DAILY and not path.exists():
+                fallback = self._delisted_path(symbol)
+                if fallback is not None:
+                    path, delisted = fallback, True
             if request.timeframe == Timeframe.MIN1 and not path.exists():
                 if self.adjustment == 'qfq':
                     raise ValueError('缺少前复权 1m 数据；不会把原始 1m 或 5m 当作前复权 1m。可由用户主动选择 raw 并检查可用日期。')
@@ -126,6 +168,8 @@ class MQCParquetProvider:
                 frame=frame.with_columns(pl.lit('3').alias('adjustflag'),(pl.col('volume')*100).alias('volume'))
             if frame.filter(pl.col("code").is_null() | (pl.col("code") != symbol)).height:
                 raise ValueError(f"Symbol mismatch in {path}")
+            if delisted:
+                frame = self._delisted_frame(symbol, path, frame, files)
             if self.adjustment == "raw" and frame.filter(pl.col("adjustflag").is_null() | (pl.col("adjustflag") != "3")).height:
                 raise ValueError(f"Expected unadjusted bars in {path}")
             if self.adjustment == "qfq" and registry_sha256 is not None and truncated.get(symbol, True):

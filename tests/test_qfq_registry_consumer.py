@@ -79,6 +79,7 @@ class QFQRegistryConsumerTests(TestCase):
                     "path": "lake/silver/qfq_kline_min5_v2",
                     "qualification": "research_only", "producer": "DATA-test",
                 },
+                **(self.delisted_entries if getattr(self, 'delisted_entries', None) else {}),
             },
         }
         (catalog / "dataset_registry.json").write_text(
@@ -98,6 +99,57 @@ class QFQRegistryConsumerTests(TestCase):
         row = result['data']['records'][0]
         self.assertTrue(row['loadable'], row)
         self.assertIn('qfq_kline_daily_v2', row['source']['relative_file'])
+
+    def write_delisted(self, symbol="sh.600837", *, register=True):
+        """退市孪生：不复权 adjustflag=3 与前复权 adjustflag=2，逐行日期相同。"""
+        raw_dir = self.root / "lake/bronze/provider=baostock/stock_kline_daily_delisted"
+        qfq_dir = self.root / "lake/bronze/provider=baostock/stock_kline_daily_delisted_qfq_bs"
+        raw_dir.mkdir(parents=True, exist_ok=True); qfq_dir.mkdir(parents=True, exist_ok=True)
+        rows = []
+        for n in range(3):
+            d = self.start + timedelta(days=n)
+            rows.append({"date": d, "code": symbol, "open": 10.0, "high": 13.0, "low": 9.0, "close": 10.0 + n,
+                         "preclose": 10.0, "volume": 500.0, "amount": 5000.0, "adjustflag": "3",
+                         "tradestatus": "1", "isST": "0", "fetch_ts": "t"})
+        pl.DataFrame(rows).write_parquet(raw_dir / "sh_600837.parquet")
+        pl.DataFrame([{**r, "open": r["open"] / 2, "high": r["high"] / 2, "low": r["low"] / 2,
+                       "close": r["close"] / 2, "adjustflag": "2"} for r in rows]).write_parquet(qfq_dir / "sh_600837.parquet")
+        if register:
+            (self.root / "lake/bronze/provider=baostock/stock_kline_daily").mkdir(parents=True, exist_ok=True)
+            self.delisted_entries = {
+                "bars.daily.raw.baostock": {"status": "current", "kind": "per_symbol_parquet",
+                    "path": "lake/bronze/provider=baostock/stock_kline_daily",
+                    "qualification": "research_only", "producer": "DATA-test"},
+                "bars.daily.raw.delisted": {"status": "current", "kind": "per_symbol_parquet",
+                    "path": "lake/bronze/provider=baostock/stock_kline_daily_delisted",
+                    "qualification": "research_only", "producer": "DATA-test"},
+                "bars.daily.qfq.delisted": {"status": "current", "kind": "per_symbol_parquet",
+                    "path": "lake/bronze/provider=baostock/stock_kline_daily_delisted_qfq_bs",
+                    "qualification": "research_only", "producer": "DATA-test"}}
+            self.write_registry()
+
+    def test_delisted_symbol_falls_back_to_registered_baostock_twin(self):
+        self.write_delisted()
+        batch = MQCParquetProvider(self.root, "qfq").load(
+            DataRequest(("sh.600837", self.symbol), Timeframe.DAILY, self.start, self.start + timedelta(days=2)))
+        bars = batch.bars.filter(pl.col("symbol") == "sh.600837").sort("datetime")
+        self.assertEqual(bars.height, 3)
+        self.assertEqual(bars["close"].to_list(), [5.0, 5.5, 6.0])
+        self.assertEqual(bars["adj_factor"].to_list(), [0.5, 0.5, 0.5])
+        self.assertEqual(batch.bars.filter(pl.col("symbol") == self.symbol)["close"][0], 20.5)
+        sources = {f.get("source") for f in batch.snapshot.files}
+        self.assertIn("delisted_single_source_baostock", sources)
+        self.assertIn("delisted_single_source_baostock_raw_twin", sources)
+        raw = MQCParquetProvider(self.root, "raw").load(
+            DataRequest(("sh.600837",), Timeframe.DAILY, self.start, self.start + timedelta(days=2)))
+        self.assertEqual(raw.bars["close"].to_list(), [10.0, 11.0, 12.0])
+        self.assertNotIn("tradestatus", raw.bars.columns)
+
+    def test_delisted_fallback_requires_registry_entry(self):
+        self.write_delisted(register=False)
+        with self.assertRaisesRegex(ValueError, "coverage缺少证券"):
+            MQCParquetProvider(self.root, "qfq").load(
+                DataRequest(("sh.600837",), Timeframe.DAILY, self.start, self.start + timedelta(days=2)))
 
     def test_registry_selects_published_v2_not_legacy_qfq(self):
         batch = MQCParquetProvider(self.root, "qfq").load(self.request())

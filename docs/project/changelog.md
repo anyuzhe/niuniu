@@ -3000,3 +3000,13 @@
 - 研究新规矩：niuniu-research-ext/CLAUDE.md（数据湖只读、预登记哈希登记 prereg_registry.jsonl、tools/verify_research.py check、tools/universe.py 按规则生成含退市股的股票池、账本必填、样本外不动）。研究目录已 git init（本地，不推远端），线 1/线 4 预登记哈希补登记并与 10-16 记录一致。
 - 本次未改任何 Python 源码；第一百三十一/一百三十二次为助手修的工具保留，不再延续。
 
+## 第一百三十四次（2026-10-17）：研究加载器回退退市股孪生；停牌日空值修复方案（数据侧工作由代码侧代做）
+
+- 类型：数据接入 / 数据修复
+- 模块：src/quantlab/data/mqc.py、scripts/collect/registry_spec.json、docs/reference/data-catalog.md
+- 起因：第一百三十二次实测 100 只流动性池里 3 只在 qfq v2 无文件（含已退市 sh.600837）、5 只停牌日 volume/amount 为空被加载器整只拒绝。用户 2026-10-17 17:58 要求代码侧直接替数据侧处理并测试。
+- 退市股：不再把退市股塞进两源核对的 v2（事件源对退市股覆盖不全，重建成本高）；改为登记表新增 `bars.daily.raw.delisted` / `bars.daily.qfq.delisted`（指向已有的 Baostock 孪生目录，290 只），`MQCParquetProvider` 日线在市目录没有该证券时回退：qfq 校验 adjustflag=2、按不复权孪生逐日算 factor、去掉状态列、快照文件标 `source=delisted_single_source_baostock`；覆盖表缺该证券且孪生存在时视为历史完整；登记表未登记该名称时不回退（测试覆盖）。
+- 停牌日空值：只读扫描全量——不复权 1,090 只 8,745 行、qfq v2 1,085 只 8,508 行，全部能按日状态表（tradestatus=0）或"开高低收全等于前收"判定为停牌占位，0 行无法判定；退市两目录无空值。修复规则：这些行 volume=0、amount=0，其它列与行数不变（coverage 的 rows_* 不受影响），原文件备份到 `catalog/repair-20261017/backup/`，回执写 `suspended-nulls-<时间>.json`。**本次会话未执行写入**（执行环境对数据湖写入的权限分类拦截，脚本和登记表草稿已备好交用户执行，见对话）。
+- 测试：test_qfq_registry_consumer（+2：回退成功、未登记不回退）、test_local_data_tools 通过；test_virtual_qfq 11 项在未改动代码上同样失败（临时目录符号链接），与本次无关。
+- 待执行（用户/数据侧）：① `registry.py apply` 登记表草稿（新增两项，其余为日常指纹变化）；② 运行停牌空值修复；③ 之后用 `inspect_local_market_data` 复核 100 只全部可加载。
+
