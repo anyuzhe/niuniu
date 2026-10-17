@@ -184,7 +184,7 @@
       var c = ser.c || [], last = null, li = -1;
       for (var i = c.length - 1; i >= 0; i--) if (isNum(c[i])) { last = c[i]; li = i; break; }
       function back(k) { var j = li - k; return j >= 0 && isNum(c[j]) && isNum(last) ? last / c[j] - 1 : null; }
-      body = chart(c, [md(dates[0]), md(dates[dates.length - 1])], { label: name + ' 近 ' + dates.length + ' 个交易日收盘', h: 170 }) +
+      body = (ser.o ? kchart(ser, dates, name) : chart(c, [md(dates[0]), md(dates[dates.length - 1])], { label: name + ' 近 ' + dates.length + ' 个交易日收盘', h: 170 })) +
         '<div class="tiles">' +
         '<div class="tile"><span>最新收盘</span><b class="num">' + num(last, 2) + '</b><span>' + esc(md(dates[li])) + '</span></div>' +
         '<div class="tile"><span>近 5 日</span><b>' + pctc(back(5), 1) + '</b></div>' +
@@ -195,10 +195,62 @@
           var i = x[0], v = x[1], prev = i > 0 ? c[i - 1] : null;
           return '<tr><td class="num">' + esc(md(dates[i])) + '</td><td class="n num">' + num(v, 2) + '</td><td class="n">' + pctc(isNum(v) && isNum(prev) ? v / prev - 1 : null, 1) + '</td></tr>';
         }).join('') + '</tbody></table></div>' +
-        '<p class="small muted">不复权收盘价，数据截至 ' + esc(s.data_date) + '；点图上的点看当天数值。</p>';
+        '<p class="small muted">日 K（前复权），红涨绿跌，黄线 5 日均线、蓝线 20 日均线，下方是成交量；点一根 K 线看当天开高低收。数据截至 ' + esc(s.data_date) + '。</p>';
     }
     return '<div class="sheet-back" id="sheet-back"></div><section class="sheet" role="dialog" aria-label="个股走势">' +
       '<header><div><b>' + esc(name) + '</b> <span class="muted num">' + esc(short(code)) + '</span></div><button class="btn" id="sheet-close">关闭</button></header>' + body + '</section>';
+  }
+  function ma(c, k) {
+    return c.map(function (_, i) {
+      if (i < k - 1) return null; var sum = 0;
+      for (var j = i - k + 1; j <= i; j++) { if (!isNum(c[j])) return null; sum += c[j]; }
+      return sum / k;
+    });
+  }
+  function kchart(ser, dates, name) {
+    var o = ser.o, h = ser.h, l = ser.l, c = ser.c, v = ser.v || [], n = c.length;
+    var lo = Infinity, hi = -Infinity, vmax = 0;
+    for (var i = 0; i < n; i++) {
+      if (isNum(l[i]) && l[i] < lo) lo = l[i]; if (isNum(h[i]) && h[i] > hi) hi = h[i];
+      if (isNum(v[i]) && v[i] > vmax) vmax = v[i];
+    }
+    if (!isFinite(lo) || !isFinite(hi)) return '<p class="empty">没有 K 线数据。</p>';
+    var span = (hi - lo) || hi * 0.02 || 1; lo -= span * 0.04; hi += span * 0.04; span = hi - lo;
+    var W = 320, L = 2, R = 40, T = 6, PH = 150, GAP = 8, VH = 38, B = 14, H = T + PH + GAP + VH + B;
+    var step = (W - L - R) / n, bw = Math.max(1, step * 0.62);
+    function X(i) { return L + step * (i + 0.5); }
+    function Y(p) { return T + PH * (1 - (p - lo) / span); }
+    var vy0 = T + PH + GAP + VH;
+    var svg = '<svg class="chart kline" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(name) + ' 日K">';
+    [0, 0.5, 1].forEach(function (f) { var y = T + PH * f; svg += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>'; });
+    for (i = 0; i < n; i++) {
+      if (!isNum(o[i]) || !isNum(c[i]) || !isNum(h[i]) || !isNum(l[i])) continue;
+      var up = c[i] >= o[i], cls = up ? 'ku' : 'kd', x = X(i);
+      var top = Y(Math.max(o[i], c[i])), bot = Y(Math.min(o[i], c[i]));
+      svg += '<line class="' + cls + '" x1="' + x.toFixed(1) + '" x2="' + x.toFixed(1) + '" y1="' + Y(h[i]).toFixed(1) + '" y2="' + Y(l[i]).toFixed(1) + '"/>';
+      svg += '<rect class="' + cls + '" x="' + (x - bw / 2).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(0.8, bot - top).toFixed(1) + '"/>';
+      if (vmax > 0 && isNum(v[i])) {
+        var vh = VH * v[i] / vmax;
+        svg += '<rect class="' + cls + ' vol" x="' + (x - bw / 2).toFixed(1) + '" y="' + (vy0 - vh).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(0.5, vh).toFixed(1) + '"/>';
+      }
+    }
+    [[ma(c, 5), 'ma5'], [ma(c, 20), 'ma20']].forEach(function (m) {
+      var d = '', gap = true;
+      m[0].forEach(function (y, i) { if (!isNum(y)) { gap = true; return; } d += (gap ? 'M' : 'L') + X(i).toFixed(1) + ' ' + Y(y).toFixed(1); gap = false; });
+      if (d) svg += '<path class="' + m[1] + '" d="' + d + '"/>';
+    });
+    // 点击区：每根 K 线一条竖条，点了显示当天数值
+    for (i = 0; i < n; i++) {
+      if (!isNum(c[i])) continue;
+      var prev = i > 0 && isNum(c[i - 1]) ? c[i - 1] : null;
+      var t = md(dates[i]) + ' 开' + num(o[i], 2) + ' 高' + num(h[i], 2) + ' 低' + num(l[i], 2) + ' 收' + num(c[i], 2) + (prev ? ' ' + pct(c[i] / prev - 1, 1, true) : '');
+      svg += '<rect class="kc" data-t="' + esc(t) + '" x="' + (L + step * i).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + (PH + GAP + VH) + '"/>';
+    }
+    svg += '<text x="' + (W - R + 4) + '" y="' + (T + 8) + '">' + num(hi - span * 0.04 / 1.08, 2) + '</text>';
+    svg += '<text x="' + (W - R + 4) + '" y="' + (T + PH) + '">' + num(lo + span * 0.04 / 1.08, 2) + '</text>';
+    svg += '<text x="' + L + '" y="' + (H - 2) + '">' + esc(md(dates[0])) + '</text>';
+    svg += '<text x="' + (W - R) + '" y="' + (H - 2) + '" text-anchor="end">' + esc(md(dates[n - 1])) + '</text>';
+    return svg + '</svg>';
   }
   function findName(s, code) {
     var hit = null;
@@ -687,7 +739,11 @@
         return '<button data-tab="' + t[0] + '"' + (t[0] === state.tab ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
       }).join('') + '</nav>';
     var tip = document.getElementById('nn-tip');
-    if (tip && state.chartTip) { tip.style.left = state.chartTip.x + 'px'; tip.style.top = state.chartTip.y + 'px'; }
+    if (tip && state.chartTip) {
+      tip.style.left = state.chartTip.x + 'px'; tip.style.top = state.chartTip.y + 'px';
+      var tw = tip.offsetWidth;                                        // 别超出屏幕右边
+      if (state.chartTip.x + tw > window.innerWidth - 8) tip.style.left = Math.max(8, window.innerWidth - tw - 8) + 'px';
+    }
     bind();
   }
 
@@ -750,6 +806,12 @@
 
     // 图表点击提示
     app.addEventListener('click', function (e) {
+      var kc = e.target.closest ? e.target.closest('.kc') : null;
+      if (kc) {
+        var kr = kc.getBoundingClientRect();
+        chartTipShow(Math.max(8, kr.left - 40), Math.max(8, kr.top - 4), kc.getAttribute('data-t'));
+        return;
+      }
       var pt = e.target.closest ? e.target.closest('.pt') : null;
       if (!pt) { chartTipHide(); return; }
       var i = pt.getAttribute('data-i'), v = pt.getAttribute('data-v');
@@ -799,11 +861,13 @@
       ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
         document.addEventListener(name, function (e) { e.preventDefault(); }, { passive: false });
       });
-      var lastTap = 0;
+      var lastTap = 0, lastX = -99, lastY = -99;
       document.addEventListener('touchend', function (e) {
-        var now = Date.now();
-        if (now - lastTap < 300 && e.cancelable) e.preventDefault();      // 300ms 内的第二次点按不再触发放大（第一次点按的点击照常）
-        lastTap = now;
+        var now = Date.now(), t = e.changedTouches && e.changedTouches[0];
+        var x = t ? t.clientX : -99, y = t ? t.clientY : -99;
+        // 只拦“同一个位置 300ms 内的第二下”（这才是双击放大）；在别处快速点下一下照常生效
+        if (now - lastTap < 300 && Math.abs(x - lastX) < 25 && Math.abs(y - lastY) < 25 && e.cancelable) e.preventDefault();
+        lastTap = now; lastX = x; lastY = y;
       }, { passive: false });
     }
   }

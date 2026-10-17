@@ -181,3 +181,11 @@ tr.tap:active td { background: var(--soft); }
 .sheet header b { font-size: 17px; }
 .tile b span { display: inline; font-size: inherit; color: inherit; }
 .tile b span.up { color: var(--up); } .tile b span.down { color: var(--down); }
+
+/* 日 K：红涨绿跌 */
+svg.kline line.ku, svg.kline rect.ku { stroke: var(--up); fill: var(--up); }
+svg.kline line.kd, svg.kline rect.kd { stroke: var(--down); fill: var(--down); }
+svg.kline rect.vol { opacity: .55; stroke: none; }
+svg.kline path.ma5 { fill: none; stroke: #e0a100; stroke-width: 1.2; }
+svg.kline path.ma20 { fill: none; stroke: var(--accent); stroke-width: 1.2; }
+svg.kline rect.kc { fill: transparent; stroke: none; }

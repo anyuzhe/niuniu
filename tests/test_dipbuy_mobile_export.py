@@ -219,7 +219,8 @@ class SnapshotAndPublishTests(unittest.TestCase):
         codes = [str(c) for c in self.panel.codes[:3]]
         with mock.patch.multiple(me, _signal_view=lambda k, *a: {'picks': [{'code': codes[0], 'name': '甲'}]},
                                  _forward_view=lambda o, p, c, k: {'records': [{'rows': [{'code': codes[1]}]}]},
-                                 _holdings_view=lambda *a: {'holdings': [{'code': codes[2]}, {'code': 'not-a-code'}]}):
+                                 _holdings_view=lambda *a: {'holdings': [{'code': codes[2]}, {'code': 'not-a-code'}]}), \
+                mock.patch('quantlab.dipbuy.panel.ready_dirs', side_effect=RuntimeError('no catalog')):
             snap = me.build_snapshot(self.out, self.panel, None, {codes[0]: '甲'}, now=self.now)
         st = snap['stocks']
         self.assertEqual(set(st['series']), set(codes))
@@ -227,9 +228,27 @@ class SnapshotAndPublishTests(unittest.TestCase):
         self.assertEqual(len(st['dates']), n)
         self.assertEqual(st['dates'][-1], self.panel.last_date)
         j = list(self.panel.codes).index(codes[0])
-        self.assertAlmostEqual(st['series'][codes[0]]['c'][-1], float(self.panel.c[-1, j] / self.panel.f[-1, j]), places=3)
+        self.assertAlmostEqual(st['series'][codes[0]]['c'][-1], float(self.panel.c[-1, j]), places=3)     # 没有日 K 文件：退回面板收盘价
         self.assertEqual(st['series'][codes[0]]['name'], '甲')
+        self.assertEqual(snap['holdings']['holdings'][0].get('name'), None)                              # 名称表里没有的不乱填
         json.dumps(snap, allow_nan=False)
+
+    def test_stock_series_reads_daily_bars_and_fills_missing_names(self):
+        import pandas as pd
+        code = str(self.panel.codes[0])
+        qfq = Path(self.tmp.name) / 'qfq'
+        qfq.mkdir()
+        days = [str(d) for d in self.panel.dates[-3:]]
+        pd.DataFrame(dict(date=pd.to_datetime(days), code=code, open=[1.0, 2.0, 3.0], high=[1.5, 2.5, 3.5], low=[0.5, 1.5, 2.5],
+                          close=[1.2, 2.2, 3.2], volume=[100, 200, 300], amount=0.0, factor=1.0)).to_parquet(qfq / (code.replace('.', '_') + '.parquet'))
+        snap = {'forward': {'x': {'portfolio': {'open_positions': [{'code': code, 'mtm': 0.1}]}}}}
+        me._fill_names(snap, {code: '甲股份'})
+        self.assertEqual(snap['forward']['x']['portfolio']['open_positions'][0]['name'], '甲股份')
+        st = me._stock_series(self.panel, snap, {code: '甲股份'}, qfq_dir=qfq)
+        ser = st['series'][code]
+        self.assertEqual((ser['o'][-1], ser['h'][-1], ser['l'][-1], ser['c'][-1], ser['v'][-1]), (3.0, 3.5, 2.5, 3.2, 300))
+        self.assertIsNone(ser['o'][0])                                                                 # 文件里没有的日子留空
+        self.assertEqual(st['adjust'], 'qfq')
 
     def test_publish_skips_without_config_or_passphrase_and_never_raises(self):
         self.assertEqual(me.publish(self.out, self.panel, None, {})['status'], 'skipped')

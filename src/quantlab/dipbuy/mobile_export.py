@@ -210,7 +210,7 @@ def _forward_view(output, panel, cls, kind: str) -> dict:
                             n_picks=len(r.get('picks') or []), mean_ret=res.get('mean_ret'), mean_mtm=res.get('mean_mtm'),
                             n_filled=res.get('n_filled'), n_closed=res.get('n_closed'),
                             rows=[{k: p.get(k) for k in ('sleeve', 'code', 'name', 'ret', 'mtm', 'status', 'in_plan', 'entry_date', 'exit_date')}
-                                  for p in (res.get('rows') or r.get('picks') or []) if p.get('in_plan', True)][:12]))
+                                  for p in (res.get('rows') or r.get('picks') or []) if p.get('in_plan', True)][:MAX_FORWARD_ROWS]))
     view = dict(start_date=ledger.get('start_date'), config_hash=ledger.get('config_hash'), summary=settled['summary'], records=records)
     if pf:
         view['portfolio'] = dict(start_date=pf['start_date'], curve=_curve(pf['dates'], pf['equity']), summary=pf['summary'],
@@ -281,8 +281,25 @@ def build_snapshot(output, panel, cls, names, *, now: datetime | None = None) ->
     except Exception as exc:
         snap['holdings'] = dict(error=f'{type(exc).__name__}: {exc}')
     snap['overview'] = _overview_view(panel, cls, snap, output)
+    _fill_names(snap, names or {})
     snap['stocks'] = _stock_series(panel, snap, names)
     return snap
+
+
+MAX_FORWARD_ROWS = 40     # 一条前向记录最多列多少只（策略 D 每层最多 20 只）
+
+
+def _fill_names(x, names: dict) -> None:
+    """快照里凡是有代码没名称的行（例如前向组合的模拟持仓），按名称表补上，手机上才不只显示代码。"""
+    if isinstance(x, dict):
+        c = x.get('code')
+        if isinstance(c, str) and _CODE.match(c) and not x.get('name') and names.get(c):
+            x['name'] = names[c]
+        for v in x.values():
+            _fill_names(v, names)
+    elif isinstance(x, list):
+        for v in x:
+            _fill_names(v, names)
 
 
 STOCK_DAYS = 60          # 手机上点一只股票看的最近走势（交易日）
@@ -303,21 +320,57 @@ def _codes_in(x, out):
     return out
 
 
-def _stock_series(panel, snap: dict, names) -> dict:
-    """快照里出现过的每只股票，附最近 STOCK_DAYS 个交易日的不复权收盘价，手机上点一行就能看走势（不再联网）。"""
+def _r(v):
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return round(v, 3) if math.isfinite(v) else None
+
+
+def _stock_series(panel, snap: dict, names, qfq_dir=None) -> dict:
+    """快照里出现过的每只股票，附最近 STOCK_DAYS 个交易日的日 K（前复权开高低收 + 成交量），手机上点一行就能看 K 线（不再联网）。
+    日 K 读数据清单里 READY 的前复权日线；某只读不到时退回面板里的前复权收盘价（只有收盘，没有开高低）。"""
     try:
         codes = _codes_in({k: v for k, v in snap.items() if k != 'stocks'}, [])[:MAX_STOCKS]
         index = {str(c): i for i, c in enumerate(panel.codes)}
         n = min(STOCK_DAYS, len(panel.dates))
         rows = slice(len(panel.dates) - n, len(panel.dates))
+        dates = [str(d) for d in panel.dates[rows]]
+        pos = {d: i for i, d in enumerate(dates)}
+        if qfq_dir is None:
+            try:
+                from quantlab.dipbuy import panel as dpanel
+                qfq_dir = dpanel.ready_dirs()[0]
+            except Exception:
+                qfq_dir = None
         series = {}
         for code in codes:
-            j = index.get(code)
-            if j is None:
-                continue
-            raw = panel.c[rows, j].astype(np.float64) / panel.f[rows, j].astype(np.float64)
-            series[code] = dict(name=(names or {}).get(code), c=[round(float(v), 3) if math.isfinite(v) else None for v in raw])
-        return _clean(dict(dates=[str(d) for d in panel.dates[rows]], series=series))
+            item = dict(name=(names or {}).get(code))
+            bars = None
+            if qfq_dir is not None:
+                f = Path(qfq_dir) / (code.replace('.', '_', 1) + '.parquet')
+                if f.is_file():
+                    try:
+                        import pandas as pd
+                        df = pd.read_parquet(f, columns=['date', 'open', 'high', 'low', 'close', 'volume'])
+                        df['date'] = df['date'].astype(str).str[:10]
+                        df = df[df['date'].isin(pos)]
+                        bars = {k: [None] * n for k in ('o', 'h', 'l', 'c', 'v')}
+                        for d, o, h, lo, c, v in df[['date', 'open', 'high', 'low', 'close', 'volume']].itertuples(index=False):
+                            i = pos[d]
+                            bars['o'][i], bars['h'][i], bars['l'][i], bars['c'][i] = _r(o), _r(h), _r(lo), _r(c)
+                            bars['v'][i] = int(v) if v is not None and math.isfinite(float(v)) else None
+                    except Exception:
+                        bars = None
+            if bars is None or not any(x is not None for x in bars['c']):
+                j = index.get(code)
+                if j is None:
+                    continue
+                bars = dict(c=[_r(v) for v in panel.c[rows, j]])
+            item.update(bars)
+            series[code] = item
+        return _clean(dict(dates=dates, adjust='qfq', series=series))
     except Exception as exc:       # 走势算不出来不影响别的
         return dict(error=f'{type(exc).__name__}: {exc}')
 
