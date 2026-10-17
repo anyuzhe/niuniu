@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import re
 import os
 import secrets
 import subprocess
@@ -280,7 +281,45 @@ def build_snapshot(output, panel, cls, names, *, now: datetime | None = None) ->
     except Exception as exc:
         snap['holdings'] = dict(error=f'{type(exc).__name__}: {exc}')
     snap['overview'] = _overview_view(panel, cls, snap, output)
+    snap['stocks'] = _stock_series(panel, snap, names)
     return snap
+
+
+STOCK_DAYS = 60          # 手机上点一只股票看的最近走势（交易日）
+MAX_STOCKS = 400
+_CODE = re.compile(r'^(sh|sz|bj)\.\d{6}$')
+
+
+def _codes_in(x, out):
+    if isinstance(x, dict):
+        c = x.get('code')
+        if isinstance(c, str) and _CODE.match(c) and c not in out:
+            out.append(c)
+        for v in x.values():
+            _codes_in(v, out)
+    elif isinstance(x, list):
+        for v in x:
+            _codes_in(v, out)
+    return out
+
+
+def _stock_series(panel, snap: dict, names) -> dict:
+    """快照里出现过的每只股票，附最近 STOCK_DAYS 个交易日的不复权收盘价，手机上点一行就能看走势（不再联网）。"""
+    try:
+        codes = _codes_in({k: v for k, v in snap.items() if k != 'stocks'}, [])[:MAX_STOCKS]
+        index = {str(c): i for i, c in enumerate(panel.codes)}
+        n = min(STOCK_DAYS, len(panel.dates))
+        rows = slice(len(panel.dates) - n, len(panel.dates))
+        series = {}
+        for code in codes:
+            j = index.get(code)
+            if j is None:
+                continue
+            raw = panel.c[rows, j].astype(np.float64) / panel.f[rows, j].astype(np.float64)
+            series[code] = dict(name=(names or {}).get(code), c=[round(float(v), 3) if math.isfinite(v) else None for v in raw])
+        return _clean(dict(dates=[str(d) for d in panel.dates[rows]], series=series))
+    except Exception as exc:       # 走势算不出来不影响别的
+        return dict(error=f'{type(exc).__name__}: {exc}')
 
 
 def _overview_view(panel, cls, snap: dict, output=None) -> dict:

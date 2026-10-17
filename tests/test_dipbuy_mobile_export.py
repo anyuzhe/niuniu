@@ -215,6 +215,22 @@ class SnapshotAndPublishTests(unittest.TestCase):
         self.assertEqual(set(snap['signals']), set(snap['forward']))
         json.dumps(snap, allow_nan=False)
 
+    def test_snapshot_carries_recent_closes_for_every_stock_it_mentions(self):
+        codes = [str(c) for c in self.panel.codes[:3]]
+        with mock.patch.multiple(me, _signal_view=lambda k, *a: {'picks': [{'code': codes[0], 'name': '甲'}]},
+                                 _forward_view=lambda o, p, c, k: {'records': [{'rows': [{'code': codes[1]}]}]},
+                                 _holdings_view=lambda *a: {'holdings': [{'code': codes[2]}, {'code': 'not-a-code'}]}):
+            snap = me.build_snapshot(self.out, self.panel, None, {codes[0]: '甲'}, now=self.now)
+        st = snap['stocks']
+        self.assertEqual(set(st['series']), set(codes))
+        n = min(me.STOCK_DAYS, len(self.panel.dates))
+        self.assertEqual(len(st['dates']), n)
+        self.assertEqual(st['dates'][-1], self.panel.last_date)
+        j = list(self.panel.codes).index(codes[0])
+        self.assertAlmostEqual(st['series'][codes[0]]['c'][-1], float(self.panel.c[-1, j] / self.panel.f[-1, j]), places=3)
+        self.assertEqual(st['series'][codes[0]]['name'], '甲')
+        json.dumps(snap, allow_nan=False)
+
     def test_publish_skips_without_config_or_passphrase_and_never_raises(self):
         self.assertEqual(me.publish(self.out, self.panel, None, {})['status'], 'skipped')
         me.save_config(self.out, host='root@h', remote_dir='/srv/x')

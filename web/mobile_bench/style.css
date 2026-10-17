@@ -170,3 +170,14 @@ svg.chart { cursor: crosshair; }
 #pass { width: 100%; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
 #pass-toggle { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; margin-top: 8px; }
 #nn-tip { position: fixed; background: rgba(0,0,0,.8); color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 13px; z-index: 100; pointer-events: none; white-space: nowrap; max-width: 80%; }
+
+/* 点一只股票看走势：底部弹出层 */
+tr.tap { cursor: pointer; }
+tr.tap:active td { background: var(--soft); }
+.sheet-back { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 70; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 86vh; overflow-y: auto; z-index: 71; background: var(--card); border-radius: 16px 16px 0 0;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0,0,0,.18); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.sheet header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.sheet header b { font-size: 17px; }
+.tile b span { display: inline; font-size: inherit; color: inherit; }
+.tile b span.up { color: var(--up); } .tile b span.down { color: var(--down); }

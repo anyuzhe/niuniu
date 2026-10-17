@@ -14,7 +14,8 @@
     passVisible: false,                // 口令明文显示开关
     search: { signal: '', forward: '', holdings: '' }, // 各页搜索关键词
     forwardFilter: 'all',              // 前向记录状态筛选：all/waiting/open/closed
-    chartTip: null                     // 图表提示 {x, y, text}
+    chartTip: null,                    // 图表提示 {x, y, text}
+    stock: null                        // 正在看走势的股票代码
   };
 
   var pick = { signal: 'fusion', forward: 'fusion', holdings: 'D' };
@@ -170,6 +171,45 @@
     return out;
   }
 
+  // ------------------------------------------------------------------ 点一只股票看最近走势
+  function rowCode(code) { return code ? ' class="tap" data-code="' + esc(code) + '"' : ''; }
+  function stockSheet(s) {
+    var code = state.stock; if (!code) return '';
+    var st = s.stocks || {}, ser = (st.series || {})[code], dates = st.dates || [];
+    var name = (ser && ser.name) || findName(s, code) || '';
+    var body;
+    if (!ser) {
+      body = '<p class="empty">这只股票没有附带走势数据' + (st.error ? '（' + esc(st.error) + '）' : '') + '。电脑上的牛牛更新后再推送一次就有了。</p>';
+    } else {
+      var c = ser.c || [], last = null, li = -1;
+      for (var i = c.length - 1; i >= 0; i--) if (isNum(c[i])) { last = c[i]; li = i; break; }
+      function back(k) { var j = li - k; return j >= 0 && isNum(c[j]) && isNum(last) ? last / c[j] - 1 : null; }
+      body = chart(c, [md(dates[0]), md(dates[dates.length - 1])], { label: name + ' 近 ' + dates.length + ' 个交易日收盘', h: 170 }) +
+        '<div class="tiles">' +
+        '<div class="tile"><span>最新收盘</span><b class="num">' + num(last, 2) + '</b><span>' + esc(md(dates[li])) + '</span></div>' +
+        '<div class="tile"><span>近 5 日</span><b>' + pctc(back(5), 1) + '</b></div>' +
+        '<div class="tile"><span>近 20 日</span><b>' + pctc(back(20), 1) + '</b></div>' +
+        '<div class="tile"><span>近 ' + (c.length - 1) + ' 日</span><b>' + pctc(back(c.length - 1), 1) + '</b></div></div>' +
+        '<div class="scroll"><table class="tbl"><thead><tr><th>日期</th><th class="n">收盘</th><th class="n">当日</th></tr></thead><tbody>' +
+        c.map(function (v, i) { return [i, v]; }).slice(-10).reverse().map(function (x) {
+          var i = x[0], v = x[1], prev = i > 0 ? c[i - 1] : null;
+          return '<tr><td class="num">' + esc(md(dates[i])) + '</td><td class="n num">' + num(v, 2) + '</td><td class="n">' + pctc(isNum(v) && isNum(prev) ? v / prev - 1 : null, 1) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<p class="small muted">不复权收盘价，数据截至 ' + esc(s.data_date) + '；点图上的点看当天数值。</p>';
+    }
+    return '<div class="sheet-back" id="sheet-back"></div><section class="sheet" role="dialog" aria-label="个股走势">' +
+      '<header><div><b>' + esc(name) + '</b> <span class="muted num">' + esc(short(code)) + '</span></div><button class="btn" id="sheet-close">关闭</button></header>' + body + '</section>';
+  }
+  function findName(s, code) {
+    var hit = null;
+    (function walk(x) {
+      if (hit || !x || typeof x !== 'object') return;
+      if (Array.isArray(x)) { x.forEach(walk); return; }
+      if (x.code === code && x.name) { hit = x.name; return; }
+      Object.keys(x).forEach(function (k) { walk(x[k]); });
+    })(s.signals); return hit;
+  }
+
   // ------------------------------------------------------------------ 图（支持点击查看数值）
   function chart(vals, labels, opt) {
     opt = opt || {};
@@ -212,7 +252,7 @@
     state.chartTip = { x: x, y: y, text: text };
     render();
   }
-  function chartTipHide() { state.chartTip = null; render(); }
+  function chartTipHide() { if (!state.chartTip) return; state.chartTip = null; render(); }   // 没有提示就不重画（滚动时会频繁调用）
 
   function maxDrawdown(eq) {
     var peak = -Infinity, dd = 0;
@@ -433,7 +473,7 @@
       html += '<div class="scroll"><table class="tbl"><thead><tr><th>#</th><th>股票</th>' + (isFusion ? '<th>层</th>' : '') + '<th class="n">收盘</th><th class="n">20 日</th>' +
         (isFusion && picks.some(function (p) { return p.plan_shares != null; }) ? '<th class="n">股数</th>' : '') + '</tr></thead><tbody>';
       disp.forEach(function (p) {
-        html += '<tr' + (p.in_plan === false ? ' class="muted"' : '') + '><td class="num">' + esc(p.rank) + '</td><td>' + esc(short(p.code)) + '<span class="nm">' + esc(p.name || '') + (p.group ? ' · ' + esc(p.group) : '') + '</span></td>' +
+        html += '<tr' + rowCode(p.code) + (p.in_plan === false ? ' class="muted"' : '') + '><td class="num">' + esc(p.rank) + '</td><td>' + esc(short(p.code)) + '<span class="nm">' + esc(p.name || '') + (p.group ? ' · ' + esc(p.group) : '') + '</span></td>' +
           (isFusion ? '<td>' + esc(p.sleeve) + '</td>' : '') + '<td class="n num">' + num(p.close, 2) + '</td><td class="n">' + pctc(p.ret20, 1) + '</td>' +
           (isFusion && picks.some(function (q) { return q.plan_shares != null; }) ? '<td class="n num">' + (p.plan_shares != null ? money(p.plan_shares) : '—') + '</td>' : '') + '</tr>';
       });
@@ -498,7 +538,7 @@
       var op = f.portfolio.open_positions || [];
       if (op.length) {
         html += '<section class="card"><h2>模拟持仓<small>' + op.length + ' 只</small></h2><div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th>信号日</th><th class="n">浮盈</th></tr></thead><tbody>' +
-          op.map(function (p) { return '<tr><td>' + esc(short(p.code)) + '<span class="nm">' + esc(p.name || p.sleeve || '') + '</span></td><td class="num">' + md(p.signal) + '</td><td class="n">' + pctc(p.ret != null ? p.ret : p.mtm, 1) + '</td></tr>'; }).join('') +
+          op.map(function (p) { return '<tr' + rowCode(p.code) + '><td>' + esc(short(p.code)) + '<span class="nm">' + esc(p.name || p.sleeve || '') + '</span></td><td class="num">' + md(p.signal) + '</td><td class="n">' + pctc(p.ret != null ? p.ret : p.mtm, 1) + '</td></tr>'; }).join('') +
           '</tbody></table></div></section>';
       }
     }
@@ -512,7 +552,7 @@
       html += '<details><summary><b class="num">' + md(r.signal_date) + '</b> <span class="tag">' + esc(STATUS[r.status] || r.status) + '</span> ' +
         (r.fired && r.fired.length ? '<span class="muted small">' + esc(r.fired.join('/')) + '</span> ' : '') + pctc(ret, 2) + '</summary>' +
         '<div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th>层</th><th class="n">收益</th></tr></thead><tbody>' +
-        (r.rows || []).map(function (p) { return '<tr><td>' + esc(short(p.code)) + '<span class="nm">' + esc(p.name || '') + '</span></td><td>' + esc(p.sleeve || '') + '</td><td class="n">' + (p.status === 'not_filled' ? '<span class="muted">没买进</span>' : pctc(p.ret != null ? p.ret : p.mtm, 1)) + '</td></tr>'; }).join('') +
+        (r.rows || []).map(function (p) { return '<tr' + rowCode(p.code) + '><td>' + esc(short(p.code)) + '<span class="nm">' + esc(p.name || '') + '</span></td><td>' + esc(p.sleeve || '') + '</td><td class="n">' + (p.status === 'not_filled' ? '<span class="muted">没买进</span>' : pctc(p.ret != null ? p.ret : p.mtm, 1)) + '</td></tr>'; }).join('') +
         '</tbody></table></div></details>';
     });
     return html + '</section>';
@@ -549,7 +589,7 @@
     html += '<section class="card"><h2>卖出<small>' + (p.sells || []).length + ' 只</small></h2>';
     if (!(p.sells || []).length) html += '<p class="empty">没有要卖的。</p>';
     else html += '<div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th class="n">股数</th><th class="n">盈亏</th><th>说明</th></tr></thead><tbody>' + p.sells.map(function (r) {
-      return '<tr><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + '</span></td><td class="n num">' + money(r.shares) + '</td><td class="n">' + pctc(r.pnl, 1) + '</td><td class="wrap">' + esc(r.advice) + '</td></tr>';
+      return '<tr' + rowCode(r.code) + '><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + '</span></td><td class="n num">' + money(r.shares) + '</td><td class="n">' + pctc(r.pnl, 1) + '</td><td class="wrap">' + esc(r.advice) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
     html += '</section>';
 
@@ -557,7 +597,7 @@
     if (p.stale) html += '<p class="empty">数据已过期，不出买入计划。</p>';
     else if (!(p.buys || []).length) html += '<p class="empty">' + (p.gate_open ? '闸门开了，但没有可买的（名额满、仓位上限或买不起一手）。' : '闸门没开，不买。') + '</p>';
     else html += '<div class="scroll"><table class="tbl"><thead><tr><th>层</th><th>股票</th><th class="n">股数</th><th class="n">金额</th><th class="n">收盘</th></tr></thead><tbody>' + p.buys.map(function (r) {
-      return '<tr><td>' + esc(r.sleeve) + '</td><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + '</span></td><td class="n num">' + money(r.shares) + '</td><td class="n num">' + money(r.amount) + '</td><td class="n num">' + num(r.close, 2) + '</td></tr>';
+      return '<tr' + rowCode(r.code) + '><td>' + esc(r.sleeve) + '</td><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + '</span></td><td class="n num">' + money(r.shares) + '</td><td class="n num">' + money(r.amount) + '</td><td class="n num">' + num(r.close, 2) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
     if ((p.spares || []).length) html += '<details><summary>备选 ' + p.spares.length + ' 只（买不进时顺延）</summary><p class="small">' + p.spares.map(function (r) { return esc(r.sleeve + short(r.code) + ' ' + (r.name || '')); }).join('、') + '</p></details>';
     html += '</section>';
@@ -573,7 +613,7 @@
     } else {
       html += '<div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th class="n">股数</th><th class="n">市值</th><th class="n">盈亏</th><th>状态</th></tr></thead><tbody>' + dispHoldings.map(function (r) {
         var st = HSTAT[r.status] || [r.status, ''];
-        return '<tr><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + (r.sleeve ? ' · ' + esc(r.sleeve) + '层' : '') + '</span></td><td class="n num">' + money(r.shares) + '</td><td class="n num">' + money(r.value) + '</td><td class="n">' + pctc(r.pnl, 1) + '</td><td><span class="tag ' + st[1] + '">' + st[0] + '</span>' +
+        return '<tr' + rowCode(r.code) + '><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + (r.sleeve ? ' · ' + esc(r.sleeve) + '层' : '') + '</span></td><td class="n num">' + money(r.shares) + '</td><td class="n num">' + money(r.value) + '</td><td class="n">' + pctc(r.pnl, 1) + '</td><td><span class="tag ' + st[1] + '">' + st[0] + '</span>' +
           (r.days_held != null ? '<span class="nm">第 ' + r.days_held + ' 天</span>' : '') + '</td></tr>';
       }).join('') + '</tbody></table></div>';
     }
@@ -642,7 +682,7 @@
       tipHtml = '<div id="nn-tip">' + esc(state.chartTip.text) + '</div>';     // 位置在下面用 CSSOM 设，CSP 不放行行内 style
     }
     app.innerHTML = '<header class="top"><div><h1>牛牛策略</h1><div class="sub">快照 ' + esc(dt(s.generated_at)) + ' · 纸面记录</div></div><button class="btn" id="refresh">刷新</button></header>' +
-      '<main>' + (state.tab === 'guide' ? '' : fr) + body + tipHtml + '</main>' +
+      '<main>' + (state.tab === 'guide' ? '' : fr) + body + tipHtml + '</main>' + stockSheet(s) +
       '<nav class="tabs" aria-label="页面">' + TABS.map(function (t) {
         return '<button data-tab="' + t[0] + '"' + (t[0] === state.tab ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
       }).join('') + '</nav>';
@@ -695,6 +735,19 @@
       holdSearch.addEventListener('input', function () { state.search.holdings = this.value; savePref(); render(); });
     }
 
+    // 以下监听挂在 app / document / window 这些不会被重画的元素上，只能挂一次。
+    // 以前每次 render() 都会再挂一遍：点一下、滚一下就触发越来越多次重画，用久了页面会卡死。
+    if (bind.once) return;
+    bind.once = true;
+
+    // 点一行股票 → 弹出最近走势；点“关闭”或灰色背景收起
+    app.addEventListener('click', function (e) {
+      if (!e.target.closest) return;
+      if (e.target.closest('#sheet-close') || e.target.id === 'sheet-back') { state.stock = null; state.chartTip = null; render(); return; }
+      var tr = e.target.closest('tr[data-code]');
+      if (tr && !e.target.closest('.sheet')) { state.stock = tr.getAttribute('data-code'); state.chartTip = null; render(); }
+    });
+
     // 图表点击提示
     app.addEventListener('click', function (e) {
       var pt = e.target.closest ? e.target.closest('.pt') : null;
@@ -736,9 +789,6 @@
         load().then(function () { state.loading = false; }).catch(function () { state.loading = false; });
       }
     }
-    document.removeEventListener('touchstart', onStart);
-    document.removeEventListener('touchmove', onMove);
-    document.removeEventListener('touchend', onEnd);
     document.addEventListener('touchstart', onStart, { passive: false });
     document.addEventListener('touchmove', onMove, { passive: false });
     document.addEventListener('touchend', onEnd);
