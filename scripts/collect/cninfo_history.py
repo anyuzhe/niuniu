@@ -6,7 +6,9 @@
             -> provider=cninfo/announcements_history/scope=delisted/<code>.parquet
   keywords  全市场风险类公告：按标题关键词 × 年份取（巨潮在服务端按标题匹配），2010 年至 --end
             -> provider=cninfo/announcements_history/scope=keyword/<关键词>/year=YYYY.parquet（多一列 searchkey）
-  days      全市场按公告日逐日回补（高峰日单板块仍超限会失败，需另想办法），从 --end 往回走（新的先补）
+  days      全市场按公告日逐日回补，从 --end 往回走（新的先补）。单日超限先按板块拆；单个板块单日仍超限
+            （年报/半年报高峰）再按证监会行业门类拆，门类仍超限再按巨潮公告分类拆，去重合并，
+            与总数的差额记入回执 warnings（2026-10-18 起）
             -> provider=cninfo/announcements_history/date=YYYY-MM-DD.parquet
   status    统计已有文件、行数、日期范围
 
@@ -69,22 +71,38 @@ def post(session, payload, url=URL):
 
 MAX_ITEMS = 2970      # 巨潮单次查询最多翻 100 页（3000 条），第 101 页起重复第 100 页之后的内容
 PLATES = ("szmb", "szcy", "shmb", "shkcp", "bj")   # 深主板、创业板、沪主板、科创板、北交所：互不重叠，合计等于全市场
+# 高峰日（年报、半年报截止前后）单个板块单日仍超 3000 条时，先按证监会行业门类拆（互不重叠，合计等于总数，
+# 2025-04-30 沪主板日常经营类实测 19 个门类合计 3706 = 总数）；某个门类仍超限（通常是制造业）再按巨潮公告分类拆。
+# 分类之间可能重叠，也有不属于任何分类的公告，所以按 (announcement_id, code) 去重，合计可能略少于总数；
+# 差额写进 WARNINGS 和回执，不当作失败（2026-10-18 DATA 新增）。
+TRADES = ("农、林、牧、渔业", "采矿业", "制造业", "电力、热力、燃气及水生产和供应业", "建筑业", "批发和零售业",
+          "交通运输、仓储和邮政业", "住宿和餐饮业", "信息传输、软件和信息技术服务业", "金融业", "房地产业",
+          "租赁和商务服务业", "科学研究和技术服务业", "水利、环境和公共设施管理业", "居民服务、修理和其他服务业",
+          "教育", "卫生和社会工作", "文化、体育和娱乐业", "综合")
+CATEGORIES = ("category_ndbg_szsh", "category_bndbg_szsh", "category_yjdbg_szsh", "category_sjdbg_szsh",
+              "category_yjygjxz_szsh", "category_qyfpxzcs_szsh", "category_dshgg_szsh", "category_jshgg_szsh",
+              "category_gddh_szsh", "category_rcjy_szsh", "category_gszl_szsh", "category_zj_szsh",
+              "category_sf_szsh", "category_zf_szsh", "category_gqjl_szsh", "category_pg_szsh", "category_jj_szsh",
+              "category_gszq_szsh", "category_kzzq_szsh", "category_qtrz_szsh", "category_gqbd_szsh",
+              "category_bcgz_szsh", "category_cqdq_szsh", "category_fxts_szsh", "category_tbclts_szsh",
+              "category_tszlq_szsh")
 
 
-def _payload(page, stock, se_date, searchkey="", plate=""):
+def _payload(page, stock, se_date, searchkey="", plate="", category="", trade=""):
     return {"pageNum": str(page), "pageSize": "30", "column": "szse", "tabName": "fulltext", "plate": plate,
-            "stock": stock, "searchkey": searchkey, "secid": "", "category": "", "trade": "", "seDate": se_date,
+            "stock": stock, "searchkey": searchkey, "secid": "", "category": category, "trade": trade, "seDate": se_date,
             "sortName": "", "sortType": "", "isHLtitle": "false"}
 
 
-def query_pages(session, stock="", se_date="", searchkey="", plate=""):
-    """取一个查询的全部条目；总数超过 MAX_ITEMS 时抛 TooBig，由调用方拆分。"""
-    first = post(session, _payload(1, stock, se_date, searchkey, plate))
+def query_pages(session, stock="", se_date="", searchkey="", plate="", category="", allow_partial=False, trade=""):
+    """取一个查询的全部条目；总数超过 MAX_ITEMS 时抛 TooBig，由调用方拆分。
+    allow_partial=True 时不抛 TooBig / Incomplete：能翻多少翻多少（最多 100 页），由调用方记差额。"""
+    first = post(session, _payload(1, stock, se_date, searchkey, plate, category, trade))
     total = first.get("totalAnnouncement")
     if total is None:
         raise RuntimeError(f"响应缺少总数，不能确认完整：{stock or se_date}")
     total = int(total)
-    if total > MAX_ITEMS:
+    if total > MAX_ITEMS and not allow_partial:
         raise TooBig(total)
     items, seen, page, d = [], set(), 1, first
     while True:
@@ -97,16 +115,65 @@ def query_pages(session, stock="", se_date="", searchkey="", plate=""):
                 items.append(it)
                 fresh += 1
         if got and not fresh:
+            if allow_partial:
+                break
             raise RuntimeError(f"第 {page} 页全是重复条目（疑似被限流）：{stock or se_date}")
         if not d.get("hasMore") or not got:
             break
         page += 1
         if page > 100:
+            if allow_partial:
+                break
             raise RuntimeError(f"分页超过 100 页但总数 {total} 未超限：{stock or se_date}")
         time.sleep(PACE)
-        d = post(session, _payload(page, stock, se_date, searchkey, plate))
-    if len(items) != total:
+        d = post(session, _payload(page, stock, se_date, searchkey, plate, category, trade))
+    if len(items) != total and not allow_partial:
         raise Incomplete(items, total)
+    return items
+
+
+def split_by_category(session, se_date, stock, searchkey, plate, total, trade="", notes=None):
+    """（板块 × 行业门类）单日仍超限时按分类拆取，去重合并；超限的分类能翻多少翻多少，记入 notes。"""
+    items, seen = [], set()
+    notes = notes if notes is not None else []
+    for cat in CATEGORIES:
+        try:
+            got = query_pages(session, stock=stock, se_date=se_date, searchkey=searchkey, plate=plate, category=cat, trade=trade)
+        except TooBig as big:
+            notes.append(f"{trade or '全行业'}/{cat} 超限 {big.args[0]}")
+            got = query_pages(session, stock=stock, se_date=se_date, searchkey=searchkey, plate=plate, category=cat,
+                              trade=trade, allow_partial=True)
+        except Incomplete as inc:
+            got = inc.args[0]
+        for it in got:
+            key = (it.get("announcementId"), it.get("secCode"))
+            if key not in seen:
+                seen.add(key)
+                items.append(it)
+        time.sleep(PACE)
+    return items
+
+
+def split_by_trade(session, se_date, stock, searchkey, plate, total):
+    """单个板块单日超限时按行业门类拆（精确划分）；某门类仍超限再按分类拆。与总数的差额记入 WARNINGS。"""
+    items, seen, notes = [], set(), []
+    for tr in TRADES:
+        try:
+            got = query_pages(session, stock=stock, se_date=se_date, searchkey=searchkey, plate=plate, trade=tr)
+        except TooBig as big:
+            notes.append(f"{tr} 超限 {big.args[0]}，按分类拆")
+            got = split_by_category(session, se_date, stock, searchkey, plate, big.args[0], trade=tr, notes=notes)
+        except Incomplete as inc:
+            got = inc.args[0]
+        for it in got:
+            key = (it.get("announcementId"), it.get("secCode"))
+            if key not in seen:
+                seen.add(key)
+                items.append(it)
+        time.sleep(PACE)
+    if len(items) != total or notes:
+        WARNINGS.append(f"{se_date} {plate}: 单日超限（{total} 条），按行业门类拆取 {len(items)} 条"
+                        + (f"；{'; '.join(notes)}" if notes else ""))
     return items
 
 
@@ -142,12 +209,20 @@ def fetch_range(session, start: date, end: date, stock="", searchkey="", plate="
         right = fetch_range(session, mid + timedelta(days=1), end, stock, searchkey, plate)
         return left + right
     if plate:
-        raise RuntimeError(f"{start} 板块 {plate} 单日仍超 {MAX_ITEMS} 条（{total}），需要再拆")
-    items = []
+        return split_by_trade(session, se, stock, searchkey, plate, total)
+    items, split = [], False
     for pl in PLATES:
-        items += query_pages(session, stock=stock, se_date=se, searchkey=searchkey, plate=pl)
-    if len(items) != total:
-        raise RuntimeError(f"{start} 按板块拆分后合计 {len(items)} ≠ 总数 {total}")
+        try:
+            items += query_pages(session, stock=stock, se_date=se, searchkey=searchkey, plate=pl)
+        except TooBig as big:
+            split = True
+            items += split_by_trade(session, se, stock, searchkey, pl, big.args[0])
+        except Incomplete as inc:
+            got, n = inc.args
+            WARNINGS.append(f"{start} {pl}: 取到 {len(got)} 条，巨潮报 {n} 条")
+            items += got
+    if len(items) != total and not split:
+        WARNINGS.append(f"{start} 按板块拆分后合计 {len(items)} ≠ 总数 {total}")
     return items
 
 
@@ -277,8 +352,14 @@ def cmd_days(args):
                     log(f"{day} 失败 {exc}")
                 submit_next()
                 break
-    print(json.dumps({"requested": len(todo), "done": done, "rows": rows, "failed": failed, "warnings": WARNINGS,
-                      "elapsed_s": round(time.time() - started)}, ensure_ascii=False))
+    summary = {"mode": "days", "start": args.start, "end": args.end, "requested": len(todo), "done": done, "rows": rows,
+               "failed": failed, "warnings": WARNINGS, "elapsed_s": round(time.time() - started),
+               "finished_at": datetime.now(CST).isoformat()}
+    rdir = BASE / "_receipts"
+    rdir.mkdir(parents=True, exist_ok=True)
+    (rdir / f"days_{args.start}_{args.end}_{datetime.now(CST).strftime('%Y%m%dT%H%M%S')}.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=1))
+    print(json.dumps(summary, ensure_ascii=False))
     return 1 if failed else 0
 
 
