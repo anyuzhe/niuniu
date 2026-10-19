@@ -46,6 +46,7 @@ COLUMNS = ["date", "code", "name", "org_id", "announcement_id", "title", "type",
            "announcement_time_ms", "column_id", "adjunct_url", "fetched_at"]
 PAGE_CAP = 700
 PACE = 0.3
+DUP_RETRY_SLEEP = 15   # 整页重复（多为限流）时，退避后重取同一页；最多 2 次，再不行才算失败（2026-10-19 DATA）
 
 
 def post(session, payload, url=URL):
@@ -104,7 +105,7 @@ def query_pages(session, stock="", se_date="", searchkey="", plate="", category=
     total = int(total)
     if total > MAX_ITEMS and not allow_partial:
         raise TooBig(total)
-    items, seen, page, d = [], set(), 1, first
+    items, seen, page, d, dup_retry = [], set(), 1, first, 0
     while True:
         got = d.get("announcements") or []
         fresh = 0
@@ -115,6 +116,11 @@ def query_pages(session, stock="", se_date="", searchkey="", plate="", category=
                 items.append(it)
                 fresh += 1
         if got and not fresh:
+            if dup_retry < 2:
+                dup_retry += 1
+                time.sleep(DUP_RETRY_SLEEP * dup_retry)
+                d = post(session, _payload(page, stock, se_date, searchkey, plate, category, trade))
+                continue
             if allow_partial:
                 break
             raise RuntimeError(f"第 {page} 页全是重复条目（疑似被限流）：{stock or se_date}")
@@ -418,6 +424,7 @@ def cmd_status(args):
 
 
 def main():
+    global PACE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("delisted", "days", "keywords"):
@@ -426,12 +433,15 @@ def main():
         p.add_argument("--end", default="2026-09-16")
         p.add_argument("--max-seconds", type=int, default=3000)
         p.add_argument("--refresh", action="store_true")
+        p.add_argument("--pace", type=float, default=PACE, help="两次请求之间的间隔秒数（默认 %(default)s；被限流时调大）")
         if name == "days":
             p.add_argument("--workers", type=int, default=2)
         if name == "keywords":
             p.add_argument("--keyword", action="append")
     sub.add_parser("status")
     args = ap.parse_args()
+    if getattr(args, "pace", None) is not None:
+        PACE = args.pace
     return {"delisted": cmd_delisted, "days": cmd_days, "keywords": cmd_keywords, "status": cmd_status}[args.cmd](args)
 
 

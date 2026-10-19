@@ -64,3 +64,22 @@ def fake_post_from(universe, payload):
            and (not payload["category"] or r["cat"] == payload["category"])]
     page = int(payload["pageNum"])
     return {"totalAnnouncement": len(sel), "announcements": sel[(page - 1) * 30: page * 30], "hasMore": page * 30 < len(sel)}
+
+
+def test_duplicate_page_is_retried(monkeypatch):
+    """第 2 页第一次返回第 1 页的内容（限流时的表现），退避重取后正常：不报错、条数完整。"""
+    small = [dict(r, announcementId=f"m{i}") for i, r in enumerate(UNIVERSE[:75])]
+    calls = {"p2": 0}
+
+    def flaky(session, payload, url=None):
+        page = int(payload["pageNum"])
+        if page == 2 and calls["p2"] == 0:
+            calls["p2"] += 1
+            return {"totalAnnouncement": len(small), "announcements": small[:30], "hasMore": True}
+        return {"totalAnnouncement": len(small), "announcements": small[(page - 1) * 30: page * 30], "hasMore": page * 30 < len(small)}
+
+    monkeypatch.setattr(C, "post", flaky)
+    monkeypatch.setattr(C, "PACE", 0)
+    monkeypatch.setattr(C, "DUP_RETRY_SLEEP", 0)
+    items = C.query_pages(None, se_date="2024-04-30~2024-04-30", plate="shmb")
+    assert len(items) == 75 and calls["p2"] == 1
