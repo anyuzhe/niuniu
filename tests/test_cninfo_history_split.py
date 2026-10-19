@@ -83,3 +83,29 @@ def test_duplicate_page_is_retried(monkeypatch):
     monkeypatch.setattr(C, "DUP_RETRY_SLEEP", 0)
     items = C.query_pages(None, se_date="2024-04-30~2024-04-30", plate="shmb")
     assert len(items) == 75 and calls["p2"] == 1
+
+
+def test_persistent_duplicate_page_splits_by_category(monkeypatch):
+    """制造业不拆时第 2 页一直重复（重取也没用）：改按分类拆，不报错；其它门类照常。"""
+    small = [r for r in UNIVERSE if r["trade"] != "制造业" or r["cat"]][:2500]
+
+    def stuck(session, payload, url=None):
+        sel = [r for r in small if (not payload["trade"] or r["trade"] == payload["trade"])
+               and (not payload["category"] or r["cat"] == payload["category"])]
+        page = int(payload["pageNum"])
+        if payload["trade"] == "制造业" and not payload["category"] and page >= 2:
+            page = 1
+        return {"totalAnnouncement": len(sel), "announcements": sel[(page - 1) * 30: page * 30], "hasMore": True if page * 30 < len(sel) else False}
+
+    monkeypatch.setattr(C, "post", stuck)
+    monkeypatch.setattr(C, "PACE", 0)
+    monkeypatch.setattr(C, "DUP_RETRY_SLEEP", 0)
+    C.WARNINGS.clear()
+    items = C.split_by_trade(None, "2020-04-30~2020-04-30", "", "", "shmb", len(small))
+    assert len(items) == len(small)
+    assert C.WARNINGS and "翻页重复" in C.WARNINGS[0]
+
+
+def test_dup_page_message_is_short():
+    e = C.DupPage([{"x": 1}] * 1000, 5000, "第 3 页全是重复条目（疑似被限流）：2020-04-30~2020-04-30")
+    assert str(e).startswith("第 3 页") and len(str(e)) < 80

@@ -123,7 +123,7 @@ def query_pages(session, stock="", se_date="", searchkey="", plate="", category=
                 continue
             if allow_partial:
                 break
-            raise RuntimeError(f"第 {page} 页全是重复条目（疑似被限流）：{stock or se_date}")
+            raise DupPage(items, total, f"第 {page} 页全是重复条目（疑似被限流）：{stock or se_date}")
         if not d.get("hasMore") or not got:
             break
         page += 1
@@ -151,6 +151,9 @@ def split_by_category(session, se_date, stock, searchkey, plate, total, trade=""
                               trade=trade, allow_partial=True)
         except Incomplete as inc:
             got = inc.args[0]
+        except DupPage as dp:
+            notes.append(f"{trade or '全行业'}/{cat} 翻页重复，取到 {len(dp.args[0])}/{dp.args[1]} 条")
+            got = dp.args[0]
         for it in got:
             key = (it.get("announcementId"), it.get("secCode"))
             if key not in seen:
@@ -169,6 +172,9 @@ def split_by_trade(session, se_date, stock, searchkey, plate, total):
         except TooBig as big:
             notes.append(f"{tr} 超限 {big.args[0]}，按分类拆")
             got = split_by_category(session, se_date, stock, searchkey, plate, big.args[0], trade=tr, notes=notes)
+        except DupPage as dp:
+            notes.append(f"{tr} 翻页重复，按分类拆")
+            got = split_by_category(session, se_date, stock, searchkey, plate, dp.args[1], trade=tr, notes=notes)
         except Incomplete as inc:
             got = inc.args[0]
         for it in got:
@@ -191,6 +197,14 @@ class Incomplete(Exception):
     """翻页拿到的条数与总数不符（巨潮按时间排序时同一时刻的条目翻页可能重复或漏掉）。"""
 
 
+class DupPage(RuntimeError):
+    """整页重复、退避重取后仍重复（多见于年报高峰日的大查询）。args = (已取到的条目, 总数, 说明)；
+    调用方拆成更小的查询再取（板块 → 行业门类 → 公告分类），拆不动时才算失败（2026-10-19 DATA）。"""
+
+    def __str__(self):
+        return str(self.args[2]) if len(self.args) > 2 else super().__str__()
+
+
 WARNINGS = []   # 单日仍对不上总数时接受已取到的条目，并在这里留痕
 
 
@@ -201,6 +215,8 @@ def fetch_range(session, start: date, end: date, stock="", searchkey="", plate="
         return query_pages(session, stock=stock, se_date=se, searchkey=searchkey, plate=plate)
     except TooBig as big:
         total = big.args[0]
+    except DupPage as dp:
+        total = dp.args[1]
     except Incomplete as inc:
         got, total = inc.args
         if start < end:   # 拆小再取，通常就对上了
@@ -223,6 +239,10 @@ def fetch_range(session, start: date, end: date, stock="", searchkey="", plate="
         except TooBig as big:
             split = True
             items += split_by_trade(session, se, stock, searchkey, pl, big.args[0])
+        except DupPage as dp:
+            split = True
+            WARNINGS.append(f"{start} {pl}: 翻页重复（{dp}），按行业门类拆")
+            items += split_by_trade(session, se, stock, searchkey, pl, dp.args[1])
         except Incomplete as inc:
             got, n = inc.args
             WARNINGS.append(f"{start} {pl}: 取到 {len(got)} 条，巨潮报 {n} 条")
