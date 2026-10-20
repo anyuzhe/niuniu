@@ -291,11 +291,19 @@ def _e6_curve(path):
         return None
     if not isinstance(value, dict) or value.get('format') != E6_CURVE_FORMAT:
         return None
-    dates, equity = value.get('dates') or [], value.get('equity') or []
-    if not isinstance(dates, list) or not isinstance(equity, list) or len(dates) != len(equity) or len(dates) < 2:
+
+    def one(v):
+        dates, equity = v.get('dates') or [], v.get('equity') or []
+        if not isinstance(dates, list) or not isinstance(equity, list) or len(dates) != len(equity) or len(dates) < 2:
+            return None
+        keep = {k: v.get(k) for k in ('first', 'last', 'slots', 'total', 'years', 'segs', 'note')}
+        return dict(keep, dates=dates[-MAX_E6_CURVE_POINTS:], equity=equity[-MAX_E6_CURVE_POINTS:])
+    six = one(value)                     # 顶层：每个信号 1/6 资金
+    if six is None:
         return None
-    keep = {k: value.get(k) for k in ('first', 'last', 'slots', 'total', 'years', 'segs', 'note')}
-    return dict(keep, dates=dates[-MAX_E6_CURVE_POINTS:], equity=equity[-MAX_E6_CURVE_POINTS:])
+    full = value.get('full')             # 全仓一只票（可选）
+    six['full'] = one(dict(full, first=value.get('first'), last=value.get('last'))) if isinstance(full, dict) else None
+    return six
 
 
 def _results_table():

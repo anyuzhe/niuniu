@@ -237,11 +237,15 @@ class E6ViewTests(unittest.TestCase):
         cp = self.p.parent / me.E6_CURVE_NAME
         n = me.MAX_E6_CURVE_POINTS + 5
         cp.write_text(json.dumps(dict(format=me.E6_CURVE_FORMAT, first='2010-01-04', last='2026-10-19', total=dict(n=787, mult=12.5),
-                                      dates=[f'd{i}' for i in range(n)], equity=[1.0 + i / 100 for i in range(n)], years=[], segs=[], note='x')), encoding='utf-8')
+                                      dates=[f'd{i}' for i in range(n)], equity=[1.0 + i / 100 for i in range(n)], years=[], segs=[], note='x',
+                                      full=dict(total=dict(n=559), dates=[f'd{i}' for i in range(n)], equity=[1.0 + i for i in range(n)]))), encoding='utf-8')
         c = me._e6_view(self.p)['curve']
         self.assertEqual(len(c['dates']), me.MAX_E6_CURVE_POINTS)
         self.assertEqual(c['dates'][-1], f'd{n - 1}')
         self.assertEqual(c['total']['n'], 787)
+        self.assertEqual(c['full']['total']['n'], 559)                        # 全仓一只票那条也带上、同样截断
+        self.assertEqual(len(c['full']['equity']), me.MAX_E6_CURVE_POINTS)
+        self.assertEqual(c['full']['first'], '2010-01-04')
         cp.write_text(json.dumps(dict(format=me.E6_CURVE_FORMAT, dates=['a', 'b'], equity=[1.0])), encoding='utf-8')
         self.assertIsNone(me._e6_view(self.p)['curve'])                       # 长度对不上
         cp.write_text('{bad', encoding='utf-8')

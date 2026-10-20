@@ -265,6 +265,11 @@
   // ------------------------------------------------------------------ 图（支持点击查看数值）
   function chart(vals, labels, opt) {
     opt = opt || {};
+    if (opt.log) {          // 对数纵轴：倍数跨好几个数量级时用；提示文字仍用原值（opt.tips）
+      var f0 = opt.fmt || function (v) { return v.toFixed(2); };
+      vals = vals.map(function (v) { return isNum(v) && v > 0 ? Math.log(v) / Math.LN10 : null; });
+      opt = Object.assign({}, opt, { log: false, base: opt.base != null ? Math.log(opt.base) / Math.LN10 : null, fmt: function (x) { return f0(Math.pow(10, x)); } });
+    }
     var pts = [];
     for (var i = 0; i < vals.length; i++) if (isNum(vals[i])) pts.push([i, vals[i]]);
     if (pts.length < 2) return '<p class="empty">曲线要至少两个点。</p>';
@@ -710,36 +715,46 @@
     return '<span class="tag off">' + esc(st.replace('，不做', '·不做')) + '</span>';
   }
   function e6Ret(r) { return isNum(r.ret) ? pctc(r.ret / 100, 1) : '<span class="muted">—</span>'; }
-  function e6Curve(c) {
+  function xmult(v) {      // 倍数：太大时用万 / 亿
+    if (!isNum(v)) return '—';
+    if (v >= 1e8) return (v / 1e8).toFixed(1) + ' 亿倍';
+    if (v >= 1e4) return (v / 1e4).toFixed(1) + ' 万倍';
+    return '×' + (v >= 100 ? v.toFixed(0) : v.toFixed(v >= 10 ? 1 : 2));
+  }
+  function e6Curve(c, title, log) {
     if (!c || !c.equity || c.equity.length < 2) return '';
     var t = c.total || {}, ym = function (d) { return String(d || '').slice(0, 7); };
     var p100 = function (v, d) { return isNum(v) ? pctc(v / 100, d == null ? 1 : d) : '—'; };
-    var html = '<section class="card"><h2>历史账户曲线<small>' + esc(ym(c.first)) + ' 至 ' + esc(ym(c.last)) + ' · 回测</small></h2><div class="tiles">' +
-      '<div class="tile"><span>累计</span><b>' + (isNum(t.mult) ? '×' + t.mult.toFixed(1) : '—') + '</b></div>' +
+    var html = '<section class="card"><h2>' + esc(title || '历史账户曲线') + '<small>' + esc(ym(c.first)) + ' 至 ' + esc(ym(c.last)) + ' · 回测' + (log ? ' · 对数刻度' : '') + '</small></h2><div class="tiles">' +
+      '<div class="tile"><span>累计</span><b>' + xmult(t.mult) + '</b></div>' +
       '<div class="tile"><span>年化</span><b>' + p100(t.cagr) + '</b></div>' +
       '<div class="tile"><span>最大回撤</span><b>' + p100(t.mdd) + '</b></div>' +
-      '<div class="tile"><span>信号 / 每笔</span><b>' + esc(t.n) + ' / ' + p100(t.mean, 2) + '</b></div></div>' +
-      chart(c.equity, c.dates.map(ym), { base: 1, label: 'E6 历史账户曲线', color: '#f6b72f', h: 150,
-        fmt: function (v) { return '×' + v.toFixed(1); },
-        tips: c.dates.map(function (d, i) { return ym(d) + '：×' + (isNum(c.equity[i]) ? c.equity[i].toFixed(2) : '—'); }) });
+      '<div class="tile"><span>交易 / 每笔</span><b>' + esc(t.n) + ' / ' + p100(t.mean, 2) + '</b></div></div>' +
+      chart(c.equity, c.dates.map(ym), { base: 1, log: !!log, label: title || 'E6 历史账户曲线', color: '#f6b72f', h: 150,
+        fmt: function (v) { return v >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : v >= 1e4 ? (v / 1e4).toFixed(1) + '万' : xmult(v); },   // 纵轴标签要短
+        tips: c.dates.map(function (d, i) { return ym(d) + '：' + xmult(c.equity[i]); }) });
     var sg = c.segs || [];
     if (sg.length) {
-      html += '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th class="n">信号</th><th class="n">每笔</th><th class="n">账户</th></tr></thead><tbody>' +
+      html += '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th class="n">交易</th><th class="n">每笔</th><th class="n">账户</th></tr></thead><tbody>' +
         sg.map(function (s) {
           var lb = String(s.label || ''), sp = lb.indexOf(' ');
           return '<tr><td>' + esc(sp > 0 ? lb.slice(0, sp) : lb) + (sp > 0 ? '<span class="nm">' + esc(lb.slice(sp + 1)) + '</span>' : '') + '</td><td class="n num">' + esc(s.n) +
-            '</td><td class="n">' + p100(s.mean, 2) + '</td><td class="n num">' + (isNum(s.mult) ? '×' + s.mult.toFixed(2) : '—') +
+            '</td><td class="n">' + p100(s.mean, 2) + '</td><td class="n num">' + xmult(s.mult) +
             (isNum(s.cagr) ? '<span class="nm">年化 ' + s.cagr.toFixed(1) + '%</span>' : '') + '<span class="nm">回撤 ' + (isNum(s.mdd) ? s.mdd.toFixed(1) + '%' : '—') + '</span></td></tr>';
         }).join('') + '</tbody></table></div>';
     }
     var ys = c.years || [];
     if (ys.length) {
-      html += '<h3 class="sub">每年</h3><div class="scroll"><table class="tbl"><thead><tr><th class="num">年</th><th class="n">信号</th><th class="n">每笔</th><th class="n">账户</th><th class="n">回撤</th></tr></thead><tbody>' +
+      html += '<h3 class="sub">每年</h3><div class="scroll"><table class="tbl"><thead><tr><th class="num">年</th><th class="n">交易</th><th class="n">每笔</th><th class="n">账户</th><th class="n">回撤</th></tr></thead><tbody>' +
         ys.slice().reverse().map(function (y) {
           return '<tr><td class="num">' + esc(y.year) + '</td><td class="n num">' + esc(y.n) + '</td><td class="n">' + p100(y.mean, 2) + '</td><td class="n">' + p100(y.acct) + '</td><td class="n">' + p100(y.mdd) + '</td></tr>';
         }).join('') + '</tbody></table></div>';
     }
     return html + '<p class="small muted">' + esc(c.note || '') + ' 点曲线上的点看当月数值。10-20 起是前向记录，看下面几张表。</p></section>';
+  }
+  function e6Curves(c) {
+    if (!c) return '';
+    return e6Curve(c, '账户曲线 · 每个信号 1/6 资金', false) + (c.full ? e6Curve(Object.assign({}, c.full, { first: c.first, last: c.last }), '账户曲线 · 全仓一只票', true) : '');
   }
   function viewE6(s) {
     var e = s.e6;
@@ -777,7 +792,7 @@
     }
     html += '</section>';
     // 1b. 历史账户曲线（回测，描述性）
-    html += e6Curve(e.curve);
+    html += e6Curves(e.curve);
     // 2. 持有中
     var hold = e.holding || [];
     html += '<section class="card"><h2>持有中<small>纸面记录，按收盘盯市</small></h2>';
