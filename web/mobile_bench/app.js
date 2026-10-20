@@ -757,20 +757,21 @@
     // 3. 前向记录汇总
     var sm = e.summary || [];
     html += '<section class="card"><h2>前向记录<small>' + md(e.fwd_start) + ' 起 · 只记录不交易</small></h2>' +
-      '<div class="scroll"><table class="tbl"><thead><tr><th>规则</th><th class="n">信号日</th><th class="n">做了</th><th class="n">已卖出</th><th class="n">已卖出每笔</th><th class="n">买到（L1）</th></tr></thead><tbody>' +
+      '<div class="scroll"><table class="tbl"><thead><tr><th>规则</th><th class="n">信号日</th><th class="n">做了</th><th class="n">已卖</th><th class="n">每笔</th><th class="n">买到</th></tr></thead><tbody>' +
       sm.map(function (r) {
-        return '<tr><td class="wrap">' + esc(E6_NAME[r.rule] || r.rule) + '</td><td class="n num">' + esc(r.n_days) + '</td><td class="n num">' + esc(r.n_done) + '</td><td class="n num">' + esc(r.n_closed) +
-          '</td><td class="n">' + (isNum(r.closed_mean) ? pctc(r.closed_mean / 100, 2) : '—') + '</td><td class="n num">' + (r.l1_judged ? esc(r.l1_filled) + ' / ' + esc(r.l1_judged) : '—') + '</td></tr>';
+        return '<tr><td>' + esc(r.rule) + '</td><td class="n num">' + esc(r.n_days) + '</td><td class="n num">' + esc(r.n_done) + '</td><td class="n num">' + esc(r.n_closed) +
+          '</td><td class="n">' + (isNum(r.closed_mean) ? pctc(r.closed_mean / 100, 2) : '—') + '</td><td class="n num">' + (r.l1_judged ? esc(r.l1_filled) + '/' + esc(r.l1_judged) : '—') + '</td></tr>';
       }).join('') + '</tbody></table></div>' +
-      '<p class="small muted">“做了”= 开盘没涨停、盘中摸到涨停价（E6）或开盘价买入（E6b）。收益按涨停价 / 开盘价理想成交、扣 0.25%；E6 能不能买到先用触板股盘口录制近似判断，L2 日包到了再精确补算。正式评估在 E6 做满 30 次或 2027-04-30。</p></section>';
+      '<p class="small muted">' + sm.map(function (r) { return esc(r.rule) + ' = ' + esc((E6_NAME[r.rule] || r.rule).replace(r.rule + ' ', '')); }).join('；') + '。' +
+      '“做了”= 开盘没涨停、盘中摸到涨停价（E6）或开盘价买入（E6b）；“每笔”只算已卖出的，按涨停价 / 开盘价理想成交、扣 0.25%；“买到”是 E6 用触板股盘口录制近似判断的成交数 / 判断数，L2 日包到了再精确补算。正式评估在 E6 做满 30 次或 2027-04-30。</p></section>';
     // 4. 最近信号
     var sg = e.signals || [];
     html += '<section class="card"><h2>最近的信号<small>共 ' + esc(e.n_signals) + ' 条</small></h2>';
     if (!sg.length) html += '<p class="empty">还没有信号。</p>';
-    else html += '<div class="scroll"><table class="tbl"><thead><tr><th class="num">日期</th><th>规则</th><th>股票</th><th class="n">开盘</th><th>状态</th><th class="n">收益</th></tr></thead><tbody>' +
+    else html += '<div class="scroll"><table class="tbl"><thead><tr><th class="num">日期</th><th>股票</th><th>状态</th><th class="n">收益</th></tr></thead><tbody>' +
       sg.map(function (r) {
-        return '<tr' + rowCode(r.code) + '><td class="num">' + md(r.date) + '</td><td>' + esc(r.rule) + '</td><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + ' · ' + esc(r.streak_y) + ' 板</span></td><td class="n">' +
-          (isNum(r.gap) ? pctc(r.gap / 100, 1) : '—') + '</td><td>' + e6Tag(r) + '</td><td class="n">' + e6Ret(r) + '</td></tr>';
+        return '<tr' + rowCode(r.code) + '><td class="num">' + md(r.date) + '<span class="nm">' + esc(r.rule) + '</span></td><td>' + esc(short(r.code)) + ' ' + esc(r.name || '') +
+          '<span class="nm">' + esc(r.streak_y) + ' 板' + (isNum(r.gap) ? ' · 开盘 ' + pct(r.gap / 100, 1, true) : '') + '</span></td><td>' + e6Tag(r) + '</td><td class="n">' + e6Ret(r) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
     html += '</section>';
     // 5. 历史检验
