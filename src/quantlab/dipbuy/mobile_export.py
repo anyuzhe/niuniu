@@ -1,4 +1,4 @@
-"""手机版快照：把策略工作台里“今日信号 / 前向跟踪 / 我的持仓”算成一份加密的 JSON，推到自己的服务器，
+"""手机版快照：把策略工作台里“今日信号 / 前向跟踪 / 我的持仓”（另带研究线 E6 的前向记录，见 _e6_view）算成一份加密的 JSON，推到自己的服务器，
 手机上的网页（PWA，源码在 web/mobile_bench/）下载后在本地解密显示。
 
   * 只读：手机页只显示，没有任何写入；持仓仍然只在本机录入、修改；
@@ -253,6 +253,30 @@ def _holdings_view(output, panel, cls, names, today: date) -> dict:
     return _clean(dict(equity_wan=data['equity_wan'], n_holdings=len(data['holdings']), holdings=rows or [], plans=plans))
 
 
+E6_FORMAT = 'niuniu-e6-forward-v1'
+E6_SOURCE = Path('/Volumes/Lexar/niuniu-research-ext/e6_fwd_2026Q4/e6_fwd_mobile.json')
+MAX_E6_SIGNALS = 40
+
+
+def _e6_view(path=None):
+    """策略 E6（龙头扫板，研究中）的前向记录。研究目录里的记录器每个交易日 19:00 写 e6_fwd_mobile.json，这里只挑展示要用的部分带上。
+    文件不在返回 None（手机页那一栏显示"还没有"）；读坏了、格式不对给 error，不影响别的页。路径可用环境变量 NIUNIU_E6_FORWARD 改。"""
+    p = Path(path or os.environ.get('NIUNIU_E6_FORWARD') or E6_SOURCE)
+    if not p.is_file():
+        return None
+    try:
+        value = json.loads(p.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        return dict(error=f'{type(exc).__name__}: {exc}')
+    if not isinstance(value, dict) or value.get('format') != E6_FORMAT:
+        return dict(error='E6 前向记录的格式不认识')
+    out = {k: value.get(k) for k in ('generated_at', 'data_date', 'fwd_start', 'summary', 'next', 'n_signals')}
+    signals = [r for r in (value.get('signals') or []) if isinstance(r, dict)]
+    out['signals'] = signals[:MAX_E6_SIGNALS]
+    out['holding'] = [r for r in signals if str(r.get('status') or '').startswith('持有中')]
+    return _clean(out)
+
+
 def _results_table():
     """策略说明页的回测对照表；抓不到（比如没装 Qt）就不放，手机页自带一份同样的说明。"""
     try:
@@ -280,6 +304,10 @@ def build_snapshot(output, panel, cls, names, *, now: datetime | None = None) ->
         snap['holdings'] = _holdings_view(output, panel, cls, names, today)
     except Exception as exc:
         snap['holdings'] = dict(error=f'{type(exc).__name__}: {exc}')
+    try:
+        snap['e6'] = _e6_view()
+    except Exception as exc:       # E6 是研究线，读不出来不影响抄底这几本
+        snap['e6'] = dict(error=f'{type(exc).__name__}: {exc}')
     snap['overview'] = _overview_view(panel, cls, snap, output)
     _fill_names(snap, names or {})
     snap['stocks'] = _stock_series(panel, snap, names)

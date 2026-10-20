@@ -189,15 +189,78 @@ class ViewTests(unittest.TestCase):
             self.assertEqual(me._forward_view(self.out, None, None, 'market'), {'error': 'RuntimeError: x'})
 
 
+def e6_doc(n_signals=3, **kw):
+    sig = [dict(rule='E6b' if i % 2 else 'E6', date=f'2026-10-{20 - i // 3:02d}', code=f'sz.0030{i:02d}', name=f'股{i}', streak_y=3, gap=-1.0,
+                status='持有中（按收盘盯市）' if i in (1, n_signals - 1) else '已卖出', ret=1.5) for i in range(n_signals)]
+    doc = dict(format=me.E6_FORMAT, generated_at='2026-10-20T19:01:00+08:00', data_date='2026-10-20', fwd_start='2026-10-20',
+               summary=[dict(rule='E6', n_days=1, n_done=0, n_closed=0, closed_mean=None)], signals=sig, n_signals=len(sig),
+               next=dict(day='2026-10-20', max_board=4, e6b=[dict(code='sz.003029', name='吉大正元', board=4)], top=[], error=None))
+    doc.update(kw)
+    return doc
+
+
+class E6ViewTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.p = Path(self.tmp.name) / 'e6_fwd_mobile.json'
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, value):
+        self.p.write_text(value if isinstance(value, str) else json.dumps(value, ensure_ascii=False), encoding='utf-8')
+
+    def test_missing_file_is_none(self):
+        self.assertIsNone(me._e6_view(self.p))
+
+    def test_reads_record_and_trims_signals_but_keeps_every_holding(self):
+        self.write(e6_doc(n_signals=me.MAX_E6_SIGNALS + 10))
+        v = me._e6_view(self.p)
+        self.assertEqual(v['data_date'], '2026-10-20')
+        self.assertEqual(len(v['signals']), me.MAX_E6_SIGNALS)
+        self.assertEqual(v['n_signals'], me.MAX_E6_SIGNALS + 10)
+        self.assertEqual([r['code'] for r in v['holding']], ['sz.003001', f'sz.0030{me.MAX_E6_SIGNALS + 9:02d}'])  # 超出前 40 条的持有中也在
+        self.assertEqual(v['next']['e6b'][0]['name'], '吉大正元')
+        json.dumps(v, allow_nan=False)
+
+    def test_bad_json_and_unknown_format_give_error(self):
+        self.write('{not json')
+        self.assertIn('error', me._e6_view(self.p))
+        self.write(e6_doc(format='something-else'))
+        self.assertEqual(me._e6_view(self.p), {'error': 'E6 前向记录的格式不认识'})
+        self.write([1, 2])
+        self.assertIn('error', me._e6_view(self.p))
+
+    def test_environment_path_is_used(self):
+        self.write(e6_doc())
+        with mock.patch.dict(os.environ, {'NIUNIU_E6_FORWARD': str(self.p)}):
+            self.assertEqual(me._e6_view()['fwd_start'], '2026-10-20')
+
+
 class SnapshotAndPublishTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.out = Path(self.tmp.name)
         self.panel = make_panel(np.full((60, 8), 10.0))
         self.now = datetime.fromisoformat(self.panel.last_date).replace(hour=20, tzinfo=SH)
+        self.env = mock.patch.dict(os.environ, {'NIUNIU_E6_FORWARD': str(self.out / 'no-e6.json')})     # 不读台式机上真的 E6 记录
+        self.env.start()
 
     def tearDown(self):
+        self.env.stop()
         self.tmp.cleanup()
+
+    def test_snapshot_carries_e6_and_survives_e6_failure(self):
+        p = self.out / 'e6.json'
+        p.write_text(json.dumps(e6_doc(), ensure_ascii=False), encoding='utf-8')
+        with self.patched(), mock.patch.dict(os.environ, {'NIUNIU_E6_FORWARD': str(p)}):
+            snap = me.build_snapshot(self.out, self.panel, None, {}, now=self.now)
+        self.assertEqual(snap['e6']['data_date'], '2026-10-20')
+        with self.patched(), mock.patch.object(me, '_e6_view', side_effect=RuntimeError('boom')):
+            snap = me.build_snapshot(self.out, self.panel, None, {}, now=self.now)
+        self.assertEqual(snap['e6'], {'error': 'RuntimeError: boom'})
+        self.assertIn('kind', snap['signals'][me.autorecord.KINDS[0]])
+        json.dumps(snap, allow_nan=False)
 
     def patched(self):
         return mock.patch.multiple(me, _signal_view=lambda k, *a: {'kind': k}, _forward_view=lambda o, p, c, k: {'kind': k},

@@ -689,6 +689,8 @@
       '<li><b>D3</b> D2 再把层优先级改成 C 先 A 后。</li>' +
       '<li><b>D4</b> D3 再加 B 层行业黑名单（房地产、国防军工）。</li></ul>' +
       '<p class="small muted">D2～D4 的回测数字都是样本内，真实表现要看“前向跟踪”。</p></section>';
+    html += '<section class="card"><h2>E6 龙头扫板（研究中）</h2><p>和上面的抄底策略无关，是“期末50分”那条打板研究线里检验通过的一条：每天只看昨天涨停股里开盘最强、身位最高的那一只，' +
+      '盘中摸到涨停价就挂涨停价买，收盘封住就拿、没封住就卖。「E6」页是它的前向记录和下一个交易日的名单，只记录不交易。</p></section>';
     if (s.results && s.results.rows) {
       html += '<section class="card"><h2>回测对照<small>2008 起，扣成本，1 倍</small></h2><div class="scroll"><table class="tbl"><thead><tr>' + s.results.head.map(function (h, i) { return '<th class="' + (i ? 'n' : '') + '">' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
         s.results.rows.map(function (r) { return '<tr>' + r.map(function (c, i) { return '<td class="' + (i ? 'n num' : 'wrap') + '">' + esc(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' +
@@ -699,12 +701,95 @@
     return html;
   }
 
+  // ------------------------------------------------------------------ 策略 E6（龙头扫板）前向记录（研究中，只记录不交易）
+  var E6_NAME = { 'E6': 'E6 龙头扫板', 'E6-U': 'E6-U 行业唯一最高板', 'E6b': 'E6b 龙头开盘买' };
+  function e6Tag(r) {
+    var st = String(r.status || '');
+    if (st.indexOf('持有中') === 0) return '<span class="tag open">持有中</span>';
+    if (st === '已卖出') return '<span class="tag">已卖出</span>';
+    return '<span class="tag off">' + esc(st.replace('，不做', '')) + '</span>';
+  }
+  function e6Ret(r) { return isNum(r.ret) ? pctc(r.ret / 100, 1) : '<span class="muted">—</span>'; }
+  function viewE6(s) {
+    var e = s.e6;
+    if (!e || e.error) {
+      return '<section class="card"><h2>E6 龙头扫板</h2><p class="empty">' + (e && e.error ? '读不出来：' + esc(e.error) :
+        '还没有 E6 的数据。台式机每个交易日 19:00 记录完会推上来。') + '</p></section>';
+    }
+    var html = '';
+    if (e.data_date && s.data_date && e.data_date < s.data_date) {
+      html += '<div class="banner warn">E6 记录只到 <b>' + md(e.data_date) + '</b>；台式机每个交易日 19:00 记一次，记完会再推上来。</div>';
+    }
+    // 1. 明天怎么做
+    var nx = e.next || {};
+    html += '<section class="card"><h2>下一个交易日怎么做<small>按 ' + md(nx.day) + ' 收盘</small></h2>' +
+      '<p><b>E6 龙头扫板</b>：开盘后，把昨天涨停的主板非 ST 股按“开盘涨幅名次 + 昨日连板名次”打分，取第 1。开盘就涨停的不做；' +
+      '盘中第一次摸到涨停价，<b>3 秒内</b>挂涨停价买。收盘还封住就拿，第一次没封住那天收盘卖，最多拿 5 天。</p>';
+    if (nx.error) {
+      html += '<p class="empty">名单还没算出来：' + esc(nx.error) + '</p>';
+    } else {
+      var top = nx.top || [];
+      if (top.length) {
+        html += '<h3 class="sub">昨日连板最高的几只（打分第 1 要开盘后才知道）</h3><div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th class="n">板</th><th>行业地位</th></tr></thead><tbody>' +
+          top.map(function (r) {
+            return '<tr' + rowCode(r.code) + '><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + '</span></td><td class="n num">' + esc(r.board) + '</td><td class="wrap small">' +
+              (r.tag === '行业唯一最高板' ? '<span class="tag open">行业唯一</span>' : esc(r.tag || '')) + '</td></tr>';
+          }).join('') + '</tbody></table></div>';
+      }
+      var hi = nx.e6b || [];
+      if (hi.length) {
+        html += '<p><b>E6b 龙头开盘买</b>（最高板 ' + esc(nx.max_board) + ' 板，开盘没涨停就按开盘价买）：' +
+          hi.map(function (r) { return esc(r.name || short(r.code)); }).join('、') + '</p>' +
+          '<p class="small muted">' + hi.map(function (r) { return esc((r.name || '') + '：' + (r.reason || '')); }).join('；') + '</p>';
+      }
+      html += '<p class="small muted">名单来自同花顺涨停池，连板数按日线重算。“行业唯一”指它是申万二级行业里唯一的最高板（E6-U），只作并行记录，2010–2018 检验它没有额外价值。</p>';
+    }
+    html += '</section>';
+    // 2. 持有中
+    var hold = e.holding || [];
+    html += '<section class="card"><h2>持有中<small>纸面记录，按收盘盯市</small></h2>';
+    if (!hold.length) html += '<p class="empty">现在没有持有中的记录。</p>';
+    else html += '<div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th>规则</th><th class="num">买入日</th><th class="n">浮盈</th></tr></thead><tbody>' +
+      hold.map(function (r) {
+        return '<tr' + rowCode(r.code) + '><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + '</span></td><td>' + esc(r.rule) + '</td><td class="num">' + md(r.date) + '</td><td class="n">' + e6Ret(r) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    html += '</section>';
+    // 3. 前向记录汇总
+    var sm = e.summary || [];
+    html += '<section class="card"><h2>前向记录<small>' + md(e.fwd_start) + ' 起 · 只记录不交易</small></h2>' +
+      '<div class="scroll"><table class="tbl"><thead><tr><th>规则</th><th class="n">信号日</th><th class="n">做了</th><th class="n">已卖出</th><th class="n">已卖出每笔</th><th class="n">买到（L1）</th></tr></thead><tbody>' +
+      sm.map(function (r) {
+        return '<tr><td class="wrap">' + esc(E6_NAME[r.rule] || r.rule) + '</td><td class="n num">' + esc(r.n_days) + '</td><td class="n num">' + esc(r.n_done) + '</td><td class="n num">' + esc(r.n_closed) +
+          '</td><td class="n">' + (isNum(r.closed_mean) ? pctc(r.closed_mean / 100, 2) : '—') + '</td><td class="n num">' + (r.l1_judged ? esc(r.l1_filled) + ' / ' + esc(r.l1_judged) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="small muted">“做了”= 开盘没涨停、盘中摸到涨停价（E6）或开盘价买入（E6b）。收益按涨停价 / 开盘价理想成交、扣 0.25%；E6 能不能买到先用触板股盘口录制近似判断，L2 日包到了再精确补算。正式评估在 E6 做满 30 次或 2027-04-30。</p></section>';
+    // 4. 最近信号
+    var sg = e.signals || [];
+    html += '<section class="card"><h2>最近的信号<small>共 ' + esc(e.n_signals) + ' 条</small></h2>';
+    if (!sg.length) html += '<p class="empty">还没有信号。</p>';
+    else html += '<div class="scroll"><table class="tbl"><thead><tr><th class="num">日期</th><th>规则</th><th>股票</th><th class="n">开盘</th><th>状态</th><th class="n">收益</th></tr></thead><tbody>' +
+      sg.map(function (r) {
+        return '<tr' + rowCode(r.code) + '><td class="num">' + md(r.date) + '</td><td>' + esc(r.rule) + '</td><td>' + esc(short(r.code)) + '<span class="nm">' + esc(r.name || '') + ' · ' + esc(r.streak_y) + ' 板</span></td><td class="n">' +
+          (isNum(r.gap) ? pctc(r.gap / 100, 1) : '—') + '</td><td>' + e6Tag(r) + '</td><td class="n">' + e6Ret(r) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    html += '</section>';
+    // 5. 历史检验
+    html += '<section class="card"><h2>它为什么在这里<small>历史检验</small></h2><ul class="plain small">' +
+      '<li>E6：2010–2018 年（规则定下来之前没看过的 9 年）每笔 +1.76%，457 笔，三段都为正。</li>' +
+      '<li>能不能买到：2025 年按 L2 逐笔算，摸板后 3 秒挂单 87% 买到，买不到记 0 后每个信号 +2.01%；只有 31 个信号，统计上还证明不了。</li>' +
+      '<li>E6b：2010–2018 每笔 +1.09%，但 2024、2025 年接近 0 或略负。</li>' +
+      '<li>收益靠少数连板的票，中位数接近 0、胜率约一半；最怕的是封得最快的好板买不到。</li></ul>' +
+      '<p class="small muted">研究线，前向记录只看不做；要不要真的用，等前向记录攒够再说。</p></section>';
+    return html;
+  }
+
   // ------------------------------------------------------------------ 外壳
   var TABS = [
     ['overview', '概览', '<path d="M3 12a9 9 0 0 1 18 0"/><path d="M12 12l4-4"/><circle cx="12" cy="12" r="1.2"/><path d="M5 19h14"/>'],
     ['signal', '信号','<path d="M13 3 5 13h6l-1 8 8-10h-6z"/>'],
     ['forward', '前向','<path d="M3 17l5-5 4 4 8-9"/><path d="M3 21h18"/>'],
     ['holdings', '持仓','<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>'],
+    ['e6', 'E6', '<path d="M4 20h16"/><path d="M6 16l4-5 3 3 5-8"/><path d="M15 6h3v3"/>'],
     ['guide', '说明', '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r=".6"/>']
   ];
 
@@ -726,7 +811,7 @@
       return bind();
     }
     var s = state.snap;
-    var body = state.tab === 'overview' ? viewOverview(s) : state.tab === 'signal' ? viewSignal(s) : state.tab === 'forward' ? viewForward(s) : state.tab === 'holdings' ? viewHoldings(s) : viewGuide(s);
+    var body = state.tab === 'overview' ? viewOverview(s) : state.tab === 'signal' ? viewSignal(s) : state.tab === 'forward' ? viewForward(s) : state.tab === 'holdings' ? viewHoldings(s) : state.tab === 'e6' ? viewE6(s) : viewGuide(s);
     var fr = freshness(s).map(function (b) { return '<div class="banner ' + b.k + '">' + b.t + '</div>'; }).join('');
     // 图表 tip 覆盖层
     var tipHtml = '';
