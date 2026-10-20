@@ -231,6 +231,22 @@ class E6ViewTests(unittest.TestCase):
         self.write([1, 2])
         self.assertIn('error', me._e6_view(self.p))
 
+    def test_history_curve_is_attached_and_bad_curve_ignored(self):
+        self.write(e6_doc())
+        self.assertIsNone(me._e6_view(self.p)['curve'])                       # 没有曲线文件：不画图
+        cp = self.p.parent / me.E6_CURVE_NAME
+        n = me.MAX_E6_CURVE_POINTS + 5
+        cp.write_text(json.dumps(dict(format=me.E6_CURVE_FORMAT, first='2010-01-04', last='2026-10-19', total=dict(n=787, mult=12.5),
+                                      dates=[f'd{i}' for i in range(n)], equity=[1.0 + i / 100 for i in range(n)], years=[], segs=[], note='x')), encoding='utf-8')
+        c = me._e6_view(self.p)['curve']
+        self.assertEqual(len(c['dates']), me.MAX_E6_CURVE_POINTS)
+        self.assertEqual(c['dates'][-1], f'd{n - 1}')
+        self.assertEqual(c['total']['n'], 787)
+        cp.write_text(json.dumps(dict(format=me.E6_CURVE_FORMAT, dates=['a', 'b'], equity=[1.0])), encoding='utf-8')
+        self.assertIsNone(me._e6_view(self.p)['curve'])                       # 长度对不上
+        cp.write_text('{bad', encoding='utf-8')
+        self.assertIsNone(me._e6_view(self.p)['curve'])
+
     def test_environment_path_is_used(self):
         self.write(e6_doc())
         with mock.patch.dict(os.environ, {'NIUNIU_E6_FORWARD': str(self.p)}):

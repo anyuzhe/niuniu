@@ -274,7 +274,28 @@ def _e6_view(path=None):
     signals = [r for r in (value.get('signals') or []) if isinstance(r, dict)]
     out['signals'] = signals[:MAX_E6_SIGNALS]
     out['holding'] = [r for r in signals if str(r.get('status') or '').startswith('持有中')]
+    out['curve'] = _e6_curve(p.parent / E6_CURVE_NAME)
     return _clean(out)
+
+
+E6_CURVE_FORMAT = 'niuniu-e6-curve-v1'
+E6_CURVE_NAME = 'e6_curve_hist.json'
+MAX_E6_CURVE_POINTS = 400
+
+
+def _e6_curve(path):
+    """E6 的历史账户曲线（研究目录 e6_curve_hist.py 生成，月末点）。没有或读不出就是 None，E6 页只是不画图。"""
+    try:
+        value = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(value, dict) or value.get('format') != E6_CURVE_FORMAT:
+        return None
+    dates, equity = value.get('dates') or [], value.get('equity') or []
+    if not isinstance(dates, list) or not isinstance(equity, list) or len(dates) != len(equity) or len(dates) < 2:
+        return None
+    keep = {k: value.get(k) for k in ('first', 'last', 'slots', 'total', 'years', 'segs', 'note')}
+    return dict(keep, dates=dates[-MAX_E6_CURVE_POINTS:], equity=equity[-MAX_E6_CURVE_POINTS:])
 
 
 def _results_table():

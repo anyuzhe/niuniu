@@ -289,7 +289,7 @@
     // 交互点：点击后在页面上方显示数值
     for (var m = 0; m < pts.length; m++) {
       var p = pts[m];
-      svg += '<circle class="pt" data-i="' + p[0] + '" data-v="' + p[1] + '" cx="' + X(p[0]).toFixed(1) + '" cy="' + Y(p[1]).toFixed(1) + '" r="3" fill="' + (opt.color || '#f6b72f') + '" opacity="0"/>';
+      svg += '<circle class="pt" data-i="' + p[0] + '" data-v="' + p[1] + '"' + (opt.tips && opt.tips[p[0]] != null ? ' data-t="' + esc(opt.tips[p[0]]) + '"' : '') + ' cx="' + X(p[0]).toFixed(1) + '" cy="' + Y(p[1]).toFixed(1) + '" r="3" fill="' + (opt.color || '#f6b72f') + '" opacity="0"/>';
     }
     svg += '<text x="' + (W - R + 4) + '" y="' + (T + 8) + '">' + esc(fmt(max - span * 0.06 / 1.12)) + '</text>';
     svg += '<text x="' + (W - R + 4) + '" y="' + (H - B) + '">' + esc(fmt(min + span * 0.06 / 1.12)) + '</text>';
@@ -710,6 +710,37 @@
     return '<span class="tag off">' + esc(st.replace('，不做', '·不做')) + '</span>';
   }
   function e6Ret(r) { return isNum(r.ret) ? pctc(r.ret / 100, 1) : '<span class="muted">—</span>'; }
+  function e6Curve(c) {
+    if (!c || !c.equity || c.equity.length < 2) return '';
+    var t = c.total || {}, ym = function (d) { return String(d || '').slice(0, 7); };
+    var p100 = function (v, d) { return isNum(v) ? pctc(v / 100, d == null ? 1 : d) : '—'; };
+    var html = '<section class="card"><h2>历史账户曲线<small>' + esc(ym(c.first)) + ' 至 ' + esc(ym(c.last)) + ' · 回测</small></h2><div class="tiles">' +
+      '<div class="tile"><span>累计</span><b>' + (isNum(t.mult) ? '×' + t.mult.toFixed(1) : '—') + '</b></div>' +
+      '<div class="tile"><span>年化</span><b>' + p100(t.cagr) + '</b></div>' +
+      '<div class="tile"><span>最大回撤</span><b>' + p100(t.mdd) + '</b></div>' +
+      '<div class="tile"><span>信号 / 每笔</span><b>' + esc(t.n) + ' / ' + p100(t.mean, 2) + '</b></div></div>' +
+      chart(c.equity, c.dates.map(ym), { base: 1, label: 'E6 历史账户曲线', color: '#f6b72f', h: 150,
+        fmt: function (v) { return '×' + v.toFixed(1); },
+        tips: c.dates.map(function (d, i) { return ym(d) + '：×' + (isNum(c.equity[i]) ? c.equity[i].toFixed(2) : '—'); }) });
+    var sg = c.segs || [];
+    if (sg.length) {
+      html += '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th class="n">信号</th><th class="n">每笔</th><th class="n">账户</th></tr></thead><tbody>' +
+        sg.map(function (s) {
+          var lb = String(s.label || ''), sp = lb.indexOf(' ');
+          return '<tr><td>' + esc(sp > 0 ? lb.slice(0, sp) : lb) + (sp > 0 ? '<span class="nm">' + esc(lb.slice(sp + 1)) + '</span>' : '') + '</td><td class="n num">' + esc(s.n) +
+            '</td><td class="n">' + p100(s.mean, 2) + '</td><td class="n num">' + (isNum(s.mult) ? '×' + s.mult.toFixed(2) : '—') +
+            (isNum(s.cagr) ? '<span class="nm">年化 ' + s.cagr.toFixed(1) + '%</span>' : '') + '<span class="nm">回撤 ' + (isNum(s.mdd) ? s.mdd.toFixed(1) + '%' : '—') + '</span></td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+    var ys = c.years || [];
+    if (ys.length) {
+      html += '<h3 class="sub">每年</h3><div class="scroll"><table class="tbl"><thead><tr><th class="num">年</th><th class="n">信号</th><th class="n">每笔</th><th class="n">账户</th><th class="n">回撤</th></tr></thead><tbody>' +
+        ys.slice().reverse().map(function (y) {
+          return '<tr><td class="num">' + esc(y.year) + '</td><td class="n num">' + esc(y.n) + '</td><td class="n">' + p100(y.mean, 2) + '</td><td class="n">' + p100(y.acct) + '</td><td class="n">' + p100(y.mdd) + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+    return html + '<p class="small muted">' + esc(c.note || '') + ' 点曲线上的点看当月数值。10-20 起是前向记录，看下面几张表。</p></section>';
+  }
   function viewE6(s) {
     var e = s.e6;
     if (!e || e.error) {
@@ -745,6 +776,8 @@
       html += '<p class="small muted">名单来自同花顺涨停池，连板数按日线重算。“行业唯一”指它是申万二级行业里唯一的最高板（E6-U），只作并行记录，2010–2018 检验它没有额外价值。</p>';
     }
     html += '</section>';
+    // 1b. 历史账户曲线（回测，描述性）
+    html += e6Curve(e.curve);
     // 2. 持有中
     var hold = e.holding || [];
     html += '<section class="card"><h2>持有中<small>纸面记录，按收盘盯市</small></h2>';
@@ -770,8 +803,8 @@
     if (!sg.length) html += '<p class="empty">还没有信号。</p>';
     else html += '<div class="scroll"><table class="tbl"><thead><tr><th class="num">日期</th><th>股票</th><th>状态</th><th class="n">收益</th></tr></thead><tbody>' +
       sg.map(function (r) {
-        return '<tr' + rowCode(r.code) + '><td class="num">' + md(r.date) + '<span class="nm">' + esc(r.rule) + '</span></td><td>' + esc(short(r.code)) + ' ' + esc(r.name || '') +
-          '<span class="nm">' + esc(r.streak_y) + ' 板' + (isNum(r.gap) ? ' · 开盘 ' + pct(r.gap / 100, 1, true) : '') + '</span></td><td>' + e6Tag(r) + '</td><td class="n">' + e6Ret(r) + '</td></tr>';
+        return '<tr' + rowCode(r.code) + '><td class="num">' + md(r.date) + '<span class="nm">' + esc(r.rule) + '</span></td><td>' + esc(r.name || short(r.code)) +
+          '<span class="nm">' + esc(r.streak_y) + ' 板' + (isNum(r.gap) ? ' · 开 ' + pct(r.gap / 100, 1, true) : '') + '</span></td><td>' + e6Tag(r) + '</td><td class="n">' + e6Ret(r) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
     html += '</section>';
     // 5. 历史检验
@@ -902,7 +935,7 @@
       if (!pt) { chartTipHide(); return; }
       var i = pt.getAttribute('data-i'), v = pt.getAttribute('data-v');
       var rect = pt.getBoundingClientRect();
-      chartTipShow(rect.left + window.scrollX, rect.top + window.scrollY - 30, '第 ' + i + ' 点：' + v);
+      chartTipShow(rect.left + window.scrollX, rect.top + window.scrollY - 30, pt.getAttribute('data-t') || ('第 ' + i + ' 点：' + v));
     });
     app.addEventListener('scroll', chartTipHide);
     window.addEventListener('scroll', chartTipHide, true);
