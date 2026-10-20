@@ -769,7 +769,7 @@
         '<div class="banner ' + (o.skip ? 'warn' : 'ok') + '"><b>' + esc(o.action || '') + '</b></div>';
       if (!o.skip) {
         html += '<p class="small">同花顺云条件单：选按股价触发的条件单，股票 ' + esc(short(p.code)) + '，条件"最新价 ≥ ' + (isNum(p.lim) ? p.lim.toFixed(2) : '涨停价') +
-          '"，委托价 ' + (isNum(p.lim) ? p.lim.toFixed(2) : '涨停价') + '（涨停价），数量按你的仓位，有效期当天。具体菜单名以 App 为准。没碰到涨停价就不会买，今天就没交易。</p>';
+          '"，委托价 ' + (isNum(p.lim) ? p.lim.toFixed(2) : '涨停价') + '（涨停价），数量用全部可用资金（全仓一只），有效期当天。具体菜单名以 App 为准。没碰到涨停价就不会买，今天就没交易。</p>';
       }
       var top = o.top || [];
       if (top.length > 1) {
@@ -785,7 +785,7 @@
     var c = lv.close;
     if (c) {
       var hs = c.holdings || [];
-      html += '<h3 class="sub">14:50 持仓<small class="muted"> ' + esc(String(c.at || '').slice(11, 16)) + '，按 E6 前向记录</small></h3>';
+      html += '<h3 class="sub">14:50 持仓<small class="muted"> ' + esc(String(c.at || '').slice(11, 16)) + '，按前向记录、全仓一只票的口径</small></h3>';
       html += hs.length ? '<div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th class="n">现在</th><th>怎么办</th></tr></thead><tbody>' +
         hs.map(function (h) {
           return '<tr' + rowCode(h.code) + '><td>' + esc(h.name || short(h.code)) + '<span class="nm">' + md(h.buy) + ' 买 · 第 ' + esc(h.n) + ' 天</span></td><td class="n">' +
@@ -796,7 +796,9 @@
   }
   function e6Curves(c) {
     if (!c) return '';
-    return e6Curve(c, '账户曲线 · 每个信号 1/6 资金', false) + (c.full ? e6Curve(Object.assign({}, c.full, { first: c.first, last: c.last }), '账户曲线 · 全仓一只票', true) : '');
+    // 默认全仓一只票（用户 10-20 定），放前面；1/6 资金那条作对照
+    return (c.full ? e6Curve(Object.assign({}, c.full, { first: c.first, last: c.last }), '账户曲线 · 全仓一只票（默认）', true) : '') +
+      e6Curve(c, '账户曲线 · 每个信号 1/6 资金（对照）', false);
   }
   function viewE6(s) {
     var e = s.e6;
