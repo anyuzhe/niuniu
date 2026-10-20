@@ -707,7 +707,7 @@
     var st = String(r.status || '');
     if (st.indexOf('持有中') === 0) return '<span class="tag open">持有中</span>';
     if (st === '已卖出') return '<span class="tag">已卖出</span>';
-    return '<span class="tag off">' + esc(st.replace('，不做', '')) + '</span>';
+    return '<span class="tag off">' + esc(st.replace('，不做', '·不做')) + '</span>';
   }
   function e6Ret(r) { return isNum(r.ret) ? pctc(r.ret / 100, 1) : '<span class="muted">—</span>'; }
   function viewE6(s) {
