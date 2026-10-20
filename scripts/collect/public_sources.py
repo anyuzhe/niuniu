@@ -144,6 +144,30 @@ def fetch_ths_limit_up(day: date):
     return _frame(rows), {"source_url": url, "source_total": total}
 
 
+def fetch_ths_harden(day: date):
+    """同花顺"强势股归因"（zx.10jqka getharden）：当天涨停股的题材归因，只有原因和行情字段，没有封板时间、封单。
+
+    用途是补 ``ths_limit_up`` 够不到的历史（那个接口只接受 2025-10-01 以后）：这个接口 2023 年秋起有数据。
+    2025-10-09、2026-10-16 两天核对：非 ST 名单与 ``ths_limit_up`` 完全一致，``reason`` 逐字相同；另外多出 ST 股（5% 涨停）。
+    """
+    import requests
+    url = (f"http://zx.10jqka.com.cn/event/api/getharden/date/{day.isoformat()}"
+           "/orderby/date/orderway/desc/charset/GBK/")
+    r = requests.get(url, headers={"User-Agent": UA}, timeout=20)
+    r.raise_for_status()
+    payload = r.json()
+    if payload.get("errocode", 0) != 0:
+        raise RuntimeError(f"同花顺 getharden 返回错误 {payload.get('errocode')} {payload.get('errormsg')}")
+    rows = []
+    for it in payload.get("data") or []:
+        rows.append({"date": day, "code": it.get("code"), "name": it.get("name"), "reason": it.get("reason"),
+                     "close": it.get("close"), "pct": it.get("zhangfu"), "change": it.get("zhangdie"),
+                     "turnover": it.get("huanshou"), "amount": it.get("chengjiaoe"), "volume": it.get("chengjiaoliang"),
+                     "dde_net": it.get("ddejingliang"), "market": it.get("market"), "source_id": it.get("id"),
+                     "source_date": it.get("date"), "raw_json": json.dumps(it, ensure_ascii=False)})
+    return _frame(rows), {"source_url": url, "source_total": len(rows)}
+
+
 def fetch_em_monitor(day: date):
     rows = core().em_stock_monitor(only_active=False)
     for r in rows:
@@ -404,6 +428,7 @@ DATASETS = {
     "sw_industry_history": ("swsresearch", "industry_classification_history", "snapshot", fetch_sw_industry_history),
     "cninfo_announcements": ("cninfo", "announcements", "date_calendar", fetch_cninfo_announcements),
     "ths_limit_up": ("ths", "limit_up_pool", "date", fetch_ths_limit_up),
+    "ths_harden": ("ths", "harden_reason", "date", fetch_ths_harden),
     "em_monitor": ("eastmoney", "monitor_pool", "snapshot", fetch_em_monitor),
     "em_anomaly": ("eastmoney", "price_anomaly_pool", "snapshot", fetch_em_anomaly),
     "index_weights": ("csindex", "index_weights", "snapshot", fetch_index_weights),
