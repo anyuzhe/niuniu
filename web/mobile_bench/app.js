@@ -752,6 +752,48 @@
     }
     return html + '<p class="small muted">' + esc(c.note || '') + ' 点曲线上的点看当月数值。10-20 起是前向记录，看下面几张表。</p></section>';
   }
+  function e6Live(lv) {
+    if (!lv || !lv.day) return '';
+    var now = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);     // 北京时间的今天
+    var old = lv.day !== now;
+    var html = '<section class="card"><h2>今天的提醒<small>' + md(lv.day) + (old ? ' · 不是今天的，交易日 9:25 后更新' : '') + ' · 只提醒，不下单</small></h2>';
+    if (lv.error) html += '<div class="banner warn">' + esc(lv.error) + '</div>';
+    var o = lv.open;
+    if (o && o.pick) {
+      var p = o.pick;
+      html += '<p class="small muted">' + esc(String(o.at || '').slice(11, 19)) + ' 按 9:25 开盘价排名（候选 ' + esc(o.n_cands) + ' 只，取到开盘价 ' + esc(o.n_quoted) + ' 只）' + (o.replay ? ' · 回放' : '') + '</p>' +
+        '<div class="tiles"><div class="tile"><span>E6 第 1 只</span><b>' + esc(p.name || short(p.code)) + '</b></div>' +
+        '<div class="tile"><span>涨停价</span><b class="num">' + (isNum(p.lim) ? p.lim.toFixed(2) : '—') + '</b></div>' +
+        '<div class="tile"><span>开盘</span><b>' + (isNum(p.gap) ? pctc(p.gap / 100, 2) : '—') + '</b></div>' +
+        '<div class="tile"><span>昨日连板</span><b>' + esc(p.streak_y) + ' 板</b></div></div>' +
+        '<div class="banner ' + (o.skip ? 'warn' : 'ok') + '"><b>' + esc(o.action || '') + '</b></div>';
+      if (!o.skip) {
+        html += '<p class="small">同花顺云条件单：选按股价触发的条件单，股票 ' + esc(short(p.code)) + '，条件"最新价 ≥ ' + (isNum(p.lim) ? p.lim.toFixed(2) : '涨停价') +
+          '"，委托价 ' + (isNum(p.lim) ? p.lim.toFixed(2) : '涨停价') + '（涨停价），数量按你的仓位，有效期当天。具体菜单名以 App 为准。没碰到涨停价就不会买，今天就没交易。</p>';
+      }
+      var top = o.top || [];
+      if (top.length > 1) {
+        html += '<div class="scroll"><table class="tbl"><thead><tr><th class="n">名次</th><th>股票</th><th class="n">开盘</th><th class="n">昨日</th></tr></thead><tbody>' +
+          top.map(function (r) {
+            return '<tr' + rowCode(r.code) + '><td class="n num">' + esc(r.rk) + '</td><td>' + esc(r.name || short(r.code)) + (r.open_lim ? ' <span class="tag off">开盘涨停</span>' : '') +
+              '</td><td class="n">' + (isNum(r.gap) ? pctc(r.gap / 100, 1) : '—') + '</td><td class="n num">' + esc(r.streak_y) + ' 板</td></tr>';
+          }).join('') + '</tbody></table></div>';
+      }
+    } else if (!lv.error) {
+      html += '<p class="empty">9:25 的名单还没出来（交易日 9:25:30 左右更新）。</p>';
+    }
+    var c = lv.close;
+    if (c) {
+      var hs = c.holdings || [];
+      html += '<h3 class="sub">14:50 持仓<small class="muted"> ' + esc(String(c.at || '').slice(11, 16)) + '，按 E6 前向记录</small></h3>';
+      html += hs.length ? '<div class="scroll"><table class="tbl"><thead><tr><th>股票</th><th class="n">现在</th><th>怎么办</th></tr></thead><tbody>' +
+        hs.map(function (h) {
+          return '<tr' + rowCode(h.code) + '><td>' + esc(h.name || short(h.code)) + '<span class="nm">' + md(h.buy) + ' 买 · 第 ' + esc(h.n) + ' 天</span></td><td class="n">' +
+            (isNum(h.chg) ? pctc(h.chg / 100, 1) : '—') + '</td><td class="wrap small">' + (h.sealed ? '<span class="tag open">封住</span> ' : '') + esc(h.action) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<p class="empty">E6 现在没有持仓，不用卖。</p>';
+    }
+    return html + '</section>';
+  }
   function e6Curves(c) {
     if (!c) return '';
     return e6Curve(c, '账户曲线 · 每个信号 1/6 资金', false) + (c.full ? e6Curve(Object.assign({}, c.full, { first: c.first, last: c.last }), '账户曲线 · 全仓一只票', true) : '');
@@ -766,11 +808,14 @@
     if (e.data_date && s.data_date && e.data_date < s.data_date) {
       html += '<div class="banner warn">E6 记录只到 <b>' + md(e.data_date) + '</b>；台式机每个交易日 19:00 记一次，记完会再推上来。</div>';
     }
+    // 0. 今天 9:25 / 14:50 的提醒
+    html += e6Live(e.live);
     // 1. 明天怎么做
     var nx = e.next || {};
     html += '<section class="card"><h2>下一个交易日怎么做<small>按 ' + md(nx.day) + ' 收盘</small></h2>' +
       '<p><b>E6 龙头扫板</b>：开盘后，把昨天涨停的主板非 ST 股按“开盘涨幅名次 + 昨日连板名次”打分，取第 1。开盘就涨停的不做；' +
-      '盘中第一次摸到涨停价，<b>3 秒内</b>挂涨停价买。收盘还封住就拿，第一次没封住那天收盘卖，最多拿 5 天。</p>';
+      '盘中第一次摸到涨停价，<b>3 秒内</b>挂涨停价买。收盘还封住就拿，第一次没封住那天收盘卖，最多拿 5 天。' +
+      '交易日 9:25:30 左右，最上面的“今天的提醒”会给出第 1 只和云条件单怎么设，14:50 再看持仓。</p>';
     if (nx.error) {
       html += '<p class="empty">名单还没算出来：' + esc(nx.error) + '</p>';
     } else {

@@ -251,6 +251,20 @@ class E6ViewTests(unittest.TestCase):
         cp.write_text('{bad', encoding='utf-8')
         self.assertIsNone(me._e6_view(self.p)['curve'])
 
+    def test_live_reminder_is_attached_and_bad_file_ignored(self):
+        self.write(e6_doc())
+        self.assertIsNone(me._e6_view(self.p)['live'])
+        lp = self.p.parent / me.E6_LIVE_NAME
+        top = [dict(rk=i + 1, code=f'sz.0030{i:02d}', gap=1.0) for i in range(9)]
+        lp.write_text(json.dumps(dict(format=me.E6_LIVE_FORMAT, day='2026-10-21', open=dict(pick=dict(code='sz.003029', lim=26.61), action='设云条件单', top=top),
+                                      close=dict(holdings=[]), error=None)), encoding='utf-8')
+        lv = me._e6_view(self.p)['live']
+        self.assertEqual(lv['day'], '2026-10-21')
+        self.assertEqual(lv['open']['pick']['lim'], 26.61)
+        self.assertEqual(len(lv['open']['top']), 6)
+        lp.write_text(json.dumps(dict(format='other', day='x')), encoding='utf-8')
+        self.assertIsNone(me._e6_view(self.p)['live'])
+
     def test_environment_path_is_used(self):
         self.write(e6_doc())
         with mock.patch.dict(os.environ, {'NIUNIU_E6_FORWARD': str(self.p)}):

@@ -275,7 +275,26 @@ def _e6_view(path=None):
     out['signals'] = signals[:MAX_E6_SIGNALS]
     out['holding'] = [r for r in signals if str(r.get('status') or '').startswith('持有中')]
     out['curve'] = _e6_curve(p.parent / E6_CURVE_NAME)
+    out['live'] = _e6_live(p.parent / E6_LIVE_NAME)
     return _clean(out)
+
+
+E6_LIVE_FORMAT = 'niuniu-e6-live-v1'
+E6_LIVE_NAME = 'e6_live.json'
+
+
+def _e6_live(path):
+    """当天的 E6 实盘提醒（研究目录 e6_live.py 9:25 和 14:50 写）：第 1 只、云条件单怎么设、持仓封没封住。只是提醒，不下单。"""
+    try:
+        value = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(value, dict) or value.get('format') != E6_LIVE_FORMAT:
+        return None
+    out = {k: value.get(k) for k in ('day', 'generated_at', 'open', 'close', 'error')}
+    if isinstance(out.get('open'), dict) and isinstance(out['open'].get('top'), list):
+        out['open'] = dict(out['open'], top=out['open']['top'][:6], missing=(out['open'].get('missing') or [])[:20])
+    return out
 
 
 E6_CURVE_FORMAT = 'niuniu-e6-curve-v1'
