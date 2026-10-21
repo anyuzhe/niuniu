@@ -18,7 +18,7 @@ import os
 import secrets
 import subprocess
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -36,6 +36,8 @@ MAX_RECORDS = 12         # 每本台账给手机最近这么多条记录
 MAX_TRADES = 30
 FUSION_VARIANTS = ('D', 'D1', 'D2', 'D3', 'D4')
 KIND_OF = {'D': 'fusion', 'D1': 'fusion1', 'D2': 'fusion2', 'D3': 'fusion3', 'D4': 'fusion4'}
+# 策略 F（组合层，用户 2026-10-21 定名）：E6 一份 + D4 一份，每月第一个开市日调回比例。值 = E6 那份占总资产的比例
+F_SPLIT = {'F1': 0.30, 'F2': 0.50}
 
 
 # ---------------------------------------------------------------- 文件与配置
@@ -238,6 +240,9 @@ def _holdings_view(output, panel, cls, names, today: date) -> dict:
     equity = data['equity_wan'] * 1e4
     plans = {}
     rows = None
+    keys = ('data_date', 'plan_day', 'stale', 'sells', 'buys', 'spares', 'sleeves', 'notes',
+            'invested_after', 'proceeds', 'new_money', 'gate_open', 'fired', 'hold_days')
+    d4 = None
     for variant in FUSION_VARIANTS:
         try:
             cfg = fusion.config_for(variant)
@@ -246,10 +251,27 @@ def _holdings_view(output, panel, cls, names, today: date) -> dict:
         except Exception as exc:
             plans[variant] = dict(error=f'{type(exc).__name__}: {exc}')
             continue
+        if variant == 'D4':
+            d4 = (cfg, inp)
         if rows is None:
             rows = plan['holdings']
-        plans[variant] = {k: plan[k] for k in ('data_date', 'plan_day', 'stale', 'sells', 'buys', 'spares', 'sleeves', 'notes',
-                                               'invested_after', 'proceeds', 'new_money', 'gate_open', 'fired', 'hold_days')}
+        plans[variant] = {k: plan[k] for k in keys}
+    # 策略 F：D4 那份钱 = 总资产 ×（1 − E6 的比例），按这份钱照 D4 的规则算明天的买卖；E6 那份不在这里（9:25 提醒里算）
+    for fid, w in F_SPLIT.items():
+        if d4 is None:
+            plans[fid] = dict(error='D4 没算出来，F 的 D4 那份也算不出来')
+            continue
+        try:
+            plan = portfolio.plan_operations(panel, d4[1], d4[0], data['holdings'], equity=equity * (1 - w), names=names, today=today)
+        except Exception as exc:
+            plans[fid] = dict(error=f'{type(exc).__name__}: {exc}')
+            continue
+        p = {k: plan[k] for k in keys}
+        p['notes'] = [f'{fid}：D4 那份 = 总资产 × {1 - w:.0%} = {equity * (1 - w) / 1e4:,.1f} 万，按这份钱照 D4 的规则算；'
+                      f'E6 那份 = 总资产 × {w:.0%} = {equity * w / 1e4:,.1f} 万，买卖看 9:25 的提醒。'
+                      '如果 E6 那只票也录进了持仓又没标层，它会被当成占用 D4 那份的钱。'] + list(p.get('notes') or [])
+        p['f'] = dict(w_e6=w, w_d4=round(1 - w, 4), e6_amount=equity * w, d4_amount=equity * (1 - w))
+        plans[fid] = p
     return _clean(dict(equity_wan=data['equity_wan'], n_holdings=len(data['holdings']), holdings=rows or [], plans=plans))
 
 
@@ -294,7 +316,66 @@ def _e6_live(path):
     out = {k: value.get(k) for k in ('day', 'generated_at', 'open', 'close', 'error')}
     if isinstance(out.get('open'), dict) and isinstance(out['open'].get('top'), list):
         out['open'] = dict(out['open'], top=out['open']['top'][:6], missing=(out['open'].get('missing') or [])[:20])
+    out['prep'] = _e6_prep(Path(path).parent / E6_CANDS_NAME)
     return out
+
+
+E6_CANDS_NAME = 'e6_live_cands.json'
+
+
+def _e6_prep(path):
+    """08:40 准备的候选表（e6_live.py prep）：只带日期、几只、有没有出错，手机「今天」页用。"""
+    try:
+        value = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(value, dict) or value.get('format') != 'niuniu-e6-live-cands-v1':
+        return None
+    return dict(day=value.get('day'), prev=value.get('prev'), generated_at=value.get('generated_at'),
+                n=len(value.get('cands') or []), error=value.get('error'))
+
+
+F_FORMAT = 'niuniu-f-combo-v1'
+F_SOURCE = Path('/Volumes/Lexar/niuniu-research-ext/e6_fwd_2026Q4/f_combo.json')
+
+
+def _month_last_day(d: date) -> date:
+    return (date(d.year + (d.month == 12), d.month % 12 + 1, 1) - timedelta(days=1))
+
+
+def _f_view(snap: dict, path=None):
+    """策略 F（组合层）：研究目录 f_combo.py 每个交易日 19:30 写 f_combo.json（回测、前向记录）。这里再按账户总资产算两份各多少钱，
+    以及下一个开市日（plan_day）是不是调仓日（每月第一个开市日）。文件不在返回 None；读坏了给 error，不影响别的页。"""
+    p = Path(path or os.environ.get('NIUNIU_F_COMBO') or F_SOURCE)
+    if not p.is_file():
+        return None
+    try:
+        value = json.loads(p.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        return dict(error=f'{type(exc).__name__}: {exc}')
+    if not isinstance(value, dict) or value.get('format') != F_FORMAT:
+        return dict(error='策略 F 数据的格式不认识')
+    h = snap.get('holdings') or {}
+    equity = float(h.get('equity_wan') or 0) * 1e4 if not h.get('error') else None
+    plan_day = date.fromisoformat(str(snap['plan_day'])[:10])
+    data_day = date.fromisoformat(str(snap['data_date'])[:10])
+    on_plan_day = plan_day.month != data_day.month
+    nxt = plan_day if on_plan_day else autorecord.next_open_day(_month_last_day(plan_day).isoformat())
+    bt = value.get('backtest') or {}
+    defs = []
+    for d in value.get('defs') or []:
+        fid, w = d.get('id'), float(d.get('w_e6') or 0)
+        if fid not in F_SPLIT:
+            continue
+        b = bt.get(fid) or {}
+        defs.append(dict(id=fid, name=d.get('name'), w_e6=w, w_d4=round(1 - w, 4),
+                         e6_amount=None if equity is None else equity * w, d4_amount=None if equity is None else equity * (1 - w),
+                         backtest={k: b.get(k) for k in ('total', 'segs', 'years', 'dates', 'equity')}))
+    fw = value.get('forward') or {}
+    return _clean(dict(generated_at=value.get('generated_at'), rule=value.get('rule'), note=value.get('note'), equity=equity,
+                       defs=defs, backtest={k: bt.get(k) for k in ('first', 'last', 'n_days', 'corr_daily', 'E6', 'D4')},
+                       forward={k: fw.get(k) for k in ('start', 'e6_data_date', 'd4_start', 'e6_holding', 'n', 'note', 'dates', 'series')},
+                       rebalance=dict(on_plan_day=on_plan_day, next=nxt.isoformat(), rule='每月第一个开市日')))
 
 
 E6_CURVE_FORMAT = 'niuniu-e6-curve-v1'
@@ -356,6 +437,10 @@ def build_snapshot(output, panel, cls, names, *, now: datetime | None = None) ->
         snap['e6'] = _e6_view()
     except Exception as exc:       # E6 是研究线，读不出来不影响抄底这几本
         snap['e6'] = dict(error=f'{type(exc).__name__}: {exc}')
+    try:
+        snap['f'] = _f_view(snap)
+    except Exception as exc:       # 策略 F 读不出来也不影响别的
+        snap['f'] = dict(error=f'{type(exc).__name__}: {exc}')
     snap['overview'] = _overview_view(panel, cls, snap, output)
     _fill_names(snap, names or {})
     snap['stocks'] = _stock_series(panel, snap, names)

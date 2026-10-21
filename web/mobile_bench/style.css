@@ -6,6 +6,9 @@
   --warn: #8a5a00; --warn-bg: #fff4d6; --ok: #0f6b45; --ok-bg: #dff5e9; --bad: #9b1c1c; --bad-bg: #fde4e2;
   --tab-h: 58px;
   --b-panic: #0f7a4b; --b-tense: #4fb487; --b-weak: #a8dcc0; --b-calm: #dfe5ec; --b-strong: #f2b8b4; --b-hot: #d6362f;
+  /* 2026-10-21：「今天」时间轴的“现在”用琥珀色；两份钱用不带涨跌含义的紫 / 石板灰 */
+  --now: #d98a06; --now-ink: #8f5600; --now-soft: #fbecc8;
+  --e6: #7a4fd6; --d4: #5d6e84;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -15,6 +18,8 @@
     --up: #ff6b61; --down: #3ecf8e;
     --b-panic: #1fa56a; --b-tense: #2c7a56; --b-weak: #1f4a38; --b-calm: #2a3645; --b-strong: #6b2f2b; --b-hot: #ff6b61;
     --warn: #f0c36a; --warn-bg: #2d2410; --ok: #7fe0b0; --ok-bg: #123022; --bad: #ff9a92; --bad-bg: #351616;
+    --now: #f3b03e; --now-ink: #f6c46e; --now-soft: #33270f;
+    --e6: #a98bf5; --d4: #8d9db2;
   }
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -110,7 +115,7 @@ svg.chart .pt:hover { opacity: .6; }
 
 nav.tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); border-top: 1px solid var(--line);
-  display: grid; grid-template-columns: repeat(6, 1fr); padding-bottom: env(safe-area-inset-bottom);
+  display: grid; grid-template-columns: repeat(4, 1fr); padding-bottom: env(safe-area-inset-bottom);
 }
 nav.tabs button {
   border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; height: var(--tab-h);
@@ -189,3 +194,83 @@ svg.kline rect.vol { opacity: .55; stroke: none; }
 svg.kline path.ma5 { fill: none; stroke: #e0a100; stroke-width: 1.2; }
 svg.kline path.ma20 { fill: none; stroke: var(--accent); stroke-width: 1.2; }
 svg.kline rect.kc { fill: transparent; stroke: none; }
+
+/* ---------------------------------------------------------------- 2026-10-21 重新设计：今天 / 策略 / 持仓 / 市场
+   「今天」= 一条交易日时间轴：左边时刻、中间一根竖线、右边要做的事；“现在”是一条横穿的琥珀色线。别处保持安静。 */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.link { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.lead { color: var(--muted); font-size: 13.5px; margin: 2px 2px 10px; }
+.empty.pad { padding: 14px; }
+
+header.top.detail { align-items: center; }
+header.top.detail h1 { flex: 1; font-size: 17px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+header.top .back { padding-left: 8px; }
+
+/* 首页抬头：日期是全页最大的字 */
+.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 6px 0 12px; }
+.hero-day { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px; }
+.hero-k { flex-basis: 100%; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+.hero-day b { font-size: 36px; line-height: 1; font-weight: 700; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
+.hero-day > span:last-child { font-size: 16px; color: var(--muted); }
+.seg { display: inline-flex; background: var(--soft); border-radius: 10px; padding: 3px; flex: none; }
+.seg button { border: 0; background: transparent; font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 8px; color: var(--muted); min-height: 34px; min-width: 52px; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); font-weight: 650; box-shadow: 0 1px 2px rgba(15, 23, 32, .12); }
+
+/* 两份钱 */
+.alloc { margin: 0 0 22px; }
+.alloc-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.alloc-row b { font-weight: 650; }
+svg.alloc-bar { width: 100%; height: 8px; display: block; margin: 8px 0 7px; border-radius: 4px; }
+svg.alloc-bar .a-e6 { fill: var(--e6); }
+svg.alloc-bar .a-d4 { fill: var(--d4); }
+.sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+.sw-e6 { background: var(--e6); }
+.sw-d4 { background: var(--d4); }
+section.card .alloc { margin: 4px 0 10px; }
+
+/* 时间轴 */
+ol.tl { list-style: none; margin: 0 0 14px; padding: 0; position: relative; }
+ol.tl::before { content: ""; position: absolute; left: 63px; top: 8px; bottom: 8px; width: 2px; background: var(--line); }
+.tl-i, .tl-now { display: grid; grid-template-columns: 54px 20px minmax(0, 1fr); position: relative; }
+.tl-i { padding-bottom: 20px; }
+.tl-i time { grid-column: 1; text-align: right; font-size: 15px; font-weight: 650; line-height: 22px; white-space: nowrap; }
+.tl-i::before { content: ""; position: absolute; left: 58px; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--muted); }
+.tl-b { grid-column: 3; padding-left: 10px; }
+.tl-b > b { display: block; font-size: 15.5px; line-height: 22px; font-weight: 650; }
+.tl-d { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+.tl-d b { color: var(--ink); font-weight: 600; }
+.tl-d .tag { vertical-align: 1px; }
+.tl-i.is-act::before { border-color: var(--now); }
+.tl-i.is-past time, .tl-i.is-past .tl-b > b { color: var(--muted); font-weight: 500; }
+.tl-i.is-past::before { background: var(--line); border-color: var(--line); }
+.tl-i.is-now::before { background: var(--now); border-color: var(--now); box-shadow: 0 0 0 4px var(--now-soft); }
+/* 已经过了时刻、但当天一直有效的事（比如 9:25 设的条件单）：点涂实心琥珀，标题不变灰 */
+.tl-i.is-past.is-act::before { background: var(--now); border-color: var(--now); }
+.tl-i.is-past.is-act time, .tl-i.is-past.is-act .tl-b > b { color: var(--ink); font-weight: 650; }
+.tl-i.is-now .tl-d { color: var(--ink); }
+.tl-now { align-items: center; margin: -8px 0 12px; min-height: 22px; }
+.tl-now::before { content: ""; position: absolute; left: 54px; right: 0; top: 50%; height: 2px; margin-top: -1px; background: var(--now); }
+.tl-now time { grid-column: 1; text-align: right; font-size: 12.5px; font-weight: 700; color: var(--now-ink); padding-right: 6px; font-variant-numeric: tabular-nums; }
+.tl-now span { grid-column: 3; justify-self: start; position: relative; margin-left: 8px; padding: 0 6px; background: var(--bg); color: var(--now-ink); font-size: 12.5px; font-weight: 600; }
+.order { margin: 8px 0 6px; padding: 9px 11px; background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--now); border-radius: 8px; color: var(--ink); font-size: 14px; gap: 3px 12px; }
+.order > :nth-child(odd) { color: var(--muted); }
+p.foot { margin: 0 0 8px; padding-left: 74px; }
+
+/* 策略列表：一组一块，行之间细线 */
+.group { margin: 0 0 18px; }
+.group > h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 4px 6px; }
+.list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.list button.row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 10px; align-items: center; gap: 10px; width: 100%; min-height: 58px;
+  padding: 11px 14px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; text-align: left;
+}
+.list button.row:first-child { border-top: 0; }
+.list button.row:active { background: var(--soft); }
+.row .r-t b { display: block; font-size: 15.5px; font-weight: 600; }
+.row .r-t span { display: block; font-size: 12.5px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .r-v { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row .r-v > span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.row .chev { color: var(--muted); font-size: 18px; line-height: 1; }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

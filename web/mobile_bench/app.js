@@ -8,7 +8,9 @@
   var app = document.getElementById('app');
 
   var state = {
-    phase: 'loading', snap: null, env: null, error: '', tab: 'overview', loadedAt: 0,
+    phase: 'loading', snap: null, env: null, error: '', tab: 'today', loadedAt: 0,
+    f: 'F1',                           // 「今天」按哪个组合排（F1 / F2）
+    detail: null,                      // 「策略」页正在看哪一个（null = 列表）
     loading: false,                    // 下载/解密进行中
     offline: false,                    // 是否来自 Service Worker 离线缓存
     passVisible: false,                // 口令明文显示开关
@@ -18,7 +20,7 @@
     stock: null                        // 正在看走势的股票代码
   };
 
-  var pick = { signal: 'fusion', forward: 'fusion', holdings: 'D' };
+  var pick = { signal: 'fusion', forward: 'fusion', holdings: 'F1' };
 
   // ------------------------------------------------------------------ 小工具
   function esc(v) {
@@ -422,7 +424,7 @@
     html += '<section class="card"><h2>有没有信号</h2>';
     if (open.length) {
       html += '<p><span class="tag open">有信号</span> ' + open.map(function (b) { return esc(b.label); }).join('、') + '</p>' +
-        '<p class="small">按规则：下一个开盘日（' + md(o.plan_day) + '）开盘买、持有 20 个交易日。候选和计划金额在「信号」页。</p>';
+        '<p class="small">按规则：下一个开盘日（' + md(o.plan_day) + '）开盘买、持有 20 个交易日。候选在「策略」里各本的详情，按你的资金算的买卖清单在「持仓」页。</p>';
     } else {
       html += '<p><span class="tag off">没有</span> ' + sg.n_books + ' 本账都没触发开仓。空仓等待是正常状态，不用做任何事。</p>';
     }
@@ -475,19 +477,22 @@
   }
 
   // ------------------------------------------------------------------ 今日信号
-  function viewSignal(s) {
-    var kind = state.pick.signal;
+  function viewSignal(s, only) {          // only：「策略」详情页只看这一本，不显示切换条
+    var kind = only || state.pick.signal;
     if (s.kinds.indexOf(kind) < 0) kind = state.pick.signal = s.kinds[0];
     var sig = s.signals[kind] || {};
-    var open = s.kinds.filter(function (k) { return s.signals[k] && s.signals[k].gate_open; });
-    var when = '<b>' + md(s.data_date) + ' 收盘时</b>';
-    var html = '<div class="banner ' + (open.length ? 'warn' : 'ok') + '">' +
-      (open.length ? when + '有开仓信号：' + open.map(function (k) { return esc(s.labels[k]); }).join('、') : when + '没有任何一本触发开仓信号。空仓等待是正常状态。') + '</div>';
-    html += chips('signal', s.kinds, function (k) { return shortLabel(s, k); }, kind, function (k) { return s.signals[k] && s.signals[k].gate_open; });
+    var html = '';
+    if (!only) {
+      var open = s.kinds.filter(function (k) { return s.signals[k] && s.signals[k].gate_open; });
+      var when = '<b>' + md(s.data_date) + ' 收盘时</b>';
+      html += '<div class="banner ' + (open.length ? 'warn' : 'ok') + '">' +
+        (open.length ? when + '有开仓信号：' + open.map(function (k) { return esc(s.labels[k]); }).join('、') : when + '没有任何一本触发开仓信号。空仓等待是正常状态。') + '</div>';
+      html += chips('signal', s.kinds, function (k) { return shortLabel(s, k); }, kind, function (k) { return s.signals[k] && s.signals[k].gate_open; });
+    }
     if (sig.error) return html + '<section class="card"><h2>' + esc(s.labels[kind]) + '</h2><p class="empty">这一本没算出来：' + esc(sig.error) + '</p></section>';
 
     var isFusion = !!sig.sleeves;
-    html += '<section class="card"><h2>' + esc(s.labels[kind]) + '<small>' + md(sig.date) + ' 收盘后</small></h2>';
+    html += '<section class="card"><h2>' + esc(only ? '最新的信号' : s.labels[kind]) + '<small>' + md(sig.date) + ' 收盘后</small></h2>';
     html += '<p>' + (sig.gate_open ? '<span class="tag open">闸门已开</span> 触发的层：' + esc((sig.fired || []).join(' / ') || '—') : '<span class="tag off">闸门未开</span> 今天不开新仓') + '</p>';
     html += '<div class="tiles">' +
       '<div class="tile"><span>大盘恐慌 z（≤ ' + num(sig.z_threshold, 1) + ' 触发）</span><b class="' + (isNum(sig.z) && sig.z <= (sig.z_threshold || -1.5) ? 'up' : '') + '">' + num(sig.z, 2) + '</b></div>' +
@@ -557,15 +562,18 @@
   // ------------------------------------------------------------------ 前向跟踪
   var STATUS = { waiting: '等待买入', open: '持有中', closed: '已结算', not_filled: '没买进' };
 
-  function viewForward(s) {
-    var kind = state.pick.forward;
+  function viewForward(s, only) {
+    var kind = only || state.pick.forward;
     if (s.kinds.indexOf(kind) < 0) kind = state.pick.forward = s.kinds[0];
     var f = s.forward[kind] || {};
-    var html = '<div class="banner ok">前向跟踪 = 参数冻结后，每天把当天的信号记下来，之后用真实后续行情结算。只有这个数字才能说明策略在样本外是否有效；样本内回测不算。</div>';
-    html += chips('forward', s.kinds, function (k) { return shortLabel(s, k); }, kind);
+    var html = '';
+    if (!only) {
+      html += '<div class="banner ok">前向跟踪 = 参数冻结后，每天把当天的信号记下来，之后用真实后续行情结算。只有这个数字才能说明策略在样本外是否有效；样本内回测不算。</div>';
+      html += chips('forward', s.kinds, function (k) { return shortLabel(s, k); }, kind);
+    }
     if (f.error) return html + '<section class="card"><h2>' + esc(s.labels[kind]) + '</h2><p class="empty">这一本没算出来：' + esc(f.error) + '</p></section>';
     var sm = f.summary || {};
-    html += '<section class="card"><h2>' + esc(s.labels[kind]) + '<small>' + (f.start_date ? '从 ' + f.start_date + ' 开始记录' : '') + '</small></h2>';
+    html += '<section class="card"><h2>' + esc(only ? '前向记录' : s.labels[kind]) + '<small>' + (f.start_date ? '从 ' + f.start_date + ' 开始记录' : '') + '</small></h2>';
     if (!sm.n_records) {
       html += '<p class="empty">还没有记录。这一本只在“闸门打开、有候选、数据还新鲜”的交易日记录，没触发就没有记录。</p></section>';
       return html;
@@ -622,6 +630,7 @@
     var h = s.holdings || {};
     if (h.error) return '<section class="card"><h2>我的持仓</h2><p class="empty">没算出来：' + esc(h.error) + '</p></section>';
     var variants = Object.keys(h.plans || {});
+    variants = variants.filter(function (k) { return k.charAt(0) === 'F'; }).concat(variants.filter(function (k) { return k.charAt(0) !== 'F'; }));   // F 放前面
     var v = state.pick.holdings; if (variants.indexOf(v) < 0) v = state.pick.holdings = variants[0];
     var p = (h.plans || {})[v] || {};
     var html = '<div class="banner ok">持仓只在电脑上录入和修改，手机只看。清单按所选策略的规则算；这里不下单、不连券商。</div>';
@@ -635,13 +644,14 @@
 
     html += '<section class="card"><h2>' + esc(p.plan_day ? md(p.plan_day) + '（' + wd(p.plan_day) + '）' : '明天') + '要做什么<small>策略 ' + esc(v) + '</small></h2>' +
       '<div class="kv"><span>账户总资产</span><span class="num">' + num(h.equity_wan, 1) + ' 万</span><span>持仓</span><span class="num">' + (h.n_holdings || 0) + ' 只</span>' +
+      (p.f ? '<span>E6 那份（' + pct(p.f.w_e6, 0) + '）</span><span class="num">' + wan(p.f.e6_amount) + '</span><span>D4 那份（' + pct(p.f.w_d4, 0) + '），下面的清单按它算</span><span class="num">' + wan(p.f.d4_amount) + '</span>' : '') +
       '<span>持仓市值</span><span class="num">' + money(totalValue) + ' 元</span><span>总浮盈</span><span class="num ' + (totalPnlAmt >= 0 ? 'up' : 'down') + '">' + (totalPnlAmt >= 0 ? '+' : '') + money(totalPnlAmt) + ' 元</span></div>';
     (p.notes || []).forEach(function (t) { html += '<p class="small muted">· ' + esc(t) + '</p>'; });
     html += '</section>';
 
     // 搜索框
     var hk = state.search.holdings || '';
-    var dispHoldings = hk ? filterRows(rows, ['code', 'name', 'sleeve'], ['code', 'name', 'sleeve']) : rows;
+    var dispHoldings = hk ? filterRows(rows, hk, ['code', 'name', 'sleeve']) : rows;
 
     html += '<section class="card"><h2>卖出<small>' + (p.sells || []).length + ' 只</small></h2>';
     if (!(p.sells || []).length) html += '<p class="empty">没有要卖的。</p>';
@@ -680,12 +690,19 @@
   // ------------------------------------------------------------------ 说明
   function viewGuide(s) {
     var html = '<section class="card"><h2>怎么看这个页面</h2><ul class="plain">' +
-      '<li><b>概览</b>是首页：现在的下跌恐慌程度、有没有信号、离触发还差多少、规则推演和历史类比、该盯什么。它只用策略自己的数据，不是涨停板情绪，也不是预测。</li>' +
+      '<li><b>今天</b>是首页：按交易日的时间顺序排好今天（收盘后就是下一个交易日）要做的事，金额按你选的 F1 / F2 和电脑上填的账户总资产算。</li>' +
+      '<li><b>策略</b>：每个策略一行，点进去看规则、最新信号、回测曲线和前向记录。</li>' +
+      '<li><b>持仓</b>：电脑上录入的持仓，和按所选策略算出的明天买卖清单。</li>' +
+      '<li><b>市场</b>：现在的下跌恐慌程度、有没有信号、离触发还差多少、规则推演和历史类比、该盯什么，另有涨停板情绪。它只用策略自己的数据，不是预测。</li>' +
       '<li><b>只读、纸面</b>：不下单、不连券商；信号只是按规则算出来的“明天可以考虑什么”。</li>' +
       '<li><b>数据每天收盘后更新一次</b>：电脑上的牛牛算完推上来，数据日期在顶部。过了下一个开盘就是旧数据。</li>' +
       '<li><b>红涨绿跌</b>：红色是上涨 / 盈利，绿色是下跌 / 亏损。</li>' +
       '<li><b>数据是加密的</b>：服务器上只有密文，口令只在这台手机和电脑上。</li></ul></section>';
-    html += '<section class="card"><h2>八个策略</h2><ul class="plain">' +
+    html += '<section class="card"><h2>组合 F</h2><ul class="plain">' +
+      '<li><b>F1</b> 30% E6 + 70% D4：总资产分两份，E6 那份照 E6 全仓一只票，D4 那份照 D4 的规则；每月第一个开市日把两份调回 30 : 70。</li>' +
+      '<li><b>F2</b> 50% E6 + 50% D4：同上，比例 50 : 50。</li></ul>' +
+      '<p class="small muted">两者每天的涨跌几乎不相关（相关系数 0.08），E6 亏钱的年份 D4 多是赚的，所以合在一起回撤小很多。比例是看过 2010–2026 的回测后定的，真正算数的是 10-22 起的前向记录。</p></section>';
+    html += '<section class="card"><h2>抄底策略</h2><ul class="plain">' +
       '<li><b>A</b> 大盘恐慌：全市场平均 z ≤ −1.5 时买“跌破布林下轨后收复”的股票。</li>' +
       '<li><b>B</b> 行业恐慌：某个申万一级行业 z ≤ −1.5 时，买该行业里同样形态的股票。</li>' +
       '<li><b>D</b> 三层合一：大盘（A）、成交额分档（C）、行业（B）三种恐慌各管一层，共用一笔钱。</li>' +
@@ -694,8 +711,8 @@
       '<li><b>D3</b> D2 再把层优先级改成 C 先 A 后。</li>' +
       '<li><b>D4</b> D3 再加 B 层行业黑名单（房地产、国防军工）。</li></ul>' +
       '<p class="small muted">D2～D4 的回测数字都是样本内，真实表现要看“前向跟踪”。</p></section>';
-    html += '<section class="card"><h2>E6 龙头扫板（研究中）</h2><p>和上面的抄底策略无关，是“期末50分”那条打板研究线里检验通过的一条：每天只看昨天涨停股里开盘最强、身位最高的那一只，' +
-      '盘中摸到涨停价就挂涨停价买，收盘封住就拿、没封住就卖。「E6」页是它的前向记录和下一个交易日的名单，只记录不交易。</p></section>';
+    html += '<section class="card"><h2>E6 龙头扫板</h2><p>和上面的抄底策略无关，是“期末50分”那条打板研究线里检验通过的一条：每天只看昨天涨停股里开盘最强、身位最高的那一只，' +
+      '盘中摸到涨停价就挂涨停价买，收盘封住就拿、没封住就卖。它在「策略」里，有前向记录、9:25 的提醒和下一个交易日的名单。</p></section>';
     if (s.results && s.results.rows) {
       html += '<section class="card"><h2>回测对照<small>2008 起，扣成本，1 倍</small></h2><div class="scroll"><table class="tbl"><thead><tr>' + s.results.head.map(function (h, i) { return '<th class="' + (i ? 'n' : '') + '">' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
         s.results.rows.map(function (r) { return '<tr>' + r.map(function (c, i) { return '<td class="' + (i ? 'n num' : 'wrap') + '">' + esc(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' +
@@ -879,15 +896,231 @@
     return html;
   }
 
+  // ------------------------------------------------------------------ 「今天」：交易日时间轴（2026-10-21 重新设计的首页）
+  var F_IDS = ['F1', 'F2'];
+  // 预览用：网址带 ?now=2026-10-22T10:05 就当成北京时间那一刻（只影响「今天」的时间轴，方便在电脑上核对各个时段的样子）
+  var NOW_FAKE = (function () { var m = /[?&]now=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/.exec(location.search || ''); return m ? Date.parse(m[1] + ':00Z') : null; })();
+  function bjNow() { return new Date(NOW_FAKE != null && isFinite(NOW_FAKE) ? NOW_FAKE : Date.now() + 8 * 3600000); }   // 取 getUTC* 就是北京时间
+  function bjToday() { return bjNow().toISOString().slice(0, 10); }
+  function bjMin() { var t = bjNow(); return t.getUTCHours() * 60 + t.getUTCMinutes(); }
+  function hm(m) { return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2); }
+  function wan(x) { return isNum(x) ? (x / 1e4).toFixed(1) + ' 万' : '—'; }
+  function ym(d) { return String(d || '').slice(0, 7); }
+  function fDefs(s) { return s.f && !s.f.error && s.f.defs ? s.f.defs : []; }
+  function fDef(s, id) {
+    var ds = fDefs(s), want = id || state.f;
+    for (var i = 0; i < ds.length; i++) if (ds[i].id === want) return ds[i];
+    return id ? null : (ds[0] || null);
+  }
+  function fSwitch(s) {
+    var ds = fDefs(s), cur = fDef(s);
+    if (ds.length < 2 || !cur) return '';
+    return '<div class="seg" role="group" aria-label="按哪个组合排">' + ds.map(function (d) {
+      return '<button data-f="' + esc(d.id) + '" aria-pressed="' + (d.id === cur.id) + '">' + esc(d.id) + '</button>';
+    }).join('') + '</div>';
+  }
+  function allocBar(s, d, noName) {
+    var f = s.f;
+    if (!f) return '<p class="empty">还没有策略 F 的数据：台式机每个交易日 19:30 算一次，算完会推上来。</p>';
+    if (f.error) return '<div class="banner warn">策略 F 读不出来：' + esc(f.error) + '</div>';
+    if (!d) return '';
+    var W = 300, x = Math.round(W * d.w_e6);
+    return '<div class="alloc">' +
+      '<div class="alloc-row"><span>总资产 <b class="num">' + wan(f.equity) + '</b></span>' + (noName ? '' : '<span class="muted small">' + esc(d.name || d.id) + '</span>') + '</div>' +
+      '<svg class="alloc-bar" viewBox="0 0 ' + W + ' 8" preserveAspectRatio="none" aria-hidden="true"><rect class="a-e6" x="0" y="0" width="' + x + '" height="8"/>' +
+      '<rect class="a-d4" x="' + (x + 2) + '" y="0" width="' + Math.max(0, W - x - 2) + '" height="8"/></svg>' +
+      '<div class="alloc-row small"><span><i class="sw sw-e6"></i>E6 那份 ' + pct(d.w_e6, 0) + ' <b class="num">' + wan(d.e6_amount) + '</b></span>' +
+      '<span><i class="sw sw-d4"></i>D4 那份 ' + pct(d.w_d4, 0) + ' <b class="num">' + wan(d.d4_amount) + '</b></span></div></div>';
+  }
+  function e6HoldNow(s) {
+    // E6 那份现在拿着的票：今天 14:50 查过就用那次的；否则 9:25 记下的；否则 F 的前向记录（截至最近收盘）
+    var lv = (s.e6 || {}).live || {}, day = s.plan_day;
+    if (lv.day === day && lv.close) return (lv.close.holdings || [])[0] || null;
+    if (lv.day === day && lv.open && lv.open.pick) return lv.open.holding || null;
+    return (s.f && s.f.forward && s.f.forward.e6_holding) || null;
+  }
+  function names4(rows) {
+    return rows.slice(0, 4).map(function (r) { return esc(r.name || short(r.code)); }).join('、') + (rows.length > 4 ? ' 等 ' + rows.length + ' 只' : '');
+  }
+  function todayItems(s, d) {
+    var day = s.plan_day, lv = (s.e6 || {}).live || {}, live = lv.day === day;
+    var plan = ((s.holdings || {}).plans || {})[d ? d.id : 'D4'] || {};
+    var amt = d ? '约 ' + wan(d.e6_amount) + '（E6 那份）' : '全部可用资金';
+    var rb = s.f && !s.f.error ? s.f.rebalance : null, items = [];
+    if (d && rb && rb.on_plan_day) {
+      items.push({ m: 540, t: '开盘前', tone: 'f', act: true, title: '月初调仓：两份调回 ' + pct(d.w_e6, 0) + ' : ' + pct(d.w_d4, 0),
+        body: 'E6 那份定为 <b class="num">' + wan(d.e6_amount) + '</b>，D4 那份 <b class="num">' + wan(d.d4_amount) + '</b>。已有的持仓不用卖，从今天起两边的新仓按新金额算。' });
+    }
+    var pr = lv.prep && lv.prep.day === day ? lv.prep : null;
+    items.push({ m: 520, t: '08:40', tone: 'e6', title: pr ? (pr.error ? 'E6 候选没准备好' : 'E6 候选 ' + esc(pr.n) + ' 只') : 'E6 准备候选',
+      body: pr ? (pr.error ? esc(pr.error) : md(pr.prev) + ' 收盘涨停的主板非 ST 股，9:25 按开盘价排名。') : '台式机自动列出昨天涨停的主板非 ST 股。' });
+    var o = live ? lv.open : null, hold = e6HoldNow(s), it = { m: 565, t: '09:25', tone: 'e6' };
+    if (live && lv.error && !(o && o.pick)) { it.title = 'E6 名单没算出来'; it.body = esc(lv.error); }
+    else if (o && o.pick) {
+      var p = o.pick, lim = isNum(p.lim) ? p.lim.toFixed(2) : '涨停价';
+      it.title = 'E6 第 1 只：' + esc(p.name || short(p.code));
+      if (o.skip) it.body = esc(o.action || '今天不做');
+      else {
+        it.act = true;
+        it.body = '开盘 ' + (isNum(p.gap) ? pctc(p.gap / 100, 2) : '—') + '，昨天 ' + esc(p.streak_y) + ' 板。设一张云条件单：' +
+          '<div class="order kv"><span>股票</span><span>' + esc(p.name || '') + ' <span class="num">' + esc(short(p.code)) + '</span></span>' +
+          '<span>触发</span><span class="num">最新价 ≥ ' + lim + '</span><span>委托价</span><span class="num">' + lim + '（涨停价）</span>' +
+          '<span>金额</span><span class="num">' + amt + '</span><span>有效期</span><span>当天</span></div>' +
+          '<span class="small">没摸到涨停价就不会买，今天 E6 就没有交易。</span>';
+      }
+    } else {
+      it.title = 'E6 第 1 只';
+      it.body = hold ? 'E6 那份还拿着 ' + esc(hold.name || short(hold.code)) + '，今天的信号跳过。' :
+        '9:25:30 左右出来。第 1 只开盘就涨停的当天不做；没涨停就设云条件单，金额' + amt + '。';
+    }
+    items.push(it);
+    var sells = plan.sells || [], buys = plan.buys || [];
+    var openSells = sells.filter(function (r) { return r.status === 'overdue'; }), closeSells = sells.filter(function (r) { return r.status !== 'overdue'; });
+    var b = { m: 570, t: '09:30', tone: 'd4' };
+    if (plan.error) { b.title = 'D4 清单没算出来'; b.body = esc(plan.error); }
+    else if (plan.stale) { b.title = 'D4 清单过期了'; b.body = '数据还没更新到最新，先不要照着买。'; }
+    else if (buys.length || openSells.length) {
+      b.act = true;
+      b.title = 'D4 开盘' + (buys.length ? '买 ' + buys.length + ' 只' : '') + (buys.length && openSells.length ? '、' : '') + (openSells.length ? '卖 ' + openSells.length + ' 只' : '');
+      b.body = (buys.length ? '买 ' + names4(buys) + '，合计约 <b class="num">' + money(plan.new_money) + '</b> 元。' : '') +
+        (openSells.length ? '卖（已到期）' + names4(openSells) + '。' : '') + ' <button class="link" data-go="holdings">看清单</button>';
+    } else {
+      b.title = 'D4 开盘不用动';
+      b.body = plan.gate_open ? '闸门开着，但没有要买的（名额满或买不起一手）。' : '闸门没开，不开新仓。';
+    }
+    items.push(b);
+    var c = live ? lv.close : null, e = { m: 890, t: '14:50', tone: 'e6' };
+    if (c) {
+      var hs = c.holdings || [];
+      e.title = hs.length ? 'E6 持仓：' + esc(hs[0].name || short(hs[0].code)) : 'E6 没有持仓';
+      e.body = hs.length ? (hs[0].sealed ? '<span class="tag open">封住</span> ' : '<span class="tag sell">没封住</span> ') + esc(hs[0].action) : '不用卖。';
+      e.act = !!(hs.length && !hs[0].sealed);
+    } else if (hold) {
+      e.title = '看 E6 持仓封没封住';
+      e.body = esc(hold.name || short(hold.code)) + '：14:50 还封在涨停就接着拿（最多 5 天），没封住就收盘前卖。';
+    } else {
+      e.title = 'E6 持仓';
+      e.body = '现在没有持仓。早上买到的当天不卖，下一个交易日 14:50 再看。';
+    }
+    items.push(e);
+    if (closeSells.length) items.push({ m: 895, t: '14:55', tone: 'd4', act: true, title: 'D4 收盘前卖 ' + closeSells.length + ' 只', body: names4(closeSells) + '：拿满 20 个交易日，收盘前卖出。' });
+    items.push({ m: 1140, t: '19:00', tone: 'sys', title: '收盘后更新', body: '记 E6 和 F 的前向记录，推上下一个交易日的计划。' });
+    return items.sort(function (x, y) { return x.m - y.m; });
+  }
+  function nowLine(mode, now) {
+    var label = mode === 'stale' ? '这份计划已经过期' : mode === 'ahead' ? '现在，下面是下一个交易日的安排' : now >= 900 ? '现在，已收盘' : now < 555 ? '现在，还没开盘' : '现在';
+    return '<li class="tl-now"><time class="num">' + (mode === 'stale' ? '' : hm(now)) + '</time><span>' + label + '</span></li>';
+  }
+  function viewToday(s) {
+    var d = fDef(s), day = s.plan_day, today = bjToday(), now = bjMin();
+    var mode = day === today ? 'today' : day > today ? 'ahead' : 'stale';
+    var html = '<section class="hero"><div class="hero-day"><span class="hero-k">' + (mode === 'today' ? '今天' : mode === 'ahead' ? '下一个交易日' : '计划日') + '</span>' +
+      '<b class="num">' + esc(md(day)) + '</b><span>' + esc(wd(day)) + '</span></div>' + fSwitch(s) + '</section>';
+    html += allocBar(s, d);
+    var items = todayItems(s, d), k = -1;
+    if (mode === 'today') items.forEach(function (x, i) { if (now >= x.m) k = i; });
+    html += '<ol class="tl">';
+    if (k < 0) html += nowLine(mode, now);
+    items.forEach(function (x, i) {
+      var cls = mode !== 'today' ? 'is-next' : i < k ? 'is-past' : i === k ? 'is-now' : 'is-next';
+      html += '<li class="tl-i ' + cls + (x.act ? ' is-act' : '') + ' t-' + x.tone + '"><time class="num">' + esc(x.t) + '</time><div class="tl-b"><b>' + x.title + '</b>' +
+        (x.body ? '<div class="tl-d">' + x.body + '</div>' : '') + '</div></li>';
+      if (i === k) html += nowLine(mode, now);
+    });
+    html += '</ol>';
+    var rb = s.f && !s.f.error ? s.f.rebalance : null;
+    html += '<p class="small muted foot">' + (rb && !rb.on_plan_day && d ? '下次调仓 ' + esc(md(rb.next)) + '（' + esc(wd(rb.next)) + '），两份调回 ' + pct(d.w_e6, 0) + ' : ' + pct(d.w_d4, 0) + '。' : '') +
+      '只提醒，不下单；金额按电脑上填的账户总资产算。' + (d ? ' <button class="link" data-open="' + esc(d.id) + '">' + esc(d.id) + ' 的规则和回测</button>' : '') + '</p>';
+    return html;
+  }
+
+  // ------------------------------------------------------------------ 「策略」：列表 + 详情
+  var KIND_DESC = { fusion: 'A、C、B 三层恐慌合一，共用一笔钱', fusion1: 'D 换成离 60 日高点回撤最深的优先', fusion2: 'D1 加近高点过滤', fusion3: 'D2 改成 C 层优先',
+                    fusion4: 'D3 加 B 层行业黑名单', market: '全市场恐慌时买跌破布林下轨后收复的', industry: '某个行业恐慌时买这个行业里的' };
+  function sRow(id, title, sub, right, right2) {
+    return '<button class="row" data-open="' + esc(id) + '"><span class="r-t"><b>' + title + '</b>' + (sub ? '<span>' + sub + '</span>' : '') + '</span>' +
+      '<span class="r-v">' + (right || '') + (right2 ? '<span>' + right2 + '</span>' : '') + '</span><span class="chev" aria-hidden="true">›</span></button>';
+  }
+  function sGroup(title, rows, empty) {
+    return '<section class="group">' + (title ? '<h2>' + esc(title) + '</h2>' : '') + '<div class="list">' + (rows.length ? rows.join('') : '<p class="empty pad">' + esc(empty || '') + '</p>') + '</div></section>';
+  }
+  function viewStrategies(s) {
+    var html = sGroup('组合', fDefs(s).map(function (d) {
+      var t = (d.backtest || {}).total || {};
+      return sRow(d.id, esc(d.name || d.id), '每月第一个开市日调回比例', '回测年化 ' + pct(t.cagr, 0), '最大回撤 ' + pct(t.mdd, 0));
+    }), s.f && s.f.error ? '策略 F 读不出来：' + s.f.error : '还没有策略 F 的数据（台式机每个交易日 19:30 算）。');
+    html += sGroup('抄底', s.kinds.map(function (k) {
+      var sg = s.signals[k] || {}, fw = s.forward[k] || {}, c = fw.portfolio && fw.portfolio.curve, last = c ? c.equity.filter(isNum).slice(-1)[0] : null;
+      return sRow(k, esc(s.labels[k] || k), esc(KIND_DESC[k] || ''),
+        sg.error ? '<span class="tag off">没算出来</span>' : sg.gate_open ? '<span class="tag open">有信号</span>' : '<span class="tag off">没信号</span>',
+        isNum(last) ? '前向 ' + pct(last - 1, 1, true) : '');
+    }));
+    var e = s.e6 || {}, sm = (e.summary || []).filter(function (r) { return r.rule === 'E6'; })[0] || {};
+    html += sGroup('打板', [sRow('e6', 'E6 龙头扫板', '打分第 1、盘中摸板就买、封住就拿', e.error ? '<span class="tag off">读不出来</span>' : '', '前向做了 ' + esc(sm.n_done || 0) + ' 次')]);
+    html += sGroup('', [sRow('guide', '说明', '怎么看这个页面、每个策略是什么', '', '')]);
+    return html;
+  }
+  function viewF(s, id) {
+    var f = s.f;
+    if (!f || f.error) return '<section class="card"><h2>' + esc(id) + '</h2><p class="empty">' + (f && f.error ? '读不出来：' + esc(f.error) : '还没有策略 F 的数据：台式机每个交易日 19:30 算一次。') + '</p></section>';
+    var d = fDef(s, id);
+    if (!d) return '<p class="empty">没有 ' + esc(id) + '。</p>';
+    var bt = d.backtest || {}, t = bt.total || {}, rb = f.rebalance || {}, fb = f.backtest || {};
+    var html = '<section class="card"><h2>' + esc(d.name) + '</h2>' + allocBar(s, d, true) +
+      '<ul class="plain small"><li><b>E6 那份</b>：照 E6 全仓一只票。9:25 打分第 1 开盘没涨停就设云条件单，摸到涨停价按涨停价买，金额用这一份；收盘封住就拿，没封住当天卖，最多 5 天。</li>' +
+      '<li><b>D4 那份</b>：照 D4 的规则，只是每只的权重按这一份的钱算；买卖清单在「持仓」页选 ' + esc(d.id) + '。</li>' +
+      '<li><b>调仓</b>：' + esc(rb.rule || '每月第一个开市日') + '把两份调回 ' + pct(d.w_e6, 0) + ' : ' + pct(d.w_d4, 0) + '，下次 ' + esc(md(rb.next)) + '（' + esc(wd(rb.next)) + '）。已有持仓不用卖，新开仓按新的金额。</li></ul></section>';
+    var fw = f.forward || {}, ser = (fw.series || {})[id] || [];
+    html += '<section class="card"><h2>前向记录<small>' + esc(md(fw.start)) + ' 收盘为起点</small></h2>';
+    if ((fw.dates || []).length >= 2 && ser.length >= 2) {
+      html += '<div class="tiles"><div class="tile"><span>累计</span><b>' + pctc(ser[ser.length - 1] - 1, 1) + '</b></div><div class="tile"><span>最大回撤</span><b>' + pctc(maxDrawdown(ser), 1) + '</b></div></div>' +
+        chart(ser, fw.dates.map(md), { base: 1, label: id + ' 前向记录', h: 120 });
+    } else {
+      html += '<p class="empty">' + esc(fw.note || '从下一个交易日起记录。') + '</p>';
+    }
+    html += '<p class="small muted">E6 那份用 E6 的前向记录（全仓一只票，数据到 ' + esc(md(fw.e6_data_date)) + '），D4 那份用 D4 的前向组合（' + esc(md(fw.d4_start)) + ' 起）。每个交易日 19:30 记一次。</p></section>';
+    html += '<section class="card"><h2>回测<small>' + esc(ym(fb.first)) + ' 至 ' + esc(ym(fb.last)) + '，对数刻度</small></h2><div class="tiles">' +
+      '<div class="tile"><span>年化</span><b>' + pctc(t.cagr, 1) + '</b></div><div class="tile"><span>最大回撤</span><b>' + pctc(t.mdd, 1) + '</b></div>' +
+      '<div class="tile"><span>年化 ÷ 回撤</span><b class="num">' + num(t.calmar, 2) + '</b></div><div class="tile"><span>最长没创新高</span><b class="num">' + esc(t.uw_days == null ? '—' : t.uw_days) + ' 天</b></div></div>' +
+      chart(bt.equity || [], (bt.dates || []).map(ym), { base: 1, log: true, label: id + ' 回测', h: 150, fmt: function (v) { return v >= 1e4 ? (v / 1e4).toFixed(1) + '万' : xmult(v); },
+        tips: (bt.dates || []).map(function (x, i) { return ym(x) + '：' + xmult(bt.equity[i]); }) });
+    var c3 = function (x) { x = x || {}; return pctc(x.cagr, 0) + '<span class="nm">回撤 ' + pct(x.mdd, 0) + '</span>'; };
+    html += '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th class="n">' + esc(id) + '</th><th class="n">E6 单独</th><th class="n">D4 单独</th></tr></thead><tbody>' +
+      (bt.segs || []).map(function (g) { return '<tr><td class="num">' + esc(g.label) + '</td><td class="n">' + c3(g.f) + '</td><td class="n">' + c3(g.e6) + '</td><td class="n">' + c3(g.d4) + '</td></tr>'; }).join('') +
+      '<tr><td>全程</td><td class="n">' + c3(t) + '</td><td class="n">' + c3((fb.E6 || {}).total) + '</td><td class="n">' + c3((fb.D4 || {}).total) + '</td></tr></tbody></table></div>';
+    var ys = bt.years || [];
+    if (ys.length) {
+      html += '<h3 class="sub">每年</h3><div class="scroll"><table class="tbl"><thead><tr><th>年</th><th class="n">' + esc(id) + '</th><th class="n">E6</th><th class="n">D4</th></tr></thead><tbody>' +
+        ys.slice().reverse().map(function (y) { return '<tr><td class="num">' + esc(y.year) + '</td><td class="n">' + pctc(y.f, 1) + '</td><td class="n">' + pctc(y.e6, 1) + '</td><td class="n">' + pctc(y.d4, 1) + '</td></tr>'; }).join('') +
+        '</tbody></table></div>';
+    }
+    html += '<p class="small muted">' + esc(f.note || '') + ' 两边每天涨跌的相关系数 ' + num(fb.corr_daily, 2) + '。最长没创新高按交易日数。</p></section>';
+    html += '<section class="card"><h2>组成</h2><p class="small">两份各自的信号、持仓和前向记录：</p><div class="btn-row"><button class="btn" data-open="e6">E6 龙头扫板</button><button class="btn" data-open="fusion4">策略 D4</button></div></section>';
+    return html;
+  }
+  function detailTitle(s, id) {
+    if (F_IDS.indexOf(id) >= 0) return id;
+    if (id === 'e6') return 'E6 龙头扫板';
+    if (id === 'guide') return '说明';
+    return (s.labels && s.labels[id]) || id;
+  }
+  function viewDetail(s, id) {
+    if (F_IDS.indexOf(id) >= 0) return viewF(s, id);
+    if (id === 'e6') return viewE6(s);
+    if (id === 'guide') return viewGuide(s);
+    if (s.kinds.indexOf(id) >= 0) return '<p class="lead">' + esc(KIND_DESC[id] || '') + '</p>' + viewSignal(s, id) + viewForward(s, id);
+    state.detail = null;
+    return viewStrategies(s);
+  }
+
   // ------------------------------------------------------------------ 外壳
   var TABS = [
-    ['overview', '概览', '<path d="M3 12a9 9 0 0 1 18 0"/><path d="M12 12l4-4"/><circle cx="12" cy="12" r="1.2"/><path d="M5 19h14"/>'],
-    ['signal', '信号','<path d="M13 3 5 13h6l-1 8 8-10h-6z"/>'],
-    ['forward', '前向','<path d="M3 17l5-5 4 4 8-9"/><path d="M3 21h18"/>'],
-    ['holdings', '持仓','<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>'],
-    ['e6', 'E6', '<path d="M4 20h16"/><path d="M6 16l4-5 3 3 5-8"/><path d="M15 6h3v3"/>'],
-    ['guide', '说明', '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r=".6"/>']
+    ['today', '今天', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+    ['strategies', '策略', '<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 13l9 5 9-5"/>'],
+    ['holdings', '持仓', '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>'],
+    ['market', '市场', '<path d="M3 12a9 9 0 0 1 18 0"/><path d="M12 12l4-4"/><circle cx="12" cy="12" r="1.2"/><path d="M5 19h14"/>']
   ];
+  var OLD_TAB = { overview: 'market', signal: 'strategies', forward: 'strategies', e6: 'strategies', guide: 'strategies' };
 
   function render() {
     if (state.phase === 'loading') { app.innerHTML = '<div class="center">正在下载并解密…</div>'; return; }
@@ -907,15 +1140,24 @@
       return bind();
     }
     var s = state.snap;
-    var body = state.tab === 'overview' ? viewOverview(s) : state.tab === 'signal' ? viewSignal(s) : state.tab === 'forward' ? viewForward(s) : state.tab === 'holdings' ? viewHoldings(s) : state.tab === 'e6' ? viewE6(s) : viewGuide(s);
-    var fr = freshness(s).map(function (b) { return '<div class="banner ' + b.k + '">' + b.t + '</div>'; }).join('');
+    if (OLD_TAB[state.tab]) state.tab = OLD_TAB[state.tab];
+    if (!TABS.some(function (t) { return t[0] === state.tab; })) state.tab = 'today';
+    var inDetail = state.tab === 'strategies' && !!state.detail;
+    var body = state.tab === 'today' ? viewToday(s) : state.tab === 'strategies' ? (inDetail ? viewDetail(s, state.detail) : viewStrategies(s)) :
+      state.tab === 'holdings' ? viewHoldings(s) : viewOverview(s);
+    inDetail = state.tab === 'strategies' && !!state.detail;          // viewDetail 遇到不认识的会退回列表
+    var fr = freshness(s).filter(function (b) { return b.k !== 'ok' || state.tab !== 'today'; })     // 「今天」的抬头已经写了日期，绿色那条不重复
+      .map(function (b) { return '<div class="banner ' + b.k + '">' + b.t + '</div>'; }).join('');
     // 图表 tip 覆盖层
     var tipHtml = '';
     if (state.chartTip) {
       tipHtml = '<div id="nn-tip">' + esc(state.chartTip.text) + '</div>';     // 位置在下面用 CSSOM 设，CSP 不放行行内 style
     }
-    app.innerHTML = '<header class="top"><div><h1>牛牛策略</h1><div class="sub">快照 ' + esc(dt(s.generated_at)) + ' · 纸面记录</div></div><button class="btn" id="refresh">刷新</button></header>' +
-      '<main>' + (state.tab === 'guide' ? '' : fr) + body + tipHtml + '</main>' + stockSheet(s) +
+    var head = inDetail ?
+      '<header class="top detail"><button class="btn back" data-back="1" aria-label="回到策略列表">‹ 策略</button><h1>' + esc(detailTitle(s, state.detail)) + '</h1><button class="btn" id="refresh">刷新</button></header>' :
+      '<header class="top"><div><h1>' + esc(({ today: '牛牛策略', strategies: '策略', holdings: '持仓', market: '市场' })[state.tab]) + '</h1><div class="sub">快照 ' + esc(dt(s.generated_at)) + '，只提醒不下单</div></div><button class="btn" id="refresh">刷新</button></header>';
+    app.innerHTML = head +
+      '<main class="tab-' + esc(state.tab) + '">' + (inDetail && state.detail === 'guide' ? '' : fr) + body + tipHtml + '</main>' + stockSheet(s) +
       '<nav class="tabs" aria-label="页面">' + TABS.map(function (t) {
         return '<button data-tab="' + t[0] + '"' + (t[0] === state.tab ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
       }).join('') + '</nav>';
@@ -928,7 +1170,8 @@
     bind();
   }
 
-  function savePref() { ls(false, LS_PREF, JSON.stringify({ tab: state.tab, pick: state.pick, search: state.search, forwardFilter: state.forwardFilter })); }
+  function savePref() { ls(false, LS_PREF, JSON.stringify({ tab: state.tab, pick: state.pick, search: state.search, forwardFilter: state.forwardFilter, f: state.f, detail: state.detail })); }
+  function keepScroll(fn) { var y = window.scrollY; fn(); render(); window.scrollTo(0, y); }
 
   function bind() {
     var q = function (sel) { return app.querySelector(sel); };
@@ -959,9 +1202,27 @@
       b.addEventListener('click', function () { state.forwardFilter = b.getAttribute('data-ff'); savePref(); render(); });
     });
 
-    // 页签切换
+    // 页签切换（在策略详情里再点「策略」= 回到列表）
     Array.prototype.forEach.call(app.querySelectorAll('[data-tab]'), function (b) {
-      b.addEventListener('click', function () { state.tab = b.getAttribute('data-tab'); savePref(); render(); window.scrollTo(0, 0); });
+      b.addEventListener('click', function () {
+        var t = b.getAttribute('data-tab');
+        if (t === 'strategies' && state.tab === 'strategies') state.detail = null;
+        state.tab = t; savePref(); render(); window.scrollTo(0, 0);
+      });
+    });
+    // F1 / F2 切换：「今天」和「持仓」跟着一起换
+    Array.prototype.forEach.call(app.querySelectorAll('[data-f]'), function (b) {
+      b.addEventListener('click', function () { keepScroll(function () { state.f = b.getAttribute('data-f'); state.pick.holdings = state.f; savePref(); }); });
+    });
+    // 打开某个策略的详情 / 回到列表 / 跳到别的页
+    Array.prototype.forEach.call(app.querySelectorAll('[data-open]'), function (b) {
+      b.addEventListener('click', function () { state.tab = 'strategies'; state.detail = b.getAttribute('data-open'); savePref(); render(); window.scrollTo(0, 0); });
+    });
+    Array.prototype.forEach.call(app.querySelectorAll('[data-back]'), function (b) {
+      b.addEventListener('click', function () { state.detail = null; savePref(); render(); window.scrollTo(0, 0); });
+    });
+    Array.prototype.forEach.call(app.querySelectorAll('[data-go]'), function (b) {
+      b.addEventListener('click', function () { state.tab = b.getAttribute('data-go'); state.detail = null; savePref(); render(); window.scrollTo(0, 0); });
     });
 
     // 搜索输入
@@ -1058,12 +1319,20 @@
     var pref = JSON.parse(ls(true, LS_PREF) || 'null');
     if (pref && typeof pref === 'object') {
       if (pref.pick && typeof pref.pick === 'object') ['signal', 'forward', 'holdings'].forEach(function (k) { if (typeof pref.pick[k] === 'string') pick[k] = pref.pick[k]; });
-      if (pref.tab) state.tab = pref.tab;
+      if (pref.tab) state.tab = OLD_TAB[pref.tab] || pref.tab;       // 老版本的页签（概览/信号/前向/E6/说明）换成新的
       if (pref.search && typeof pref.search === 'object') state.search = pref.search;
       if (pref.forwardFilter) state.forwardFilter = pref.forwardFilter;
+      if (F_IDS.indexOf(pref.f) >= 0) state.f = pref.f;
+      if (typeof pref.detail === 'string') state.detail = pref.detail;
+      if (pref.tab === 'e6') state.detail = 'e6';
     }
   } catch (e) { /* 偏好坏了就用默认 */ }
   state.pick = pick;
+
+  // 「今天」的“现在”那条线每分钟挪一次（只在看「今天」、页面在前台、没打开个股时重画）
+  setInterval(function () {
+    if (state.phase === 'ready' && state.tab === 'today' && !state.stock && !state.chartTip && !document.hidden) keepScroll(function () {});
+  }, 60000);
 
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden && state.phase === 'ready' && Date.now() - state.loadedAt > 10 * 60 * 1000) load();

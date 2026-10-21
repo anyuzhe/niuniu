@@ -131,7 +131,7 @@ class ViewTests(unittest.TestCase):
         json.dumps(view, allow_nan=False)
         self.assertEqual(view['equity_wan'], 50.0)
         self.assertEqual(view['n_holdings'], 1)
-        self.assertEqual(list(view['plans']), ['D', 'D1', 'D2', 'D3', 'D4'])
+        self.assertEqual(list(view['plans']), ['D', 'D1', 'D2', 'D3', 'D4', 'F1', 'F2'])
         self.assertEqual(view['holdings'][0]['code'], 'sh.600000')
         d = view['plans']['D']
         self.assertTrue(d['gate_open'])
@@ -139,6 +139,13 @@ class ViewTests(unittest.TestCase):
         self.assertIn('plan_day', d)
         self.assertFalse(d['stale'])
         self.assertNotIn('holdings', d)               # 持仓明细只放一份，不重复五遍
+        f1, f2, d4 = view['plans']['F1'], view['plans']['F2'], view['plans']['D4']
+        self.assertEqual(f1['f'], dict(w_e6=0.3, w_d4=0.7, e6_amount=150000.0, d4_amount=350000.0))   # D4 那份 = 50 万 × 70%
+        self.assertEqual(f2['f']['d4_amount'], 250000.0)
+        self.assertIn('D4 那份', f1['notes'][0])
+        self.assertTrue(f1['buys'])
+        self.assertLessEqual(sum(r['amount'] for r in f1['buys']), sum(r['amount'] for r in d4['buys']) + 1)
+        self.assertNotIn('f', d4)
 
     def test_holdings_view_survives_one_variant_failing(self):
         panel, inp = fixture()
@@ -271,13 +278,84 @@ class E6ViewTests(unittest.TestCase):
             self.assertEqual(me._e6_view()['fwd_start'], '2026-10-20')
 
 
+def f_doc(**kw):
+    bt = dict(total=dict(cagr=0.471, mdd=-0.311, calmar=1.51, mult=600.0, uw_days=402), segs=[], years=[dict(year=2025, f=0.5, e6=1.0, d4=0.2)],
+              dates=['2010-01-29', '2010-02-26'], equity=[1.0, 1.02])
+    doc = dict(format=me.F_FORMAT, generated_at='2026-10-21T19:30:00+08:00', rule='r', note='n',
+               defs=[dict(id='F1', w_e6=0.3, name='F1 · 30% E6 + 70% D4'), dict(id='F2', w_e6=0.5, name='F2 · 50% E6 + 50% D4'), dict(id='F9', w_e6=0.9)],
+               backtest=dict(first='2010-01-04', last='2026-10-19', n_days=4075, corr_daily=0.08, F1=bt, F2=bt, E6=dict(total={}), D4=dict(total={})),
+               forward=dict(start='2026-10-21', n=0, dates=[], series={}, note='x', extra='dropped'))
+    doc.update(kw)
+    return doc
+
+
+class FViewTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.p = Path(self.tmp.name) / 'f_combo.json'
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, value):
+        self.p.write_text(value if isinstance(value, str) else json.dumps(value, ensure_ascii=False), encoding='utf-8')
+
+    @staticmethod
+    def snap(plan_day='2026-10-22', data_date='2026-10-21', holdings=None):
+        return dict(plan_day=plan_day, data_date=data_date, holdings=holdings if holdings is not None else dict(equity_wan=100.0))
+
+    def test_missing_file_is_none(self):
+        self.assertIsNone(me._f_view(self.snap(), self.p))
+
+    def test_amounts_from_total_assets_and_unknown_ids_dropped(self):
+        self.write(f_doc())
+        v = me._f_view(self.snap(), self.p)
+        json.dumps(v, allow_nan=False)
+        self.assertEqual([d['id'] for d in v['defs']], ['F1', 'F2'])
+        f1, f2 = v['defs']
+        self.assertEqual((f1['e6_amount'], f1['d4_amount'], f1['w_d4']), (300000.0, 700000.0, 0.7))
+        self.assertEqual((f2['e6_amount'], f2['d4_amount']), (500000.0, 500000.0))
+        self.assertEqual(f1['backtest']['total']['calmar'], 1.51)
+        self.assertEqual(v['rebalance'], dict(on_plan_day=False, next='2026-11-02', rule='每月第一个开市日'))
+        self.assertNotIn('extra', v['forward'])
+
+    def test_first_open_day_of_month_is_a_rebalance_day(self):
+        self.write(f_doc())
+        v = me._f_view(self.snap(plan_day='2026-11-02', data_date='2026-10-30'), self.p)
+        self.assertEqual(v['rebalance']['on_plan_day'], True)
+        self.assertEqual(v['rebalance']['next'], '2026-11-02')
+        v = me._f_view(self.snap(plan_day='2026-12-30', data_date='2026-12-29'), self.p)
+        self.assertEqual(v['rebalance']['next'], '2027-01-04')                  # 跨年：跳过 1 月 1 日和周末
+
+    def test_holdings_error_gives_no_amounts(self):
+        self.write(f_doc())
+        v = me._f_view(self.snap(holdings=dict(error='x')), self.p)
+        self.assertIsNone(v['equity'])
+        self.assertIsNone(v['defs'][0]['e6_amount'])
+
+    def test_bad_json_and_unknown_format_give_error(self):
+        self.write('{bad')
+        self.assertIn('error', me._f_view(self.snap(), self.p))
+        self.write(f_doc(format='other'))
+        self.assertEqual(me._f_view(self.snap(), self.p), {'error': '策略 F 数据的格式不认识'})
+
+    def test_e6_prep_is_attached_to_live(self):
+        d = Path(self.tmp.name)
+        (d / me.E6_LIVE_NAME).write_text(json.dumps(dict(format=me.E6_LIVE_FORMAT, day='2026-10-22', open=None, close=None, error=None)), encoding='utf-8')
+        self.assertIsNone(me._e6_live(d / me.E6_LIVE_NAME)['prep'])
+        (d / me.E6_CANDS_NAME).write_text(json.dumps(dict(format='niuniu-e6-live-cands-v1', day='2026-10-22', prev='2026-10-21',
+                                                          cands=[{'code': 'sz.000001'}] * 3, error=None)), encoding='utf-8')
+        self.assertEqual(me._e6_live(d / me.E6_LIVE_NAME)['prep'], dict(day='2026-10-22', prev='2026-10-21', generated_at=None, n=3, error=None))
+
+
 class SnapshotAndPublishTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.out = Path(self.tmp.name)
         self.panel = make_panel(np.full((60, 8), 10.0))
         self.now = datetime.fromisoformat(self.panel.last_date).replace(hour=20, tzinfo=SH)
-        self.env = mock.patch.dict(os.environ, {'NIUNIU_E6_FORWARD': str(self.out / 'no-e6.json')})     # 不读台式机上真的 E6 记录
+        self.env = mock.patch.dict(os.environ, {'NIUNIU_E6_FORWARD': str(self.out / 'no-e6.json'),       # 不读台式机上真的 E6 记录
+                                                'NIUNIU_F_COMBO': str(self.out / 'no-f.json')})          # 也不读真的策略 F
         self.env.start()
 
     def tearDown(self):
