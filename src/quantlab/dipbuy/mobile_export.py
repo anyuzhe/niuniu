@@ -373,7 +373,7 @@ def _f_view(snap: dict, path=None):
             defs.append(dict(id=fid, kind='e6_filter', name=d.get('name'), rule=d.get('rule'), note=d.get('note'), cond=d.get('cond'),
                              w_e6=1.0, w_d4=0.0, e6_amount=equity, d4_amount=None if equity is None else 0.0,
                              backtest={k: b.get(k) for k in ('first', 'last', 'n_signals', 'n_e6_signals', 'n_trades', 'per_trade', 'win',
-                                                              'total', 'e6_total', 'segs', 'years', 'dates', 'equity')}))
+                                                              'total', 'e6_total', 'segs', 'years', 'dates', 'equity', 'recent')}))
             continue
         if fid not in F_SPLIT:
             continue
@@ -385,7 +385,7 @@ def _f_view(snap: dict, path=None):
     return _clean(dict(generated_at=value.get('generated_at'), rule=value.get('rule'), note=value.get('note'), equity=equity,
                        defs=defs, backtest={k: bt.get(k) for k in ('first', 'last', 'n_days', 'corr_daily', 'E6', 'D4')},
                        forward={k: fw.get(k) for k in ('start', 'e6_data_date', 'd4_start', 'e6_holding', 'f3_holding', 'f3_signals',
-                                                       'f4_holding', 'f4_signals', 'n', 'note', 'dates', 'series')},
+                                                       'f4_holding', 'f4_signals', 'z_now', 'n', 'note', 'dates', 'series')},
                        rebalance=dict(on_plan_day=on_plan_day, next=nxt.isoformat(), rule='每月第一个开市日')))
 
 

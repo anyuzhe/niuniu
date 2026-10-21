@@ -338,11 +338,13 @@ class FViewTests(unittest.TestCase):
         self.assertEqual(v['forward']['f3_signals'][0]['ok'], True)
 
     def test_f4_is_also_an_e6_filter(self):
-        b4 = dict(total=dict(cagr=0.854, mdd=-0.533, calmar=1.60), n_signals=512, segs=[], years=[], dates=['2010-01-29'], equity=[1.0])
+        b4 = dict(total=dict(cagr=0.854, mdd=-0.533, calmar=1.60), n_signals=512, segs=[], years=[], dates=['2010-01-29'], equity=[1.0],
+                  recent=[dict(date='2026-07-09', code='sh.603000', name='x', ret=0.059, z=-0.79)])
         doc = f_doc(defs=f_doc()['defs'] + [dict(id='F3', kind='e6_filter', w_e6=1.0, name='F3 · x', cond=dict(max_other=0, z_lo=-0.4)),
                                              dict(id='F4', kind='e6_filter', w_e6=1.0, name='F4 · y', rule='r4', note='n4', cond=dict(z_lo=-0.4, z_hi=0.6))])
         doc['backtest']['F4'] = b4
-        doc['forward'].update(f4_holding=dict(code='sh.600001', buy='2026-10-22'), f4_signals=[dict(date='2026-10-22', ok=False, reasons=['z'])])
+        doc['forward'].update(f4_holding=dict(code='sh.600001', buy='2026-10-22'), f4_signals=[dict(date='2026-10-22', ok=False, reasons=['z'], taken=False)],
+                              z_now=dict(date='2026-10-21', z=-0.7656, calm=False))
         self.write(doc)
         v = me._f_view(self.snap(), self.p)
         json.dumps(v, allow_nan=False)
@@ -353,6 +355,8 @@ class FViewTests(unittest.TestCase):
         self.assertEqual(f4['backtest']['n_signals'], 512)
         self.assertEqual(v['forward']['f4_holding']['code'], 'sh.600001')
         self.assertEqual(v['forward']['f4_signals'][0]['reasons'], ['z'])
+        self.assertEqual(f4['backtest']['recent'][0]['date'], '2026-07-09')        # 回测里最近做过的几笔
+        self.assertEqual(v['forward']['z_now'], dict(date='2026-10-21', z=-0.7656, calm=False))      # 下一个交易日的大盘条件
 
     def test_first_open_day_of_month_is_a_rebalance_day(self):
         self.write(f_doc())

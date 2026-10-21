@@ -1184,21 +1184,49 @@
     return html;
   }
   function viewFilt(s, d) {
-    var f = s.f, bt = d.backtest || {}, t = bt.total || {}, e = bt.e6_total || {}, fw = f.forward || {}, c3 = d.cond || {}, id = esc(d.id), k = fKey(d);
-    var zrule = '前一交易日收盘的大盘 z 不在 ' + num(c3.z_lo, 1) + ' ～ +' + num(c3.z_hi, 1) + ' 之间（偏弱、偏强、过热都可以做）。';
+    var f = s.f, bt = d.backtest || {}, t = bt.total || {}, e = bt.e6_total || {}, fw = f.forward || {}, c3 = d.cond || {}, id = esc(d.id), k = fKey(d), ind = useInd(d);
+    var lo = num(c3.z_lo, 1), hi = '+' + num(c3.z_hi, 1);
     var html = '<section class="card"><h2>' + esc(d.name) + '</h2>' + allocBar(s, d, true) +
-      '<div class="banner warn">' + esc(d.note || '候选，还没检验。') + '</div>' +
-      '<ul class="plain small"><li><b>先看 E6</b>：9:25 打分第 1、开盘没涨停，盘中摸到涨停价按涨停价买；收盘封住就拿，没封住卖，最多 5 天。</li>' +
-      (useInd(d) ? '<li><b>条件 ①</b> 独自涨停：买入前一交易日，它所在的申万一级行业里没有别的票收盘涨停。</li>' +
-        '<li><b>条件 ②</b> 去掉平稳段：' + zrule + '</li>' :
-        '<li><b>条件</b> 去掉平稳段：' + zrule + '不看行业。</li>') +
-      '<li><b>仓位</b>：全部钱全仓一只票；拿着的时候来的信号跳过。没有 D4 那份，也不调仓。</li></ul></section>';
-    var lv = (s.e6 || {}).live || {};
-    if (lv.day === s.plan_day && lv.open && lv.open[k]) {
+      '<div class="banner warn">' + esc(d.note || '候选，还没检验。') + '</div></section>';
+    // 1. 信号怎么来：一步一步写全，不用再去翻 E6 页
+    var steps = [
+      '<b>候选</b>：昨天收盘涨停的主板非 ST 股（上市满 60 个交易日）。',
+      '<b>选第 1 只</b>：9:25 开盘后，按“开盘涨幅名次 + 昨日连板名次”打分，只看第 1 只（就是 E6 的第 1 只），其余都不看。',
+      '<b>第 1 只开盘就涨停</b> → 今天不做（不排队、不追回封）。'];
+    if (ind) steps.push('<b>看行业</b>：第 1 只所在的申万一级行业，昨天还有别的票收盘涨停 → 今天不做。');
+    steps.push('<b>看大盘</b>：昨天收盘的大盘 z 在 ' + lo + ' ～ ' + hi + ' 之间（平稳段）→ 今天不做；低于 ' + lo + '（偏弱）或不低于 ' + hi + '（偏强、过热）才做。' +
+      (ind ? '' : '不看行业。') + 'z 就是「市场」页的大盘恐慌程度。');
+    steps.push('<b>买</b>：上面都过了，就设一张云条件单：最新价 ≥ 涨停价时以涨停价买入，金额 = 全部可用资金，当天有效。盘中没摸到涨停价就不会买，这天没交易。');
+    steps.push('<b>卖</b>：买入后每个交易日 14:50 看一眼：还封在涨停（买一在涨停价、卖一没挂单）就接着拿，没封住就收盘前卖；最多拿 5 天。');
+    steps.push('<b>仓位</b>：全部钱只拿一只票；拿着的时候来的信号跳过，卖出当天来的也跳过（钱收盘才回来）。没有 D4 那份，不调仓。');
+    html += '<section class="card"><h2>信号怎么来<small>每个交易日最多 1 个</small></h2><ol class="steps small">' +
+      steps.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ol></section>';
+    // 2. 今天 / 下一个交易日：现在能不能做
+    var lv = (s.e6 || {}).live || {}, pd = s.plan_day, zn = fw.z_now, hold = filtHold(s, d), live = lv.day === pd && lv.open && lv.open[k];
+    html += '<section class="card"><h2>' + (live ? '今天' : '下一个交易日') + '<small>' + esc(md(pd)) + '（' + esc(wd(pd)) + '）</small></h2>';
+    if (live) {
       var g = lv.open[k], p = lv.open.pick || {};
-      html += '<section class="card"><h2>今天<small>' + esc(md(lv.day)) + ' 9:25 · 第 1 只 ' + esc(p.name || short(p.code)) + '</small></h2>' +
-        '<div class="banner ' + (g.skip || g.error ? 'warn' : 'ok') + '"><b>' + esc(g.action || g.error || '') + '</b></div>' + f3Facts(g) + '</section>';
+      html += '<p class="small muted">9:25 第 1 只：' + esc(p.name || short(p.code)) + (isNum(p.gap) ? '，开盘 ' + pctc(p.gap / 100, 2) : '') + '</p>' +
+        '<div class="banner ' + (g.skip || g.error ? 'warn' : 'ok') + '"><b>' + esc(g.action || g.error || '') + '</b></div>' + f3Facts(g);
+    } else {
+      var zl;
+      if (zn && isNum(zn.z)) {
+        zl = esc(md(zn.date)) + ' 收盘大盘 z <b class="num">' + num(zn.z, 2) + '</b>：' + (zn.calm ?
+          '在平稳段，<b>' + esc(md(pd)) + ' ' + id + ' 不做</b>，9:25 不用看。' :
+          '不在平稳段，大盘这一条满足。9:25 看 E6 第 1 只：开盘没涨停' + (ind ? '、它所在行业昨天没有别的涨停' : '') + '，就设条件单。');
+      } else {
+        zl = '昨收大盘 z 还没算出来（台式机每个交易日 19:30 算完推上来）。';
+      }
+      html += '<p>' + zl + '</p>';
+      if (hold) html += '<p>' + id + ' 现在拿着 <b>' + esc(hold.name || short(hold.code)) + '</b>（' + esc(md(hold.buy)) + ' 买），新信号跳过；14:50 看它封没封住。</p>';
+      var top = ((s.e6 || {}).next || {}).top || [];
+      if (top.length && !hold && !(zn && zn.calm)) {
+        html += '<p class="small muted">昨天连板最高：' + top.slice(0, 5).map(function (r) { return esc(r.name || short(r.code)) + ' ' + esc(r.board) + ' 板'; }).join('、') +
+          '。打分第 1 要 9:25 开盘后才知道。</p>';
+      }
+      html += '<p class="small muted">9:25:30 左右出结果，「今天」页选 ' + id + ' 和 E6 页都会显示。</p>';
     }
+    html += '</section>';
     var ser = (fw.series || {})[d.id] || [], ok = ser.filter(isNum);
     html += '<section class="card"><h2>前向记录<small>' + esc(md(fw.start)) + ' 收盘为起点</small></h2>';
     if ((fw.dates || []).length >= 2 && ok.length >= 2) {
@@ -1209,14 +1237,32 @@
     }
     var sg = fw[k + '_signals'] || [];
     if (sg.length) {
-      html += '<h3 class="sub">最近的 E6 信号，' + id + ' 做不做</h3><div class="scroll"><table class="tbl"><thead><tr><th>日期</th><th>股票</th><th>' + id + '</th><th class="n">E6 结果</th></tr></thead><tbody>' +
+      html += '<h3 class="sub">每天的第 1 只，' + id + ' 怎么做的</h3><div class="scroll"><table class="tbl"><thead><tr><th>日期</th><th>第 1 只</th><th>' + id + '</th><th class="n">收益</th></tr></thead><tbody>' +
         sg.map(function (r) {
-          return '<tr' + rowCode(r.code) + '><td class="num">' + esc(md(r.date)) + '</td><td>' + esc(r.name || short(r.code)) + (r.ind ? '<span class="nm">' + esc(r.ind) + '</span>' : '') + '</td>' +
-            '<td class="wrap small">' + (r.ok ? '<span class="tag open">符合</span>' : '<span class="tag off">不做</span> ' + esc((r.reasons || []).join('；'))) + '</td>' +
-            '<td class="n">' + e6Tag(r) + (isNum(r.ret) ? '<span class="nm">' + pct(r.ret / 100, 1, true) + '</span>' : '') + '</td></tr>';
+          var st = String(r.status || ''), tag, why;
+          if (!r.ok) { tag = '<span class="tag off">不做</span>'; why = (r.reasons || []).join('；'); }
+          else if (r.taken) { tag = '<span class="tag open">做了</span>'; why = st; }
+          else if (/^(持有中|已卖出)/.test(st)) { tag = '<span class="tag off">跳过</span>'; why = '条件满足，但 ' + d.id + ' 当时拿着别的票'; }
+          else { tag = '<span class="tag off">没交易</span>'; why = '条件满足，但' + st; }
+          return '<tr' + rowCode(r.code) + '><td class="num">' + esc(md(r.date)) + '</td><td>' + esc(r.name || short(r.code)) +
+            '<span class="nm">' + (ind && r.ind ? esc(r.ind) + ' · ' : '') + (isNum(r.z) ? 'z ' + num(r.z, 2) : '') + '</span></td>' +
+            '<td class="wrap small">' + tag + ' ' + esc(why) + '</td>' +
+            '<td class="n">' + (r.taken && isNum(r.ret) ? pctc(r.ret / 100, 1) : '—') + '</td></tr>';
         }).join('') + '</tbody></table></div>';
     }
-    html += '<p class="small muted">从 E6 的前向记录里挑出符合' + (useInd(d) ? '两个条件' : '条件') + '的信号，另记一个全仓一只票的账户（数据到 ' + esc(md(fw.e6_data_date)) + '）。E6 开盘就涨停、没摸板的日子，' + id + ' 也没有交易。</p></section>';
+    html += '<p class="small muted">从 E6 的前向记录里挑出符合' + (ind ? '两个条件' : '条件') + '的信号，另记一个全仓一只票的账户（数据到 ' + esc(md(fw.e6_data_date)) + '）。' +
+      '“没交易”= 条件满足，但第 1 只开盘就涨停或盘中没摸到涨停价。</p></section>';
+    // 回测里最近做过的几笔：让信号具体一点
+    var rc = bt.recent || [];
+    if (rc.length) {
+      html += '<section class="card"><h2>回测里最近做过的 ' + rc.length + ' 笔<small>全仓一只票，到 ' + esc(md(bt.last)) + '</small></h2><div class="scroll"><table class="tbl"><thead><tr>' +
+        '<th>买入日</th><th>股票</th><th class="n">昨收 z</th><th class="n">收益</th></tr></thead><tbody>' +
+        rc.map(function (r) {
+          return '<tr' + rowCode(r.code) + '><td class="num">' + esc(String(r.date || '').slice(2)) + '</td><td>' + esc(r.name || short(r.code)) +
+            (ind && r.ind ? '<span class="nm">' + esc(r.ind) + '</span>' : '') + '</td><td class="n num">' + (isNum(r.z) ? num(r.z, 2) : '—') + '</td><td class="n">' + pctc(r.ret, 1) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<p class="small muted">收益按摸板涨停价买到、连板就拿最多 5 天、扣 0.25% 算。日期是 年-月-日。</p></section>';
+    }
     var p100 = function (v, dgt) { return isNum(v) ? pctc(v, dgt == null ? 1 : dgt) : '—'; };
     html += '<section class="card"><h2>回测<small>' + esc(ym(bt.first)) + ' 至 ' + esc(ym(bt.last)) + '，对数刻度</small></h2><div class="tiles">' +
       '<div class="tile"><span>年化</span><b>' + p100(t.cagr) + '</b></div><div class="tile"><span>最大回撤</span><b>' + p100(t.mdd) + '</b></div>' +
