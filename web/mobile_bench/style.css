@@ -215,6 +215,7 @@ header.top .back { padding-left: 8px; }
 .hero-day > span:last-child { font-size: 16px; color: var(--muted); }
 .seg { display: inline-flex; background: var(--soft); border-radius: 10px; padding: 3px; flex: none; }
 .seg button { border: 0; background: transparent; font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 8px; color: var(--muted); min-height: 34px; min-width: 52px; }
+.seg.n3 button { padding: 6px 10px; min-width: 42px; }
 .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); font-weight: 650; box-shadow: 0 1px 2px rgba(15, 23, 32, .12); }
 
 /* 两份钱 */

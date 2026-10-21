@@ -38,6 +38,7 @@ FUSION_VARIANTS = ('D', 'D1', 'D2', 'D3', 'D4')
 KIND_OF = {'D': 'fusion', 'D1': 'fusion1', 'D2': 'fusion2', 'D3': 'fusion3', 'D4': 'fusion4'}
 # 策略 F（组合层，用户 2026-10-21 定名）：E6 一份 + D4 一份，每月第一个开市日调回比例。值 = E6 那份占总资产的比例
 F_SPLIT = {'F1': 0.30, 'F2': 0.50}
+F_FILTER = ('F3',)        # F3（2026-10-21 用户定名，候选）：不是两份钱的组合，是 E6 全仓一只票再加条件；没有 D4 那份、不调仓
 
 
 # ---------------------------------------------------------------- 文件与配置
@@ -331,8 +332,10 @@ def _e6_prep(path):
         return None
     if not isinstance(value, dict) or value.get('format') != 'niuniu-e6-live-cands-v1':
         return None
+    f3 = value.get('f3') if isinstance(value.get('f3'), dict) else None      # F3 的两个条件里按天的那部分：昨收大盘 z 在不在平稳段
     return dict(day=value.get('day'), prev=value.get('prev'), generated_at=value.get('generated_at'),
-                n=len(value.get('cands') or []), error=value.get('error'))
+                n=len(value.get('cands') or []), error=value.get('error'),
+                f3=None if f3 is None else {k: f3.get(k) for k in ('z', 'calm', 'error')})
 
 
 F_FORMAT = 'niuniu-f-combo-v1'
@@ -365,6 +368,13 @@ def _f_view(snap: dict, path=None):
     defs = []
     for d in value.get('defs') or []:
         fid, w = d.get('id'), float(d.get('w_e6') or 0)
+        if fid in F_FILTER:          # F3：全部钱按 E6 加条件做，回测和 E6 全仓对照
+            b = bt.get(fid) or {}
+            defs.append(dict(id=fid, kind='e6_filter', name=d.get('name'), rule=d.get('rule'), note=d.get('note'), cond=d.get('cond'),
+                             w_e6=1.0, w_d4=0.0, e6_amount=equity, d4_amount=None if equity is None else 0.0,
+                             backtest={k: b.get(k) for k in ('first', 'last', 'n_signals', 'n_e6_signals', 'n_trades', 'per_trade', 'win',
+                                                              'total', 'e6_total', 'segs', 'years', 'dates', 'equity')}))
+            continue
         if fid not in F_SPLIT:
             continue
         b = bt.get(fid) or {}
@@ -374,7 +384,8 @@ def _f_view(snap: dict, path=None):
     fw = value.get('forward') or {}
     return _clean(dict(generated_at=value.get('generated_at'), rule=value.get('rule'), note=value.get('note'), equity=equity,
                        defs=defs, backtest={k: bt.get(k) for k in ('first', 'last', 'n_days', 'corr_daily', 'E6', 'D4')},
-                       forward={k: fw.get(k) for k in ('start', 'e6_data_date', 'd4_start', 'e6_holding', 'n', 'note', 'dates', 'series')},
+                       forward={k: fw.get(k) for k in ('start', 'e6_data_date', 'd4_start', 'e6_holding', 'f3_holding', 'f3_signals', 'n', 'note',
+                                                       'dates', 'series')},
                        rebalance=dict(on_plan_day=on_plan_day, next=nxt.isoformat(), rule='每月第一个开市日')))
 
 

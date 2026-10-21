@@ -319,6 +319,24 @@ class FViewTests(unittest.TestCase):
         self.assertEqual(v['rebalance'], dict(on_plan_day=False, next='2026-11-02', rule='每月第一个开市日'))
         self.assertNotIn('extra', v['forward'])
 
+    def test_f3_is_an_e6_filter_with_all_money(self):
+        b3 = dict(total=dict(cagr=0.63, mdd=-0.288, calmar=2.19), e6_total=dict(cagr=0.76), n_signals=187, segs=[], years=[],
+                  dates=['2010-01-29'], equity=[1.0], junk='dropped')
+        doc = f_doc(defs=f_doc()['defs'] + [dict(id='F3', kind='e6_filter', w_e6=1.0, name='F3 · x', rule='r3', note='n3', cond=dict(z_lo=-0.4))])
+        doc['backtest']['F3'] = b3
+        doc['forward'].update(f3_holding=dict(code='sz.000001', buy='2026-10-22'), f3_signals=[dict(date='2026-10-22', ok=True)])
+        self.write(doc)
+        v = me._f_view(self.snap(), self.p)
+        json.dumps(v, allow_nan=False)
+        self.assertEqual([d['id'] for d in v['defs']], ['F1', 'F2', 'F3'])
+        f3 = v['defs'][2]
+        self.assertEqual((f3['kind'], f3['w_e6'], f3['w_d4'], f3['e6_amount'], f3['d4_amount']), ('e6_filter', 1.0, 0.0, 1000000.0, 0.0))
+        self.assertEqual((f3['rule'], f3['note'], f3['cond']), ('r3', 'n3', dict(z_lo=-0.4)))
+        self.assertEqual(f3['backtest']['n_signals'], 187)
+        self.assertNotIn('junk', f3['backtest'])
+        self.assertEqual(v['forward']['f3_holding']['code'], 'sz.000001')
+        self.assertEqual(v['forward']['f3_signals'][0]['ok'], True)
+
     def test_first_open_day_of_month_is_a_rebalance_day(self):
         self.write(f_doc())
         v = me._f_view(self.snap(plan_day='2026-11-02', data_date='2026-10-30'), self.p)
@@ -345,7 +363,10 @@ class FViewTests(unittest.TestCase):
         self.assertIsNone(me._e6_live(d / me.E6_LIVE_NAME)['prep'])
         (d / me.E6_CANDS_NAME).write_text(json.dumps(dict(format='niuniu-e6-live-cands-v1', day='2026-10-22', prev='2026-10-21',
                                                           cands=[{'code': 'sz.000001'}] * 3, error=None)), encoding='utf-8')
-        self.assertEqual(me._e6_live(d / me.E6_LIVE_NAME)['prep'], dict(day='2026-10-22', prev='2026-10-21', generated_at=None, n=3, error=None))
+        self.assertEqual(me._e6_live(d / me.E6_LIVE_NAME)['prep'], dict(day='2026-10-22', prev='2026-10-21', generated_at=None, n=3, error=None, f3=None))
+        (d / me.E6_CANDS_NAME).write_text(json.dumps(dict(format='niuniu-e6-live-cands-v1', day='2026-10-22', prev='2026-10-21', cands=[], error=None,
+                                                          f3=dict(z=-0.62, calm=False, z_lo=-0.4, error=None))), encoding='utf-8')
+        self.assertEqual(me._e6_live(d / me.E6_LIVE_NAME)['prep']['f3'], dict(z=-0.62, calm=False, error=None))      # F3：只带按天的那部分
 
 
 class SnapshotAndPublishTests(unittest.TestCase):
