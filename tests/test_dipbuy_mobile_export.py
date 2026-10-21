@@ -337,6 +337,23 @@ class FViewTests(unittest.TestCase):
         self.assertEqual(v['forward']['f3_holding']['code'], 'sz.000001')
         self.assertEqual(v['forward']['f3_signals'][0]['ok'], True)
 
+    def test_f4_is_also_an_e6_filter(self):
+        b4 = dict(total=dict(cagr=0.854, mdd=-0.533, calmar=1.60), n_signals=512, segs=[], years=[], dates=['2010-01-29'], equity=[1.0])
+        doc = f_doc(defs=f_doc()['defs'] + [dict(id='F3', kind='e6_filter', w_e6=1.0, name='F3 · x', cond=dict(max_other=0, z_lo=-0.4)),
+                                             dict(id='F4', kind='e6_filter', w_e6=1.0, name='F4 · y', rule='r4', note='n4', cond=dict(z_lo=-0.4, z_hi=0.6))])
+        doc['backtest']['F4'] = b4
+        doc['forward'].update(f4_holding=dict(code='sh.600001', buy='2026-10-22'), f4_signals=[dict(date='2026-10-22', ok=False, reasons=['z'])])
+        self.write(doc)
+        v = me._f_view(self.snap(), self.p)
+        json.dumps(v, allow_nan=False)
+        self.assertEqual([d['id'] for d in v['defs']], ['F1', 'F2', 'F3', 'F4'])
+        f4 = v['defs'][3]
+        self.assertEqual((f4['kind'], f4['w_e6'], f4['w_d4'], f4['e6_amount'], f4['d4_amount']), ('e6_filter', 1.0, 0.0, 1000000.0, 0.0))
+        self.assertEqual((f4['rule'], f4['note'], f4['cond']), ('r4', 'n4', dict(z_lo=-0.4, z_hi=0.6)))
+        self.assertEqual(f4['backtest']['n_signals'], 512)
+        self.assertEqual(v['forward']['f4_holding']['code'], 'sh.600001')
+        self.assertEqual(v['forward']['f4_signals'][0]['reasons'], ['z'])
+
     def test_first_open_day_of_month_is_a_rebalance_day(self):
         self.write(f_doc())
         v = me._f_view(self.snap(plan_day='2026-11-02', data_date='2026-10-30'), self.p)

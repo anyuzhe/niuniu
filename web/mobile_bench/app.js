@@ -690,7 +690,7 @@
   // ------------------------------------------------------------------ 说明
   function viewGuide(s) {
     var html = '<section class="card"><h2>怎么看这个页面</h2><ul class="plain">' +
-      '<li><b>今天</b>是首页：按交易日的时间顺序排好今天（收盘后就是下一个交易日）要做的事，金额按你选的 F1 / F2 / F3 和电脑上填的账户总资产算。</li>' +
+      '<li><b>今天</b>是首页：按交易日的时间顺序排好今天（收盘后就是下一个交易日）要做的事，金额按你选的 F1～F4 和电脑上填的账户总资产算。</li>' +
       '<li><b>策略</b>：每个策略一行，点进去看规则、最新信号、回测曲线和前向记录。</li>' +
       '<li><b>持仓</b>：电脑上录入的持仓，和按所选策略算出的明天买卖清单。</li>' +
       '<li><b>市场</b>：现在的下跌恐慌程度、有没有信号、离触发还差多少、规则推演和历史类比、该盯什么，另有涨停板情绪。它只用策略自己的数据，不是预测。</li>' +
@@ -701,9 +701,10 @@
     html += '<section class="card"><h2>F 系列</h2><ul class="plain">' +
       '<li><b>F1</b> 30% E6 + 70% D4：总资产分两份，E6 那份照 E6 全仓一只票，D4 那份照 D4 的规则；每月第一个开市日把两份调回 30 : 70。</li>' +
       '<li><b>F2</b> 50% E6 + 50% D4：同上，比例 50 : 50。</li>' +
-      '<li><b>F3</b>（候选）E6 加两个条件，全部钱全仓一只：E6 第 1 只所在的申万一级行业昨天没有别的涨停，并且昨收大盘 z 不在 −0.4～+0.6 的平稳段，才做。</li></ul>' +
+      '<li><b>F3</b>（候选）E6 加两个条件，全部钱全仓一只：E6 第 1 只所在的申万一级行业昨天没有别的涨停，并且昨收大盘 z 不在 −0.4～+0.6 的平稳段，才做。</li>' +
+      '<li><b>F4</b>（候选）E6 只去掉平稳段，全部钱全仓一只：昨收大盘 z 不在 −0.4～+0.6 就做，不看行业。比 F3 信号多、近几年赚得多，回撤也大。</li></ul>' +
       '<p class="small muted">F1、F2：两者每天的涨跌几乎不相关（相关系数 0.08），E6 亏钱的年份 D4 多是赚的，所以合在一起回撤小很多；比例是看过 2010–2026 的回测后定的。' +
-      'F3 的两个条件也是在看过的回测上挑出来的，还没检验。三个都以 10-22 起的前向记录为准。</p></section>';
+      'F3、F4 的条件也是在看过的回测上挑出来的，还没检验。都以 10-22 起的前向记录为准。</p></section>';
     html += '<section class="card"><h2>抄底策略</h2><ul class="plain">' +
       '<li><b>A</b> 大盘恐慌：全市场平均 z ≤ −1.5 时买“跌破布林下轨后收复”的股票。</li>' +
       '<li><b>B</b> 行业恐慌：某个申万一级行业 z ≤ −1.5 时，买该行业里同样形态的股票。</li>' +
@@ -786,7 +787,10 @@
         '<div class="tile"><span>开盘</span><b>' + (isNum(p.gap) ? pctc(p.gap / 100, 2) : '—') + '</b></div>' +
         '<div class="tile"><span>昨日连板</span><b>' + esc(p.streak_y) + ' 板</b></div></div>' +
         '<div class="banner ' + (o.skip ? 'warn' : 'ok') + '"><b>' + esc(o.action || '') + '</b></div>' +
-        (o.f3 ? '<p class="small"><b>F3：</b>' + esc(o.f3.action || o.f3.error || '') + (o.f3.error ? '' : '　' + f3Facts(o.f3)) + '</p>' : '');
+        F_FILT.map(function (fid) {
+          var g = o[fid.toLowerCase()];
+          return g ? '<p class="small"><b>' + fid + '：</b>' + esc(g.action || g.error || '') + (g.error ? '' : '　' + f3Facts(g)) + '</p>' : '';
+        }).join('');
       if (!o.skip) {
         html += '<p class="small">同花顺云条件单：选按股价触发的条件单，股票 ' + esc(short(p.code)) + '，条件"最新价 ≥ ' + (isNum(p.lim) ? p.lim.toFixed(2) : '涨停价') +
           '"，委托价 ' + (isNum(p.lim) ? p.lim.toFixed(2) : '涨停价') + '（涨停价），数量用全部可用资金（全仓一只），有效期当天。具体菜单名以 App 为准。没碰到涨停价就不会买，今天就没交易。</p>';
@@ -811,10 +815,12 @@
           return '<tr' + rowCode(h.code) + '><td>' + esc(h.name || short(h.code)) + '<span class="nm">' + md(h.buy) + ' 买 · 第 ' + esc(h.n) + ' 天</span></td><td class="n">' +
             (isNum(h.chg) ? pctc(h.chg / 100, 1) : '—') + '</td><td class="wrap small">' + (h.sealed ? '<span class="tag open">封住</span> ' : '') + esc(h.action) + '</td></tr>';
         }).join('') + '</tbody></table></div>' : '<p class="empty">E6 现在没有持仓，不用卖。</p>';
-      var h3 = (c.f3_holdings || [])[0];
-      if (h3 && !hs.some(function (h) { return h.code === h3.code; })) {
-        html += '<p class="small"><b>F3 持仓 ' + esc(h3.name || short(h3.code)) + '</b>（' + md(h3.buy) + ' 买 · 第 ' + esc(h3.n) + ' 天）：' + (h3.sealed ? '<span class="tag open">封住</span> ' : '') + esc(h3.action) + '</p>';
-      }
+      F_FILT.forEach(function (fid) {      // F3 / F4 自己的全仓账户拿着、E6 没拿的那只
+        var h3 = (c[fid.toLowerCase() + '_holdings'] || [])[0];
+        if (h3 && !hs.some(function (h) { return h.code === h3.code; })) {
+          html += '<p class="small"><b>' + fid + ' 持仓 ' + esc(h3.name || short(h3.code)) + '</b>（' + md(h3.buy) + ' 买 · 第 ' + esc(h3.n) + ' 天）：' + (h3.sealed ? '<span class="tag open">封住</span> ' : '') + esc(h3.action) + '</p>';
+        }
+      });
     }
     return html + '</section>';
   }
@@ -904,8 +910,11 @@
   }
 
   // ------------------------------------------------------------------ 「今天」：交易日时间轴（2026-10-21 重新设计的首页）
-  var F_IDS = ['F1', 'F2', 'F3'];
-  function isF3(d) { return !!d && d.kind === 'e6_filter'; }     // F3：E6 全仓一只票再加两个条件（候选），没有 D4 那份、不调仓
+  var F_IDS = ['F1', 'F2', 'F3', 'F4'], F_FILT = ['F3', 'F4'];
+  function isFilt(d) { return !!d && d.kind === 'e6_filter'; }   // F3 / F4：E6 全仓一只票再加条件（候选），没有 D4 那份、不调仓
+  function fKey(d) { return String(d.id || '').toLowerCase(); }   // 快照里各自的字段：open.f3、close.f3_holdings、forward.f3_holding…
+  function useInd(d) { return !!(d && d.cond && d.cond.max_other != null); }   // F3 看行业（条件①），F4 不看
+  function condTxt(d) { return (useInd(d) ? '它所在行业昨天没有别的涨停、' : '') + '昨收大盘 z 不在平稳段'; }
   // 预览用：网址带 ?now=2026-10-22T10:05 就当成北京时间那一刻（只影响「今天」的时间轴，方便在电脑上核对各个时段的样子）
   var NOW_FAKE = (function () { var m = /[?&]now=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/.exec(location.search || ''); return m ? Date.parse(m[1] + ':00Z') : null; })();
   function bjNow() { return new Date(NOW_FAKE != null && isFinite(NOW_FAKE) ? NOW_FAKE : Date.now() + 8 * 3600000); }   // 取 getUTC* 就是北京时间
@@ -923,7 +932,7 @@
   function fSwitch(s) {
     var ds = fDefs(s), cur = fDef(s);
     if (ds.length < 2 || !cur) return '';
-    return '<div class="seg' + (ds.length > 2 ? ' n3' : '') + '" role="group" aria-label="按哪个策略排">' + ds.map(function (d) {
+    return '<div class="seg' + (ds.length > 2 ? ' n' + Math.min(ds.length, 4) : '') + '" role="group" aria-label="按哪个策略排">' + ds.map(function (d) {
       return '<button data-f="' + esc(d.id) + '" aria-pressed="' + (d.id === cur.id) + '">' + esc(d.id) + '</button>';
     }).join('') + '</div>';
   }
@@ -932,11 +941,11 @@
     if (!f) return '<p class="empty">还没有策略 F 的数据：台式机每个交易日 19:30 算一次，算完会推上来。</p>';
     if (f.error) return '<div class="banner warn">策略 F 读不出来：' + esc(f.error) + '</div>';
     if (!d) return '';
-    if (isF3(d)) {
+    if (isFilt(d)) {
       return '<div class="alloc">' +
         '<div class="alloc-row"><span>总资产 <b class="num">' + wan(f.equity) + '</b></span>' + (noName ? '' : '<span class="muted small">' + esc(d.name || d.id) + '</span>') + '</div>' +
         '<svg class="alloc-bar" viewBox="0 0 300 8" preserveAspectRatio="none" aria-hidden="true"><rect class="a-e6" x="0" y="0" width="300" height="8"/></svg>' +
-        '<div class="alloc-row small"><span><i class="sw sw-e6"></i>全部钱按 F3 做（全仓一只） <b class="num">' + wan(d.e6_amount) + '</b></span><span class="tag off">候选</span></div></div>';
+        '<div class="alloc-row small"><span><i class="sw sw-e6"></i>全部钱按 ' + esc(d.id) + ' 做（全仓一只） <b class="num">' + wan(d.e6_amount) + '</b></span><span class="tag off">候选</span></div></div>';
     }
     var W = 300, x = Math.round(W * d.w_e6);
     return '<div class="alloc">' +
@@ -956,13 +965,13 @@
   function names4(rows) {
     return rows.slice(0, 4).map(function (r) { return esc(r.name || short(r.code)); }).join('、') + (rows.length > 4 ? ' 等 ' + rows.length + ' 只' : '');
   }
-  // ---- F3 的「今天」：只有 E6 那一条线，加两个条件
-  function f3Hold(s) {
-    // F3 自己的全仓账户拿着的票：今天 14:50 查过就用那次的；否则 9:25 记下的；否则 F 的前向记录（截至最近收盘）
-    var lv = (s.e6 || {}).live || {}, day = s.plan_day;
-    if (lv.day === day && lv.close && lv.close.f3_holdings) return lv.close.f3_holdings[0] || null;
-    if (lv.day === day && lv.open && lv.open.f3 && !lv.open.f3.error) return lv.open.f3.holding || null;
-    return (s.f && s.f.forward && s.f.forward.f3_holding) || null;
+  // ---- F3 / F4 的「今天」：只有 E6 那一条线，再加条件
+  function filtHold(s, d) {
+    // F3 / F4 自己的全仓账户拿着的票：今天 14:50 查过就用那次的；否则 9:25 记下的；否则 F 的前向记录（截至最近收盘）
+    var lv = (s.e6 || {}).live || {}, day = s.plan_day, k = fKey(d);
+    if (lv.day === day && lv.close && lv.close[k + '_holdings']) return lv.close[k + '_holdings'][0] || null;
+    if (lv.day === day && lv.open && lv.open[k] && !lv.open[k].error) return lv.open[k].holding || null;
+    return (s.f && s.f.forward && s.f.forward[k + '_holding']) || null;
   }
   function f3Facts(g) {
     if (!g) return '';
@@ -971,52 +980,52 @@
     if (isNum(g.z)) a.push('昨收大盘 z ' + num(g.z, 2) + (g.calm ? '（平稳段）' : ''));
     return a.length ? '<span class="small muted">' + a.join('；') + '</span>' : '';
   }
-  function todayItemsF3(s, d) {
-    var day = s.plan_day, lv = (s.e6 || {}).live || {}, live = lv.day === day, items = [], c3 = d.cond || {};
-    var pr = lv.prep && lv.prep.day === day ? lv.prep : null, g0 = pr && pr.f3 ? pr.f3 : null;
-    var zline = g0 && !g0.error && isNum(g0.z) ? '昨收大盘 z ' + num(g0.z, 2) + '：' + (g0.calm ? '在平稳段（' + num(c3.z_lo, 1) + '～+' + num(c3.z_hi, 1) + '），F3 今天不做。' : '不在平稳段，今天可以做。') :
-      (g0 && g0.error ? 'F3 的条件没算出来：' + esc(g0.error) : '');
-    items.push({ m: 520, t: '08:40', tone: 'e6', title: pr ? (pr.error ? 'E6 候选没准备好' : 'E6 候选 ' + esc(pr.n) + ' 只，F3 条件已算') : 'E6 准备候选、算 F3 条件',
-      body: pr && pr.error ? esc(pr.error) : (zline || '台式机列出昨天涨停的主板非 ST 股，并算好每只所在行业昨天还有几只别的涨停、昨收大盘 z。') });
-    var o = live ? lv.open : null, hold = f3Hold(s), it = { m: 565, t: '09:25', tone: 'e6' };
+  function todayItemsFilt(s, d) {
+    var day = s.plan_day, lv = (s.e6 || {}).live || {}, live = lv.day === day, items = [], c3 = d.cond || {}, id = esc(d.id), k = fKey(d);
+    var pr = lv.prep && lv.prep.day === day ? lv.prep : null, g0 = pr && pr.f3 ? pr.f3 : null;      // 08:40 按天的那部分（z），F3 / F4 共用
+    var zline = g0 && !g0.error && isNum(g0.z) ? '昨收大盘 z ' + num(g0.z, 2) + '：' + (g0.calm ? '在平稳段（' + num(c3.z_lo, 1) + '～+' + num(c3.z_hi, 1) + '），' + id + ' 今天不做。' : '不在平稳段，今天可以做。') :
+      (g0 && g0.error ? id + ' 的条件没算出来：' + esc(g0.error) : '');
+    items.push({ m: 520, t: '08:40', tone: 'e6', title: pr ? (pr.error ? 'E6 候选没准备好' : 'E6 候选 ' + esc(pr.n) + ' 只，' + id + ' 条件已算') : 'E6 准备候选、算 ' + id + ' 条件',
+      body: pr && pr.error ? esc(pr.error) : (zline || (useInd(d) ? '台式机列出昨天涨停的主板非 ST 股，并算好每只所在行业昨天还有几只别的涨停、昨收大盘 z。' : '台式机列出昨天涨停的主板非 ST 股，并算好昨收大盘 z。')) });
+    var o = live ? lv.open : null, hold = filtHold(s, d), it = { m: 565, t: '09:25', tone: 'e6' };
     if (live && lv.error && !(o && o.pick)) { it.title = 'E6 名单没算出来'; it.body = esc(lv.error); }
     else if (o && o.pick) {
-      var p = o.pick, g = o.f3 || {}, lim = isNum(p.lim) ? p.lim.toFixed(2) : '涨停价';
-      it.title = 'F3：' + esc(p.name || short(p.code));
-      if (!o.f3) it.body = '这次 9:25 的提醒还没算 F3（台式机程序是旧的），按条件自己判断：同行业昨天没有别的涨停、昨收大盘 z 不在平稳段。';
+      var p = o.pick, g = o[k] || {}, lim = isNum(p.lim) ? p.lim.toFixed(2) : '涨停价';
+      it.title = id + '：' + esc(p.name || short(p.code));
+      if (!o[k]) it.body = '这次 9:25 的提醒还没算 ' + id + '（台式机程序是旧的），按条件自己判断：' + condTxt(d) + '。';
       else if (g.error || g.skip) it.body = esc(g.action || g.error || '今天不做') + '<br>' + f3Facts(g);
       else {
         it.act = true;
-        it.body = '开盘 ' + (isNum(p.gap) ? pctc(p.gap / 100, 2) : '—') + '，昨天 ' + esc(p.streak_y) + ' 板；两个条件都满足。设一张云条件单：' +
+        it.body = '开盘 ' + (isNum(p.gap) ? pctc(p.gap / 100, 2) : '—') + '，昨天 ' + esc(p.streak_y) + ' 板；' + (useInd(d) ? '两个条件都满足' : '昨收大盘 z 不在平稳段') + '。设一张云条件单：' +
           '<div class="order kv"><span>股票</span><span>' + esc(p.name || '') + ' <span class="num">' + esc(short(p.code)) + '</span></span>' +
           '<span>触发</span><span class="num">最新价 ≥ ' + lim + '</span><span>委托价</span><span class="num">' + lim + '（涨停价）</span>' +
-          '<span>金额</span><span class="num">全部可用资金（F3 全仓一只）</span><span>有效期</span><span>当天</span></div>' + f3Facts(g);
+          '<span>金额</span><span class="num">全部可用资金（' + id + ' 全仓一只）</span><span>有效期</span><span>当天</span></div>' + f3Facts(g);
       }
     } else {
-      it.title = 'F3：看 E6 第 1 只';
-      it.body = hold ? 'F3 还拿着 ' + esc(hold.name || short(hold.code)) + '，今天的信号跳过。' :
-        '9:25:30 左右出来。E6 第 1 只开盘没涨停、它所在行业昨天没有别的涨停、昨收大盘 z 不在平稳段，三条都满足才设云条件单，金额用全部可用资金。';
+      it.title = id + '：看 E6 第 1 只';
+      it.body = hold ? id + ' 还拿着 ' + esc(hold.name || short(hold.code)) + '，今天的信号跳过。' :
+        '9:25:30 左右出来。E6 第 1 只开盘没涨停、' + condTxt(d) + '，' + (useInd(d) ? '三条' : '两条') + '都满足才设云条件单，金额用全部可用资金。';
     }
     items.push(it);
     var c = live ? lv.close : null, e = { m: 890, t: '14:50', tone: 'e6' };
-    if (c && c.f3_holdings) {
-      var hs = c.f3_holdings;
-      e.title = hs.length ? 'F3 持仓：' + esc(hs[0].name || short(hs[0].code)) : 'F3 没有持仓';
+    if (c && c[k + '_holdings']) {
+      var hs = c[k + '_holdings'];
+      e.title = hs.length ? id + ' 持仓：' + esc(hs[0].name || short(hs[0].code)) : id + ' 没有持仓';
       e.body = hs.length ? (hs[0].sealed ? '<span class="tag open">封住</span> ' : '<span class="tag sell">没封住</span> ') + esc(hs[0].action) : '不用卖。';
       e.act = !!(hs.length && !hs[0].sealed);
     } else if (hold) {
-      e.title = '看 F3 持仓封没封住';
+      e.title = '看 ' + id + ' 持仓封没封住';
       e.body = esc(hold.name || short(hold.code)) + '：14:50 还封在涨停就接着拿（最多 5 天），没封住就收盘前卖。';
     } else {
-      e.title = 'F3 持仓';
+      e.title = id + ' 持仓';
       e.body = '现在没有持仓。早上买到的当天不卖，下一个交易日 14:50 再看。';
     }
     items.push(e);
-    items.push({ m: 1140, t: '19:00', tone: 'sys', title: '收盘后更新', body: '记 E6 前向记录；19:30 按其中符合 F3 条件的信号记 F3 的全仓账户，推上下一个交易日的计划。' });
+    items.push({ m: 1140, t: '19:00', tone: 'sys', title: '收盘后更新', body: '记 E6 前向记录；19:30 按其中符合 ' + id + ' 条件的信号记 ' + id + ' 的全仓账户，推上下一个交易日的计划。' });
     return items.sort(function (x, y) { return x.m - y.m; });
   }
   function todayItems(s, d) {
-    if (isF3(d)) return todayItemsF3(s, d);
+    if (isFilt(d)) return todayItemsFilt(s, d);
     var day = s.plan_day, lv = (s.e6 || {}).live || {}, live = lv.day === day;
     var plan = ((s.holdings || {}).plans || {})[d ? d.id : 'D4'] || {};
     var amt = d ? '约 ' + wan(d.e6_amount) + '（E6 那份）' : '全部可用资金';
@@ -1103,7 +1112,7 @@
     });
     html += '</ol>';
     var rb = s.f && !s.f.error ? s.f.rebalance : null;
-    html += '<p class="small muted foot">' + (rb && !rb.on_plan_day && d && !isF3(d) ? '下次调仓 ' + esc(md(rb.next)) + '（' + esc(wd(rb.next)) + '），两份调回 ' + pct(d.w_e6, 0) + ' : ' + pct(d.w_d4, 0) + '。' : '') +
+    html += '<p class="small muted foot">' + (rb && !rb.on_plan_day && d && !isFilt(d) ? '下次调仓 ' + esc(md(rb.next)) + '（' + esc(wd(rb.next)) + '），两份调回 ' + pct(d.w_e6, 0) + ' : ' + pct(d.w_d4, 0) + '。' : '') +
       '只提醒，不下单；金额按电脑上填的账户总资产算。' + (d ? ' <button class="link" data-open="' + esc(d.id) + '">' + esc(d.id) + ' 的规则和回测</button>' : '') + '</p>';
     return html;
   }
@@ -1121,7 +1130,8 @@
   function viewStrategies(s) {
     var html = sGroup('F 系列', fDefs(s).map(function (d) {
       var t = (d.backtest || {}).total || {};
-      return sRow(d.id, esc(d.name || d.id), isF3(d) ? 'E6 加两个条件，全仓一只；还没检验，只记前向' : '每月第一个开市日调回比例', '回测年化 ' + pct(t.cagr, 0), '最大回撤 ' + pct(t.mdd, 0));
+      return sRow(d.id, esc(d.name || d.id), isFilt(d) ? (useInd(d) ? 'E6 加两个条件' : 'E6 只去掉大盘平稳段') + '，全仓一只；还没检验，只记前向' : '每月第一个开市日调回比例',
+        '回测年化 ' + pct(t.cagr, 0), '最大回撤 ' + pct(t.mdd, 0));
     }), s.f && s.f.error ? '策略 F 读不出来：' + s.f.error : '还没有策略 F 的数据（台式机每个交易日 19:30 算）。');
     html += sGroup('抄底', s.kinds.map(function (k) {
       var sg = s.signals[k] || {}, fw = s.forward[k] || {}, c = fw.portfolio && fw.portfolio.curve, last = c ? c.equity.filter(isNum).slice(-1)[0] : null;
@@ -1139,7 +1149,7 @@
     if (!f || f.error) return '<section class="card"><h2>' + esc(id) + '</h2><p class="empty">' + (f && f.error ? '读不出来：' + esc(f.error) : '还没有策略 F 的数据：台式机每个交易日 19:30 算一次。') + '</p></section>';
     var d = fDef(s, id);
     if (!d) return '<p class="empty">没有 ' + esc(id) + '。</p>';
-    if (isF3(d)) return viewF3(s, d);
+    if (isFilt(d)) return viewFilt(s, d);
     var bt = d.backtest || {}, t = bt.total || {}, rb = f.rebalance || {}, fb = f.backtest || {};
     var html = '<section class="card"><h2>' + esc(d.name) + '</h2>' + allocBar(s, d, true) +
       '<ul class="plain small"><li><b>E6 那份</b>：照 E6 全仓一只票。9:25 打分第 1 开盘没涨停就设云条件单，摸到涨停价按涨停价买，金额用这一份；收盘封住就拿，没封住当天卖，最多 5 天。</li>' +
@@ -1173,58 +1183,60 @@
     html += '<section class="card"><h2>组成</h2><p class="small">两份各自的信号、持仓和前向记录：</p><div class="btn-row"><button class="btn" data-open="e6">E6 龙头扫板</button><button class="btn" data-open="fusion4">策略 D4</button></div></section>';
     return html;
   }
-  function viewF3(s, d) {
-    var f = s.f, bt = d.backtest || {}, t = bt.total || {}, e = bt.e6_total || {}, fw = f.forward || {}, c3 = d.cond || {};
+  function viewFilt(s, d) {
+    var f = s.f, bt = d.backtest || {}, t = bt.total || {}, e = bt.e6_total || {}, fw = f.forward || {}, c3 = d.cond || {}, id = esc(d.id), k = fKey(d);
+    var zrule = '前一交易日收盘的大盘 z 不在 ' + num(c3.z_lo, 1) + ' ～ +' + num(c3.z_hi, 1) + ' 之间（偏弱、偏强、过热都可以做）。';
     var html = '<section class="card"><h2>' + esc(d.name) + '</h2>' + allocBar(s, d, true) +
       '<div class="banner warn">' + esc(d.note || '候选，还没检验。') + '</div>' +
       '<ul class="plain small"><li><b>先看 E6</b>：9:25 打分第 1、开盘没涨停，盘中摸到涨停价按涨停价买；收盘封住就拿，没封住卖，最多 5 天。</li>' +
-      '<li><b>条件 ①</b> 独自涨停：买入前一交易日，它所在的申万一级行业里没有别的票收盘涨停。</li>' +
-      '<li><b>条件 ②</b> 去掉平稳段：前一交易日收盘的大盘 z 不在 ' + num(c3.z_lo, 1) + ' ～ +' + num(c3.z_hi, 1) + ' 之间（偏弱、偏强、过热都可以做）。</li>' +
+      (useInd(d) ? '<li><b>条件 ①</b> 独自涨停：买入前一交易日，它所在的申万一级行业里没有别的票收盘涨停。</li>' +
+        '<li><b>条件 ②</b> 去掉平稳段：' + zrule + '</li>' :
+        '<li><b>条件</b> 去掉平稳段：' + zrule + '不看行业。</li>') +
       '<li><b>仓位</b>：全部钱全仓一只票；拿着的时候来的信号跳过。没有 D4 那份，也不调仓。</li></ul></section>';
     var lv = (s.e6 || {}).live || {};
-    if (lv.day === s.plan_day && lv.open && lv.open.f3) {
-      var g = lv.open.f3, p = lv.open.pick || {};
+    if (lv.day === s.plan_day && lv.open && lv.open[k]) {
+      var g = lv.open[k], p = lv.open.pick || {};
       html += '<section class="card"><h2>今天<small>' + esc(md(lv.day)) + ' 9:25 · 第 1 只 ' + esc(p.name || short(p.code)) + '</small></h2>' +
         '<div class="banner ' + (g.skip || g.error ? 'warn' : 'ok') + '"><b>' + esc(g.action || g.error || '') + '</b></div>' + f3Facts(g) + '</section>';
     }
-    var ser = (fw.series || {}).F3 || [], ok = ser.filter(isNum);
+    var ser = (fw.series || {})[d.id] || [], ok = ser.filter(isNum);
     html += '<section class="card"><h2>前向记录<small>' + esc(md(fw.start)) + ' 收盘为起点</small></h2>';
     if ((fw.dates || []).length >= 2 && ok.length >= 2) {
       html += '<div class="tiles"><div class="tile"><span>累计</span><b>' + pctc(ok[ok.length - 1] - 1, 1) + '</b></div><div class="tile"><span>最大回撤</span><b>' + pctc(maxDrawdown(ok), 1) + '</b></div></div>' +
-        chart(ser, fw.dates.map(md), { base: 1, label: 'F3 前向记录', h: 120 });
+        chart(ser, fw.dates.map(md), { base: 1, label: d.id + ' 前向记录', h: 120 });
     } else {
       html += '<p class="empty">' + esc(fw.note || '从下一个交易日起记录，每个交易日 19:30 记一次。') + '</p>';
     }
-    var sg = fw.f3_signals || [];
+    var sg = fw[k + '_signals'] || [];
     if (sg.length) {
-      html += '<h3 class="sub">最近的 E6 信号，F3 做不做</h3><div class="scroll"><table class="tbl"><thead><tr><th>日期</th><th>股票</th><th>F3</th><th class="n">E6 结果</th></tr></thead><tbody>' +
+      html += '<h3 class="sub">最近的 E6 信号，' + id + ' 做不做</h3><div class="scroll"><table class="tbl"><thead><tr><th>日期</th><th>股票</th><th>' + id + '</th><th class="n">E6 结果</th></tr></thead><tbody>' +
         sg.map(function (r) {
           return '<tr' + rowCode(r.code) + '><td class="num">' + esc(md(r.date)) + '</td><td>' + esc(r.name || short(r.code)) + (r.ind ? '<span class="nm">' + esc(r.ind) + '</span>' : '') + '</td>' +
             '<td class="wrap small">' + (r.ok ? '<span class="tag open">符合</span>' : '<span class="tag off">不做</span> ' + esc((r.reasons || []).join('；'))) + '</td>' +
             '<td class="n">' + e6Tag(r) + (isNum(r.ret) ? '<span class="nm">' + pct(r.ret / 100, 1, true) + '</span>' : '') + '</td></tr>';
         }).join('') + '</tbody></table></div>';
     }
-    html += '<p class="small muted">从 E6 的前向记录里挑出符合两个条件的信号，另记一个全仓一只票的账户（数据到 ' + esc(md(fw.e6_data_date)) + '）。E6 开盘就涨停、没摸板的日子，F3 也没有交易。</p></section>';
+    html += '<p class="small muted">从 E6 的前向记录里挑出符合' + (useInd(d) ? '两个条件' : '条件') + '的信号，另记一个全仓一只票的账户（数据到 ' + esc(md(fw.e6_data_date)) + '）。E6 开盘就涨停、没摸板的日子，' + id + ' 也没有交易。</p></section>';
     var p100 = function (v, dgt) { return isNum(v) ? pctc(v, dgt == null ? 1 : dgt) : '—'; };
     html += '<section class="card"><h2>回测<small>' + esc(ym(bt.first)) + ' 至 ' + esc(ym(bt.last)) + '，对数刻度</small></h2><div class="tiles">' +
       '<div class="tile"><span>年化</span><b>' + p100(t.cagr) + '</b></div><div class="tile"><span>最大回撤</span><b>' + p100(t.mdd) + '</b></div>' +
       '<div class="tile"><span>年化 ÷ 回撤</span><b class="num">' + num(t.calmar, 2) + '</b></div><div class="tile"><span>最长没创新高</span><b class="num">' + esc(t.uw_days == null ? '—' : t.uw_days) + ' 天</b></div>' +
       '<div class="tile"><span>信号</span><b class="num">' + esc(bt.n_signals == null ? '—' : bt.n_signals) + '<span class="nm"> / E6 ' + esc(bt.n_e6_signals == null ? '—' : bt.n_e6_signals) + '</span></b></div>' +
       '<div class="tile"><span>每笔 / 胜率</span><b>' + p100(bt.per_trade) + '<span class="nm"> / ' + (isNum(bt.win) ? (bt.win * 100).toFixed(0) + '%' : '—') + '</span></b></div></div>' +
-      chart(bt.equity || [], (bt.dates || []).map(ym), { base: 1, log: true, label: 'F3 回测', h: 150, fmt: function (v) { return v >= 1e4 ? (v / 1e4).toFixed(1) + '万' : xmult(v); },
+      chart(bt.equity || [], (bt.dates || []).map(ym), { base: 1, log: true, label: d.id + ' 回测', h: 150, fmt: function (v) { return v >= 1e4 ? (v / 1e4).toFixed(1) + '万' : xmult(v); },
         tips: (bt.dates || []).map(function (x, i) { return ym(x) + '：' + xmult(bt.equity[i]); }) });
     var c2 = function (x) { x = x || {}; return pctc(x.cagr, 0) + '<span class="nm">回撤 ' + pct(x.mdd, 0) + '</span>'; };
-    html += '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th class="n">F3</th><th class="n">E6 全仓</th></tr></thead><tbody>' +
+    html += '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th class="n">' + id + '</th><th class="n">E6 全仓</th></tr></thead><tbody>' +
       (bt.segs || []).map(function (g) { return '<tr><td class="num">' + esc(g.label) + '</td><td class="n">' + c2(g.f) + '</td><td class="n">' + c2(g.e6) + '</td></tr>'; }).join('') +
       '<tr><td>全程</td><td class="n">' + c2(t) + '</td><td class="n">' + c2(e) + '</td></tr></tbody></table></div>';
     var ys = bt.years || [];
     if (ys.length) {
-      html += '<h3 class="sub">每年</h3><div class="scroll"><table class="tbl"><thead><tr><th>年</th><th class="n">F3</th><th class="n">E6 全仓</th></tr></thead><tbody>' +
+      html += '<h3 class="sub">每年</h3><div class="scroll"><table class="tbl"><thead><tr><th>年</th><th class="n">' + id + '</th><th class="n">E6 全仓</th></tr></thead><tbody>' +
         ys.slice().reverse().map(function (y) { return '<tr><td class="num">' + esc(y.year) + '</td><td class="n">' + pctc(y.f, 1) + '<span class="nm">回撤 ' + pct(y.f_mdd, 0) + '</span></td><td class="n">' + pctc(y.e6, 1) + '</td></tr>'; }).join('') +
         '</tbody></table></div>';
     }
-    html += '<p class="small muted">理想成交（摸板按涨停价买到）、买卖合计扣 0.25%、空仓不计息，没算容量。行业是现在的申万一级分类，涨停按收盘算。最长没创新高按交易日数。</p></section>';
-    html += '<section class="card"><h2>组成</h2><p class="small">F3 的买卖都来自 E6，只是多了两个条件：</p><div class="btn-row"><button class="btn" data-open="e6">E6 龙头扫板</button></div></section>';
+    html += '<p class="small muted">理想成交（摸板按涨停价买到）、买卖合计扣 0.25%、空仓不计息，没算容量。' + (useInd(d) ? '行业是现在的申万一级分类，涨停按收盘算。' : '') + '最长没创新高按交易日数。</p></section>';
+    html += '<section class="card"><h2>组成</h2><p class="small">' + id + ' 的买卖都来自 E6，' + (useInd(d) ? '只是多了两个条件' : '只是大盘平稳段不做') + '：</p><div class="btn-row"><button class="btn" data-open="e6">E6 龙头扫板</button></div></section>';
     return html;
   }
   function detailTitle(s, id) {
@@ -1344,7 +1356,7 @@
       b.addEventListener('click', function () {
         keepScroll(function () {
           state.f = b.getAttribute('data-f');
-          if (state.f !== 'F3') state.pick.holdings = state.f;          // F3 没有 D4 那份，持仓页的清单不跟着换
+          if (F_FILT.indexOf(state.f) < 0) state.pick.holdings = state.f;          // F3 / F4 没有 D4 那份，持仓页的清单不跟着换
           savePref();
         });
       });
