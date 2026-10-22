@@ -910,8 +910,13 @@
   }
 
   // ------------------------------------------------------------------ 「今天」：交易日时间轴（2026-10-21 重新设计的首页）
-  var F_IDS = ['F1', 'F2', 'F3', 'F4'], F_FILT = ['F3', 'F4'];
-  function isFilt(d) { return !!d && d.kind === 'e6_filter'; }   // F3 / F4：E6 全仓一只票再加条件（候选），没有 D4 那份、不调仓
+  var F_IDS = ['F1', 'F2', 'F3', 'F4', 'F5'], F_FILT = ['F3', 'F4', 'F5'];
+  function isFilt(d) { return !!d && d.kind === 'e6_filter'; }   // F3 / F4 / F5：E6 全仓一只票再加条件（候选），没有 D4 那份、不调仓
+  function isSpeed(d) { return !!(d && d.buy && d.buy.kind === 'speed'); }   // F5（10-23）：日子同 F4，买法换成 30 秒涨速提前挂涨停价
+  function speedTxt(d) {
+    var b = (d && d.buy) || {};
+    return '涨幅 ≥ ' + Math.round((b.lv || 0.07) * 100) + '% 且最近 ' + (b.w || 30) + ' 秒涨了 ≥ ' + Math.round((b.sp || 0.03) * 100) + ' 个点';
+  }
   function fKey(d) { return String(d.id || '').toLowerCase(); }   // 快照里各自的字段：open.f3、close.f3_holdings、forward.f3_holding…
   function useInd(d) { return !!(d && d.cond && d.cond.max_other != null); }   // F3 看行业（条件①），F4 不看
   function condTxt(d) { return (useInd(d) ? '它所在行业昨天没有别的涨停、' : '') + '昨收大盘 z 不在平稳段'; }
@@ -932,7 +937,7 @@
   function fSwitch(s) {
     var ds = fDefs(s), cur = fDef(s);
     if (ds.length < 2 || !cur) return '';
-    return '<div class="seg' + (ds.length > 2 ? ' n' + Math.min(ds.length, 4) : '') + '" role="group" aria-label="按哪个策略排">' + ds.map(function (d) {
+    return '<div class="seg' + (ds.length > 2 ? ' n' + Math.min(ds.length, 5) : '') + '" role="group" aria-label="按哪个策略排">' + ds.map(function (d) {
       return '<button data-f="' + esc(d.id) + '" aria-pressed="' + (d.id === cur.id) + '">' + esc(d.id) + '</button>';
     }).join('') + '</div>';
   }
@@ -994,6 +999,17 @@
       it.title = id + '：' + esc(p.name || short(p.code));
       if (!o[k]) it.body = '这次 9:25 的提醒还没算 ' + id + '（台式机程序是旧的），按条件自己判断：' + condTxt(d) + '。';
       else if (g.error || g.skip) it.body = esc(g.action || g.error || '今天不做') + '<br>' + f3Facts(g);
+      else if (isSpeed(d)) {
+        var sp = g.speed || {};
+        it.act = true;
+        it.body = '开盘 ' + (isNum(p.gap) ? pctc(p.gap / 100, 2) : '—') + '，昨天 ' + esc(p.streak_y) + ' 板；昨收大盘 z 不在平稳段。<b>盯盘</b>：摸到涨停之前，' +
+          '价格 ≥ <b class="num">' + (isNum(sp.px7) ? sp.px7.toFixed(2) : '涨 7%') + '</b> 并且最近 30 秒涨了 ≥ <b class="num">' + (isNum(sp.d30) ? sp.d30.toFixed(2) + ' 元' : '3 个点') + '</b>（3 个点）' +
+          '→ 马上以 <b class="num">' + lim + '</b> 挂买单，全部可用资金。一直没出现，就照 F4 等摸到涨停价再挂——可以先设好这张云条件单兜底：' +
+          '<div class="order kv"><span>股票</span><span>' + esc(p.name || '') + ' <span class="num">' + esc(short(p.code)) + '</span></span>' +
+          '<span>触发</span><span class="num">最新价 ≥ ' + lim + '</span><span>委托价</span><span class="num">' + lim + '（涨停价）</span>' +
+          '<span>金额</span><span class="num">全部可用资金（' + id + ' 全仓一只）</span><span>有效期</span><span>当天</span></div>' +
+          '<span class="small muted">同花顺云条件单设不了"30 秒涨 3 个点"，提前那一下要自己看盘或用程序。</span>' + f3Facts(g);
+      }
       else {
         it.act = true;
         it.body = '开盘 ' + (isNum(p.gap) ? pctc(p.gap / 100, 2) : '—') + '，昨天 ' + esc(p.streak_y) + ' 板；' + (useInd(d) ? '两个条件都满足' : '昨收大盘 z 不在平稳段') + '。设一张云条件单：' +
@@ -1004,7 +1020,8 @@
     } else {
       it.title = id + '：看 E6 第 1 只';
       it.body = hold ? id + ' 还拿着 ' + esc(hold.name || short(hold.code)) + '，今天的信号跳过。' :
-        '9:25:30 左右出来。E6 第 1 只开盘没涨停、' + condTxt(d) + '，' + (useInd(d) ? '三条' : '两条') + '都满足才设云条件单，金额用全部可用资金。';
+        '9:25:30 左右出来。E6 第 1 只开盘没涨停、' + condTxt(d) + '，' + (useInd(d) ? '三条' : '两条') + '都满足才' +
+        (isSpeed(d) ? '买：盘中一旦' + speedTxt(d) + '就挂涨停价，没出现就摸板再挂' : '设云条件单') + '，金额用全部可用资金。';
     }
     items.push(it);
     var c = live ? lv.close : null, e = { m: 890, t: '14:50', tone: 'e6' };
@@ -1021,7 +1038,9 @@
       e.body = '现在没有持仓。早上买到的当天不卖，下一个交易日 14:50 再看。';
     }
     items.push(e);
-    items.push({ m: 1140, t: '19:00', tone: 'sys', title: '收盘后更新', body: '记 E6 前向记录；19:30 按其中符合 ' + id + ' 条件的信号记 ' + id + ' 的全仓账户，推上下一个交易日的计划。' });
+    items.push({ m: 1140, t: '19:00', tone: 'sys', title: '收盘后更新', body: isSpeed(d) ?
+      '记 E6 前向记录，推上下一个交易日的计划。' + id + ' 有没有提前买到、价钱多少，要等当天的逐笔数据下下来才补算。' :
+      '记 E6 前向记录；19:30 按其中符合 ' + id + ' 条件的信号记 ' + id + ' 的全仓账户，推上下一个交易日的计划。' });
     return items.sort(function (x, y) { return x.m - y.m; });
   }
   function todayItems(s, d) {
@@ -1130,8 +1149,9 @@
   function viewStrategies(s) {
     var html = sGroup('F 系列', fDefs(s).map(function (d) {
       var t = (d.backtest || {}).total || {};
-      return sRow(d.id, esc(d.name || d.id), isFilt(d) ? (useInd(d) ? 'E6 加两个条件' : 'E6 只去掉大盘平稳段') + '，全仓一只；还没检验，只记前向' : '每月第一个开市日调回比例',
-        '回测年化 ' + pct(t.cagr, 0), '最大回撤 ' + pct(t.mdd, 0));
+      return sRow(d.id, esc(d.name || d.id), isFilt(d) ? (isSpeed(d) ? 'F4 的日子，30 秒涨速提前挂涨停价' : useInd(d) ? 'E6 加两个条件' : 'E6 只去掉大盘平稳段') +
+        '，全仓一只；还没检验，只记前向' : '每月第一个开市日调回比例',
+        (isSpeed(d) ? '回测（' + esc(String((d.backtest || {}).first || '').slice(0, 4)) + ' 起）年化 ' : '回测年化 ') + pct(t.cagr, 0), '最大回撤 ' + pct(t.mdd, 0));
     }), s.f && s.f.error ? '策略 F 读不出来：' + s.f.error : '还没有策略 F 的数据（台式机每个交易日 19:30 算）。');
     html += sGroup('抄底', s.kinds.map(function (k) {
       var sg = s.signals[k] || {}, fw = s.forward[k] || {}, c = fw.portfolio && fw.portfolio.curve, last = c ? c.equity.filter(isNum).slice(-1)[0] : null;
@@ -1196,7 +1216,14 @@
     if (ind) steps.push('<b>看行业</b>：第 1 只所在的申万一级行业，昨天还有别的票收盘涨停 → 今天不做。');
     steps.push('<b>看大盘</b>：昨天收盘的大盘 z 在 ' + lo + ' ～ ' + hi + ' 之间（平稳段）→ 今天不做；低于 ' + lo + '（偏弱）或不低于 ' + hi + '（偏强、过热）才做。' +
       (ind ? '' : '不看行业。') + 'z 就是「市场」页的大盘恐慌程度。');
-    steps.push('<b>买</b>：上面都过了，就设一张云条件单：最新价 ≥ 涨停价时以涨停价买入，金额 = 全部可用资金，当天有效。盘中没摸到涨停价就不会买，这天没交易。');
+    if (isSpeed(d)) {
+      steps.push('<b>买（和 F4 不一样的地方）</b>：上面都过了，就盯盘——摸到涨停之前，一旦' + speedTxt(d) + '（都按昨收算，比如昨收 10 元：价格 ≥ 10.70，且 30 秒内涨了 ≥ 0.30 元），' +
+        '马上以涨停价挂买单，金额 = 全部可用资金。一直没出现，就照 F4 等最新价 ≥ 涨停价再以涨停价买（可以先设好这张云条件单兜底）。盘中没摸到涨停价也没提前触发，这天没交易。');
+      steps.push('<b>为什么提前</b>：封得快的票，摸板后 3 秒再挂单常常已经排不上；涨得急的时候提前几秒挂，能多买到这种票，买价也平均低 1% 左右。' +
+        '代价是偶尔提前买进了、当天却没涨停。同花顺云条件单设不了"30 秒涨 3 个点"，要自己看盘或用程序。');
+    } else {
+      steps.push('<b>买</b>：上面都过了，就设一张云条件单：最新价 ≥ 涨停价时以涨停价买入，金额 = 全部可用资金，当天有效。盘中没摸到涨停价就不会买，这天没交易。');
+    }
     steps.push('<b>卖</b>：买入后每个交易日 14:50 看一眼：还封在涨停（买一在涨停价、卖一没挂单）就接着拿，没封住就收盘前卖；最多拿 5 天。');
     steps.push('<b>仓位</b>：全部钱只拿一只票；拿着的时候来的信号跳过，卖出当天来的也跳过（钱收盘才回来）。没有 D4 那份，不调仓。');
     html += '<section class="card"><h2>信号怎么来<small>每个交易日最多 1 个</small></h2><ol class="steps small">' +
@@ -1213,7 +1240,8 @@
       if (zn && isNum(zn.z)) {
         zl = esc(md(zn.date)) + ' 收盘大盘 z <b class="num">' + num(zn.z, 2) + '</b>：' + (zn.calm ?
           '在平稳段，<b>' + esc(md(pd)) + ' ' + id + ' 不做</b>，9:25 不用看。' :
-          '不在平稳段，大盘这一条满足。9:25 看 E6 第 1 只：开盘没涨停' + (ind ? '、它所在行业昨天没有别的涨停' : '') + '，就设条件单。');
+          '不在平稳段，大盘这一条满足。9:25 看 E6 第 1 只：开盘没涨停' + (ind ? '、它所在行业昨天没有别的涨停' : '') +
+          (isSpeed(d) ? '，就盯盘：' + speedTxt(d) + '就提前挂涨停价，没出现就摸板再挂。' : '，就设条件单。'));
       } else {
         zl = '昨收大盘 z 还没算出来（台式机每个交易日 19:30 算完推上来）。';
       }
@@ -1233,10 +1261,24 @@
       html += '<div class="tiles"><div class="tile"><span>累计</span><b>' + pctc(ok[ok.length - 1] - 1, 1) + '</b></div><div class="tile"><span>最大回撤</span><b>' + pctc(maxDrawdown(ok), 1) + '</b></div></div>' +
         chart(ser, fw.dates.map(md), { base: 1, label: d.id + ' 前向记录', h: 120 });
     } else {
-      html += '<p class="empty">' + esc(fw.note || '从下一个交易日起记录，每个交易日 19:30 记一次。') + '</p>';
+      html += '<p class="empty">' + esc((isSpeed(d) && fw.f5_note) || fw.note || '从下一个交易日起记录，每个交易日 19:30 记一次。') + '</p>';
     }
     var sg = fw[k + '_signals'] || [];
-    if (sg.length) {
+    if (sg.length && isSpeed(d)) {     // F5：按逐笔推断的买法结果
+      html += '<h3 class="sub">每天的第 1 只，' + id + ' 怎么做的</h3><div class="scroll"><table class="tbl"><thead><tr><th>日期</th><th>第 1 只</th><th>' + id + '</th></tr></thead><tbody>' +
+        sg.map(function (r) {
+          var tag, why = '';
+          if (!r.ok) { tag = '<span class="tag off">不做</span>'; why = (r.reasons || []).join('；'); }
+          else if (r.l2 === '提前买') { tag = '<span class="tag open">提前买</span>'; why = isNum(r.disc) ? '比涨停价便宜 ' + pct(r.disc, 1) : ''; }
+          else if (r.l2 === '摸板后买到') { tag = '<span class="tag open">摸板后买到</span>'; }
+          else if (r.l2 === '待逐笔') { tag = '<span class="tag off">待逐笔</span>'; why = '条件满足，等这天的逐笔数据补算'; }
+          else { tag = '<span class="tag off">' + esc(r.l2 || '没交易') + '</span>'; why = String(r.status || ''); }
+          return '<tr' + rowCode(r.code) + '><td class="num">' + esc(md(r.date)) + '</td><td>' + esc(r.name || short(r.code)) +
+            '<span class="nm">' + (isNum(r.z) ? 'z ' + num(r.z, 2) : '') + '</span></td><td class="wrap small">' + tag + ' ' + esc(why) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<p class="small muted">买到没有、价钱多少按逐笔数据推断（挂单 3 秒后到，排不到就算没买到）；逐笔数据现在到 ' + esc(md(fw.f5_l2_last)) + '。</p>';
+    }
+    if (sg.length && !isSpeed(d)) {
       html += '<h3 class="sub">每天的第 1 只，' + id + ' 怎么做的</h3><div class="scroll"><table class="tbl"><thead><tr><th>日期</th><th>第 1 只</th><th>' + id + '</th><th class="n">收益</th></tr></thead><tbody>' +
         sg.map(function (r) {
           var st = String(r.status || ''), tag, why;
@@ -1250,18 +1292,22 @@
             '<td class="n">' + (r.taken && isNum(r.ret) ? pctc(r.ret / 100, 1) : '—') + '</td></tr>';
         }).join('') + '</tbody></table></div>';
     }
-    html += '<p class="small muted">从 E6 的前向记录里挑出符合' + (ind ? '两个条件' : '条件') + '的信号，另记一个全仓一只票的账户（数据到 ' + esc(md(fw.e6_data_date)) + '）。' +
+    html += isSpeed(d) ? '<p class="small muted">日子同 F4，从 E6 的前向记录里挑出符合条件的信号，按逐笔推断的买法另记一个全仓一只票的账户；逐笔数据下到哪天，就补算到哪天。</p></section>' :
+      '<p class="small muted">从 E6 的前向记录里挑出符合' + (ind ? '两个条件' : '条件') + '的信号，另记一个全仓一只票的账户（数据到 ' + esc(md(fw.e6_data_date)) + '）。' +
       '“没交易”= 条件满足，但第 1 只开盘就涨停或盘中没摸到涨停价。</p></section>';
     // 回测里最近做过的几笔：让信号具体一点
     var rc = bt.recent || [];
     if (rc.length) {
       html += '<section class="card"><h2>回测里最近做过的 ' + rc.length + ' 笔<small>全仓一只票，到 ' + esc(md(bt.last)) + '</small></h2><div class="scroll"><table class="tbl"><thead><tr>' +
-        '<th>买入日</th><th>股票</th><th class="n">昨收 z</th><th class="n">收益</th></tr></thead><tbody>' +
+        '<th>买入日</th><th>股票</th>' + (isSpeed(d) ? '<th>买法</th>' : '') + '<th class="n">昨收 z</th><th class="n">收益</th></tr></thead><tbody>' +
         rc.map(function (r) {
           return '<tr' + rowCode(r.code) + '><td class="num">' + esc(String(r.date || '').slice(2)) + '</td><td>' + esc(r.name || short(r.code)) +
-            (ind && r.ind ? '<span class="nm">' + esc(r.ind) + '</span>' : '') + '</td><td class="n num">' + (isNum(r.z) ? num(r.z, 2) : '—') + '</td><td class="n">' + pctc(r.ret, 1) + '</td></tr>';
+            (ind && r.ind ? '<span class="nm">' + esc(r.ind) + '</span>' : '') + '</td>' +
+            (isSpeed(d) ? '<td class="small">' + esc(r.how || '—') + (r.how === '提前' && isNum(r.disc) ? '<span class="nm">便宜 ' + pct(r.disc, 1) + '</span>' : '') + '</td>' : '') +
+            '<td class="n num">' + (isNum(r.z) ? num(r.z, 2) : '—') + '</td><td class="n">' + pctc(r.ret, 1) + '</td></tr>';
         }).join('') + '</tbody></table></div>' +
-        '<p class="small muted">收益按摸板涨停价买到、连板就拿最多 5 天、扣 0.25% 算。日期是 年-月-日。</p></section>';
+        '<p class="small muted">' + (isSpeed(d) ? '买法和价钱按逐笔推断：“提前”= ' + speedTxt(d) + '后 3 秒挂涨停价买到，“便宜”是买价比涨停价低多少；“摸板后”= 没提前触发，摸板后 3 秒挂单买到。' +
+          '连板就拿最多 5 天、扣 0.25%。' : '收益按摸板涨停价买到、连板就拿最多 5 天、扣 0.25% 算。') + '日期是 年-月-日。</p></section>';
     }
     var p100 = function (v, dgt) { return isNum(v) ? pctc(v, dgt == null ? 1 : dgt) : '—'; };
     html += '<section class="card"><h2>回测<small>' + esc(ym(bt.first)) + ' 至 ' + esc(ym(bt.last)) + '，对数刻度</small></h2><div class="tiles">' +
@@ -1272,17 +1318,29 @@
       chart(bt.equity || [], (bt.dates || []).map(ym), { base: 1, log: true, label: d.id + ' 回测', h: 150, fmt: function (v) { return v >= 1e4 ? (v / 1e4).toFixed(1) + '万' : xmult(v); },
         tips: (bt.dates || []).map(function (x, i) { return ym(x) + '：' + xmult(bt.equity[i]); }) });
     var c2 = function (x) { x = x || {}; return pctc(x.cagr, 0) + '<span class="nm">回撤 ' + pct(x.mdd, 0) + '</span>'; };
-    html += '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th class="n">' + id + '</th><th class="n">E6 全仓</th></tr></thead><tbody>' +
+    var cmp = isSpeed(d) ? 'F4 同口径' : 'E6 全仓';
+    if (isSpeed(d)) {
+      var it2 = bt.ideal_total || {};
+      html += '<p class="small">提前买 <b class="num">' + esc(bt.n_early == null ? '—' : bt.n_early) + '</b> 次（其中当天没摸到涨停 ' + esc(bt.n_early_notouch == null ? '—' : bt.n_early_notouch) +
+        ' 次；摸板后 3 秒本来排不上、提前才买到的 ' + esc(bt.n_grab == null ? '—' : bt.n_grab) + ' 次）。对照：' + esc(bt.cmp_label || 'F4') + ' 年化 ' + p100(e.cagr) + '、回撤 ' + p100(e.mdd) +
+        '；F4 理想成交（摸板就按涨停价买到）年化 ' + p100(it2.cagr) + '、回撤 ' + p100(it2.mdd) + '。</p>';
+    }
+    html += '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th class="n">' + id + '</th><th class="n">' + cmp + '</th></tr></thead><tbody>' +
       (bt.segs || []).map(function (g) { return '<tr><td class="num">' + esc(g.label) + '</td><td class="n">' + c2(g.f) + '</td><td class="n">' + c2(g.e6) + '</td></tr>'; }).join('') +
       '<tr><td>全程</td><td class="n">' + c2(t) + '</td><td class="n">' + c2(e) + '</td></tr></tbody></table></div>';
     var ys = bt.years || [];
     if (ys.length) {
-      html += '<h3 class="sub">每年</h3><div class="scroll"><table class="tbl"><thead><tr><th>年</th><th class="n">' + id + '</th><th class="n">E6 全仓</th></tr></thead><tbody>' +
+      html += '<h3 class="sub">每年</h3><div class="scroll"><table class="tbl"><thead><tr><th>年</th><th class="n">' + id + '</th><th class="n">' + cmp + '</th></tr></thead><tbody>' +
         ys.slice().reverse().map(function (y) { return '<tr><td class="num">' + esc(y.year) + '</td><td class="n">' + pctc(y.f, 1) + '<span class="nm">回撤 ' + pct(y.f_mdd, 0) + '</span></td><td class="n">' + pctc(y.e6, 1) + '</td></tr>'; }).join('') +
         '</tbody></table></div>';
     }
-    html += '<p class="small muted">理想成交（摸板按涨停价买到）、买卖合计扣 0.25%、空仓不计息，没算容量。' + (useInd(d) ? '行业是现在的申万一级分类，涨停按收盘算。' : '') + '最长没创新高按交易日数。</p></section>';
-    html += '<section class="card"><h2>组成</h2><p class="small">' + id + ' 的买卖都来自 E6，' + (useInd(d) ? '只是多了两个条件' : '只是大盘平稳段不做') + '：</p><div class="btn-row"><button class="btn" data-open="e6">E6 龙头扫板</button></div></section>';
+    html += isSpeed(d) ?
+      '<p class="small muted">只算有逐笔数据的日子（' + esc(ym(bt.first)) + ' 到 ' + esc(md(bt.l2_last)) + '；2017–2022 年的逐笔正在下，检验完再往前接）。' +
+      '成交按逐笔推断：挂单 3 秒后到，排不到就算没买到（记 0），不是理想成交；“F4 同口径”是 F4 摸板后 3 秒挂单、同样按逐笔推断。买卖合计扣 0.25%、空仓不计息，没算容量。最长没创新高按交易日数。</p></section>' :
+      '<p class="small muted">理想成交（摸板按涨停价买到）、买卖合计扣 0.25%、空仓不计息，没算容量。' + (useInd(d) ? '行业是现在的申万一级分类，涨停按收盘算。' : '') + '最长没创新高按交易日数。</p></section>';
+    html += '<section class="card"><h2>组成</h2><p class="small">' + id + ' 的买卖都来自 E6，' +
+      (isSpeed(d) ? '日子同 F4（大盘平稳段不做），买法换成 30 秒涨速提前挂涨停价' : useInd(d) ? '只是多了两个条件' : '只是大盘平稳段不做') +
+      '：</p><div class="btn-row"><button class="btn" data-open="e6">E6 龙头扫板</button>' + (isSpeed(d) ? '<button class="btn" data-open="F4">F4</button>' : '') + '</div></section>';
     return html;
   }
   function detailTitle(s, id) {

@@ -358,6 +358,24 @@ class FViewTests(unittest.TestCase):
         self.assertEqual(f4['backtest']['recent'][0]['date'], '2026-07-09')        # 回测里最近做过的几笔
         self.assertEqual(v['forward']['z_now'], dict(date='2026-10-21', z=-0.7656, calm=False))      # 下一个交易日的大盘条件
 
+    def test_f5_speed_buy_keeps_only_summary_numbers(self):
+        b5 = dict(total=dict(cagr=1.399, mdd=-0.335), e6_total=dict(cagr=1.017), ideal_total=dict(cagr=1.419), cmp_label='F4（摸板后 3 秒）',
+                  n_signals=123, n_early=55, n_early_notouch=5, n_grab=5, n_missing_l2=0, l2_from='2023-01-01', l2_last='2026-10-15',
+                  segs=[], years=[], dates=['2023-01-31'], equity=[1.0], recent=[dict(date='2026-09-23', how='提前', disc=0.012, ret=0.05)],
+                  fills=[dict(key='x', H1_px=123400)])
+        buy = dict(kind='speed', lv=0.07, w=30, sp=0.03, delay=3)
+        doc = f_doc(defs=f_doc()['defs'] + [dict(id='F5', kind='e6_filter', w_e6=1.0, name='F5 · z', rule='r5', note='n5', cond=dict(z_lo=-0.4, z_hi=0.6), buy=buy)])
+        doc['backtest']['F5'] = b5
+        doc['forward'].update(f5_holding=None, f5_signals=[dict(date='2026-10-22', ok=True, l2='待逐笔')], f5_note='等逐笔', f5_l2_last='2026-10-15')
+        self.write(doc)
+        v = me._f_view(self.snap(), self.p)
+        json.dumps(v, allow_nan=False)
+        f5 = v['defs'][2]
+        self.assertEqual((f5['id'], f5['kind'], f5['buy']), ('F5', 'e6_filter', buy))
+        self.assertEqual((f5['backtest']['n_early'], f5['backtest']['cmp_label'], f5['backtest']['l2_last']), (55, 'F4（摸板后 3 秒）', '2026-10-15'))
+        self.assertNotIn('fills', f5['backtest'])                                  # 逐笔推断的明细不进快照，只要汇总数字
+        self.assertEqual((v['forward']['f5_signals'][0]['l2'], v['forward']['f5_note']), ('待逐笔', '等逐笔'))
+
     def test_first_open_day_of_month_is_a_rebalance_day(self):
         self.write(f_doc())
         v = me._f_view(self.snap(plan_day='2026-11-02', data_date='2026-10-30'), self.p)
