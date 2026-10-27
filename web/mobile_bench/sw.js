@@ -1,6 +1,6 @@
 /* 牛牛策略（手机只读版）：离线外壳。页面文件先缓存，断网时显示上次快照。
    data.json 网络优先，失败时回退缓存；命中缓存时响应头带 x-sw-cache: true，页面据此显示离线提示。 */
-const CACHE = 'niuniu-bench-v19';
+const CACHE = 'niuniu-bench-v20';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png'];
 
 self.addEventListener('install', (e) => {
