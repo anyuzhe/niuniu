@@ -376,6 +376,24 @@ class FViewTests(unittest.TestCase):
         self.assertNotIn('fills', f5['backtest'])                                  # 逐笔推断的明细不进快照，只要汇总数字
         self.assertEqual((v['forward']['f5_signals'][0]['l2'], v['forward']['f5_note']), ('待逐笔', '等逐笔'))
 
+    def test_f6_peer_rule_keeps_only_summary_numbers(self):
+        b6 = dict(total=dict(cagr=1.62, mdd=-0.335), e6_total=dict(cagr=1.355), ideal_total=dict(cagr=1.419), cmp_label='F5（同样按逐笔推断）',
+                  n_signals=123, n_trades=62, n_skip=17, n_early=50, n_early_notouch=4, n_grab=5, n_missing_l2=0, l2_from='2023-01-01', l2_last='2026-10-15',
+                  segs=[], years=[], dates=['2023-01-31'], equity=[1.0], recent=[], peers=[dict(key='x', n_seal=0)])
+        buy, peer = dict(kind='speed', lv=0.07, w=30, sp=0.03, delay=3), dict(min_sealed=1)
+        doc = f_doc(defs=f_doc()['defs'] + [dict(id='F6', kind='e6_filter', w_e6=1.0, name='F6 · p', rule='r6', note='n6', cond=dict(z_lo=-0.4, z_hi=0.6),
+                                                 buy=buy, peer=peer)])
+        doc['backtest']['F6'] = b6
+        doc['forward'].update(f6_holding=None, f6_signals=[dict(date='2026-10-22', ok=True, l2='没买（别的昨日涨停一只都没封）')], f6_note='等逐笔', f6_l2_last='2026-10-15')
+        self.write(doc)
+        v = me._f_view(self.snap(), self.p)
+        json.dumps(v, allow_nan=False)
+        f6 = v['defs'][2]
+        self.assertEqual((f6['id'], f6['kind'], f6['buy'], f6['peer']), ('F6', 'e6_filter', buy, peer))
+        self.assertEqual((f6['backtest']['n_skip'], f6['backtest']['n_trades'], f6['backtest']['cmp_label']), (17, 62, 'F5（同样按逐笔推断）'))
+        self.assertNotIn('peers', f6['backtest'])                                  # 每笔的同伴明细不进快照
+        self.assertEqual((v['forward']['f6_signals'][0]['l2'], v['forward']['f6_note']), ('没买（别的昨日涨停一只都没封）', '等逐笔'))
+
     def test_first_open_day_of_month_is_a_rebalance_day(self):
         self.write(f_doc())
         v = me._f_view(self.snap(plan_day='2026-11-02', data_date='2026-10-30'), self.p)

@@ -74,6 +74,16 @@ server {{
 {{HEADERS}}
         try_files $uri $uri/ =404;
     }}
+    # F5 实盘状态：Windows 上的 auto_trade.py（本项目配套的交易程序）POST 推送，前端读
+    location /api/trade/ {{
+        proxy_pass http://127.0.0.1:8800;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 10s;
+        client_max_body_size 256k;
+    }}
     location = /manifest.webmanifest {{
         default_type application/manifest+json;
 {{HEADERS}}
@@ -92,7 +102,8 @@ def sh(host: str, command: str, *, data: bytes | None = None, check: bool = True
 
 
 def upload_site(host: str, root: str) -> int:
-    files = sorted(p for p in SITE_SRC.iterdir() if p.is_file() and not p.name.startswith('.'))      # 不带 macOS 的 ._ 副产品
+    files = sorted(p for p in SITE_SRC.iterdir()
+                   if p.is_file() and not p.name.startswith('.') and p.suffix != '.conf')      # 不带 macOS 的 ._ 副产品；nginx 配置片段只是说明，不上传
     if not files:
         raise RuntimeError(f'{SITE_SRC} 里没有页面文件')
     tar = subprocess.run(['tar', '-C', str(SITE_SRC), '-cf', '-'] + [p.name for p in files], capture_output=True, check=True,
