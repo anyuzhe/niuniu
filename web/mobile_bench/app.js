@@ -1392,10 +1392,11 @@
       '另记一个全仓一只票的账户；逐笔数据下到哪天，就补算到哪天。</p></section>' :
       '<p class="small muted">从 E6 的前向记录里挑出符合' + (ind ? '两个条件' : '条件') + '的信号，另记一个全仓一只票的账户（数据到 ' + esc(md(fw.e6_data_date)) + '）。' +
       '“没交易”= 条件满足，但第 1 只开盘就涨停或盘中没摸到涨停价。</p></section>';
-    // 回测里最近做过的几笔：让信号具体一点
-    var rc = bt.recent || [];
+    // 回测里做过的笔：默认最近 15 笔，可展开全部（快照 10-27 起带全部笔）
+    var rcAll = bt.recent || [], showAll = !!(state.btAll && state.btAll[d.id]), N_RC = 15;
+    var rc = showAll ? rcAll : rcAll.slice(0, N_RC);
     if (rc.length) {
-      html += '<section class="card"><h2>回测里最近做过的 ' + rc.length + ' 笔<small>全仓一只票，到 ' + esc(md(bt.last)) + '</small></h2><div class="scroll"><table class="tbl"><thead><tr>' +
+      html += '<section class="card"><h2>' + (showAll ? '回测里做过的全部 ' : '回测里最近做过的 ') + rc.length + ' 笔<small>全仓一只票，到 ' + esc(md(bt.last)) + '</small></h2><div class="scroll"><table class="tbl"><thead><tr>' +
         '<th>买入日</th><th>股票</th>' + (isSpeed(d) ? '<th>买法</th>' : '') + '<th class="n">昨收 z</th><th class="n">收益</th></tr></thead><tbody>' +
         rc.map(function (r) {
           return '<tr' + rowCode(r.code) + '><td class="num">' + esc(String(r.date || '').slice(2)) + '</td><td>' + esc(r.name || short(r.code)) +
@@ -1404,7 +1405,9 @@
             '<td class="n num">' + (isNum(r.z) ? num(r.z, 2) : '—') + '</td><td class="n">' + pctc(r.ret, 1) + '</td></tr>';
         }).join('') + '</tbody></table></div>' +
         '<p class="small muted">' + (isSpeed(d) ? '买法和价钱按逐笔推断：“提前”= ' + speedTxt(d) + '后 3 秒挂涨停价买到，“便宜”是买价比涨停价低多少；“摸板后”= 没提前触发，摸板后 3 秒挂单买到。' +
-          '连板就拿最多 5 天、扣 0.25%。' : '收益按摸板涨停价买到、连板就拿最多 5 天、扣 0.25% 算。') + '日期是 年-月-日。</p></section>';
+          '连板就拿最多 5 天、扣 0.25%。' : '收益按摸板涨停价买到、连板就拿最多 5 天、扣 0.25% 算。') + '日期是 年-月-日。</p>' +
+        (rcAll.length > N_RC ? '<p><button class="btn" data-btall="' + id + '">' + (showAll ? '收起，只看最近 ' + N_RC + ' 笔' : '展开全部 ' + rcAll.length + ' 笔') + '</button></p>' : '') +
+        '</section>';
     }
     var p100 = function (v, dgt) { return isNum(v) ? pctc(v, dgt == null ? 1 : dgt) : '—'; };
     html += '<section class="card"><h2>回测<small>' + esc(ym(bt.first)) + ' 至 ' + esc(ym(bt.last)) + '，对数刻度</small></h2><div class="tiles">' +
@@ -1540,6 +1543,16 @@
     var lr = q('#live-refresh'); if (lr) {
       lr.addEventListener('click', function () { liveTrade.loaded = false; render(); });
     }
+    // F 系列详情：回测笔数展开 / 收起（收起时回到这张卡片，不留在长表格下面）
+    Array.prototype.forEach.call(app.querySelectorAll('[data-btall]'), function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-btall'), was;
+        state.btAll = state.btAll || {}; was = !!state.btAll[k]; state.btAll[k] = !was;
+        var card = b.closest('section'), top = card ? card.getBoundingClientRect().top + window.scrollY : window.scrollY, y = window.scrollY;
+        render();
+        window.scrollTo(0, was ? Math.min(y, top - 12) : y);
+      });
+    });
     var fg = q('#forget'); if (fg) fg.addEventListener('click', function () { ls(false, LS_PASS, null); state.snap = null; state.phase = 'locked'; state.error = ''; render(); });
 
     // 各页策略切换

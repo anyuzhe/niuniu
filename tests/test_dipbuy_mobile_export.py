@@ -355,7 +355,10 @@ class FViewTests(unittest.TestCase):
         self.assertEqual(f4['backtest']['n_signals'], 512)
         self.assertEqual(v['forward']['f4_holding']['code'], 'sh.600001')
         self.assertEqual(v['forward']['f4_signals'][0]['reasons'], ['z'])
-        self.assertEqual(f4['backtest']['recent'][0]['date'], '2026-07-09')        # 回测里最近做过的几笔
+        self.assertEqual(f4['backtest']['recent'][0]['date'], '2026-07-09')        # 回测里做过的笔
+        doc['backtest']['F4'] = dict(b4, recent=[dict(date=f'2020-01-{i % 28 + 1:02d}', code='sh.603000', ret=0.01, z=-0.5) for i in range(300)])
+        self.write(doc)
+        self.assertEqual(len(me._f_view(self.snap(), self.p)['defs'][3]['backtest']['recent']), 300)      # 全部笔都带上，页面默认显示 15 笔、可展开
         self.assertEqual(v['forward']['z_now'], dict(date='2026-10-21', z=-0.7656, calm=False))      # 下一个交易日的大盘条件
 
     def test_f5_speed_buy_keeps_only_summary_numbers(self):

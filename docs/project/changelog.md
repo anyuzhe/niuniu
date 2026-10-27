@@ -3236,3 +3236,16 @@
 - `web/mobile_bench/nginx-api.conf`：同一段 location 的说明片段（宝塔手动配置用；不上传到站点）。
 - `sw.js` 缓存 v11 → v17、`index.html` 引用 `app.js?v=17`（A 里再升到 v18）。
 - 说明：交易程序和 8800 端口的服务不在本仓库；Claude 没有运行或对接下单程序。
+
+
+## 第一百四十九次（2026-10-27）：F 系列详情页回测记录可以看全部笔
+
+- 类型：手机页内容 / 快照数据合同（字段不变、条数变多）
+- 模块：web/mobile_bench/app.js、sw.js（缓存 v19）、index.html（`app.js?v=19`）、tests/test_dipbuy_mobile_export.py；研究目录 `e6_fwd_2026Q4/f_combo.py`
+- 背景：用户 10-27 16:05："现在回测记录里只有15笔，能不能多一点"。
+- 改动：
+  - `f_combo.py`：`filter_backtest`、`f5_backtest` 的 `n_recent` 默认改成 None（全部笔，新的在前）。快照里 F3 157 笔、F4 370 笔、F5 70 笔、F6 62 笔；快照从约 1.0 MB 变成 1.5 MB。
+  - 手机页：F3–F6 详情的"回测里最近做过的 15 笔"默认还是 15 笔，下面加"展开全部 N 笔 / 收起"按钮；收起时滚回这张卡片。
+  - 每笔的字段和以前一样（买入日、股票、昨收 z、收益；F5 / F6 多买法和便宜多少），没有新增逐笔明细。
+- 测试：`test_dipbuy_mobile_export.py` 39 项通过（F4 那项加了 300 笔全带上的检查）；`node --check` 通过；快照已推、站点已部署。
+- 限制：只提醒、不下单；回测是描述性的。
