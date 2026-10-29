@@ -397,6 +397,26 @@ class FViewTests(unittest.TestCase):
         self.assertNotIn('peers', f6['backtest'])                                  # 每笔的同伴明细不进快照
         self.assertEqual((v['forward']['f6_signals'][0]['l2'], v['forward']['f6_note']), ('没买（别的昨日涨停一只都没封）', '等逐笔'))
 
+    def test_f5_1_volume_exit_keeps_only_summary_numbers(self):
+        b51 = dict(total=dict(cagr=1.074, mdd=-0.49), e6_total=dict(cagr=0.999, mdd=-0.49), ideal_total=dict(cagr=0.917), cmp_label='F5（同样按逐笔推断）',
+                   n_signals=433, n_trades=215, n_volsell=8, volsell_years={'2024': 3}, n_early=183, n_early_notouch=17, n_grab=10, n_missing_l2=0,
+                   l2_from='2017-01-01', l2_last='2026-10-27', segs=[], years=[], dates=['2017-01-31'], equity=[1.0],
+                   recent=[dict(date='2024-08-13', code='sz.000509', ret=-0.05, how='提前', vol=True)], vols=[dict(t='2024-08-14', k=8)])
+        buy = dict(kind='speed', lv=0.07, w=30, sp=0.03, delay=3)
+        ex = dict(kind='vol_ratio', hm='14:50', max_days=5, x=5.0, look=20, n=5, low=0.3)
+        doc = f_doc(defs=f_doc()['defs'] + [dict(id='F5-1', kind='e6_filter', w_e6=1.0, name='F5-1 · p', rule='r', note='n', cond=dict(z_lo=-0.4, z_hi=0.6),
+                                                 buy=buy, exit=ex, base='F5')])
+        doc['backtest']['F5-1'] = b51
+        doc['forward'].update({'f5-1_holding': None, 'f5-1_signals': [dict(date='2026-10-22', ok=True, l2='待逐笔')], 'f5-1_note': '等逐笔', 'f5-1_l2_last': '2026-10-27'})
+        self.write(doc)
+        v = me._f_view(self.snap(), self.p)
+        json.dumps(v, allow_nan=False)
+        f51 = v['defs'][2]
+        self.assertEqual((f51['id'], f51['kind'], f51['buy'], f51['exit'], f51['base']), ('F5-1', 'e6_filter', buy, ex, 'F5'))
+        self.assertEqual((f51['backtest']['n_volsell'], f51['backtest']['volsell_years'], f51['backtest']['recent'][0]['vol']), (8, {'2024': 3}, True))
+        self.assertNotIn('vols', f51['backtest'])                                  # 每个持仓日的量比明细不进快照
+        self.assertEqual((v['forward']['f5-1_signals'][0]['l2'], v['forward']['f5-1_note'], v['forward']['f5-1_l2_last']), ('待逐笔', '等逐笔', '2026-10-27'))
+
     def test_first_open_day_of_month_is_a_rebalance_day(self):
         self.write(f_doc())
         v = me._f_view(self.snap(plan_day='2026-11-02', data_date='2026-10-30'), self.p)

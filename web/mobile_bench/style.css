@@ -219,6 +219,7 @@ header.top .back { padding-left: 8px; }
 .seg.n4 button { padding: 6px 8px; min-width: 36px; }
 .seg.n5 button { padding: 6px 6px; min-width: 32px; }
 .seg.n6 button { padding: 6px 4px; min-width: 30px; font-size: 13px; }
+.seg.n7 button { padding: 6px 3px; min-width: 28px; font-size: 12.5px; }
 /* F3 / F4 详情：信号一步一步写 */
 ol.steps { margin: 0; padding-left: 22px; }
 ol.steps li { margin: 6px 0; line-height: 1.55; }
